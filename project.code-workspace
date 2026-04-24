@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"name": "authenctication",
+			"path": "authenctication"
+		},
+		{
+			"name": "humain_resource",
+			"path": "humain_resource"
+		}
+	],
+	"settings": {
+		"java.compile.nullAnalysis.mode": "automatic"
+	}
+}

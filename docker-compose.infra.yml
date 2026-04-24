@@ -1,0 +1,13 @@
+# Infrastructure locale : Redis (rate limiting gateway) + optionnel PostgreSQL
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025" # smtp server
+      - "8025:8025" # web ui
