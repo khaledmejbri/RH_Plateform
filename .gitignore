@@ -1,0 +1,4 @@
+target/
+*.jar
+*.rar
+gittoken.txt

@@ -1,0 +1,19 @@
+# Tests : pas d'Eureka, pas de Redis, routes minimales (structure Gateway 5)
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: test-route
+              uri: http://127.0.0.1:1
+              predicates:
+                - Path=/__gateway_test__
+
+eureka:
+  client:
+    enabled: false
