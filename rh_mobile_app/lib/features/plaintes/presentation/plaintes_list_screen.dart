@@ -28,7 +28,7 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
   Widget build(BuildContext context) {
     final async = ref.watch(plaintesListProvider);
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFF0F4FF),
       appBar: AppBar(
         title: const Text('Mes plaintes', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
         backgroundColor: Colors.white,
@@ -115,7 +115,7 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
                         IconButton(
                           icon: const Icon(Icons.chevron_left, size: 20),
                           onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
-                          color: _currentPage > 0 ? const Color(0xFF2563EB) : Colors.grey.shade300,
+                          color: _currentPage > 0 ? const Color(0xFF1E40AF) : Colors.grey.shade300,
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -126,7 +126,7 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
                         IconButton(
                           icon: const Icon(Icons.chevron_right, size: 20),
                           onPressed: _currentPage < totalPages - 1 ? () => setState(() => _currentPage++) : null,
-                          color: _currentPage < totalPages - 1 ? const Color(0xFF2563EB) : Colors.grey.shade300,
+                          color: _currentPage < totalPages - 1 ? const Color(0xFF1E40AF) : Colors.grey.shade300,
                         ),
                       ],
                     ),
@@ -138,7 +138,7 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push('/plaintes/nouveau'),
-        backgroundColor: const Color(0xFF2563EB),
+        backgroundColor: const Color(0xFF1E40AF),
         elevation: 4,
         child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),

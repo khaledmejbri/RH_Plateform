@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../../core/notifications/notification_provider.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/notification_action.dart';
 import '../providers/feed_provider.dart';
 import '../data/post_model.dart';
@@ -12,16 +11,15 @@ class FeedScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(feedProvider);
-    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F5F9),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text('Actualités RH', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24)),
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.surface,
+        title: const Text('Actualités RH'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.search),
+            icon: const Icon(Icons.search_rounded),
             onPressed: () {},
           ),
           const NotificationActionBadge(),
@@ -30,15 +28,13 @@ class FeedScreen extends ConsumerWidget {
       body: state.isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: () async {
-                // Logic to refresh feed
-              },
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+              onRefresh: () async {},
+              color: AppTheme.primary,
+              child: ListView.separated(
+                padding: const EdgeInsets.all(16),
                 itemCount: state.posts.length,
-                itemBuilder: (context, index) {
-                  return PostCard(post: state.posts[index]);
-                },
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (_, i) => PostCard(post: state.posts[i]),
               ),
             ),
     );
@@ -51,33 +47,35 @@ class PostCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Container(
-      margin: const EdgeInsets.only(bottom: 12, left: 12, right: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: AppTheme.border, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                CircleAvatar(
-                  backgroundColor: colorScheme.primary.withOpacity(0.1),
-                  child: Text(
-                    post.authorName[0],
-                    style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(
+                    color: AppTheme.primarySurface,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      post.authorName.isNotEmpty ? post.authorName[0] : '?',
+                      style: const TextStyle(
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -85,89 +83,99 @@ class PostCard extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text(post.authorName,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              color: AppTheme.textPrimary)),
                       Text(
-                        post.authorName,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                      ),
-                      Text(
-                        '${post.authorRole} • ${post.timeAgo}',
-                        style: TextStyle(color: colorScheme.outline, fontSize: 12),
+                        '${post.authorRole} · ${post.timeAgo}',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppTheme.textSecondary),
                       ),
                     ],
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.more_horiz),
-                  onPressed: () {},
-                ),
+                const Icon(Icons.more_horiz_rounded,
+                    color: AppTheme.textSecondary),
               ],
             ),
           ),
+
+          // Content
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Text(
               post.content,
-              style: const TextStyle(fontSize: 15, height: 1.4),
+              style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: AppTheme.textPrimary),
             ),
           ),
+
+          // Image
           if (post.imageUrl != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(0),
-                child: Image.network(
-                  post.imageUrl!,
-                  width: double.infinity,
-                  height: 250,
-                  fit: BoxFit.cover,
-                ),
+            ClipRRect(
+              borderRadius:
+                  const BorderRadius.vertical(bottom: Radius.circular(16)),
+              child: Image.network(
+                post.imageUrl!,
+                width: double.infinity,
+                height: 200,
+                fit: BoxFit.cover,
               ),
             ),
-          const Divider(height: 32, indent: 16, endIndent: 16),
-          Padding(
-            padding: const EdgeInsets.only(left: 8, right: 8, bottom: 8),
-            child: Row(
-              children: [
-                _ActionButton(
-                  icon: post.isLiked ? Icons.favorite : Icons.favorite_border,
-                  label: '${post.likes}',
-                  color: post.isLiked ? Colors.red : colorScheme.outline,
-                  onTap: () => ref.read(feedProvider.notifier).toggleLike(post.id),
-                ),
-                _ActionButton(
-                  icon: Icons.chat_bubble_outline,
-                  label: '${post.commentCount}',
-                  color: colorScheme.outline,
-                  onTap: () {},
-                ),
-                const Spacer(),
-                _ActionButton(
-                  icon: Icons.share_outlined,
-                  label: 'Partager',
-                  color: colorScheme.outline,
-                  onTap: () {},
-                ),
-              ],
+
+          // Actions
+          if (post.imageUrl == null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Row(
+                children: [
+                  _ActionBtn(
+                    icon: post.isLiked
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_outline_rounded,
+                    label: '${post.likes}',
+                    color:
+                        post.isLiked ? Colors.red : AppTheme.textSecondary,
+                    onTap: () =>
+                        ref.read(feedProvider.notifier).toggleLike(post.id),
+                  ),
+                  _ActionBtn(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    label: '${post.commentCount}',
+                    color: AppTheme.textSecondary,
+                    onTap: () {},
+                  ),
+                  const Spacer(),
+                  _ActionBtn(
+                    icon: Icons.share_outlined,
+                    label: 'Partager',
+                    color: AppTheme.textSecondary,
+                    onTap: () {},
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 }
 
-class _ActionButton extends StatelessWidget {
+class _ActionBtn extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
   final VoidCallback onTap;
 
-  const _ActionButton({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
+  const _ActionBtn(
+      {required this.icon,
+      required this.label,
+      required this.color,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -175,15 +183,16 @@ class _ActionButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: color),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13),
-            ),
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 5),
+            Text(label,
+                style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 13)),
           ],
         ),
       ),

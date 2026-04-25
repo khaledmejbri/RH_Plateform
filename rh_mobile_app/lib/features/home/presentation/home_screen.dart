@@ -3,11 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../feed/presentation/feed_screen.dart';
 import '../../pointage/presentation/pointage_screen.dart';
-import '../../notifications/notifications_screen.dart';
-import 'package:rh_mobile_app/features/demandes_admin/presentation/demandes_admin_list_screen.dart';
-import 'package:rh_mobile_app/features/documents/presentation/documents_list_screen.dart';
-import 'package:rh_mobile_app/features/auth/presentation/profile_screen.dart';
+import '../../auth/presentation/profile_screen.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/notification_action.dart';
+import '../../../features/auth/providers/collaborateur_notifier.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -18,11 +17,10 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
-  
-  // Dashboard is first instead of Feed
+
   final List<Widget> _pages = [
-    const _DashboardScreen(),
-    const _DemandesChoiceScreen(),
+    const _DashboardPage(),
+    const _DemandesPage(),
     const PointageScreen(),
     const FeedScreen(),
     const ProfileScreen(),
@@ -32,53 +30,111 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _pages[_currentIndex],
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          selectedItemColor: const Color(0xFF2563EB),
-          unselectedItemColor: Colors.grey.shade400,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined),
-              activeIcon: Icon(Icons.dashboard_rounded),
-              label: 'Accueil',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.assignment_outlined),
-              activeIcon: Icon(Icons.assignment_rounded),
-              label: 'Demandes',
-            ),
-            BottomNavigationBarItem(
-              icon: CircleAvatar(
-                radius: 24,
-                backgroundColor: Color(0xFF2563EB),
-                child: Icon(Icons.qr_code_scanner, color: Colors.white),
+      bottomNavigationBar: _BottomNav(
+        currentIndex: _currentIndex,
+        onTap: (i) => setState(() => _currentIndex = i),
+      ),
+    );
+  }
+}
+
+// ── Bottom Navigation ────────────────────────────────────────────────────────
+
+class _BottomNav extends StatelessWidget {
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+  const _BottomNav({required this.currentIndex, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.surface,
+        border: Border(top: BorderSide(color: AppTheme.border, width: 0.5)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _NavItem(icon: Icons.home_outlined,      activeIcon: Icons.home_rounded,           label: 'Accueil',   index: 0, current: currentIndex, onTap: onTap),
+              _NavItem(icon: Icons.assignment_outlined, activeIcon: Icons.assignment_rounded,      label: 'Demandes',  index: 1, current: currentIndex, onTap: onTap),
+              // QR FAB center
+              GestureDetector(
+                onTap: () => onTap(2),
+                child: Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: currentIndex == 2 ? AppTheme.primary : AppTheme.primary.withOpacity(0.9),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primary.withOpacity(0.35),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 24),
+                ),
               ),
-              label: '',
+              _NavItem(icon: Icons.article_outlined,   activeIcon: Icons.article_rounded,         label: 'Actu',      index: 3, current: currentIndex, onTap: onTap),
+              _NavItem(icon: Icons.person_outline,     activeIcon: Icons.person_rounded,          label: 'Moi',       index: 4, current: currentIndex, onTap: onTap),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  final int index;
+  final int current;
+  final ValueChanged<int> onTap;
+
+  const _NavItem({
+    required this.icon, required this.activeIcon, required this.label,
+    required this.index, required this.current, required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isActive = index == current;
+    return GestureDetector(
+      onTap: () => onTap(index),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 56,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              decoration: BoxDecoration(
+                color: isActive ? AppTheme.primarySurface : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                isActive ? activeIcon : icon,
+                size: 22,
+                color: isActive ? AppTheme.primary : const Color(0xFFADB5BD),
+              ),
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.article_outlined),
-              activeIcon: Icon(Icons.article_rounded),
-              label: 'Actualités',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person_rounded),
-              label: 'Moi',
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                color: isActive ? AppTheme.primary : const Color(0xFFADB5BD),
+              ),
             ),
           ],
         ),
@@ -87,176 +143,206 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-class _DashboardScreen extends ConsumerWidget {
-  const _DashboardScreen();
+// ── Dashboard Page ────────────────────────────────────────────────────────────
+
+class _DashboardPage extends ConsumerWidget {
+  const _DashboardPage();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final userAsync = ref.watch(collaborateurNotifierProvider);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text('Tableau de bord', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        centerTitle: true,
-        actions: const [NotificationActionBadge()],
-      ),
-      body: GridView.count(
-        padding: const EdgeInsets.all(24),
-        crossAxisCount: 2,
-        mainAxisSpacing: 16,
-        crossAxisSpacing: 16,
-        children: [
-          _ServiceCard(
-            title: 'Pointage',
-            icon: Icons.qr_code_scanner_rounded,
-            color: const Color(0xFF2563EB),
-            onTap: () {
-              // Get the parent HomeScreen to switch to Pointage tab
-              final state = context.findAncestorStateOfType<_HomeScreenState>();
-              state?.setState(() => state._currentIndex = 2);
-            },
-          ),
-          _ServiceCard(
-            title: 'Congés',
-            icon: Icons.calendar_month_rounded,
-            color: Colors.orange,
-            onTap: () => context.push('/demandes-admin'),
-          ),
-          _ServiceCard(
-            title: 'Autorisations',
-            icon: Icons.access_time_rounded,
-            color: Colors.teal,
-            onTap: () => context.push('/demandes-admin'),
-          ),
-          _ServiceCard(
-            title: 'Documents',
-            icon: Icons.description_rounded,
-            color: Colors.blue,
-            onTap: () => context.push('/documents'),
-          ),
-          _ServiceCard(
-            title: 'Plaintes',
-            icon: Icons.report_problem_rounded,
-            color: Colors.red,
-            onTap: () => context.push('/plaintes'),
-          ),
-          _ServiceCard(
-            title: 'Actualités',
-            icon: Icons.article_rounded,
-            color: Colors.purple,
-            onTap: () {
-              // Switch to Actualités tab
-              final state = context.findAncestorStateOfType<_HomeScreenState>();
-              state?.setState(() => state._currentIndex = 3);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DemandesChoiceScreen extends StatelessWidget {
-  const _DemandesChoiceScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text('Mes Demandes', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        centerTitle: true,
-        actions: const [NotificationActionBadge()],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          _ChoiceCard(
-            title: 'Congés',
-            subtitle: 'Gérer vos absences et congés',
-            icon: Icons.calendar_month_rounded,
-            color: Colors.orange,
-            onTap: () => context.push('/demandes-admin'),
-          ),
-          const SizedBox(height: 16),
-          _ChoiceCard(
-            title: 'Autorisations',
-            subtitle: 'Demander des autorisations de sortie',
-            icon: Icons.access_time_rounded,
-            color: Colors.teal,
-            onTap: () => context.push('/demandes-admin'),
-          ),
-          const SizedBox(height: 16),
-          _ChoiceCard(
-            title: 'Documents',
-            subtitle: 'Attestations, bulletins de paie...',
-            icon: Icons.description_rounded,
-            color: Colors.blue,
-            onTap: () => context.push('/documents'),
-          ),
-          const SizedBox(height: 16),
-          _ChoiceCard(
-            title: 'Plaintes',
-            subtitle: 'Déclarer une plainte ou réclamation',
-            icon: Icons.report_problem_rounded,
-            color: Colors.red,
-            onTap: () => context.push('/plaintes'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ChoiceCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ChoiceCard({required this.title, required this.subtitle, required this.icon, required this.color, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(14),
+      backgroundColor: AppTheme.background,
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            // ── App Bar ──
+            SliverToBoxAdapter(
+              child: Container(
+                color: AppTheme.surface,
+                padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: userAsync.when(
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, __) => const SizedBox.shrink(),
+                        data: (user) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Bonjour 👋',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              user != null
+                                  ? '${user.prenom} ${user.nom}'
+                                  : 'Bienvenue',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const NotificationActionBadge(),
+                  ],
+                ),
               ),
-              child: Icon(icon, color: color, size: 28),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+
+            // ── Hero Banner ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Container(
+                  height: 100,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1E40AF), Color(0xFF3B82F6)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Ce mois-ci',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.white.withOpacity(0.7),
+                                  ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '0 absence',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Prochaine paie: fin du mois',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.white.withOpacity(0.65),
+                                    fontSize: 11,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(Icons.insert_chart_outlined_rounded,
+                            color: Colors.white, size: 28),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // ── Section title ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+                child: Text(
+                  'Services',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+
+            // ── Services Grid ──
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverGrid.count(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.1,
                 children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-                  Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                  _ServiceCard(
+                    title: 'Pointage',
+                    subtitle: 'Scanner QR',
+                    icon: Icons.qr_code_scanner_rounded,
+                    iconBg: const Color(0xFFEEF2FF),
+                    iconColor: AppTheme.primary,
+                    onTap: () {
+                      final state = context.findAncestorStateOfType<_HomeScreenState>();
+                      state?.setState(() => state._currentIndex = 2);
+                    },
+                  ),
+                  _ServiceCard(
+                    title: 'Congés',
+                    subtitle: 'Demander',
+                    icon: Icons.calendar_month_rounded,
+                    iconBg: const Color(0xFFFFF7ED),
+                    iconColor: const Color(0xFFEA580C),
+                    onTap: () => context.push('/demandes-admin'),
+                  ),
+                  _ServiceCard(
+                    title: 'Documents',
+                    subtitle: 'Attestations',
+                    icon: Icons.description_rounded,
+                    iconBg: const Color(0xFFF0FDF4),
+                    iconColor: const Color(0xFF16A34A),
+                    onTap: () => context.push('/documents'),
+                  ),
+                  _ServiceCard(
+                    title: 'Plaintes',
+                    subtitle: 'Déclarer',
+                    icon: Icons.report_problem_rounded,
+                    iconBg: const Color(0xFFFFF1F2),
+                    iconColor: const Color(0xFFE11D48),
+                    onTap: () => context.push('/plaintes'),
+                  ),
+                  _ServiceCard(
+                    title: 'Autorisation',
+                    subtitle: 'Sortie',
+                    icon: Icons.vpn_key_rounded,
+                    iconBg: const Color(0xFFEFF6FF),
+                    iconColor: const Color(0xFF3B82F6),
+                    onTap: () => context.push('/demandes-admin'),
+                  ),
+                  _ServiceCard(
+                    title: 'Actualités',
+                    subtitle: 'Lire',
+                    icon: Icons.newspaper_rounded,
+                    iconBg: const Color(0xFFF5F3FF),
+                    iconColor: const Color(0xFF7C3AED),
+                    onTap: () {
+                      final state = context.findAncestorStateOfType<_HomeScreenState>();
+                      state?.setState(() => state._currentIndex = 3);
+                    },
+                  ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade300),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
           ],
         ),
       ),
@@ -266,46 +352,184 @@ class _ChoiceCard extends StatelessWidget {
 
 class _ServiceCard extends StatelessWidget {
   final String title;
+  final String subtitle;
   final IconData icon;
-  final Color color;
+  final Color iconBg;
+  final Color iconColor;
   final VoidCallback onTap;
 
-  const _ServiceCard({required this.title, required this.icon, required this.color, required this.onTap});
+  const _ServiceCard({
+    required this.title, required this.subtitle, required this.icon,
+    required this.iconBg, required this.iconColor, required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
+    return Material(
+      color: AppTheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.border, width: 0.5),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: iconColor, size: 22),
               ),
-              child: Icon(icon, color: color, size: 32),
-            ),
-            const SizedBox(height: 12),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          ],
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
+                          )),
+                  Text(subtitle,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(fontSize: 11)),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
+// ── Demandes Page ─────────────────────────────────────────────────────────────
+
+class _DemandesPage extends StatelessWidget {
+  const _DemandesPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.background,
+      appBar: AppBar(
+        title: const Text('Mes Demandes'),
+        backgroundColor: AppTheme.surface,
+        actions: const [NotificationActionBadge()],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _DemandeChoiceCard(
+            title: 'Congés',
+            subtitle: 'Gérer vos absences et congés',
+            icon: Icons.calendar_month_rounded,
+            iconBg: const Color(0xFFFFF7ED),
+            iconColor: const Color(0xFFEA580C),
+            onTap: () => context.push('/demandes-admin'),
+          ),
+          const SizedBox(height: 12),
+          _DemandeChoiceCard(
+            title: 'Autorisations de sortie',
+            subtitle: 'Demander une permission',
+            icon: Icons.vpn_key_rounded,
+            iconBg: const Color(0xFFEFF6FF),
+            iconColor: const Color(0xFF3B82F6),
+            onTap: () => context.push('/demandes-admin'),
+          ),
+          const SizedBox(height: 12),
+          _DemandeChoiceCard(
+            title: 'Documents',
+            subtitle: 'Attestations, bulletins de paie…',
+            icon: Icons.description_rounded,
+            iconBg: const Color(0xFFF0FDF4),
+            iconColor: const Color(0xFF16A34A),
+            onTap: () => context.push('/documents'),
+          ),
+          const SizedBox(height: 12),
+          _DemandeChoiceCard(
+            title: 'Plaintes',
+            subtitle: 'Déclarer une réclamation',
+            icon: Icons.report_problem_rounded,
+            iconBg: const Color(0xFFFFF1F2),
+            iconColor: const Color(0xFFE11D48),
+            onTap: () => context.push('/plaintes'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DemandeChoiceCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color iconBg;
+  final Color iconColor;
+  final VoidCallback onTap;
+
+  const _DemandeChoiceCard({
+    required this.title, required this.subtitle, required this.icon,
+    required this.iconBg, required this.iconColor, required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppTheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.border, width: 0.5),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: iconColor, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.textSecondary, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
