@@ -121,7 +121,7 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
     const primaryBlue = Color(0xFF2563EB);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFF0F4FF),
       appBar: AppBar(
         title: const Text('Nouvelle Demande de Congé', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,

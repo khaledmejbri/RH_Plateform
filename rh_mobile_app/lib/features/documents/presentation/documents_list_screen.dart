@@ -29,7 +29,7 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFF0F4FF),
       appBar: AppBar(
         title: const Text('Mes documents', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
         backgroundColor: Colors.white,
@@ -76,7 +76,7 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
                     onPressed: () => context.push('/documents/nouveau'),
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Nouvelle demande'),
-                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2563EB)),
+                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF1E40AF)),
                   ),
                 ],
               ),
@@ -124,7 +124,7 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
                         IconButton(
                           icon: const Icon(Icons.chevron_left, size: 20),
                           onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
-                          color: _currentPage > 0 ? const Color(0xFF2563EB) : Colors.grey.shade300,
+                          color: _currentPage > 0 ? const Color(0xFF1E40AF) : Colors.grey.shade300,
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -135,7 +135,7 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
                         IconButton(
                           icon: const Icon(Icons.chevron_right, size: 20),
                           onPressed: _currentPage < totalPages - 1 ? () => setState(() => _currentPage++) : null,
-                          color: _currentPage < totalPages - 1 ? const Color(0xFF2563EB) : Colors.grey.shade300,
+                          color: _currentPage < totalPages - 1 ? const Color(0xFF1E40AF) : Colors.grey.shade300,
                         ),
                       ],
                     ),
@@ -147,7 +147,7 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push('/documents/nouveau'),
-        backgroundColor: const Color(0xFF2563EB),
+        backgroundColor: const Color(0xFF1E40AF),
         elevation: 4,
         child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
