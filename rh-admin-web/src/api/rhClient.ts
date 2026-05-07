@@ -121,6 +121,7 @@ export type DemandeAdministrative = {
   periode_debut?: string;
   periode_fin?: string;
   motif_refus?: string;
+  contenu?: Record<string, unknown>;
   cree_le: string;
 };
 

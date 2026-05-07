@@ -6,6 +6,7 @@ class DemandeAdminItem {
     this.periodeDebut,
     this.periodeFin,
     this.motifRefus,
+    this.contenu,
   });
 
   final String id;
@@ -14,8 +15,14 @@ class DemandeAdminItem {
   final String? periodeDebut;
   final String? periodeFin;
   final String? motifRefus;
+  final Map<String, dynamic>? contenu;
+
+  bool get isAutorisationSortie => typeDemande == 'AUTORISATION_SORTIE';
+  String? get heureDebut => contenu?['heure_debut'] as String?;
+  String? get heureFin => contenu?['heure_fin'] as String?;
 
   factory DemandeAdminItem.fromJson(Map<String, dynamic> j) {
+    final contenuRaw = j['contenu'];
     return DemandeAdminItem(
       id: j['identifiant']?.toString() ?? '',
       typeDemande: j['type_demande'] as String? ?? '',
@@ -23,6 +30,7 @@ class DemandeAdminItem {
       periodeDebut: j['periode_debut'] as String?,
       periodeFin: j['periode_fin'] as String?,
       motifRefus: j['motif_refus'] as String?,
+      contenu: contenuRaw is Map<String, dynamic> ? contenuRaw : null,
     );
   }
 }
