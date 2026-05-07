@@ -325,7 +325,7 @@ class _DashboardPage extends ConsumerWidget {
                     icon: Icons.vpn_key_rounded,
                     iconBg: const Color(0xFFEFF6FF),
                     iconColor: const Color(0xFF3B82F6),
-                    onTap: () => context.push('/demandes-admin'),
+                    onTap: () => context.push('/demandes-admin/autorisation/nouveau'),
                   ),
                   _ServiceCard(
                     title: 'Actualités',
@@ -445,7 +445,7 @@ class _DemandesPage extends StatelessWidget {
             icon: Icons.vpn_key_rounded,
             iconBg: const Color(0xFFEFF6FF),
             iconColor: const Color(0xFF3B82F6),
-            onTap: () => context.push('/demandes-admin'),
+            onTap: () => context.push('/demandes-admin/autorisation/nouveau'),
           ),
           const SizedBox(height: 12),
           _DemandeChoiceCard(
