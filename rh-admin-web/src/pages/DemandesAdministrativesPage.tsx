@@ -70,12 +70,56 @@ export default function DemandesAdministrativesPage() {
   }
 
   function formatTypeDemande(type: string): string {
+    if (type === 'AUTORISATION_SORTIE') return 'Autorisation de sortie';
+    if (type === 'CONGE') return 'Congé';
+    if (type === 'ORDRE_MISSION') return 'Ordre de mission';
     return type
       .replaceAll('_', ' ')
       .toLowerCase()
       .split(' ')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
+  }
+
+  function getTypeColor(type: string): { bg: string; text: string } {
+    if (type === 'AUTORISATION_SORTIE') return { bg: '#f0fdf4', text: '#0d9488' };
+    if (type === 'CONGE') return { bg: '#fff7ed', text: '#ea580c' };
+    return { bg: '#eff6ff', text: '#1e40af' };
+  }
+
+  function getTypeIcon(type: string): string {
+    if (type === 'AUTORISATION_SORTIE') return '⏰';
+    if (type === 'CONGE') return '📅';
+    return '📋';
+  }
+
+  function formatPeriode(d: DemandeAdministrative): string {
+    if (d.type_demande === 'AUTORISATION_SORTIE') {
+      const contenu = d.contenu as { date_jour?: string; heure_debut?: string; heure_fin?: string } | undefined;
+      if (contenu?.date_jour) {
+        const heures = contenu.heure_debut && contenu.heure_fin
+          ? ` · ${contenu.heure_debut} → ${contenu.heure_fin}`
+          : '';
+        // compute duration
+        let dureeStr = '';
+        if (contenu.heure_debut && contenu.heure_fin) {
+          const [hd, md] = contenu.heure_debut.split(':').map(Number);
+          const [hf, mf] = contenu.heure_fin.split(':').map(Number);
+          const minutes = (hf * 60 + mf) - (hd * 60 + md);
+          if (minutes > 0) {
+            const h = Math.floor(minutes / 60);
+            const m = minutes % 60;
+            dureeStr = h > 0 ? ` (${h}h${m > 0 ? m + 'min' : ''})` : ` (${m}min)`;
+          }
+        }
+        return `${contenu.date_jour}${heures}${dureeStr}`;
+      }
+    }
+    if (d.periode_debut && d.periode_fin) {
+      return `${d.periode_debut} → ${d.periode_fin}`;
+    }
+    if (d.periode_debut) return d.periode_debut;
+    return '-';
   }
 
   return (
@@ -157,14 +201,17 @@ export default function DemandesAdministrativesPage() {
                       </td>
                       <td style={{ padding: '16px 20px' }}>
                         <span style={{
-                          display: 'inline-block',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
                           padding: '6px 12px',
-                          background: '#eff6ff',
-                          color: '#1e40af',
+                          background: getTypeColor(d.type_demande).bg,
+                          color: getTypeColor(d.type_demande).text,
                           borderRadius: '8px',
                           fontSize: '13px',
                           fontWeight: '600'
                         }}>
+                          <span>{getTypeIcon(d.type_demande)}</span>
                           {formatTypeDemande(d.type_demande)}
                         </span>
                       </td>
@@ -186,14 +233,10 @@ export default function DemandesAdministrativesPage() {
                         </span>
                       </td>
                       <td style={{ padding: '16px 20px', color: '#6b7280', fontSize: '13px' }}>
-                        {d.periode_debut && d.periode_fin ? (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span>📅</span>
-                            <span>{d.periode_debut} → {d.periode_fin}</span>
-                          </span>
-                        ) : (
-                          <span style={{ color: '#d1d5db' }}>-</span>
-                        )}
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{d.type_demande === 'AUTORISATION_SORTIE' ? '⏰' : '📅'}</span>
+                          <span>{formatPeriode(d)}</span>
+                        </span>
                       </td>
                       <td style={{ padding: '16px 20px' }}>
                         <div style={{

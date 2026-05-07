@@ -126,7 +126,7 @@ class _DashboardScreen extends ConsumerWidget {
             title: 'Autorisations',
             icon: Icons.access_time_rounded,
             color: Colors.teal,
-            onTap: () => context.push('/demandes-admin'),
+            onTap: () => context.push('/demandes-admin/autorisation/nouveau'),
           ),
           _ServiceCard(
             title: 'Documents',
@@ -185,7 +185,7 @@ class _DemandesChoiceScreen extends StatelessWidget {
             subtitle: 'Demander des autorisations de sortie',
             icon: Icons.access_time_rounded,
             color: Colors.teal,
-            onTap: () => context.push('/demandes-admin'),
+            onTap: () => context.push('/demandes-admin/autorisation/nouveau'),
           ),
           const SizedBox(height: 16),
           _ChoiceCard(
