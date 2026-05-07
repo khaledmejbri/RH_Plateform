@@ -30,26 +30,6 @@ class DemandeAdminRepository {
     return DemandeAdminSuivi.fromJson(res.data!);
   }
 
-  Future<void> createAutorisationSortie({
-    required String dateJour,
-    required String heureDebut,
-    required String heureFin,
-    required String motif,
-  }) async {
-    await _dio.post<Map<String, dynamic>>(
-      ApiConstants.demandesAdmin,
-      data: {
-        'type_demande': 'AUTORISATION_SORTIE',
-        'contenu': {
-          'date_jour': dateJour,
-          'heure_debut': heureDebut,
-          'heure_fin': heureFin,
-          'motif': motif,
-        },
-      },
-    );
-  }
-
   Future<void> createConge({
     required String dateDebut,
     required String dateFin,

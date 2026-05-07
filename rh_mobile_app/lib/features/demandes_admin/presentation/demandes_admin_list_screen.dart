@@ -29,7 +29,7 @@ class _DemandesAdminListScreenState extends ConsumerState<DemandesAdminListScree
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Mes demandes', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
+        title: const Text('Mes congés', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -142,73 +142,13 @@ class _DemandesAdminListScreenState extends ConsumerState<DemandesAdminListScree
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showNouvelleDemandeDialog(context),
+        onPressed: () => context.push('/demandes-admin/conge/nouveau'),
         backgroundColor: const Color(0xFF2563EB),
         elevation: 4,
         child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
     );
   }
-
-  void _showNouvelleDemandeDialog(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Nouvelle demande',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.calendar_month_rounded, color: Colors.orange),
-                ),
-                title: const Text('Congé', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Absence sur plusieurs jours'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push('/demandes-admin/conge/nouveau');
-                },
-              ),
-              const Divider(height: 8),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0D9488).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.access_time_rounded, color: Color(0xFF0D9488)),
-                ),
-                title: const Text('Autorisation de sortie', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Sortie courte (max 4h)'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push('/demandes-admin/autorisation/nouveau');
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
-      ),
-    );
 }
 
 class _StatusSection extends StatelessWidget {
@@ -288,39 +228,10 @@ class _RequestItem extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: d.isAutorisationSortie
-                                  ? const Color(0xFF0D9488).withOpacity(0.1)
-                                  : Colors.orange.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              d.isAutorisationSortie
-                                  ? Icons.access_time_rounded
-                                  : Icons.calendar_month_rounded,
-                              size: 14,
-                              color: d.isAutorisationSortie
-                                  ? const Color(0xFF0D9488)
-                                  : Colors.orange,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              d.isAutorisationSortie
-                                  ? 'Autorisation de sortie'
-                                  : d.typeDemande == 'CONGE'
-                                      ? 'Congé'
-                                      : d.typeDemande,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        d.typeDemande == 'CONGE' ? 'Congé' : d.typeDemande,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -340,17 +251,11 @@ class _RequestItem extends StatelessWidget {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    Icon(
-                      d.isAutorisationSortie ? Icons.access_time_outlined : Icons.calendar_today_outlined,
-                      size: 13,
-                      color: Colors.grey,
-                    ),
+                    const Icon(Icons.calendar_today_outlined, size: 13, color: Colors.grey),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        d.isAutorisationSortie
-                            ? '${d.periodeDebut ?? 'N/A'} · ${d.heureDebut ?? '--:--'} → ${d.heureFin ?? '--:--'}'
-                            : '${d.periodeDebut ?? 'N/A'} → ${d.periodeFin ?? 'N/A'}',
+                        '${d.periodeDebut ?? "N/A"} → ${d.periodeFin ?? "N/A"}',
                         style: const TextStyle(color: Colors.grey, fontSize: 12),
                         overflow: TextOverflow.ellipsis,
                       ),

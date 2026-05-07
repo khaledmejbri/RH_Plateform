@@ -7,7 +7,6 @@ import '../../features/auth/providers/auth_notifier.dart';
 import '../../features/demandes_admin/presentation/demande_admin_detail_screen.dart';
 import '../../features/demandes_admin/presentation/demandes_admin_list_screen.dart';
 import '../../features/demandes_admin/presentation/demande_conge_create_screen.dart';
-import '../../features/demandes_admin/presentation/demande_autorisation_sortie_create_screen.dart';
 import '../../features/documents/presentation/document_create_screen.dart';
 import '../../features/documents/presentation/document_detail_screen.dart';
 import '../../features/documents/presentation/documents_list_screen.dart';
@@ -61,7 +60,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/demandes-admin', builder: (_, __) => const DemandesAdminListScreen()),
       GoRoute(path: '/demandes-admin/conge/nouveau', builder: (_, __) => const DemandeCongeCreateScreen()),
-      GoRoute(path: '/demandes-admin/autorisation/nouveau', builder: (_, __) => const DemandeAutorisationSortieCreateScreen()),
       GoRoute(
         path: '/demandes-admin/:id',
         builder: (c, s) => DemandeAdminDetailScreen(id: s.pathParameters['id']!),
