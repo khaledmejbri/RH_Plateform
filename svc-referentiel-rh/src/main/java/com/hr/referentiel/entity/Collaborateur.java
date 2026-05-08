@@ -70,6 +70,10 @@ public class Collaborateur {
 	@Column(name = "statut", nullable = false, length = 32)
 	private String statut;
 
+	/** Profil d'acces persiste : COLLABORATEUR, RESPONSABLE (chef departement) ou RO (responsable operationnel). */
+	@Column(name = "profil_acces", nullable = false, length = 32)
+	private String profilAcces = "COLLABORATEUR";
+
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "unite_identifiant", nullable = false)
 	private UniteOrganisation unite;
@@ -227,6 +231,14 @@ public class Collaborateur {
 		this.superieur = superieur;
 	}
 
+
+	public String getProfilAcces() {
+		return profilAcces;
+	}
+
+	public void setProfilAcces(String profilAcces) {
+		this.profilAcces = profilAcces == null ? "COLLABORATEUR" : profilAcces.trim().toUpperCase();
+	}
 	public Instant getCreeLe() {
 		return creeLe;
 	}

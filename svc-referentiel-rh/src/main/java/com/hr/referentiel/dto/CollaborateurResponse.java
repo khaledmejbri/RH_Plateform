@@ -56,6 +56,9 @@ public class CollaborateurResponse {
 	@JsonProperty("compte_utilisateur_id")
 	private UUID compteUtilisateurId;
 
+	@JsonProperty("profil_acces")
+	private String profilAcces;
+
 	@JsonProperty("cree_le")
 	private Instant creeLe;
 
@@ -207,5 +210,13 @@ public class CollaborateurResponse {
 
 	public void setModifieLe(Instant modifieLe) {
 		this.modifieLe = modifieLe;
+	}
+}
+	public String getProfilAcces() {
+		return profilAcces;
+	}
+
+	public void setProfilAcces(String profilAcces) {
+		this.profilAcces = profilAcces;
 	}
 }

@@ -164,6 +164,7 @@ public class ReferentielRhService {
 		c.setDepartementLibelle(trimToNull(req.getDepartementLibelle()));
 		c.setDateRecrutement(req.getDateRecrutement());
 		c.setStatut(req.getStatut().trim());
+		c.setProfilAcces(req.getProfilAcces() != null ? req.getProfilAcces().trim().toUpperCase() : "COLLABORATEUR");
 		c.setUnite(unite);
 		if (req.getSuperieurIdentifiant() != null) {
 			Collaborateur sup = collaborateurRepository.findById(req.getSuperieurIdentifiant())
@@ -271,6 +272,13 @@ public class ReferentielRhService {
 			if (req.getStatut() != null) {
 				c.setStatut(req.getStatut().trim());
 			}
+			if (req.getProfilAcces() != null && !req.getProfilAcces().isBlank()) {
+				String profil = req.getProfilAcces().trim().toUpperCase();
+				if (!profil.equals("COLLABORATEUR") && !profil.equals("RESPONSABLE") && !profil.equals("RO")) {
+					throw new IllegalArgumentException("profil_acces invalide : COLLABORATEUR, RESPONSABLE ou RO.");
+				}
+				c.setProfilAcces(profil);
+			}
 			if (req.getUniteIdentifiant() != null) {
 				UniteOrganisation unite = uniteRepository.findById(req.getUniteIdentifiant())
 						.orElseThrow(() -> new IllegalArgumentException("Unité introuvable."));
@@ -320,6 +328,7 @@ public class ReferentielRhService {
 		r.setUnite(toUniteResponse(c.getUnite()));
 		r.setSuperieurIdentifiant(c.getSuperieur() != null ? c.getSuperieur().getId() : null);
 		r.setCompteUtilisateurId(c.getCompteUtilisateurId());
+		r.setProfilAcces(c.getProfilAcces());
 		r.setCreeLe(c.getCreeLe());
 		r.setModifieLe(c.getModifieLe());
 		return r;

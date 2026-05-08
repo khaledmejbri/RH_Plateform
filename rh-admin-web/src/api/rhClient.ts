@@ -84,6 +84,14 @@ export function postUnite(body: { code: string; libelle: string; actif?: boolean
   }).then((r) => handleRhResponse<Unite>(r));
 }
 
+export function putUnite(id: string, body: { libelle?: string; parent_identifiant?: string | null; actif?: boolean }) {
+  return apiFetch(`/api/referentiel/v1/unites/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then((r) => handleRhResponse<Unite>(r));
+}
+
 export function postCollaborateur(body: Record<string, unknown>) {
   return apiFetch('/api/referentiel/v1/collaborateurs', {
     method: 'POST',
