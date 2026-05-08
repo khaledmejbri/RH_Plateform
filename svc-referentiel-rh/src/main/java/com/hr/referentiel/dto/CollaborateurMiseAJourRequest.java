@@ -60,6 +60,9 @@ public class CollaborateurMiseAJourRequest {
 	@JsonProperty("compte_utilisateur_id")
 	private UUID compteUtilisateurId;
 
+	@JsonProperty("profil_acces")
+	private String profilAcces;
+
 	public String getPrenom() {
 		return prenom;
 	}
@@ -170,5 +173,13 @@ public class CollaborateurMiseAJourRequest {
 
 	public void setCompteUtilisateurId(UUID compteUtilisateurId) {
 		this.compteUtilisateurId = compteUtilisateurId;
+	}
+}
+	public String getProfilAcces() {
+		return profilAcces;
+	}
+
+	public void setProfilAcces(String profilAcces) {
+		this.profilAcces = profilAcces;
 	}
 }

@@ -5,21 +5,10 @@ import {
   postCollaborateur,
   postUnite,
   putCollaborateur,
+  putUnite,
   type CollaborateurRow,
   type Unite,
 } from '../api/rhClient';
-import { apiFetch } from '../api/auth';
-import { handleRhResponse } from '../api/rhClient';
-
-// ─── API helpers ────────────────────────────────────────────────────────────
-
-function putUnite(id: string, body: Record<string, unknown>) {
-  return apiFetch(`/api/referentiel/v1/unites/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }).then((r) => handleRhResponse<Unite>(r));
-}
 
 // ─── Types locaux ────────────────────────────────────────────────────────────
 
@@ -297,7 +286,7 @@ function ModalEditDept({
   }
 
   // Unités rattachées à ce département
-  const unitesRattachees = unites.filter((u) => (u as any).parent_identifiant === dept.identifiant);
+  const unitesRattachees = unites.filter((u) => u.parent_identifiant === dept.identifiant);
 
   return (
     <Modal title={`Modifier — ${dept.libelle}`} onClose={onClose}>
@@ -522,7 +511,7 @@ function ModalEditUnite({
   onDone: () => void;
 }) {
   const [libelle, setLibelle] = useState(unite.libelle);
-  const [deptId, setDeptId] = useState((unite as any).parent_identifiant ?? '');
+  const [deptId, setDeptId] = useState(unite.parent_identifiant ?? '');
   const [roId, setRoId] = useState(ro?.identifiant ?? '');
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -786,11 +775,11 @@ function DeptCard({
               unites.map((u) => {
                 const ro = collaborateurs.find(
                   (c) => c.unite?.identifiant === u.identifiant && c.statut === 'ACTIF' &&
-                    (c as any).profil_acces === 'RO',
+                    c.profil_acces === 'RO',
                 );
                 const travailleurs = collaborateurs.filter(
                   (c) => c.unite?.identifiant === u.identifiant && c.statut === 'ACTIF' &&
-                    (c as any).profil_acces !== 'RO' && (c as any).profil_acces !== 'RESPONSABLE',
+                    c.profil_acces !== 'RO' && c.profil_acces !== 'RESPONSABLE',
                 );
                 return (
                   <UniteCard
@@ -844,15 +833,15 @@ export default function StructureOrganisationPage() {
   useEffect(() => { void load(); }, []);
 
   // Départements = unités sans parent
-  const departements = unites.filter((u) => !(u as any).parent_identifiant);
+  const departements = unites.filter((u) => !u.parent_identifiant);
 
   // Unités = unités avec parent
-  const unitesEnfants = unites.filter((u) => !!(u as any).parent_identifiant);
+  const unitesEnfants = unites.filter((u) => !!u.parent_identifiant);
 
   // Stats
   const totalTravailleurs = collaborateurs.filter((c) => c.statut === 'ACTIF').length;
-  const totalChefs = collaborateurs.filter((c) => (c as any).profil_acces === 'RESPONSABLE').length;
-  const totalRO = collaborateurs.filter((c) => (c as any).profil_acces === 'RO').length;
+  const totalChefs = collaborateurs.filter((c) => c.profil_acces === 'RESPONSABLE').length;
+  const totalRO = collaborateurs.filter((c) => c.profil_acces === 'RO').length;
 
   return (
     <div className="page">
@@ -909,12 +898,13 @@ export default function StructureOrganisationPage() {
         </div>
       ) : (
         departements.map((dept) => {
-          const chef = collaborateurs.find(
-            (c) => c.unite?.identifiant === dept.identifiant &&
-              (c as any).profil_acces === 'RESPONSABLE' && c.statut === 'ACTIF',
-          );
           const unitesduDept = unitesEnfants.filter(
-            (u) => (u as any).parent_identifiant === dept.identifiant,
+            (u) => u.parent_identifiant === dept.identifiant,
+          );
+          const deptAndChildIds = new Set([dept.identifiant, ...unitesduDept.map(u => u.identifiant)]);
+          const chef = collaborateurs.find(
+            (c) => deptAndChildIds.has(c.unite?.identifiant ?? '') &&
+              c.profil_acces === 'RESPONSABLE' && c.statut === 'ACTIF',
           );
           return (
             <DeptCard
