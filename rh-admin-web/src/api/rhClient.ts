@@ -76,7 +76,7 @@ export function getUnites() {
   return apiFetch('/api/referentiel/v1/unites').then((r) => handleRhResponse<Unite[]>(r));
 }
 
-export function postUnite(body: { code: string; libelle: string; actif?: boolean }) {
+export function postUnite(body: { code: string; libelle: string; actif?: boolean; parent_identifiant?: string }) {
   return apiFetch('/api/referentiel/v1/unites', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -154,6 +154,7 @@ export type CollaborateurRow = {
   date_recrutement?: string;
   superieur_identifiant?: string;
   unite?: Unite;
+  profil_acces?: string;
   statut: string;
   compte_utilisateur_id?: string;
 };
@@ -170,5 +171,6 @@ export type Unite = {
   identifiant: string;
   code: string;
   libelle: string;
+  parent_identifiant: string | null;
   actif: boolean;
 };

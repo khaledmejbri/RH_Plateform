@@ -9,7 +9,8 @@ const nav = [
   { to: '/app/demandes-administratives',  label: 'Demandes administratives',   icon: IconFile,     desc: 'Congés, autorisations' },
   { to: '/app/documents-administratifs',  label: 'Documents administratifs',   icon: IconDoc,      desc: 'Attestations, bulletins' },
   { to: '/app/collaborateurs',            label: 'Collaborateurs',             icon: IconUsers,    desc: 'Fiches et comptes' },
-  { to: '/app/unites',                    label: 'Unités organisationnelles',  icon: IconBuilding, desc: 'Structure RH' },
+  { to: '/app/structure',                 label: 'Structure RH',               icon: IconBuilding, desc: 'Départements & unités' },
+  { to: '/app/unites',                    label: 'Unités (référentiel)',        icon: IconBuilding, desc: 'Référentiel brut' },
 ];
 
 export default function AppShell() {

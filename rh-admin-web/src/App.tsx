@@ -8,6 +8,7 @@ import DemandesAdministrativesPage from './pages/DemandesAdministrativesPage';
 import DocumentsAdministratifsPage from './pages/DocumentsAdministratifsPage';
 import CollaborateursPage from './pages/CollaborateursPage';
 import UnitesOrganisationPage from './pages/UnitesOrganisationPage';
+import StructureOrganisationPage from './pages/StructureOrganisationPage';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/app/documents-administratifs" element={<DocumentsAdministratifsPage />} />
           <Route path="/app/collaborateurs" element={<CollaborateursPage />} />
           <Route path="/app/unites" element={<UnitesOrganisationPage />} />
+          <Route path="/app/structure" element={<StructureOrganisationPage />} />
         </Route>
       </Route>
       <Route path="/" element={<Navigate to="/app/accueil" replace />} />
