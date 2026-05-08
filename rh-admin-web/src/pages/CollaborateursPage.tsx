@@ -24,15 +24,10 @@ export default function CollaborateursPage() {
   const [courriel, setCourriel] = useState('');
   const [posteLibelle, setPosteLibelle] = useState('');
   const [fonction, setFonction] = useState('');
-  const [qualificationAffectation, setQualificationAffectation] = useState('');
-  const [qualite, setQualite] = useState('');
-  const [affectation, setAffectation] = useState('');
   const [departementLibelle, setDepartementLibelle] = useState('');
   const [dateRecrutement, setDateRecrutement] = useState('');
-  const [superieurId, setSuperieurId] = useState('');
   const [statut, setStatut] = useState('ACTIF');
   const [uniteId, setUniteId] = useState('');
-  const [profilAcces, setProfilAcces] = useState('COLLABORATEUR');
   const [motDePasseInitial, setMotDePasseInitial] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -75,15 +70,11 @@ export default function CollaborateursPage() {
         courriel_professionnel: courriel.trim(),
         poste_libelle: posteLibelle.trim() || undefined,
         fonction: fonction.trim() || undefined,
-        qualification_affectation: qualificationAffectation.trim() || undefined,
-        qualite: qualite.trim() || undefined,
-        affectation: affectation.trim() || undefined,
         departement_libelle: departementLibelle.trim() || undefined,
         date_recrutement: dateRecrutement || undefined,
         statut: statut.trim(),
         unite_identifiant: uniteId,
-        superieur_identifiant: superieurId || undefined,
-        profil_acces: profilAcces,
+        profil_acces: 'COLLABORATEUR',
         mot_de_passe_initial: motDePasseInitial,
       });
       setMsg('Collaborateur enregistre avec succes. La creation du compte et le courriel se font en arriere-plan.');
@@ -93,12 +84,8 @@ export default function CollaborateursPage() {
       setCourriel('');
       setPosteLibelle('');
       setFonction('');
-      setQualificationAffectation('');
-      setQualite('');
-      setAffectation('');
       setDepartementLibelle('');
       setDateRecrutement('');
-      setSuperieurId('');
       setMotDePasseInitial('');
       setTab('liste');
       setPage(0);
@@ -255,14 +242,7 @@ export default function CollaborateursPage() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="field-label">Profil</label>
-              <select className="field-input" value={profilAcces} onChange={(e) => setProfilAcces(e.target.value)}>
-                <option value="COLLABORATEUR">COLLABORATEUR</option>
-                <option value="RESPONSABLE">RESPONSABLE</option>
-                <option value="RO">RO</option>
-              </select>
-            </div>
+
             <div>
               <label className="field-label">Poste</label>
               <input className="field-input" value={posteLibelle} onChange={(e) => setPosteLibelle(e.target.value)} />
@@ -271,30 +251,7 @@ export default function CollaborateursPage() {
               <label className="field-label">Fonction</label>
               <input className="field-input" value={fonction} onChange={(e) => setFonction(e.target.value)} />
             </div>
-            <div>
-              <label className="field-label">Qualification / Affectation</label>
-              <input
-                className="field-input"
-                value={qualificationAffectation}
-                onChange={(e) => setQualificationAffectation(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="field-label">Qualite</label>
-              <input className="field-input" value={qualite} onChange={(e) => setQualite(e.target.value)} />
-            </div>
-            <div>
-              <label className="field-label">Affectation</label>
-              <input className="field-input" value={affectation} onChange={(e) => setAffectation(e.target.value)} />
-            </div>
-            <div>
-              <label className="field-label">Departement</label>
-              <input
-                className="field-input"
-                value={departementLibelle}
-                onChange={(e) => setDepartementLibelle(e.target.value)}
-              />
-            </div>
+
             <div>
               <label className="field-label">Date recrutement</label>
               <input
@@ -304,17 +261,7 @@ export default function CollaborateursPage() {
                 onChange={(e) => setDateRecrutement(e.target.value)}
               />
             </div>
-            <div>
-              <label className="field-label">Superieur hierarchique</label>
-              <select className="field-input" value={superieurId} onChange={(e) => setSuperieurId(e.target.value)}>
-                <option value="">Aucun</option>
-                {rows.map((r) => (
-                  <option key={r.identifiant} value={r.identifiant}>
-                    {r.matricule} - {r.prenom} {r.nom}
-                  </option>
-                ))}
-              </select>
-            </div>
+
             <div>
               <label className="field-label">Mot de passe initial</label>
               <input
