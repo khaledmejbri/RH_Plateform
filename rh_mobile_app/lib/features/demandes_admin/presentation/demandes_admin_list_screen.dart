@@ -86,16 +86,15 @@ class _DemandesAdminListScreenState
         data: (items) {
           final enCours = items
               .where((i) =>
-                  i.statut == 'EN_ATTENTE_VALIDATION' ||
-                  i.statut == 'EN_COURS')
+                  i.statut == 'EN_VALIDATION_SUPERIEUR' ||
+                  i.statut == 'EN_VALIDATION_RRH' ||
+                  i.statut == 'SOUMISE')
               .toList();
           final approuvees = items
-              .where((i) =>
-                  i.statut == 'APPROUVEE' || i.statut == 'VALIDE')
+              .where((i) => i.statut == 'APPROUVEE')
               .toList();
           final refusees = items
-              .where((i) =>
-                  i.statut == 'REJETEE' || i.statut == 'REFUSEE')
+              .where((i) => i.statut == 'REFUSEE' || i.statut == 'ANNULEE')
               .toList();
 
           return TabBarView(
@@ -282,16 +281,25 @@ class _DemandeCard extends StatelessWidget {
   }
 
   (String, Color, Color, Color, Color, IconData) _statusMeta(String statut) {
-    if (statut == 'EN_ATTENTE_VALIDATION' || statut == 'EN_COURS') {
+    if (statut == 'EN_VALIDATION_SUPERIEUR') {
       return (
-        'En attente',
+        'En attente RO',
         const Color(0xFFFEF9C3),
         const Color(0xFFA16207),
         const Color(0xFFFFF7ED),
         const Color(0xFFEA580C),
-        Icons.calendar_month_rounded,
+        Icons.supervisor_account_rounded,
       );
-    } else if (statut == 'APPROUVEE' || statut == 'VALIDE') {
+    } else if (statut == 'EN_VALIDATION_RRH' || statut == 'SOUMISE') {
+      return (
+        'En attente RRH',
+        const Color(0xFFDBEAFE),
+        const Color(0xFF1E40AF),
+        const Color(0xFFEFF6FF),
+        const Color(0xFF2563EB),
+        Icons.hourglass_top_rounded,
+      );
+    } else if (statut == 'APPROUVEE') {
       return (
         'Approuvée',
         const Color(0xFFDCFCE7),
@@ -299,6 +307,15 @@ class _DemandeCard extends StatelessWidget {
         const Color(0xFFF0FDF4),
         const Color(0xFF16A34A),
         Icons.check_circle_outline_rounded,
+      );
+    } else if (statut == 'ANNULEE') {
+      return (
+        'Annulée',
+        const Color(0xFFF1F5F9),
+        const Color(0xFF475569),
+        const Color(0xFFF8FAFC),
+        const Color(0xFF94A3B8),
+        Icons.cancel_outlined,
       );
     } else {
       return (

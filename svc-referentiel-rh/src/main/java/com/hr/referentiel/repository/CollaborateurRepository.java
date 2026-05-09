@@ -32,8 +32,21 @@ public interface CollaborateurRepository extends JpaRepository<Collaborateur, UU
 	@EntityGraph(attributePaths = {"unite", "superieur"})
 	Page<Collaborateur> findByUniteId(UUID uniteId, Pageable pageable);
 
+	/** Tous les collaborateurs d'une unité sans pagination (pour le workflow RO). */
+	@EntityGraph(attributePaths = {"unite", "superieur"})
+	@Query("select c from Collaborateur c where c.unite.id = :uniteId")
+	java.util.List<Collaborateur> findByUniteId(@Param("uniteId") UUID uniteId);
+
 	@EntityGraph(attributePaths = {"unite", "superieur"})
 	Page<Collaborateur> findByStatutIgnoreCaseAndUniteId(String statut, UUID uniteId, Pageable pageable);
+
+
+	/**
+	 * Trouve le Responsable Opérationnel (profil_acces=RO) d'une unité.
+	 * Utilisé par le workflow de validation des demandes administratives (CDC §M01).
+	 */
+	@Query("select c from Collaborateur c join fetch c.unite where c.unite.id = :uniteId and c.profilAcces = 'RO' and c.statut = 'ACTIF'")
+	Optional<Collaborateur> findRoByUniteId(@Param("uniteId") UUID uniteId);
 
 	Optional<Collaborateur> findByCompteUtilisateurId(UUID compteUtilisateurId);
 }

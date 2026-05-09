@@ -1,13 +1,15 @@
 package com.hr.referentiel.domain;
 
 /**
- * Délais par défaut (heures) — surchargeables via {@code referentiel.evenements.document-sla-heures-par-type.*}.
+ * Délais SLA par défaut (heures) — surchargeables via {@code referentiel.evenements.document-sla-heures-par-type.*}.
+ * CDC v2 §M02 : ajout FEUILLE_POINTAGE_MENSUELLE (< 1h, automatique).
  */
 public enum TypeDocumentAdministratifDemandeRh {
-	ATTESTATION_TRAVAIL(48),
-	ATTESTATION_SALAIRE(48),
-	BULLETIN_PAIE(24),
-	ATTESTATION_CNSS(72),
+	ATTESTATION_TRAVAIL(24),
+	ATTESTATION_SALAIRE(24),
+	BULLETIN_PAIE(48),
+	ATTESTATION_CNSS(48),
+	FEUILLE_POINTAGE_MENSUELLE(1),
 	DOCUMENT_INTERNE(96),
 	AUTRE(120);
 

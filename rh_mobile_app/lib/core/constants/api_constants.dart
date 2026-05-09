@@ -28,5 +28,6 @@ class ApiConstants {
 
   static String get plaintes => '$prefixRh/plaintes';
   static String get demandesAdmin => '$prefixRh/demandes-administratives';
+  static String get demandesDocumentsAdmin => '$prefixRh/demandes-documents-administratifs';
   static String get demandesDocuments => '$prefixRh/demandes-documents-administratifs';
 }
