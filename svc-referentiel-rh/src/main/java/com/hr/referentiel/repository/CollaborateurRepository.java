@@ -49,4 +49,19 @@ public interface CollaborateurRepository extends JpaRepository<Collaborateur, UU
 	Optional<Collaborateur> findRoByUniteId(@Param("uniteId") UUID uniteId);
 
 	Optional<Collaborateur> findByCompteUtilisateurId(UUID compteUtilisateurId);
+
+	/**
+	 * Trouve le Chef de Département (profil_acces=RESPONSABLE) d'une unité parente (département).
+	 * Utilisé pour notifier le chef après validation RO → RRH.
+	 */
+	@Query("select c from Collaborateur c join fetch c.unite " +
+			"where c.unite.id = :uniteParentId and c.profilAcces = 'RESPONSABLE' and c.statut = 'ACTIF'")
+	Optional<Collaborateur> findChefDepartementByUniteId(@Param("uniteParentId") UUID uniteParentId);
+
+	/**
+	 * Trouve tous les collaborateurs avec profil RH (profil_acces=RH).
+	 * Utilisé pour notifier le RRH après validation RO.
+	 */
+	@Query("select c from Collaborateur c where c.profilAcces = 'RH' and c.statut = 'ACTIF'")
+	java.util.List<Collaborateur> findAllRhActifs();
 }

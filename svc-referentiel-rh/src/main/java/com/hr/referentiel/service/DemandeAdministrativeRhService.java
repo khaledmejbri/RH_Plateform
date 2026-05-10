@@ -6,9 +6,9 @@ import com.hr.referentiel.dto.*;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.entity.DemandeAdministrativeRh;
 import com.hr.referentiel.entity.UniteOrganisation;
+import com.hr.referentiel.kafka.RhNotificationPublisher;
 import com.hr.referentiel.repository.CollaborateurRepository;
 import com.hr.referentiel.repository.DemandeAdministrativeRhRepository;
-import com.hr.referentiel.repository.UniteOrganisationRepository;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,33 +18,36 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * CDC v2 §M01 :
- * - Workflow : collaborateur → RO (Responsable Opérationnel de son unité) → RRH.
- *   Si l'unité n'a pas de RO → passage direct en EN_VALIDATION_RRH.
- * - Le RO validant/refusant est celui dont profil_acces = RO dans l'unité du demandeur.
- * - Annulation possible par le demandeur uniquement si statut = SOUMISE ou EN_VALIDATION_SUPERIEUR.
- * - Refus avec motif obligatoire à chaque étape.
+ * CDC v2 §M01 — Demandes administratives avec notifications correctes à chaque étape.
+ *
+ * Chaîne de notification par hiérarchie :
+ *   Soumission           → RO de l'unité du demandeur (ou RH si pas de RO)
+ *   Validation RO        → tous les RH actifs
+ *   Refus RO             → demandeur
+ *   Approbation RRH      → demandeur
+ *   Refus RRH            → demandeur
+ *   Annulation demandeur → RO de l'unité (pour info)
  */
 @Service
 public class DemandeAdministrativeRhService {
 
 	private final DemandeAdministrativeRhRepository demandeRepo;
 	private final CollaborateurRepository collaborateurRepository;
-	private final UniteOrganisationRepository uniteRepo;
 	private final CollaborateurConnecteService collaborateurConnecteService;
 	private final DemandeAdministrativeValidationService validationService;
+	private final RhNotificationPublisher notificationPublisher;
 
 	public DemandeAdministrativeRhService(
 			DemandeAdministrativeRhRepository demandeRepo,
 			CollaborateurRepository collaborateurRepository,
-			UniteOrganisationRepository uniteRepo,
 			CollaborateurConnecteService collaborateurConnecteService,
-			DemandeAdministrativeValidationService validationService) {
+			DemandeAdministrativeValidationService validationService,
+			RhNotificationPublisher notificationPublisher) {
 		this.demandeRepo = demandeRepo;
 		this.collaborateurRepository = collaborateurRepository;
-		this.uniteRepo = uniteRepo;
 		this.collaborateurConnecteService = collaborateurConnecteService;
 		this.validationService = validationService;
+		this.notificationPublisher = notificationPublisher;
 	}
 
 	// ─── Création ─────────────────────────────────────────────────────────────
@@ -61,13 +64,18 @@ public class DemandeAdministrativeRhService {
 		d.setContenu(new HashMap<>(req.getContenu()));
 		DemandeAdministrativePeriodeHelper.appliquerPeriodeIndexee(d);
 
-		// CDC §M01 : RO de l'unité du demandeur est le valideur intermédiaire
 		boolean aUnRo = roDeUnite(demandeur.getUnite()) != null;
 		d.setStatut(aUnRo
 				? StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR
 				: StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
 
-		return toResponse(demandeRepo.save(d));
+		DemandeAdministrativeRh saved = demandeRepo.save(d);
+
+		// Notification : demandeur → RO (ou RH si pas de RO)
+		notificationPublisher.notifierDemandeRecue(demandeur,
+				req.getTypeDemande().name(), saved.getId().toString());
+
+		return toResponse(saved);
 	}
 
 	// ─── Lecture ──────────────────────────────────────────────────────────────
@@ -81,11 +89,10 @@ public class DemandeAdministrativeRhService {
 		if (couvreJour != null) {
 			lignes = demandeRepo.findByDemandeurCouvrantJour(c.getId(), couvreJour, type, statut);
 		} else if (type == null) {
-			lignes = demandeRepo.findByDemandeurIdOrderByCreeLeDesc(c.getId());
-			lignes = filtrerStatut(lignes, statut);
+			lignes = filtrerStatut(demandeRepo.findByDemandeurIdOrderByCreeLeDesc(c.getId()), statut);
 		} else {
-			lignes = demandeRepo.findByDemandeurIdAndTypeDemandeOrderByCreeLeDesc(c.getId(), type);
-			lignes = filtrerStatut(lignes, statut);
+			lignes = filtrerStatut(
+					demandeRepo.findByDemandeurIdAndTypeDemandeOrderByCreeLeDesc(c.getId(), type), statut);
 		}
 		return lignes.stream().map(this::toResponse).collect(Collectors.toList());
 	}
@@ -93,14 +100,12 @@ public class DemandeAdministrativeRhService {
 	@Transactional(readOnly = true)
 	public List<DemandeAdministrativeRhResponse> demandesEnAttenteRo(Jwt jwt) {
 		Collaborateur ro = collaborateurConnecteService.exigerCollaborateur(jwt);
-		// Trouver l'unité dont ce collaborateur est RO
-		List<Collaborateur> membres = collaborateurRepository.findByUniteId(ro.getUnite().getId());
-		// Retourner les demandes EN_VALIDATION_SUPERIEUR de ses membres
-		return membres.stream()
+		UniteOrganisation unite = ro.getUnite();
+		if (unite == null) return List.of();
+		return collaborateurRepository.findByUniteId(unite.getId()).stream()
 				.filter(m -> !m.getId().equals(ro.getId()))
-				.flatMap(m -> demandeRepo
-						.findByDemandeurIdOrderByCreeLeDesc(m.getId()).stream()
-						.filter(d -> d.getStatut() == StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR))
+				.flatMap(m -> demandeRepo.findByDemandeurIdOrderByCreeLeDesc(m.getId()).stream()
+						.filter(dem -> dem.getStatut() == StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR))
 				.map(this::toResponse)
 				.collect(Collectors.toList());
 	}
@@ -113,11 +118,9 @@ public class DemandeAdministrativeRhService {
 		if (couvreJour != null) {
 			lignes = demandeRepo.findPourRhCouvrantJour(couvreJour, type, statut);
 		} else if (type == null) {
-			lignes = demandeRepo.findAllPourRhOrderByCreeLeDesc();
-			lignes = filtrerStatut(lignes, statut);
+			lignes = filtrerStatut(demandeRepo.findAllPourRhOrderByCreeLeDesc(), statut);
 		} else {
-			lignes = demandeRepo.findAllPourRhByTypeDemandeOrderByCreeLeDesc(type);
-			lignes = filtrerStatut(lignes, statut);
+			lignes = filtrerStatut(demandeRepo.findAllPourRhByTypeDemandeOrderByCreeLeDesc(type), statut);
 		}
 		return lignes.stream().map(this::toResponse).collect(Collectors.toList());
 	}
@@ -143,7 +146,8 @@ public class DemandeAdministrativeRhService {
 				throw new IllegalArgumentException("Accès refusé.");
 			}
 		}
-		Collaborateur demandeur = collaborateurRepository.findDetailById(d.getDemandeur().getId()).orElseThrow();
+		Collaborateur demandeur = collaborateurRepository.findDetailById(d.getDemandeur().getId())
+				.orElseThrow(() -> new IllegalStateException("Collaborateur introuvable."));
 		boolean avecRo = roDeUnite(demandeur.getUnite()) != null;
 		return new DemandeAdministrativeSuiviResponse(d.getId(), d.getTypeDemande(), d.getStatut(),
 				avecRo, etapesAdministratif(d.getStatut(), avecRo));
@@ -156,9 +160,16 @@ public class DemandeAdministrativeRhService {
 		DemandeAdministrativeRh d = charger(id);
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR,
 				"Cette demande n'est pas en attente de validation RO.");
-		verifierEstRoDuDemandeur(jwt, d);
+		Collaborateur ro = verifierEstRoDuDemandeurEtRetourner(jwt, d);
+		Collaborateur demandeur = chargerDemandeurDetail(d);
+
 		d.setStatut(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
-		return toResponse(demandeRepo.save(d));
+		demandeRepo.save(d);
+
+		// Notification : RO a validé → RH doit approuver
+		notificationPublisher.notifierValidationRo(demandeur, d.getTypeDemande().name(), ro);
+
+		return toResponse(d);
 	}
 
 	@Transactional
@@ -166,10 +177,17 @@ public class DemandeAdministrativeRhService {
 		DemandeAdministrativeRh d = charger(id);
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR,
 				"Cette demande n'est pas en attente de validation RO.");
-		verifierEstRoDuDemandeur(jwt, d);
+		verifierEstRoDuDemandeurEtRetourner(jwt, d);
+		Collaborateur demandeur = chargerDemandeurDetail(d);
+
 		d.setStatut(StatutDemandeAdministrativeRh.REFUSEE);
 		d.setMotifRefus(req.getMotifRefus().trim());
-		return toResponse(demandeRepo.save(d));
+		demandeRepo.save(d);
+
+		// Notification : RO a refusé → le demandeur est notifié avec le motif
+		notificationPublisher.notifierRefusRo(demandeur, d.getTypeDemande().name(), req.getMotifRefus());
+
+		return toResponse(d);
 	}
 
 	// ─── Validation RRH ───────────────────────────────────────────────────────
@@ -179,8 +197,15 @@ public class DemandeAdministrativeRhService {
 		DemandeAdministrativeRh d = charger(id);
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_RRH,
 				"Cette demande n'est pas en attente de validation RRH.");
+		Collaborateur demandeur = chargerDemandeurDetail(d);
+
 		d.setStatut(StatutDemandeAdministrativeRh.APPROUVEE);
-		return toResponse(demandeRepo.save(d));
+		demandeRepo.save(d);
+
+		// Notification : RRH a approuvé → demandeur
+		notificationPublisher.notifierApprobationRrh(demandeur, d.getTypeDemande().name());
+
+		return toResponse(d);
 	}
 
 	@Transactional
@@ -188,17 +213,20 @@ public class DemandeAdministrativeRhService {
 		DemandeAdministrativeRh d = charger(id);
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_RRH,
 				"Cette demande n'est pas en attente de validation RRH.");
+		Collaborateur demandeur = chargerDemandeurDetail(d);
+
 		d.setStatut(StatutDemandeAdministrativeRh.REFUSEE);
 		d.setMotifRefus(req.getMotifRefus().trim());
-		return toResponse(demandeRepo.save(d));
+		demandeRepo.save(d);
+
+		// Notification : RRH a refusé → demandeur avec motif
+		notificationPublisher.notifierRefusRrh(demandeur, d.getTypeDemande().name(), req.getMotifRefus());
+
+		return toResponse(d);
 	}
 
 	// ─── Annulation par le demandeur ──────────────────────────────────────────
 
-	/**
-	 * CDC §M01 : un collaborateur peut annuler sa propre demande si elle est encore
-	 * SOUMISE ou EN_VALIDATION_SUPERIEUR (pas encore traitée par le RRH).
-	 */
 	@Transactional
 	public DemandeAdministrativeRhResponse annuler(UUID id, Jwt jwt) {
 		DemandeAdministrativeRh d = charger(id);
@@ -209,11 +237,17 @@ public class DemandeAdministrativeRhService {
 		if (d.getStatut() != StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR
 				&& d.getStatut() != StatutDemandeAdministrativeRh.EN_VALIDATION_RRH) {
 			throw new IllegalArgumentException(
-					"Impossible d'annuler une demande au statut " + d.getStatut()
-					+ ". Annulation possible uniquement si la demande n'a pas encore été traitée par le RRH.");
+					"Annulation impossible au statut " + d.getStatut()
+					+ ". Possible si EN_VALIDATION_SUPERIEUR ou EN_VALIDATION_RRH.");
 		}
+		Collaborateur demandeur = chargerDemandeurDetail(d);
 		d.setStatut(StatutDemandeAdministrativeRh.ANNULEE);
-		return toResponse(demandeRepo.save(d));
+		demandeRepo.save(d);
+
+		// Notification : annulation → RO pour info
+		notificationPublisher.notifierAnnulationDemandeur(demandeur, d.getTypeDemande().name());
+
+		return toResponse(d);
 	}
 
 	// ─── Helpers privés ───────────────────────────────────────────────────────
@@ -222,6 +256,11 @@ public class DemandeAdministrativeRhService {
 		Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
 		return collaborateurRepository.findDetailById(c.getId())
 				.orElseThrow(() -> new IllegalStateException("Collaborateur introuvable."));
+	}
+
+	private Collaborateur chargerDemandeurDetail(DemandeAdministrativeRh d) {
+		return collaborateurRepository.findDetailById(d.getDemandeur().getId())
+				.orElseThrow(() -> new IllegalStateException("Demandeur introuvable."));
 	}
 
 	private DemandeAdministrativeRh charger(UUID id) {
@@ -237,28 +276,22 @@ public class DemandeAdministrativeRhService {
 	}
 
 	/**
-	 * Vérifie que le collaborateur connecté est bien le RO de l'unité du demandeur.
-	 * CDC §M01 : la validation intermédiaire est faite par le RO (profil_acces=RO) de l'unité.
+	 * Vérifie que le connecté est le RO de l'unité du demandeur et le retourne.
 	 */
-	private void verifierEstRoDuDemandeur(Jwt jwt, DemandeAdministrativeRh d) {
+	private Collaborateur verifierEstRoDuDemandeurEtRetourner(Jwt jwt, DemandeAdministrativeRh d) {
 		Collaborateur connecte = collaborateurConnecteService.exigerCollaborateur(jwt);
-		Collaborateur demandeur = collaborateurRepository.findDetailById(d.getDemandeur().getId()).orElseThrow();
+		Collaborateur demandeur = chargerDemandeurDetail(d);
 		Collaborateur ro = roDeUnite(demandeur.getUnite());
 		if (ro == null || !ro.getId().equals(connecte.getId())) {
 			throw new IllegalArgumentException(
 					"Seul le Responsable Opérationnel (RO) de l'unité du demandeur peut valider cette étape.");
 		}
+		return ro;
 	}
 
-	/**
-	 * Retourne le RO (profil_acces = RO) de l'unité, ou null si aucun.
-	 */
 	private Collaborateur roDeUnite(UniteOrganisation unite) {
 		if (unite == null) return null;
-		return collaborateurRepository.findByUniteId(unite.getId()).stream()
-				.filter(c -> "RO".equals(c.getProfilAcces()) && "ACTIF".equalsIgnoreCase(c.getStatut()))
-				.findFirst()
-				.orElse(null);
+		return collaborateurRepository.findRoByUniteId(unite.getId()).orElse(null);
 	}
 
 	private static List<DemandeAdministrativeRh> filtrerStatut(
@@ -271,44 +304,32 @@ public class DemandeAdministrativeRhService {
 			StatutDemandeAdministrativeRh s, boolean avecRo) {
 		List<WorkflowEtapeResponse> etapes = new ArrayList<>();
 		etapes.add(new WorkflowEtapeResponse("DEPOT", "Demande enregistrée", true, false));
-
 		if (avecRo) {
 			boolean enCours  = s == StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR;
-			boolean terminee = s != StatutDemandeAdministrativeRh.SOUMISE && s != StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR;
-			etapes.add(new WorkflowEtapeResponse("RO", "Validation du Responsable Opérationnel", terminee, enCours));
+			boolean terminee = s != StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR
+					&& s != StatutDemandeAdministrativeRh.SOUMISE;
+			etapes.add(new WorkflowEtapeResponse("RO", "Validation Responsable Opérationnel", terminee, enCours));
 		}
-
 		boolean rrhEnCours  = s == StatutDemandeAdministrativeRh.EN_VALIDATION_RRH;
 		boolean rrhTerminee = s == StatutDemandeAdministrativeRh.APPROUVEE
 				|| s == StatutDemandeAdministrativeRh.REFUSEE
 				|| s == StatutDemandeAdministrativeRh.ANNULEE;
-		etapes.add(new WorkflowEtapeResponse("RRH", "Validation RRH", rrhTerminee, rrhEnCours));
-
+		etapes.add(new WorkflowEtapeResponse("RRH", "Approbation RRH", rrhTerminee, rrhEnCours));
 		String libelleFin = switch (s) {
-			case APPROUVEE -> "Demande approuvée ✓";
-			case REFUSEE   -> "Demande refusée";
-			case ANNULEE   -> "Demande annulée par le demandeur";
+			case APPROUVEE -> "Approuvée ✓";
+			case REFUSEE   -> "Refusée";
+			case ANNULEE   -> "Annulée par le demandeur";
 			default        -> "Clôture";
 		};
-		boolean cloture = s == StatutDemandeAdministrativeRh.APPROUVEE
-				|| s == StatutDemandeAdministrativeRh.REFUSEE
-				|| s == StatutDemandeAdministrativeRh.ANNULEE;
+		boolean cloture = rrhTerminee;
 		etapes.add(new WorkflowEtapeResponse("CLOTURE", libelleFin, cloture, false));
-
 		return etapes;
 	}
 
 	private DemandeAdministrativeRhResponse toResponse(DemandeAdministrativeRh d) {
 		return new DemandeAdministrativeRhResponse(
-				d.getId(),
-				d.getTypeDemande(),
-				d.getDemandeur().getId(),
-				d.getStatut(),
-				d.getContenu(),
-				d.getPeriodeDebut(),
-				d.getPeriodeFin(),
-				d.getMotifRefus(),
-				d.getCreeLe(),
-				d.getModifieLe());
+				d.getId(), d.getTypeDemande(), d.getDemandeur().getId(), d.getStatut(),
+				d.getContenu(), d.getPeriodeDebut(), d.getPeriodeFin(),
+				d.getMotifRefus(), d.getCreeLe(), d.getModifieLe());
 	}
 }
