@@ -5,11 +5,10 @@ import com.hr.referentiel.domain.StatutPlainteRh;
 import com.hr.referentiel.domain.TypePlainteRh;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.entity.PlainteRh;
-import com.hr.referentiel.kafka.NotificationMessage;
+import com.hr.referentiel.kafka.RhNotificationPublisher;
 import com.hr.referentiel.repository.PlainteRhRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.core.KafkaTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,8 +26,9 @@ import java.util.stream.Collectors;
  * - Commentaire RH obligatoire pour RESOLU/FERME.
  */
 @Service
-@Slf4j
 public class PlainteRhService {
+
+	private static final Logger log = LoggerFactory.getLogger(PlainteRhService.class);
 
 	/** Transitions autorisées : clé = statut courant, valeur = statuts cibles valides. */
 	private static final Map<StatutPlainteRh, Set<StatutPlainteRh>> TRANSITIONS_AUTORISEES = Map.of(
@@ -41,17 +41,14 @@ public class PlainteRhService {
 
 	private final PlainteRhRepository plainteRhRepository;
 	private final CollaborateurConnecteService collaborateurConnecteService;
-	private final KafkaTemplate<String, String> kafkaTemplate;
-	private final ObjectMapper objectMapper;
+	private final RhNotificationPublisher notificationPublisher;
 
 	public PlainteRhService(PlainteRhRepository plainteRhRepository,
 			CollaborateurConnecteService collaborateurConnecteService,
-			KafkaTemplate<String, String> kafkaTemplate,
-			ObjectMapper objectMapper) {
+			RhNotificationPublisher notificationPublisher) {
 		this.plainteRhRepository = plainteRhRepository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
-		this.kafkaTemplate = kafkaTemplate;
-		this.objectMapper = objectMapper;
+		this.notificationPublisher = notificationPublisher;
 	}
 
 	@Transactional
@@ -73,18 +70,11 @@ public class PlainteRhService {
 
 		PlainteRh saved = plainteRhRepository.save(p);
 
-		// CDC §M04 : notification selon type
+		// CDC §M04 : notification selon type via RhNotificationPublisher
 		if (req.getTypePlainte() == TypePlainteRh.INTERNE) {
-			envoyerNotification("RH", "Nouvelle plainte interne",
-					"Plainte [" + saved.getNumeroTicket() + "] déposée par " + auteur.getId());
+			notificationPublisher.notifierPlainteInterne(auteur, saved.getNumeroTicket());
 		} else {
-			// EXTERNE : notifier 3 destinataires simultanément
-			envoyerNotification("RH", "Nouvelle plainte externe",
-					"Plainte externe [" + saved.getNumeroTicket() + "] déposée par " + auteur.getId());
-			envoyerNotification("SERVICES_TECHNIQUES", "Nouvelle plainte externe",
-					"Plainte externe [" + saved.getNumeroTicket() + "] nécessite votre attention.");
-			envoyerNotification("DIRECTION_ENV_SOCIAL", "Nouvelle plainte externe",
-					"Plainte externe [" + saved.getNumeroTicket() + "] nécessite votre attention.");
+			notificationPublisher.notifierPlainteExterne(auteur, saved.getNumeroTicket());
 		}
 
 		return toResponse(saved);
@@ -173,9 +163,9 @@ public class PlainteRhService {
 		PlainteRh saved = plainteRhRepository.save(p);
 
 		// Notifier l'auteur du changement de statut
-		envoyerNotification(p.getAuteur().getId().toString(),
-				"Mise à jour de votre plainte [" + p.getNumeroTicket() + "]",
-				"Statut : " + ancienStatut + " → " + nouveauStatut);
+		notificationPublisher.notifierChangementStatutPlainte(
+				p.getAuteur(), p.getNumeroTicket(),
+				ancienStatut.name(), nouveauStatut.name(), req.getCommentaireRh());
 
 		return toResponse(saved);
 	}
@@ -187,14 +177,7 @@ public class PlainteRhService {
 				.orElseThrow(() -> new IllegalArgumentException("Plainte introuvable : " + id));
 	}
 
-	private void envoyerNotification(String destinataire, String titre, String corps) {
-		try {
-			NotificationMessage n = new NotificationMessage("WEBSOCKET", destinataire, titre, corps);
-			kafkaTemplate.send("notifications-topic", objectMapper.writeValueAsString(n));
-		} catch (Exception e) {
-			log.error("Erreur notification Kafka vers {} : {}", destinataire, e.getMessage());
-		}
-	}
+
 
 	private static List<WorkflowEtapeResponse> etapesPlainte(StatutPlainteRh courant) {
 		List<WorkflowEtapeResponse> list = new ArrayList<>();

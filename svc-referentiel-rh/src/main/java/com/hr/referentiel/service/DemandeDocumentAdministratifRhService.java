@@ -3,9 +3,7 @@ package com.hr.referentiel.service;
 import lombok.extern.slf4j.Slf4j;
 import com.hr.referentiel.config.ReferentielEvenementsProperties;
 import com.hr.referentiel.dto.*;
-import com.hr.referentiel.kafka.NotificationMessage;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.kafka.core.KafkaTemplate;
+import com.hr.referentiel.kafka.RhNotificationPublisher;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.entity.DemandeDocumentAdministratifRh;
 import com.hr.referentiel.domain.StatutDocumentAdministratifDemandeRh;
@@ -31,20 +29,17 @@ public class DemandeDocumentAdministratifRhService {
 	private final DemandeDocumentAdministratifRhRepository repository;
 	private final CollaborateurConnecteService collaborateurConnecteService;
 	private final ReferentielEvenementsProperties evenementsProperties;
-	private final KafkaTemplate<String, String> kafkaTemplate;
-	private final ObjectMapper objectMapper;
+	private final RhNotificationPublisher notificationPublisher;
 
 
 	public DemandeDocumentAdministratifRhService(DemandeDocumentAdministratifRhRepository repository,
 			CollaborateurConnecteService collaborateurConnecteService,
 			ReferentielEvenementsProperties evenementsProperties,
-			KafkaTemplate<String, String> kafkaTemplate,
-			ObjectMapper objectMapper) {
+			RhNotificationPublisher notificationPublisher) {
 		this.repository = repository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
 		this.evenementsProperties = evenementsProperties;
-		this.kafkaTemplate = kafkaTemplate;
-		this.objectMapper = objectMapper;
+		this.notificationPublisher = notificationPublisher;
 	}
 
 	@Transactional
@@ -66,8 +61,7 @@ public class DemandeDocumentAdministratifRhService {
 		d = repository.save(d);
 
 		try {
-			NotificationMessage notification = new NotificationMessage("WEBSOCKET", "RH", "Nouvelle demande de document", "Nouvelle demande de type " + type.name() + " soumise par " + demandeur.getId());
-			kafkaTemplate.send("notifications-topic", objectMapper.writeValueAsString(notification));
+			notificationPublisher.notifierDemandeDocumentRecue(demandeur, type.name());
 		} catch (Exception e) {
 			log.error("Erreur lors de l'envoi de la notification Kafka (Nouvelle demande)", e);
 		}
@@ -168,8 +162,7 @@ public class DemandeDocumentAdministratifRhService {
 		DemandeDocumentAdministratifRh saved = repository.save(d);
 
 		try {
-			NotificationMessage notification = new NotificationMessage("WEBSOCKET", d.getDemandeur().getId().toString(), "Document disponible", "Votre document demandé est maintenant validé et disponible.");
-			kafkaTemplate.send("notifications-topic", objectMapper.writeValueAsString(notification));
+			notificationPublisher.notifierDocumentDisponible(d.getDemandeur(), d.getTypeDocument().name(), requete.getUrlDocument());
 		} catch (Exception e) {
 			log.error("Erreur lors de l'envoi de la notification Kafka (Document disponible)", e);
 		}
