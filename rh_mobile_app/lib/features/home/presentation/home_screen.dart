@@ -41,13 +41,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
 // ── Bottom Navigation ────────────────────────────────────────────────────────
 
-class _BottomNav extends StatelessWidget {
+class _BottomNav extends ConsumerWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
   const _BottomNav({required this.currentIndex, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Show pending badge on Demandes tab for RO users
+    final userAsync = ref.watch(collaborateurNotifierProvider);
+    final isRo = userAsync.maybeWhen(
+      data: (u) => u?.isRo == true || u?.isChefDept == true,
+      orElse: () => false,
+    );
+    int pendingCount = 0;
+    if (isRo) {
+      pendingCount = ref.watch(roDemandesEnAttenteProvider).maybeWhen(
+            data: (l) => l.length,
+            orElse: () => 0,
+          );
+    }
+
     return Container(
       decoration: const BoxDecoration(
         color: AppTheme.surface,
@@ -60,7 +74,7 @@ class _BottomNav extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _NavItem(icon: Icons.home_outlined,      activeIcon: Icons.home_rounded,           label: 'Accueil',   index: 0, current: currentIndex, onTap: onTap),
-              _NavItem(icon: Icons.assignment_outlined, activeIcon: Icons.assignment_rounded,      label: 'Demandes',  index: 1, current: currentIndex, onTap: onTap),
+              _NavItem(icon: Icons.assignment_outlined, activeIcon: Icons.assignment_rounded,      label: 'Demandes',  index: 1, current: currentIndex, onTap: onTap, badge: pendingCount),
               // QR FAB center
               GestureDetector(
                 onTap: () => onTap(2),
@@ -98,10 +112,12 @@ class _NavItem extends StatelessWidget {
   final int index;
   final int current;
   final ValueChanged<int> onTap;
+  final int badge;
 
   const _NavItem({
     required this.icon, required this.activeIcon, required this.label,
     required this.index, required this.current, required this.onTap,
+    this.badge = 0,
   });
 
   @override
@@ -122,10 +138,37 @@ class _NavItem extends StatelessWidget {
                 color: isActive ? AppTheme.primarySurface : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Icon(
-                isActive ? activeIcon : icon,
-                size: 22,
-                color: isActive ? AppTheme.primary : const Color(0xFFADB5BD),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(
+                    isActive ? activeIcon : icon,
+                    size: 22,
+                    color: isActive ? AppTheme.primary : const Color(0xFFADB5BD),
+                  ),
+                  if (badge > 0)
+                    Positioned(
+                      top: -6,
+                      right: -8,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF16A34A),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          badge > 9 ? '9+' : '$badge',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(height: 2),
@@ -457,16 +500,7 @@ class _DemandesPage extends ConsumerWidget {
           if (isResponsable) ...[
             _SectionTitle(title: 'En tant que responsable'),
             const SizedBox(height: 8),
-            _DemandeChoiceCard(
-              title: 'Demandes à valider',
-              subtitle: 'Demandes de votre unité en attente de votre validation',
-              icon: Icons.how_to_reg_rounded,
-              iconBg: const Color(0xFFF0FDF4),
-              iconColor: const Color(0xFF16A34A),
-              badge: 'RO',
-              badgeColor: const Color(0xFF16A34A),
-              onTap: () => context.push('/demandes-admin/ro-validation'),
-            ),
+            const _RoValidationCard(),
             const SizedBox(height: 20),
             _SectionTitle(title: 'Mes demandes'),
             const SizedBox(height: 8),
@@ -533,6 +567,101 @@ class _SectionTitle extends StatelessWidget {
 
 // ── RO Banner ────────────────────────────────────────────────────────────────
 
+// ── RO Validation Card (in Demandes tab, with live badge count) ───────────────
+
+class _RoValidationCard extends ConsumerWidget {
+  const _RoValidationCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pendingAsync = ref.watch(roDemandesEnAttenteProvider);
+    final count = pendingAsync.maybeWhen(data: (l) => l.length, orElse: () => 0);
+
+    return InkWell(
+      onTap: () => context.push('/demandes-admin/ro/validation'),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFBBF7D0)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF16A34A).withOpacity(0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF16A34A).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.how_to_reg_rounded,
+                  color: Color(0xFF16A34A), size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Demandes à valider',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    count == 0
+                        ? 'Aucune demande en attente'
+                        : '$count demande${count > 1 ? 's' : ''} en attente de validation',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: count > 0
+                          ? const Color(0xFF16A34A)
+                          : const Color(0xFF94A3B8),
+                      fontWeight:
+                          count > 0 ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (count > 0)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF16A34A),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right_rounded,
+                color: Color(0xFF94A3B8), size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _RoBanner extends StatelessWidget {
   final String profil;
   const _RoBanner({required this.profil});
@@ -544,7 +673,7 @@ class _RoBanner extends StatelessWidget {
     final color = isRo ? const Color(0xFF0D9488) : const Color(0xFF2563EB);
 
     return InkWell(
-      onTap: () => GoRouter.of(context).push('/demandes-admin/ro-validation'),
+      onTap: () => GoRouter.of(context).push('/demandes-admin/ro/validation'),
       borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
