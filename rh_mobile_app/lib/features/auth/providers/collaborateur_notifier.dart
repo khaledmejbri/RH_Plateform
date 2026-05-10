@@ -9,20 +9,28 @@ class CollaborateurInfo {
   final String nom;
   final String prenom;
   final String? email;
+  final String profilAcces;
 
   CollaborateurInfo({
     required this.identifiant,
     required this.nom,
     required this.prenom,
     this.email,
+    this.profilAcces = 'COLLABORATEUR',
   });
+
+  bool get isRo => profilAcces == 'RESPONSABLE_OPERATIONNEL' || profilAcces == 'RO';
+  bool get isChefDept => profilAcces == 'RESPONSABLE';
+  bool get isRh => profilAcces == 'RH';
+  bool get isResponsable => isRo || isChefDept || isRh;
 
   factory CollaborateurInfo.fromMap(Map<String, dynamic> map) {
     return CollaborateurInfo(
       identifiant: map['identifiant'] ?? '',
       nom: map['nom'] ?? '',
       prenom: map['prenom'] ?? '',
-      email: map['email'],
+      email: map['courriel_professionnel'] ?? map['email'],
+      profilAcces: map['profil_acces'] ?? 'COLLABORATEUR',
     );
   }
 

@@ -6,6 +6,7 @@ import '../../pointage/presentation/pointage_screen.dart';
 import '../../auth/presentation/profile_screen.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/notification_action.dart';
+import '../../demandes_admin/presentation/ro_validation_screen.dart';
 import '../../../features/auth/providers/collaborateur_notifier.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -275,6 +276,22 @@ class _DashboardPage extends ConsumerWidget {
               ),
             ),
 
+            // ── RO Banner (visible uniquement si profil RO ou RESPONSABLE) ──
+            SliverToBoxAdapter(
+              child: userAsync.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (user) {
+                  final isResponsable = user != null && user.isResponsable;
+                  if (!isResponsable) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: _RoBanner(profil: user!.profilAcces),
+                  );
+                },
+              ),
+            ),
+
             // ── Services Grid ──
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -415,11 +432,17 @@ class _ServiceCard extends StatelessWidget {
 
 // ── Demandes Page ─────────────────────────────────────────────────────────────
 
-class _DemandesPage extends StatelessWidget {
+class _DemandesPage extends ConsumerWidget {
   const _DemandesPage();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userAsync = ref.watch(collaborateurNotifierProvider);
+    final isResponsable = userAsync.maybeWhen(
+      data: (u) => u?.isResponsable ?? false,
+      orElse: () => false,
+    );
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
@@ -430,6 +453,25 @@ class _DemandesPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // ── Section RO : validation des demandes de l'unité ──────────────
+          if (isResponsable) ...[
+            _SectionTitle(title: 'En tant que responsable'),
+            const SizedBox(height: 8),
+            _DemandeChoiceCard(
+              title: 'Demandes à valider',
+              subtitle: 'Demandes de votre unité en attente de votre validation',
+              icon: Icons.how_to_reg_rounded,
+              iconBg: const Color(0xFFF0FDF4),
+              iconColor: const Color(0xFF16A34A),
+              badge: 'RO',
+              badgeColor: const Color(0xFF16A34A),
+              onTap: () => context.push('/demandes-admin/ro-validation'),
+            ),
+            const SizedBox(height: 20),
+            _SectionTitle(title: 'Mes demandes'),
+            const SizedBox(height: 8),
+          ],
+          // ── Section collaborateur ─────────────────────────────────────────
           _DemandeChoiceCard(
             title: 'Congés',
             subtitle: 'Gérer vos absences et congés',
@@ -441,7 +483,7 @@ class _DemandesPage extends StatelessWidget {
           const SizedBox(height: 12),
           _DemandeChoiceCard(
             title: 'Autorisations de sortie',
-            subtitle: 'Demander une permission',
+            subtitle: 'Demander une permission (max 4h)',
             icon: Icons.vpn_key_rounded,
             iconBg: const Color(0xFFEFF6FF),
             iconColor: const Color(0xFF3B82F6),
@@ -471,6 +513,92 @@ class _DemandesPage extends StatelessWidget {
   }
 }
 
+class _SectionTitle extends StatelessWidget {
+  final String title;
+  const _SectionTitle({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFF64748B),
+        letterSpacing: 0.3,
+      ),
+    );
+  }
+}
+
+// ── RO Banner ────────────────────────────────────────────────────────────────
+
+class _RoBanner extends StatelessWidget {
+  final String profil;
+  const _RoBanner({required this.profil});
+
+  @override
+  Widget build(BuildContext context) {
+    final isRo = profil == 'RO';
+    final label = isRo ? 'Responsable Opérationnel' : 'Chef de Département';
+    final color = isRo ? const Color(0xFF0D9488) : const Color(0xFF2563EB);
+
+    return InkWell(
+      onTap: () => GoRouter.of(context).push('/demandes-admin/ro-validation'),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [color.withOpacity(0.08), color.withOpacity(0.04)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.25)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.how_to_reg_rounded, color: color, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Demandes à valider',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Votre unité a des demandes en attente de votre validation',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: color, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _DemandeChoiceCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -478,10 +606,13 @@ class _DemandeChoiceCard extends StatelessWidget {
   final Color iconBg;
   final Color iconColor;
   final VoidCallback onTap;
+  final String? badge;
+  final Color? badgeColor;
 
   const _DemandeChoiceCard({
     required this.title, required this.subtitle, required this.icon,
     required this.iconBg, required this.iconColor, required this.onTap,
+    this.badge, this.badgeColor,
   });
 
   @override
