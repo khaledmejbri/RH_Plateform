@@ -147,4 +147,22 @@ class DemandeAdminRepository {
     return DemandeAdminSuivi.fromJson(res.data!);
   }
 
+  /// RO valide une demande en attente (EN_VALIDATION_SUPERIEUR → EN_VALIDATION_RRH)
+  Future<DemandeAdminItem> validerSuperieur(String id) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '${ApiConstants.demandesAdmin}/$id/valider-superieur',
+    );
+    return DemandeAdminItem.fromJson(res.data!);
+  }
+
+  /// RO refuse une demande avec motif obligatoire
+  Future<DemandeAdminItem> refuserSuperieur(String id, String motifRefus) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '${ApiConstants.demandesAdmin}/$id/refuser-superieur',
+      data: {'motif_refus': motifRefus},
+    );
+    return DemandeAdminItem.fromJson(res.data!);
+  }
+
+
 }
