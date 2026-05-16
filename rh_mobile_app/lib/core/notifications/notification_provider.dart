@@ -95,25 +95,29 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
 
       _currentUserId = finalUserId;
 
-      // Build headers - ALWAYS include Authorization if token exists
-      final headers = <String, String>{};
+      // STOMP-level headers — these populate the CONNECT frame that
+      // StompAuthInterceptor reads on the backend.
+      final stompHeaders = <String, String>{};
       if (token != null && token.isNotEmpty) {
-        headers['Authorization'] = 'Bearer $token';
-        debugPrint('[STOMP] ✅ Authorization header added');
+        stompHeaders['Authorization'] = 'Bearer $token';
+        debugPrint('[STOMP] ✅ Authorization header added to STOMP CONNECT');
       } else {
         debugPrint('[STOMP] ⚠️ WARNING: No token available! Authorization header will NOT be sent');
       }
-      
-      // Add additional STOMP headers for better compatibility
-      headers['heart-beat'] = '10000,10000';
-      
-      debugPrint('[STOMP] Final Headers: $headers');
+
+      // WebSocket HTTP-upgrade headers (separate from STOMP headers)
+      final wsHeaders = <String, String>{};
+      if (token != null && token.isNotEmpty) {
+        wsHeaders['Authorization'] = 'Bearer $token';
+      }
+
+      debugPrint('[STOMP] STOMP headers: $stompHeaders');
 
       _client = StompClient(
         config: StompConfig(
           url: wsUrl,
-          stompConnectHeaders: headers,
-          webSocketConnectHeaders: headers,
+          stompConnectHeaders: stompHeaders,
+          webSocketConnectHeaders: wsHeaders,
           connectionTimeout: const Duration(seconds: 15),
           useSockJS: false, // Flutter has native WebSocket, no need for SockJS
           onConnect: (frame) {
@@ -124,8 +128,12 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
               state = state.copyWith(connected: true);
             });
 
-            // Subscribe to user-specific queue
-            final userQueueDest = '/user/$finalUserId/queue/notifications';
+            // Subscribe to user-specific queue.
+            // Spring's convertAndSendToUser(userId, "/queue/notifications", …)
+            // already routes to /user/{userId}/queue/notifications internally.
+            // The client must subscribe to /user/queue/notifications — NOT
+            // /user/$finalUserId/queue/notifications — to avoid a double prefix.
+            const userQueueDest = '/user/queue/notifications';
             debugPrint('[STOMP] 📨 Subscribing to: $userQueueDest');
             _client?.subscribe(
               destination: userQueueDest,
