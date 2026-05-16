@@ -27,9 +27,13 @@ export default function NotificationBell() {
     const userId = getUserId();
     console.log('[STOMP] User ID:', userId);
 
+    // Get token for STOMP auth header
+    const token = localStorage.getItem('access_token');
+
     // Use native WebSocket instead of SockJS for better compatibility
     const client = new Client({
       brokerURL: 'ws://localhost:8080/ws',
+      connectHeaders: token ? { Authorization: `Bearer ${token}` } : {},
       debug: (str) => {
         console.log('[STOMP]', str);
       },
@@ -40,9 +44,11 @@ export default function NotificationBell() {
         console.log('✅ Connected to WebSockets');
         setStatus('connected');
         
-        // Subscribe to user-specific queue if userId is available
+        // Subscribe to user-specific queue
+        // Spring's convertAndSendToUser already prepends /user/{userId} internally,
+        // so we subscribe to /user/queue/notifications (not /user/{id}/queue/notifications)
         if (userId) {
-          const userQueue = `/user/${userId}/queue/notifications`;
+          const userQueue = `/user/queue/notifications`;
           console.log('📨 Subscribing to user queue:', userQueue);
           client.subscribe(userQueue, (msg) => {
             if (msg.body) {

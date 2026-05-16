@@ -44,7 +44,7 @@ spring:
               predicates:
                 - Path=/api/referentiel/**
             - id: svc-notification
-              uri: lb://svc-notification
+              uri: lb:ws://svc-notification
               predicates:
                 - Path=/ws,/ws/**,/ws-sockjs,/ws-sockjs/**
 
