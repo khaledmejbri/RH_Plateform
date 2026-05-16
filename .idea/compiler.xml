@@ -8,6 +8,7 @@
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
         <module name="eureka-server" />
+        <module name="svc-evaluation" />
         <module name="gateway" />
       </profile>
       <profile name="Annotation profile for svc-referentiel-rh" enabled="true">
@@ -16,14 +17,23 @@
         <outputRelativeToContentRoot value="true" />
         <processorPath useClasspath="false">
           <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.42/lombok-1.18.42.jar" />
+          <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.42/lombok-1.18.42.jar" />
         </processorPath>
         <module name="svc-notification" />
         <module name="svc-referentiel-rh" />
         <module name="svc-identite-acces" />
       </profile>
+      <profile name="Annotation profile for authenctication" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <processorPath useClasspath="false">
+          <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/unknown/lombok-unknown.jar" />
+        </processorPath>
+        <module name="authenctication" />
+      </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
-      <module name="authenctication" target="21" />
       <module name="humain_resource" target="21" />
     </bytecodeTargetLevel>
   </component>
@@ -33,6 +43,7 @@
       <module name="eureka-server" options="-parameters" />
       <module name="gateway" options="-parameters" />
       <module name="humain_resource" options="-parameters" />
+      <module name="svc-evaluation" options="-parameters" />
       <module name="svc-identite-acces" options="-parameters" />
       <module name="svc-notification" options="-parameters" />
       <module name="svc-referentiel-rh" options="-parameters" />

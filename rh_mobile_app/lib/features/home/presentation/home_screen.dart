@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../feed/presentation/feed_screen.dart';
-import '../../pointage/presentation/pointage_screen.dart';
 import '../../auth/presentation/profile_screen.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/notification_action.dart';
 import '../../demandes_admin/presentation/ro_validation_screen.dart';
 import '../../../features/auth/providers/collaborateur_notifier.dart';
+import '../../../features/auth/providers/auth_notifier.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -17,25 +16,147 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  int _currentIndex = 0;
-
-  final List<Widget> _pages = [
-    const _DashboardPage(),
-    const _DemandesPage(),
-    const PointageScreen(),
-    const FeedScreen(),
-    const ProfileScreen(),
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _pages[_currentIndex],
-      bottomNavigationBar: _BottomNav(
-        currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
+      backgroundColor: AppTheme.background,
+      appBar: AppBar(
+        backgroundColor: AppTheme.surface,
+        elevation: 0,
+        title: Row(
+          children: [
+            Text(
+              'RH Connect',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          const NotificationActionBadge(),
+          // Profile menu
+          PopupMenuButton<String>(
+            offset: const Offset(0, 45),
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AppTheme.border, width: 1.5),
+              ),
+              child: const CircleAvatar(
+                radius: 18,
+                backgroundColor: AppTheme.primarySurface,
+                child: Text(
+                  'U',
+                  style: TextStyle(
+                    color: AppTheme.primary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            itemBuilder:
+                (context) => [
+                  PopupMenuItem(
+                    value: 'profile',
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primarySurface,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.person_outline,
+                            size: 20,
+                            color: AppTheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Mon profil',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'settings',
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.settings_outlined,
+                            size: 20,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Paramètres',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(height: 1),
+                  PopupMenuItem(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF1F2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.logout,
+                            size: 20,
+                            color: Colors.red,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Déconnexion',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+            onSelected: (value) {
+              if (value == 'profile') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
+              } else if (value == 'logout') {
+                _handleLogout();
+              }
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
+      body: const _DashboardPage(),
     );
+  }
+
+  void _handleLogout() {
+    ref.read(authNotifierProvider.notifier).signOut();
   }
 }
 
@@ -56,10 +177,9 @@ class _BottomNav extends ConsumerWidget {
     );
     int pendingCount = 0;
     if (isRo) {
-      pendingCount = ref.watch(roDemandesEnAttenteProvider).maybeWhen(
-            data: (l) => l.length,
-            orElse: () => 0,
-          );
+      pendingCount = ref
+          .watch(roDemandesEnAttenteProvider)
+          .maybeWhen(data: (l) => l.length, orElse: () => 0);
     }
 
     return Container(
@@ -73,8 +193,23 @@ class _BottomNav extends ConsumerWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _NavItem(icon: Icons.home_outlined,      activeIcon: Icons.home_rounded,           label: 'Accueil',   index: 0, current: currentIndex, onTap: onTap),
-              _NavItem(icon: Icons.assignment_outlined, activeIcon: Icons.assignment_rounded,      label: 'Demandes',  index: 1, current: currentIndex, onTap: onTap, badge: pendingCount),
+              _NavItem(
+                icon: Icons.home_outlined,
+                activeIcon: Icons.home_rounded,
+                label: 'Accueil',
+                index: 0,
+                current: currentIndex,
+                onTap: onTap,
+              ),
+              _NavItem(
+                icon: Icons.assignment_outlined,
+                activeIcon: Icons.assignment_rounded,
+                label: 'Demandes',
+                index: 1,
+                current: currentIndex,
+                onTap: onTap,
+                badge: pendingCount,
+              ),
               // QR FAB center
               GestureDetector(
                 onTap: () => onTap(2),
@@ -82,7 +217,10 @@ class _BottomNav extends ConsumerWidget {
                   width: 52,
                   height: 52,
                   decoration: BoxDecoration(
-                    color: currentIndex == 2 ? AppTheme.primary : AppTheme.primary.withOpacity(0.9),
+                    color:
+                        currentIndex == 2
+                            ? AppTheme.primary
+                            : AppTheme.primary.withOpacity(0.9),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
@@ -92,11 +230,29 @@ class _BottomNav extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 24),
+                  child: const Icon(
+                    Icons.qr_code_scanner_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
               ),
-              _NavItem(icon: Icons.article_outlined,   activeIcon: Icons.article_rounded,         label: 'Actu',      index: 3, current: currentIndex, onTap: onTap),
-              _NavItem(icon: Icons.person_outline,     activeIcon: Icons.person_rounded,          label: 'Moi',       index: 4, current: currentIndex, onTap: onTap),
+              _NavItem(
+                icon: Icons.article_outlined,
+                activeIcon: Icons.article_rounded,
+                label: 'Actu',
+                index: 3,
+                current: currentIndex,
+                onTap: onTap,
+              ),
+              _NavItem(
+                icon: Icons.person_outline,
+                activeIcon: Icons.person_rounded,
+                label: 'Moi',
+                index: 4,
+                current: currentIndex,
+                onTap: onTap,
+              ),
             ],
           ),
         ),
@@ -115,8 +271,12 @@ class _NavItem extends StatelessWidget {
   final int badge;
 
   const _NavItem({
-    required this.icon, required this.activeIcon, required this.label,
-    required this.index, required this.current, required this.onTap,
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+    required this.index,
+    required this.current,
+    required this.onTap,
     this.badge = 0,
   });
 
@@ -144,7 +304,8 @@ class _NavItem extends StatelessWidget {
                   Icon(
                     isActive ? activeIcon : icon,
                     size: 22,
-                    color: isActive ? AppTheme.primary : const Color(0xFFADB5BD),
+                    color:
+                        isActive ? AppTheme.primary : const Color(0xFFADB5BD),
                   ),
                   if (badge > 0)
                     Positioned(
@@ -152,7 +313,10 @@ class _NavItem extends StatelessWidget {
                       right: -8,
                       child: Container(
                         padding: const EdgeInsets.all(3),
-                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
                         decoration: const BoxDecoration(
                           color: Color(0xFF16A34A),
                           shape: BoxShape.circle,
@@ -205,35 +369,33 @@ class _DashboardPage extends ConsumerWidget {
             SliverToBoxAdapter(
               child: Container(
                 color: AppTheme.surface,
-                padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
                 child: Row(
                   children: [
                     Expanded(
                       child: userAsync.when(
                         loading: () => const SizedBox.shrink(),
                         error: (_, __) => const SizedBox.shrink(),
-                        data: (user) => Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Bonjour 👋',
-                              style: Theme.of(context).textTheme.bodySmall,
+                        data:
+                            (user) => Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Bonjour 👋',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  user != null
+                                      ? '${user.prenom} ${user.nom}'
+                                      : 'Bienvenue',
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              user != null
-                                  ? '${user.prenom} ${user.nom}'
-                                  : 'Bienvenue',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
-                    const NotificationActionBadge(),
                   ],
                 ),
               ),
@@ -244,7 +406,7 @@ class _DashboardPage extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                 child: Container(
-                  height: 100,
+                  constraints: const BoxConstraints(minHeight: 100),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFF1E40AF), Color(0xFF3B82F6)],
@@ -263,28 +425,31 @@ class _DashboardPage extends ConsumerWidget {
                           children: [
                             Text(
                               'Ce mois-ci',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Colors.white.withOpacity(0.7),
-                                  ),
+                              style: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.copyWith(
+                                color: Colors.white.withOpacity(0.7),
+                              ),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               '0 absence',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                              style: Theme.of(
+                                context,
+                              ).textTheme.titleMedium?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               'Prochaine paie: fin du mois',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Colors.white.withOpacity(0.65),
-                                    fontSize: 11,
-                                  ),
+                              style: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.copyWith(
+                                color: Colors.white.withOpacity(0.65),
+                                fontSize: 11,
+                              ),
                             ),
                           ],
                         ),
@@ -296,8 +461,11 @@ class _DashboardPage extends ConsumerWidget {
                           color: Colors.white.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: const Icon(Icons.insert_chart_outlined_rounded,
-                            color: Colors.white, size: 28),
+                        child: const Icon(
+                          Icons.insert_chart_outlined_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
                       ),
                     ],
                   ),
@@ -311,10 +479,9 @@ class _DashboardPage extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
                 child: Text(
                   'Services',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
             ),
@@ -350,10 +517,7 @@ class _DashboardPage extends ConsumerWidget {
                     icon: Icons.qr_code_scanner_rounded,
                     iconBg: const Color(0xFFEEF2FF),
                     iconColor: AppTheme.primary,
-                    onTap: () {
-                      final state = context.findAncestorStateOfType<_HomeScreenState>();
-                      state?.setState(() => state._currentIndex = 2);
-                    },
+                    onTap: () => context.push('/pointage'),
                   ),
                   _ServiceCard(
                     title: 'Congés',
@@ -372,6 +536,14 @@ class _DashboardPage extends ConsumerWidget {
                     onTap: () => context.push('/documents'),
                   ),
                   _ServiceCard(
+                    title: 'Formations',
+                    subtitle: 'Plan annuel',
+                    icon: Icons.school_rounded,
+                    iconBg: const Color(0xFFEFF6FF),
+                    iconColor: const Color(0xFF2563EB),
+                    onTap: () => context.push('/formations'),
+                  ),
+                  _ServiceCard(
                     title: 'Plaintes',
                     subtitle: 'Déclarer',
                     icon: Icons.report_problem_rounded,
@@ -385,7 +557,10 @@ class _DashboardPage extends ConsumerWidget {
                     icon: Icons.vpn_key_rounded,
                     iconBg: const Color(0xFFEFF6FF),
                     iconColor: const Color(0xFF3B82F6),
-                    onTap: () => context.push('/demandes-admin/autorisation/nouveau'),
+                    onTap:
+                        () => context.push(
+                          '/demandes-admin/autorisation/nouveau',
+                        ),
                   ),
                   _ServiceCard(
                     title: 'Actualités',
@@ -393,10 +568,7 @@ class _DashboardPage extends ConsumerWidget {
                     icon: Icons.newspaper_rounded,
                     iconBg: const Color(0xFFF5F3FF),
                     iconColor: const Color(0xFF7C3AED),
-                    onTap: () {
-                      final state = context.findAncestorStateOfType<_HomeScreenState>();
-                      state?.setState(() => state._currentIndex = 3);
-                    },
+                    onTap: () => context.push('/feed'),
                   ),
                 ],
               ),
@@ -419,8 +591,12 @@ class _ServiceCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _ServiceCard({
-    required this.title, required this.subtitle, required this.icon,
-    required this.iconBg, required this.iconColor, required this.onTap,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    required this.onTap,
   });
 
   @override
@@ -453,16 +629,19 @@ class _ServiceCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textPrimary,
-                          )),
-                  Text(subtitle,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(fontSize: 11)),
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(fontSize: 11),
+                  ),
                 ],
               ),
             ],
@@ -533,6 +712,17 @@ class _DemandesPage extends ConsumerWidget {
             onTap: () => context.push('/documents'),
           ),
           const SizedBox(height: 12),
+          if (isResponsable) ...[
+            _DemandeChoiceCard(
+              title: 'Formations',
+              subtitle: 'Unite ou collaborateurs cibles',
+              icon: Icons.school_rounded,
+              iconBg: const Color(0xFFEFF6FF),
+              iconColor: const Color(0xFF2563EB),
+              onTap: () => context.push('/formations'),
+            ),
+            const SizedBox(height: 12),
+          ],
           _DemandeChoiceCard(
             title: 'Plaintes',
             subtitle: 'Déclarer une réclamation',
@@ -575,7 +765,10 @@ class _RoValidationCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pendingAsync = ref.watch(roDemandesEnAttenteProvider);
-    final count = pendingAsync.maybeWhen(data: (l) => l.length, orElse: () => 0);
+    final count = pendingAsync.maybeWhen(
+      data: (l) => l.length,
+      orElse: () => 0,
+    );
 
     return InkWell(
       onTap: () => context.push('/demandes-admin/ro/validation'),
@@ -602,8 +795,11 @@ class _RoValidationCard extends ConsumerWidget {
                 color: const Color(0xFF16A34A).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.how_to_reg_rounded,
-                  color: Color(0xFF16A34A), size: 22),
+              child: const Icon(
+                Icons.how_to_reg_rounded,
+                color: Color(0xFF16A34A),
+                size: 22,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -625,9 +821,10 @@ class _RoValidationCard extends ConsumerWidget {
                         : '$count demande${count > 1 ? 's' : ''} en attente de validation',
                     style: TextStyle(
                       fontSize: 12,
-                      color: count > 0
-                          ? const Color(0xFF16A34A)
-                          : const Color(0xFF94A3B8),
+                      color:
+                          count > 0
+                              ? const Color(0xFF16A34A)
+                              : const Color(0xFF94A3B8),
                       fontWeight:
                           count > 0 ? FontWeight.w600 : FontWeight.normal,
                     ),
@@ -637,8 +834,10 @@ class _RoValidationCard extends ConsumerWidget {
             ),
             if (count > 0)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF16A34A),
                   borderRadius: BorderRadius.circular(999),
@@ -653,8 +852,11 @@ class _RoValidationCard extends ConsumerWidget {
                 ),
               ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded,
-                color: Color(0xFF94A3B8), size: 20),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: Color(0xFF94A3B8),
+              size: 20,
+            ),
           ],
         ),
       ),
@@ -739,9 +941,14 @@ class _DemandeChoiceCard extends StatelessWidget {
   final Color? badgeColor;
 
   const _DemandeChoiceCard({
-    required this.title, required this.subtitle, required this.icon,
-    required this.iconBg, required this.iconColor, required this.onTap,
-    this.badge, this.badgeColor,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    required this.onTap,
+    this.badge,
+    this.badgeColor,
   });
 
   @override
@@ -774,18 +981,25 @@ class _DemandeChoiceCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w600)),
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded,
-                  color: AppTheme.textSecondary, size: 20),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppTheme.textSecondary,
+                size: 20,
+              ),
             ],
           ),
         ),

@@ -6,6 +6,7 @@ import HomePage from './pages/HomePage';
 import PlaintesSuiviPage from './pages/PlaintesSuiviPage';
 import DemandesAdministrativesPage from './pages/DemandesAdministrativesPage';
 import DocumentsAdministratifsPage from './pages/DocumentsAdministratifsPage';
+import FormationsPage from './pages/FormationsPage';
 import CollaborateursPage from './pages/CollaborateursPage';
 import UnitesOrganisationPage from './pages/UnitesOrganisationPage';
 import StructureOrganisationPage from './pages/StructureOrganisationPage';
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/app/plaintes" element={<PlaintesSuiviPage />} />
           <Route path="/app/demandes-administratives" element={<DemandesAdministrativesPage />} />
           <Route path="/app/documents-administratifs" element={<DocumentsAdministratifsPage />} />
+          <Route path="/app/formations" element={<FormationsPage />} />
           <Route path="/app/collaborateurs" element={<CollaborateursPage />} />
           <Route path="/app/unites" element={<UnitesOrganisationPage />} />
           <Route path="/app/structure" element={<StructureOrganisationPage />} />

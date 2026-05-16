@@ -25,6 +25,11 @@ class DemandeAdminRepository {
     return list.map((e) => DemandeAdminItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
   }
 
+  /// Get only autorisations de sortie history
+  Future<List<DemandeAdminItem>> mesAutorisations() async {
+    return mesDemandes(typeDemande: 'AUTORISATION_SORTIE');
+  }
+
   Future<DemandeAdminSuivi> suivi(String id) async {
     final res = await _dio.get<Map<String, dynamic>>('${ApiConstants.demandesAdmin}/$id/suivi');
     return DemandeAdminSuivi.fromJson(res.data!);
@@ -164,5 +169,12 @@ class DemandeAdminRepository {
     return DemandeAdminItem.fromJson(res.data!);
   }
 
-
+  /// CDC §M01 : obtenir l'historique du workflow
+  Future<List<WorkflowHistoryItem>> obtenirHistorique(String id) async {
+    final res = await _dio.get<List<dynamic>>('${ApiConstants.demandesAdmin}/$id/historique');
+    final list = res.data ?? [];
+    return list
+        .map((e) => WorkflowHistoryItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
 }

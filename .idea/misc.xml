@@ -11,6 +11,7 @@
         <option value="$PROJECT_DIR$/svc-identite-acces/pom.xml" />
         <option value="$PROJECT_DIR$/svc-referentiel-rh/pom.xml" />
         <option value="$PROJECT_DIR$/svc-notification/pom.xml" />
+        <option value="$PROJECT_DIR$/svc-evaluation/pom.xml" />
       </list>
     </option>
   </component>

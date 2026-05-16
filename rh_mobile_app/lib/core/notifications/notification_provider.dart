@@ -89,15 +89,25 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       }
 
       debugPrint('[STOMP] Final User ID to use: $finalUserId');
+      debugPrint('[STOMP] Token present: ${token != null}');
+      debugPrint('[STOMP] Token length: ${token?.length ?? 0}');
       debugPrint('[STOMP] ═════════════════════════════════════════');
 
       _currentUserId = finalUserId;
 
-      final headers = <String, String>{
-        if (token != null) 'Authorization': 'Bearer $token',
-      };
-
-      debugPrint('[STOMP] Headers: $headers');
+      // Build headers - ALWAYS include Authorization if token exists
+      final headers = <String, String>{};
+      if (token != null && token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+        debugPrint('[STOMP] ✅ Authorization header added');
+      } else {
+        debugPrint('[STOMP] ⚠️ WARNING: No token available! Authorization header will NOT be sent');
+      }
+      
+      // Add additional STOMP headers for better compatibility
+      headers['heart-beat'] = '10000,10000';
+      
+      debugPrint('[STOMP] Final Headers: $headers');
 
       _client = StompClient(
         config: StompConfig(

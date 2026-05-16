@@ -138,6 +138,15 @@ public class DemandeAdministrativeRhController {
 				identifiant, principal.getToken(), ReferentielApiSecurity.aAutoriteRh()));
 	}
 
+	@GetMapping("/{identifiant}/historique")
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<List<DemandeAdminWorkflowHistoryResponse>> historique(
+			@PathVariable UUID identifiant,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(demandeAdministrativeRhService.obtenirHistorique(
+				identifiant, principal.getToken(), ReferentielApiSecurity.aAutoriteRh()));
+	}
+
 	/** Détail d'une demande. */
 	@GetMapping("/{identifiant}")
 	@PreAuthorize("isAuthenticated()")

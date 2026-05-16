@@ -7,6 +7,26 @@ export default function NotificationBell() {
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'disconnected'>('connecting');
 
   useEffect(() => {
+    // Get user ID from localStorage or JWT token
+    const getUserId = () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        if (token) {
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1]));
+            return payload.identifiant_utilisateur || payload.sub;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to extract user ID from token:', e);
+      }
+      return null;
+    };
+
+    const userId = getUserId();
+    console.log('[STOMP] User ID:', userId);
+
     // Use native WebSocket instead of SockJS for better compatibility
     const client = new Client({
       brokerURL: 'ws://localhost:8080/ws',
@@ -20,12 +40,30 @@ export default function NotificationBell() {
         console.log('✅ Connected to WebSockets');
         setStatus('connected');
         
-        // Subscribe to RH topic
+        // Subscribe to user-specific queue if userId is available
+        if (userId) {
+          const userQueue = `/user/${userId}/queue/notifications`;
+          console.log('📨 Subscribing to user queue:', userQueue);
+          client.subscribe(userQueue, (msg) => {
+            if (msg.body) {
+              try {
+                const parsed = JSON.parse(msg.body);
+                console.log('📩 User notification received:', parsed);
+                setNotifications((prev) => [{ ...parsed, id: Date.now(), read: false }, ...prev]);
+              } catch (e) {
+                console.error('Failed to parse notification:', e);
+              }
+            }
+          });
+        }
+        
+        // Subscribe to RH topic (broadcast)
+        console.log('📨 Subscribing to /topic/RH');
         client.subscribe('/topic/RH', (msg) => {
           if (msg.body) {
             try {
               const parsed = JSON.parse(msg.body);
-              console.log('📩 Notification received:', parsed);
+              console.log('📩 Broadcast notification received:', parsed);
               setNotifications((prev) => [{ ...parsed, id: Date.now(), read: false }, ...prev]);
             } catch (e) {
               console.error('Failed to parse notification:', e);

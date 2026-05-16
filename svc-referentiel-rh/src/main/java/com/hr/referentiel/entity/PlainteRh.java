@@ -34,7 +34,7 @@ public class PlainteRh {
 	private UUID id;
 
 	/** Numéro lisible : PLT-YYYYMM-XXXX, généré à la création. */
-	@Column(name = "numero_ticket", nullable = false, updatable = false, length = 32)
+	@Column(name = "numero_ticket", nullable = true, updatable = false, length = 32)
 	private String numeroTicket;
 
 	@Enumerated(EnumType.STRING)

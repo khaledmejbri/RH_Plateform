@@ -19,15 +19,15 @@ public class WebSocketNotificationService {
         log.info("   - Message subject: {}", message.getSubject());
         log.info("   - Message content: {}", message.getContent());
         
-        // Using /topic instead of /user to allow easy testing without JWT STOMP interceptors
-        String destination = "/topic/" + userId;
-        log.info("   - Destination: {}", destination);
+        // Use convertAndSendToUser for proper /user/{userId}/queue routing
+        String queue = "/queue/notifications";
+        log.info("   - Destination: /user/{}/{}", userId, queue);
         
         try {
-            messagingTemplate.convertAndSend(destination, message);
-            log.info("✅ Notification sent successfully to {}", destination);
+            messagingTemplate.convertAndSendToUser(userId, queue, message);
+            log.info("✅ Notification sent successfully to /user/{}/{}", userId, queue);
         } catch (MessagingException e) {
-            log.error("❌ Failed to send notification to {}", destination, e);
+            log.error("❌ Failed to send notification to /user/{}/{}", userId, queue, e);
             throw new RuntimeException(e);
         }
     }

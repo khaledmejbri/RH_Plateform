@@ -174,7 +174,7 @@ public class CollaborateurMiseAJourRequest {
 	public void setCompteUtilisateurId(UUID compteUtilisateurId) {
 		this.compteUtilisateurId = compteUtilisateurId;
 	}
-}
+
 	public String getProfilAcces() {
 		return profilAcces;
 	}

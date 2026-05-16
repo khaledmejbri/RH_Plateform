@@ -28,7 +28,11 @@ Write-Host "4. Referentiel-RH..." -ForegroundColor Green
 Start-Process powershell -ArgumentList "-NoExit", "-Title", "Referentiel RH", "-Command", "`$env:JAVA_HOME='C:\Program Files\Java\jdk-21'; mvn spring-boot:run -pl svc-referentiel-rh"
 Start-Sleep -Seconds 2
 
-Write-Host "5. Notification..." -ForegroundColor Green
+Write-Host "5. Evaluation RH..." -ForegroundColor Green
+Start-Process powershell -ArgumentList "-NoExit", "-Title", "Evaluation RH", "-Command", "`$env:JAVA_HOME='C:\Program Files\Java\jdk-21'; mvn spring-boot:run -pl svc-evaluation"
+Start-Sleep -Seconds 2
+
+Write-Host "6. Notification..." -ForegroundColor Green
 Start-Process powershell -ArgumentList "-NoExit", "-Title", "Notification", "-Command", "`$env:JAVA_HOME='C:\Program Files\Java\jdk-21'; mvn spring-boot:run -pl svc-notification"
 
 Write-Host "======== [ 3 / 3 ] Démarrage du Frontend web ========" -ForegroundColor Cyan
