@@ -31,6 +31,10 @@ spring:
               uri: lb://svc-identite-acces
               predicates:
                 - Path=/api/auth/**,/oauth2/**,/.well-known/**
+            - id: svc-evaluation
+              uri: lb://svc-evaluation
+              predicates:
+                - Path=/api/rh/v1/evaluations/**
             - id: svc-referentiel-rh-v1
               uri: lb://svc-referentiel-rh
               predicates:

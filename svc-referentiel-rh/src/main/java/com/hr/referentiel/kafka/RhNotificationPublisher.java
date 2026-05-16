@@ -10,12 +10,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 /**
- * Centralize toutes les notifications RH vers Kafka topic "notifications-topic".
+ * Centralize toutes les notifications RH vers Kafka topic "rh.notifications".
  *
  * Hiérarchie de notification selon CDC v2 §M01 :
  *
@@ -208,7 +206,52 @@ public class RhNotificationPublisher {
         envoyer(auteur.getId().toString(), "Mise à jour de votre plainte [" + numeroTicket + "]", msg);
     }
 
-    // ─── Helpers privés ─────────────────────────────────────────────────────
+    public void notifierDemandeFormationSoumise(Collaborateur demandeur, String typeFormation) {
+        notifierTousLesRh(
+                "Nouvelle demande de formation",
+                nomComplet(demandeur) + " a soumis une demande de formation : "
+                        + typeFormation + ". Integration au plan annuel requise.");
+    }
+
+    public void notifierDemandeFormationIntegree(Collaborateur demandeur, String typeFormation) {
+        envoyer(demandeur.getId().toString(),
+                "Formation integree au plan",
+                "Votre demande de formation " + typeFormation
+                        + " a ete integree au plan annuel de formation.");
+    }
+
+    public void notifierDemandeFormationRefusee(Collaborateur demandeur, String typeFormation, String motif) {
+        envoyer(demandeur.getId().toString(),
+                "Demande de formation refusee",
+                "Votre demande de formation " + typeFormation
+                        + " a ete refusee. Motif : " + (motif != null ? motif : "Non precise"));
+    }
+
+    public void notifierDemandeFormationAnnulee(Collaborateur demandeur, String typeFormation) {
+        notifierTousLesRh(
+                "Demande de formation annulee",
+                nomComplet(demandeur) + " a annule sa demande de formation : " + typeFormation + ".");
+    }
+
+    /**
+     * Notification envoyée à un collaborateur invité à une formation par un RO.
+     */
+    public void notifierCollaborateurInviteFormation(Collaborateur collaborateur,
+            String typeFormation, String organisme,
+            java.time.LocalDate dateDebut, java.time.LocalDate dateFin) {
+        String periode = "";
+        if (dateDebut != null) {
+            periode = " du " + dateDebut.toString();
+            if (dateFin != null) {
+                periode += " au " + dateFin.toString();
+            }
+        }
+        envoyer(collaborateur.getId().toString(),
+                "Invitation à une formation",
+                "Vous êtes invité(e) à participer à la formation : " + typeFormation
+                        + " organisée par " + organisme + periode
+                        + ". Votre responsable vous a sélectionné pour cette formation.");
+    }
 
     /** Notifie tous les collaborateurs avec profil_acces = RH. */
     private void notifierTousLesRh(String sujet, String corps) {
@@ -216,7 +259,7 @@ public class RhNotificationPublisher {
         if (rhActifs.isEmpty()) {
             log.warn("Aucun collaborateur RH actif trouvé pour notification : {}", sujet);
             // Fallback : envoyer au groupe générique "RH" que svc-notification résoudra
-            envoyer("GROUP:RH", sujet, corps);
+            envoyer("RH", sujet, corps);
         } else {
             for (Collaborateur rh : rhActifs) {
                 envoyer(rh.getId().toString(), sujet, corps);
@@ -233,7 +276,7 @@ public class RhNotificationPublisher {
 
     private void envoyer(String recipientId, String sujet, String corps) {
         try {
-            NotificationMessage msg = new NotificationMessage("PUSH", recipientId, sujet, corps);
+            NotificationMessage msg = new NotificationMessage("WEBSOCKET", recipientId, sujet, corps);
             kafkaTemplate.send(TOPIC, recipientId, objectMapper.writeValueAsString(msg));
             log.debug("Notification envoyée → {} : {}", recipientId, sujet);
         } catch (Exception e) {

@@ -79,3 +79,50 @@ class DemandeAdminSuivi {
     );
   }
 }
+
+class WorkflowHistoryItem {
+  WorkflowHistoryItem({
+    required this.id,
+    required this.action,
+    required this.dateAction,
+    this.acteurNom,
+    this.commentaire,
+  });
+
+  final String id;
+  final String action;
+  final String dateAction;
+  final String? acteurNom;
+  final String? commentaire;
+
+  factory WorkflowHistoryItem.fromJson(Map<String, dynamic> json) {
+    return WorkflowHistoryItem(
+      id: json['identifiant']?.toString() ?? '',
+      action: json['action'] as String? ?? '',
+      dateAction: json['date_action'] as String? ?? '',
+      acteurNom: json['acteur_nom'] as String?,
+      commentaire: json['commentaire'] as String?,
+    );
+  }
+
+  String get actionLabel {
+    switch (action) {
+      case 'CREATION_DEMANDE':
+        return 'Demande créée';
+      case 'SOUMISE_A_RO':
+        return 'Soumise au RO';
+      case 'VALIDATION_RO':
+        return 'Validée par le RO';
+      case 'REFUS_RO':
+        return 'Refusée par le RO';
+      case 'APPROBATION_RRH':
+        return 'Approuvée par le RH';
+      case 'REFUS_RRH':
+        return 'Refusée par le RH';
+      case 'ANNULATION_DEMANDEUR':
+        return 'Annulée';
+      default:
+        return action.replaceAll('_', ' ').toLowerCase();
+    }
+  }
+}

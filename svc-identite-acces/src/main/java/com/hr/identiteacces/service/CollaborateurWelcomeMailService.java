@@ -55,7 +55,7 @@ public class CollaborateurWelcomeMailService {
 			NotificationMessage notification = new NotificationMessage("EMAIL", to, "Bienvenue — accès application mobile RH", body);
 			String payload = objectMapper.writeValueAsString(notification);
 
-			kafkaTemplate.send("notifications-topic", payload);
+			kafkaTemplate.send("rh.notifications", payload);
 			log.info("Message de bienvenue envoyé à Kafka pour notification à {}", to);
 		} catch (Exception e) {
 			log.error("Échec envoi Kafka pour message de bienvenue à {}", to, e);

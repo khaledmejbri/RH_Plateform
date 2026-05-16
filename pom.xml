@@ -39,6 +39,7 @@
 		<module>gateway</module>
 		<module>svc-identite-acces</module>
 		<module>svc-referentiel-rh</module>
+		<module>svc-evaluation</module>
 		<module>svc-notification</module>
 	</modules>
 </project>

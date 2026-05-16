@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getPlaintesList, patchPlainteStatut, type PlainteRh } from '../api/rhClient';
+import { getPlaintesRh, patchPlainteStatut, type PlainteRh } from '../api/rhClient';
 
 /**
  * CDC v2 §M04 corrections :
@@ -39,7 +39,7 @@ export default function PlaintesSuiviPage() {
     setLoading(true);
     setErr(null);
     try {
-      setRows(await getPlaintesList(filterType || undefined, filterStatut || undefined));
+      setRows(await getPlaintesRh(filterType || undefined, filterStatut || undefined));
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erreur chargement');
     } finally {

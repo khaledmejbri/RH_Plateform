@@ -211,7 +211,7 @@ public class CollaborateurResponse {
 	public void setModifieLe(Instant modifieLe) {
 		this.modifieLe = modifieLe;
 	}
-}
+
 	public String getProfilAcces() {
 		return profilAcces;
 	}

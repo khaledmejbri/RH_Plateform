@@ -162,7 +162,7 @@ public class DemandeDocumentAdministratifRhService {
 		DemandeDocumentAdministratifRh saved = repository.save(d);
 
 		try {
-			notificationPublisher.notifierDocumentDisponible(d.getDemandeur(), d.getTypeDocument().name(), requete.getUrlDocument());
+			notificationPublisher.notifierDocumentDisponible(d.getDemandeur(), d.getTypeDocument().name(), req.getReferenceLivrable());
 		} catch (Exception e) {
 			log.error("Erreur lors de l'envoi de la notification Kafka (Document disponible)", e);
 		}

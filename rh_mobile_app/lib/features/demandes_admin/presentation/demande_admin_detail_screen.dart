@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../data/demande_admin_models.dart';
+import '../data/demande_admin_repository.dart';
 
 final demandeAdminDetailProvider =
     FutureProvider.family.autoDispose<Map<String, dynamic>, String>((ref, id) async {
@@ -17,6 +18,11 @@ final demandeAdminSuiviProvider = FutureProvider.family.autoDispose<DemandeAdmin
   final dio = ref.watch(dioProvider);
   final res = await dio.get<Map<String, dynamic>>('${ApiConstants.demandesAdmin}/$id/suivi');
   return DemandeAdminSuivi.fromJson(res.data!);
+});
+
+final demandeAdminHistoriqueProvider = FutureProvider.family.autoDispose<List<WorkflowHistoryItem>, String>((ref, id) async {
+  final repo = ref.watch(demandeAdminRepositoryProvider);
+  return repo.obtenirHistorique(id);
 });
 
 class DemandeAdminDetailScreen extends ConsumerWidget {
@@ -37,7 +43,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
     final suivi = ref.watch(demandeAdminSuiviProvider(id));
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: const Color(0xFFF8FAFC),
         appBar: AppBar(
@@ -52,6 +58,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
             tabs: const [
               Tab(text: 'Résumé'),
               Tab(text: 'Suivi'),
+              Tab(text: 'Historique'),
             ],
           ),
         ),
@@ -266,9 +273,147 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                 },
               ),
             ),
+            // Historique tab
+            Consumer(
+              builder: (context, ref, _) {
+                final historique = ref.watch(demandeAdminHistoriqueProvider(id));
+                return historique.when(
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Center(child: Text('Erreur: $e')),
+                  data: (items) {
+                    if (items.isEmpty) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.history_outlined, size: 48, color: Colors.grey),
+                              SizedBox(height: 16),
+                              Text('Aucun historique disponible', style: TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                    return ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 16),
+                      itemBuilder: (_, index) {
+                        return _buildTimelineItem(items[index], isLast: index == items.length - 1);
+                      },
+                    );
+                  },
+                );
+              },
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTimelineItem(WorkflowHistoryItem item, {required bool isLast}) {
+    final dateFormat = DateFormat('dd MMM yyyy HH:mm', 'fr_FR');
+    final date = DateTime.parse(item.dateAction);
+    
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Timeline line and dot
+        Column(
+          children: [
+            Container(
+              width: 2,
+              height: 24,
+              color: Colors.grey.shade300,
+            ),
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2563EB),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+            ),
+            if (!isLast)
+              Container(
+                width: 2,
+                height: 40,
+                color: Colors.grey.shade300,
+              ),
+          ],
+        ),
+        const SizedBox(width: 12),
+        // Content
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.actionLabel,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      dateFormat.format(date),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
+                ),
+                if (item.acteurNom != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Par: ${item.acteurNom}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+                if (item.commentaire != null && item.commentaire!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      item.commentaire!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

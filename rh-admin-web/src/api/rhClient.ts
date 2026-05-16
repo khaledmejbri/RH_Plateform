@@ -19,8 +19,12 @@ export async function handleRhResponse<T>(res: Response): Promise<T> {
   return parseJson<T>(res);
 }
 
-export function getPlaintesRh() {
-  return apiFetch('/api/rh/v1/plaintes/liste').then((r) => handleRhResponse<PlainteRh[]>(r));
+export function getPlaintesRh(typePlainte?: string, statut?: string) {
+  const params = new URLSearchParams();
+  if (typePlainte) params.set('type', typePlainte);
+  if (statut) params.set('statut', statut);
+  const query = params.toString();
+  return apiFetch(`/api/rh/v1/plaintes/liste${query ? '?' + query : ''}`).then((r) => handleRhResponse<PlainteRh[]>(r));
 }
 
 export function patchPlainteStatut(id: string, body: { statut: string; commentaire_rh?: string }) {
@@ -35,6 +39,31 @@ export function getDemandesAdministrativesListe() {
   return apiFetch('/api/rh/v1/demandes-administratives/liste').then((r) =>
     handleRhResponse<DemandeAdministrative[]>(r),
   );
+}
+
+export function getDemandesFormations(statut?: string) {
+  const q = new URLSearchParams();
+  if (statut) q.set('statut', statut);
+  const query = q.toString();
+  return apiFetch(`/api/rh/v1/demandes-formations/liste${query ? '?' + query : ''}`).then((r) =>
+    handleRhResponse<DemandeFormation[]>(r),
+  );
+}
+
+export function postFormationIntegrerPlan(id: string, commentaire_rh?: string) {
+  return apiFetch(`/api/rh/v1/demandes-formations/${id}/integrer-plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commentaire_rh: commentaire_rh || undefined }),
+  }).then((r) => handleRhResponse<DemandeFormation>(r));
+}
+
+export function postFormationRefuser(id: string, motif_refus: string) {
+  return apiFetch(`/api/rh/v1/demandes-formations/${id}/refuser`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ motif_refus }),
+  }).then((r) => handleRhResponse<DemandeFormation>(r));
 }
 
 export function getDocumentsFileAttente() {
@@ -111,12 +140,15 @@ export function putCollaborateur(id: string, body: Record<string, unknown>) {
 // Types (champs JSON API)
 export type PlainteRh = {
   identifiant: string;
-  type_plainte: string;
+  numero_ticket: string;
+  type_plainte: 'INTERNE' | 'EXTERNE';
   auteur_collaborateur_identifiant: string;
   titre: string;
   description: string;
-  statut: string;
+  statut: 'NOUVEAU' | 'EN_ANALYSE' | 'EN_TRAITEMENT' | 'RESOLU' | 'FERME';
   commentaire_rh?: string;
+  pieces_jointes: Array<{ url: string; nom_fichier: string }>;
+  log_actions: Array<{ date: string; action: string; acteur: string }>;
   cree_le: string;
   modifie_le?: string;
 };
@@ -130,6 +162,26 @@ export type DemandeAdministrative = {
   periode_fin?: string;
   motif_refus?: string;
   contenu?: Record<string, unknown>;
+  cree_le: string;
+};
+
+export type DemandeFormation = {
+  identifiant: string;
+  demandeur_identifiant: string;
+  demandeur_nom?: string;
+  origine: 'CHEF_DEPARTEMENT' | 'RESPONSABLE_OPERATIONNEL';
+  cible: 'UNITE' | 'COLLABORATEURS';
+  unite_cible_identifiant?: string;
+  unite_cible_libelle?: string;
+  collaborateurs_cibles_identifiants?: string[];
+  type_formation: string;
+  organisme: string;
+  duree_heures: number;
+  cout_estime?: number;
+  objectifs_pedagogiques: string;
+  justification: string;
+  statut: 'EN_VALIDATION_RRH' | 'INTEGREE_PLAN' | 'REFUSEE' | 'ANNULEE';
+  commentaire_rh?: string;
   cree_le: string;
 };
 

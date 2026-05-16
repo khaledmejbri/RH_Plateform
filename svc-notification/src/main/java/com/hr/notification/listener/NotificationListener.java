@@ -19,7 +19,7 @@ public class NotificationListener {
     private final ObjectMapper objectMapper;
     private final org.springframework.web.client.RestTemplate restTemplate;
 
-    @KafkaListener(topics = "notifications-topic", groupId = "notification-group")
+    @KafkaListener(topics = "rh.notifications", groupId = "notification-group")
     public void handleNotificationMessage(String messagePayload) {
         log.info("Received notification message: {}", messagePayload);
         try {

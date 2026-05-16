@@ -1,14 +1,17 @@
 package com.hr.referentiel.service;
 
+import com.hr.referentiel.domain.ActionWorkflowAdministratif;
 import com.hr.referentiel.domain.StatutDemandeAdministrativeRh;
 import com.hr.referentiel.domain.TypeDemandeAdministrativeRh;
 import com.hr.referentiel.dto.*;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.entity.DemandeAdministrativeRh;
+import com.hr.referentiel.entity.DemandeAdminWorkflowHistory;
 import com.hr.referentiel.entity.UniteOrganisation;
 import com.hr.referentiel.kafka.RhNotificationPublisher;
 import com.hr.referentiel.repository.CollaborateurRepository;
 import com.hr.referentiel.repository.DemandeAdministrativeRhRepository;
+import com.hr.referentiel.repository.DemandeAdminWorkflowHistoryRepository;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,18 +39,21 @@ public class DemandeAdministrativeRhService {
 	private final CollaborateurConnecteService collaborateurConnecteService;
 	private final DemandeAdministrativeValidationService validationService;
 	private final RhNotificationPublisher notificationPublisher;
+	private final DemandeAdminWorkflowHistoryRepository workflowHistoryRepository;
 
 	public DemandeAdministrativeRhService(
 			DemandeAdministrativeRhRepository demandeRepo,
 			CollaborateurRepository collaborateurRepository,
 			CollaborateurConnecteService collaborateurConnecteService,
 			DemandeAdministrativeValidationService validationService,
-			RhNotificationPublisher notificationPublisher) {
+			RhNotificationPublisher notificationPublisher,
+			DemandeAdminWorkflowHistoryRepository workflowHistoryRepository) {
 		this.demandeRepo = demandeRepo;
 		this.collaborateurRepository = collaborateurRepository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
 		this.validationService = validationService;
 		this.notificationPublisher = notificationPublisher;
+		this.workflowHistoryRepository = workflowHistoryRepository;
 	}
 
 	// ─── Création ─────────────────────────────────────────────────────────────
@@ -70,6 +76,14 @@ public class DemandeAdministrativeRhService {
 				: StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
 
 		DemandeAdministrativeRh saved = demandeRepo.save(d);
+
+		// Enregistrer l'historique de workflow
+		enregistrerWorkflow(saved, ActionWorkflowAdministratif.CREATION_DEMANDE,
+			demandeur.getId(), demandeur.getPrenom() + " " + demandeur.getNom(),
+			"Demande " + req.getTypeDemande().name() + " créée");
+		enregistrerWorkflow(saved, ActionWorkflowAdministratif.SOUMISE_A_RO,
+			demandeur.getId(), demandeur.getPrenom() + " " + demandeur.getNom(),
+			"Demande soumise pour validation");
 
 		// Notification : demandeur → RO (ou RH si pas de RO)
 		notificationPublisher.notifierDemandeRecue(demandeur,
@@ -166,6 +180,11 @@ public class DemandeAdministrativeRhService {
 		d.setStatut(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
 		demandeRepo.save(d);
 
+		// Enregistrer l'historique
+		enregistrerWorkflow(d, ActionWorkflowAdministratif.VALIDATION_RO,
+			ro.getId(), ro.getPrenom() + " " + ro.getNom(),
+			"Validée par le RO");
+
 		// Notification : RO a validé → RH doit approuver
 		notificationPublisher.notifierValidationRo(demandeur, d.getTypeDemande().name(), ro);
 
@@ -177,12 +196,17 @@ public class DemandeAdministrativeRhService {
 		DemandeAdministrativeRh d = charger(id);
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR,
 				"Cette demande n'est pas en attente de validation RO.");
-		verifierEstRoDuDemandeurEtRetourner(jwt, d);
+		Collaborateur ro = verifierEstRoDuDemandeurEtRetourner(jwt, d);
 		Collaborateur demandeur = chargerDemandeurDetail(d);
 
 		d.setStatut(StatutDemandeAdministrativeRh.REFUSEE);
 		d.setMotifRefus(req.getMotifRefus().trim());
 		demandeRepo.save(d);
+
+		// Enregistrer l'historique
+		enregistrerWorkflow(d, ActionWorkflowAdministratif.REFUS_RO,
+			ro.getId(), ro.getPrenom() + " " + ro.getNom(),
+			"Refusée par le RO: " + req.getMotifRefus());
 
 		// Notification : RO a refusé → le demandeur est notifié avec le motif
 		notificationPublisher.notifierRefusRo(demandeur, d.getTypeDemande().name(), req.getMotifRefus());
@@ -202,6 +226,10 @@ public class DemandeAdministrativeRhService {
 		d.setStatut(StatutDemandeAdministrativeRh.APPROUVEE);
 		demandeRepo.save(d);
 
+		// Enregistrer l'historique
+		enregistrerWorkflow(d, ActionWorkflowAdministratif.APPROBATION_RRH,
+			null, "RH", "Approuvée par le RH");
+
 		// Notification : RRH a approuvé → demandeur
 		notificationPublisher.notifierApprobationRrh(demandeur, d.getTypeDemande().name());
 
@@ -218,6 +246,10 @@ public class DemandeAdministrativeRhService {
 		d.setStatut(StatutDemandeAdministrativeRh.REFUSEE);
 		d.setMotifRefus(req.getMotifRefus().trim());
 		demandeRepo.save(d);
+
+		// Enregistrer l'historique
+		enregistrerWorkflow(d, ActionWorkflowAdministratif.REFUS_RRH,
+			null, "RH", "Refusée par le RH: " + req.getMotifRefus());
 
 		// Notification : RRH a refusé → demandeur avec motif
 		notificationPublisher.notifierRefusRrh(demandeur, d.getTypeDemande().name(), req.getMotifRefus());
@@ -243,6 +275,11 @@ public class DemandeAdministrativeRhService {
 		Collaborateur demandeur = chargerDemandeurDetail(d);
 		d.setStatut(StatutDemandeAdministrativeRh.ANNULEE);
 		demandeRepo.save(d);
+
+		// Enregistrer l'historique
+		enregistrerWorkflow(d, ActionWorkflowAdministratif.ANNULATION_DEMANDEUR,
+			c.getId(), c.getPrenom() + " " + c.getNom(),
+			"Annulée par le demandeur");
 
 		// Notification : annulation → RO pour info
 		notificationPublisher.notifierAnnulationDemandeur(demandeur, d.getTypeDemande().name());
@@ -331,5 +368,43 @@ public class DemandeAdministrativeRhService {
 				d.getId(), d.getTypeDemande(), d.getDemandeur().getId(), d.getStatut(),
 				d.getContenu(), d.getPeriodeDebut(), d.getPeriodeFin(),
 				d.getMotifRefus(), d.getCreeLe(), d.getModifieLe());
+	}
+
+	// ─── Workflow History ─────────────────────────────────────────────────────
+
+	@Transactional(readOnly = true)
+	public List<DemandeAdminWorkflowHistoryResponse> obtenirHistorique(UUID id, Jwt jwt, boolean rh) {
+		DemandeAdministrativeRh d = charger(id);
+		if (!rh) {
+			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
+			if (!d.getDemandeur().getId().equals(c.getId())) {
+				throw new IllegalArgumentException("Accès refusé.");
+			}
+		}
+		return workflowHistoryRepository.findByDemandeAdministrativeIdOrderByDateActionAsc(id).stream()
+				.map(this::toWorkflowHistoryResponse)
+				.collect(Collectors.toList());
+	}
+
+	private void enregistrerWorkflow(DemandeAdministrativeRh demande, ActionWorkflowAdministratif action,
+			UUID acteurId, String acteurNom, String commentaire) {
+		DemandeAdminWorkflowHistory history = new DemandeAdminWorkflowHistory();
+		history.setDemandeAdministrative(demande);
+		history.setAction(action);
+		history.setActeurIdentifiant(acteurId);
+		history.setActeurNom(acteurNom);
+		history.setCommentaire(commentaire);
+		workflowHistoryRepository.save(history);
+	}
+
+	private DemandeAdminWorkflowHistoryResponse toWorkflowHistoryResponse(DemandeAdminWorkflowHistory h) {
+		DemandeAdminWorkflowHistoryResponse r = new DemandeAdminWorkflowHistoryResponse();
+		r.setIdentifiant(h.getId());
+		r.setAction(h.getAction());
+		r.setActeurIdentifiant(h.getActeurIdentifiant());
+		r.setActeurNom(h.getActeurNom());
+		r.setCommentaire(h.getCommentaire());
+		r.setDateAction(h.getDateAction());
+		return r;
 	}
 }

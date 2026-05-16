@@ -116,6 +116,67 @@ class _DemandesAdminListScreenState
       ),
     );
   }
+
+  void _showNouvelleDemandeDialog(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Nouvelle demande',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.calendar_month_rounded, color: Color(0xFFEA580C)),
+                ),
+                title: const Text('Congé', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Absence sur plusieurs jours'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/demandes-admin/conge/nouveau');
+                },
+              ),
+              const Divider(height: 8),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.access_time_rounded, color: Color(0xFF3B82F6)),
+                ),
+                title: const Text('Autorisation de sortie', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Sortie courte (max 4h)'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/demandes-admin/autorisation/nouveau');
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _DemandeList extends StatelessWidget {
@@ -328,65 +389,4 @@ class _DemandeCard extends StatelessWidget {
       );
     }
   }
-  void _showNouvelleDemandeDialog(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Nouvelle demande',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7ED),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.calendar_month_rounded, color: Color(0xFFEA580C)),
-                ),
-                title: const Text('Congé', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Absence sur plusieurs jours'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push('/demandes-admin/conge/nouveau');
-                },
-              ),
-              const Divider(height: 8),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.access_time_rounded, color: Color(0xFF3B82F6)),
-                ),
-                title: const Text('Autorisation de sortie', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Sortie courte (max 4h)'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push('/demandes-admin/autorisation/nouveau');
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
 }
