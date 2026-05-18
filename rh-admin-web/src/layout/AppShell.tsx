@@ -9,6 +9,7 @@ const nav = [
   { to: '/app/demandes-administratives',  label: 'Demandes administratives',   icon: IconFile,     desc: 'Congés, autorisations' },
   { to: '/app/documents-administratifs',  label: 'Documents administratifs',   icon: IconDoc,      desc: 'Attestations, bulletins' },
   { to: '/app/formations',                label: 'Formations',                 icon: IconSchool,   desc: 'Plan annuel' },
+  { to: '/app/evaluations',               label: 'Évaluations',                icon: IconStar,     desc: 'Campagnes & suivi' },
   { to: '/app/collaborateurs',            label: 'Collaborateurs',             icon: IconUsers,    desc: 'Fiches et comptes' },
   { to: '/app/structure',                 label: 'Structure RH',               icon: IconBuilding, desc: 'Départements & unités' },
   { to: '/app/unites',                    label: 'Unités (référentiel)',        icon: IconBuilding, desc: 'Référentiel brut' },
@@ -99,4 +100,7 @@ function IconUsers({ className }: { className?: string }) {
 }
 function IconBuilding({ className }: { className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v0M9 13v0M9 17v0" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+function IconStar({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }

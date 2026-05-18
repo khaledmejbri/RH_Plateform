@@ -78,19 +78,35 @@ export function postPrendreProchaineDocument() {
   }).then((r) => handleRhResponse<DemandeDocument>(r));
 }
 
-export function postDocumentDisponible(id: string, reference_livrable: string, commentaire_rh?: string) {
+export function postDocumentDisponible(
+  id: string,
+  reference_livrable: string,
+  commentaire_rh?: string,
+  justification_derogation_fifo?: string,
+) {
   return apiFetch(`/api/rh/v1/demandes-documents-administratifs/${id}/disponible`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reference_livrable, commentaire_rh: commentaire_rh ?? undefined }),
+    body: JSON.stringify({
+      reference_livrable,
+      commentaire_rh: commentaire_rh ?? undefined,
+      justification_derogation_fifo: justification_derogation_fifo ?? undefined,
+    }),
   }).then((r) => handleRhResponse<DemandeDocument>(r));
 }
 
-export function postDocumentRejet(id: string, motif: string) {
-  return apiFetch(`/api/rh/v1/demandes-documents-administratifs/${id}/rejeter`, {
+export function postDocumentRejet(
+  id: string,
+  motif: string,
+  justification_derogation_fifo?: string,
+) {
+  return apiFetch(`/api/rh/v1/demandes-documents-administratifs/${id}/refuser`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ motif }),
+    body: JSON.stringify({
+      motif,
+      justification_derogation_fifo: justification_derogation_fifo ?? undefined,
+    }),
   }).then((r) => handleRhResponse<DemandeDocument>(r));
 }
 
@@ -193,9 +209,12 @@ export type DemandeDocument = {
   delai_sla_heures: number;
   rang_dans_file?: number;
   en_retard: boolean;
+  est_prochaine_fifo?: boolean;
   reference_livrable?: string;
   commentaire_demandeur?: string;
   departement_libelle?: string;
+  justification_derogation_fifo?: string;
+  derogation_fifo_par?: string;
   cree_le: string;
 };
 
@@ -203,7 +222,7 @@ export type CollaborateurRow = {
   identifiant: string;
   matricule: string;
   prenom: string;
-  nom: string;
+  name: string;
   courriel_professionnel?: string;
   poste_libelle?: string;
   fonction?: string;

@@ -53,7 +53,7 @@ function Badge({ label, color }: { label: string; color: 'blue' | 'purple' | 'gr
 function CollabOption({ c }: { c: CollaborateurRow }) {
   return (
     <option value={c.identifiant}>
-      {c.matricule} — {c.prenom} {c.nom}
+      {c.matricule} — {c.prenom} {c.name}
     </option>
   );
 }
@@ -141,7 +141,7 @@ function ModalCreerDept({
         await postCollaborateur({
           matricule: cMatricule.trim(),
           prenom: cPrenom.trim(),
-          nom: cNom.trim(),
+          name: cNom.trim(),
           courriel_professionnel: cEmail.trim(),
           statut: 'ACTIF',
           profil_acces: 'RESPONSABLE',
@@ -389,7 +389,7 @@ function ModalCreerUnite({
         await postCollaborateur({
           matricule: cMatricule.trim(),
           prenom: cPrenom.trim(),
-          nom: cNom.trim(),
+          name: cNom.trim(),
           courriel_professionnel: cEmail.trim(),
           statut: 'ACTIF',
           profil_acces: 'RO',
@@ -609,9 +609,9 @@ function UniteCard({
             </div>
             {ro ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                <Avatar name={`${ro.prenom} ${ro.nom}`} />
+                <Avatar name={`${ro.prenom} ${ro.name}`} />
                 <div>
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>{ro.prenom} {ro.nom}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{ro.prenom} {ro.name}</span>
                   <Badge label="RO" color="purple" />
                   <div style={{ fontSize: 11, color: 'var(--muted)' }}>{ro.courriel_professionnel ?? ro.matricule}</div>
                 </div>
@@ -646,10 +646,10 @@ function UniteCard({
                     background: 'var(--surface)', border: '1px solid var(--border)',
                     borderRadius: 10, padding: '8px 12px',
                   }}>
-                    <Avatar name={`${t.prenom} ${t.nom}`} />
+                    <Avatar name={`${t.prenom} ${t.name}`} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {t.prenom} {t.nom}
+                        {t.prenom} {t.name}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{t.poste_libelle ?? t.fonction ?? t.matricule}</div>
                     </div>
@@ -726,9 +726,9 @@ function DeptCard({
             </div>
             {chef ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                <Avatar name={`${chef.prenom} ${chef.nom}`} />
+                <Avatar name={`${chef.prenom} ${chef.name}`} />
                 <div>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{chef.prenom} {chef.nom}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{chef.prenom} {chef.name}</span>
                   {' '}
                   <Badge label="Chef de département" color="blue" />
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>{chef.courriel_professionnel ?? chef.matricule}</div>

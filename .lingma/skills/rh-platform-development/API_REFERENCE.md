@@ -31,7 +31,7 @@ Response:
       "email": "employee@agua.tn",
       "roles": ["COLLABORATEUR"],
       "employeId": "uuid-employe",
-      "nom": "Doe",
+      "name": "Doe",
       "prenom": "John"
     }
   }
@@ -457,15 +457,15 @@ Role: RH
   "dateFin": "2026-12-31",
   "critères": [
     {
-      "nom": "Performance",
+      "name": "Performance",
       "poids": 40
     },
     {
-      "nom": "Compétences",
+      "name": "Compétences",
       "poids": 30
     },
     {
-      "nom": "Attitude",
+      "name": "Attitude",
       "poids": 30
     }
   ]

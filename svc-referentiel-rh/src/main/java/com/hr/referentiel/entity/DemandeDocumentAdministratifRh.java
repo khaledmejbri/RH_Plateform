@@ -50,6 +50,14 @@ public class DemandeDocumentAdministratifRh {
 	@Column(name = "reference_livrable", length = 1024)
 	private String referenceLivrable;
 
+	/** Justification obligatoire lorsqu'un RH traite cette demande en dérogeant à l'ordre FIFO. */
+	@Column(name = "justification_derogation_fifo", length = 2000)
+	private String justificationDerogationFifo;
+
+	/** Identifiant du RH ayant autorisé la dérogation FIFO. */
+	@Column(name = "derogation_fifo_par")
+	private UUID derogationFifoPar;
+
 	@Column(name = "cree_le", nullable = false, updatable = false)
 	private Instant creeLe;
 
@@ -157,5 +165,21 @@ public class DemandeDocumentAdministratifRh {
 
 	public void setModifieLe(Instant modifieLe) {
 		this.modifieLe = modifieLe;
+	}
+
+	public String getJustificationDerogationFifo() {
+		return justificationDerogationFifo;
+	}
+
+	public void setJustificationDerogationFifo(String justificationDerogationFifo) {
+		this.justificationDerogationFifo = justificationDerogationFifo;
+	}
+
+	public UUID getDerogationFifoPar() {
+		return derogationFifoPar;
+	}
+
+	public void setDerogationFifoPar(UUID derogationFifoPar) {
+		this.derogationFifoPar = derogationFifoPar;
 	}
 }

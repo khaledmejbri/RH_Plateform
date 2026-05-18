@@ -59,6 +59,14 @@ public class PlainteRhController {
 	 * Mise à jour statut avec validation des transitions autorisées.
 	 * CDC §M04 : transitions NOUVEAU→EN_ANALYSE→EN_TRAITEMENT→RESOLU→FERME uniquement.
 	 */
+	@PostMapping("/{identifiant}/valider-ro")
+	@PreAuthorize("hasRole('USER')")
+	public ResponseEntity<PlainteRhResponse> validerRo(
+			@PathVariable UUID identifiant,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(plainteRhService.validerPlainteExterneParRo(identifiant, principal.getToken()));
+	}
+
 	@PatchMapping("/{identifiant}/statut")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
 	public ResponseEntity<PlainteRhResponse> mettreAJourStatut(

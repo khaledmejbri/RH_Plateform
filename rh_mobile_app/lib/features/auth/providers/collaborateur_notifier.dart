@@ -6,14 +6,14 @@ import 'package:dio/dio.dart';
 
 class CollaborateurInfo {
   final String identifiant;
-  final String nom;
+  final String name;
   final String prenom;
   final String? email;
   final String profilAcces;
 
   CollaborateurInfo({
     required this.identifiant,
-    required this.nom,
+    required this.name,
     required this.prenom,
     this.email,
     this.profilAcces = 'COLLABORATEUR',
@@ -27,7 +27,7 @@ class CollaborateurInfo {
   factory CollaborateurInfo.fromMap(Map<String, dynamic> map) {
     return CollaborateurInfo(
       identifiant: map['identifiant'] ?? '',
-      nom: map['nom'] ?? '',
+      name: map['name'] ?? '',
       prenom: map['prenom'] ?? '',
       email: map['courriel_professionnel'] ?? map['email'],
       profilAcces: map['profil_acces'] ?? 'COLLABORATEUR',
@@ -35,7 +35,7 @@ class CollaborateurInfo {
   }
 
   @override
-  String toString() => 'CollaborateurInfo(id: $identifiant, nom: $nom, prenom: $prenom, email: $email)';
+  String toString() => 'CollaborateurInfo(id: $identifiant, name: $name, prenom: $prenom, email: $email)';
 }
 
 class CollaborateurNotifier extends StateNotifier<AsyncValue<CollaborateurInfo?>> {

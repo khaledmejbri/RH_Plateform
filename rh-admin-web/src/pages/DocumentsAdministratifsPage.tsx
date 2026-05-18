@@ -17,6 +17,10 @@ export default function DocumentsAdministratifsPage() {
   const [ref, setRef]                     = useState('');
   const [comment, setComment]             = useState('');
 
+  // ── FIFO override state ──
+  const [fifoJustification, setFifoJustification] = useState('');
+  const [showFifoWarning, setShowFifoWarning]     = useState(false);
+
   async function load() {
     setLoading(true);
     setErr(null);
@@ -26,6 +30,13 @@ export default function DocumentsAdministratifsPage() {
   }
 
   useEffect(() => { void load(); }, []);
+
+  /** Is this request out of FIFO order? */
+  function isOutOfFifoOrder(d: DemandeDocument | null): boolean {
+    if (!d) return false;
+    if (d.statut !== 'EN_ATTENTE_FILE' && d.statut !== 'EN_TRAITEMENT_RH') return false;
+    return d.est_prochaine_fifo === false;
+  }
 
   async function prendreProchaine() {
     setMsg(null); setErr(null);
@@ -41,7 +52,12 @@ export default function DocumentsAdministratifsPage() {
     if (!pickedDemande || !ref.trim()) return;
     setErr(null);
     try {
-      await postDocumentDisponible(pickedDemande.identifiant, ref.trim(), comment.trim() || undefined);
+      await postDocumentDisponible(
+        pickedDemande.identifiant,
+        ref.trim(),
+        comment.trim() || undefined,
+        showFifoWarning ? fifoJustification.trim() || undefined : undefined,
+      );
       closeModal();
       setMsg('Document marqué comme disponible.');
       await load();
@@ -55,7 +71,11 @@ export default function DocumentsAdministratifsPage() {
     }
     setErr(null);
     try {
-      await postDocumentRejet(pickedDemande.identifiant, comment.trim());
+      await postDocumentRejet(
+        pickedDemande.identifiant,
+        comment.trim(),
+        showFifoWarning ? fifoJustification.trim() || undefined : undefined,
+      );
       closeModal();
       setMsg('Demande refusée.');
       await load();
@@ -67,12 +87,17 @@ export default function DocumentsAdministratifsPage() {
     setActionMode(null);
     setRef('');
     setComment('');
+    setFifoJustification('');
+    setShowFifoWarning(false);
     setErr(null);
   }
 
   function openInfo(d: DemandeDocument) {
     setPickedDemande(d);
     setActionMode('info');
+    setFifoJustification('');
+    const outOfOrder = isOutOfFifoOrder(d);
+    setShowFifoWarning(outOfOrder);
   }
 
   function formatDate(iso: string) {
@@ -83,12 +108,18 @@ export default function DocumentsAdministratifsPage() {
   function statusMeta(statut: string): { label: string; color: string; bg: string } {
     switch (statut.toUpperCase()) {
       case 'EN_TRAITEMENT_RH': return { label: 'En traitement', color: '#1e40af', bg: '#eff6ff' };
-      case 'EN_ATTENTE':       return { label: 'En attente',    color: '#92400e', bg: '#fffbeb' };
+      case 'EN_ATTENTE_FILE':  return { label: 'En attente',    color: '#92400e', bg: '#fffbeb' };
       case 'DISPONIBLE':       return { label: 'Disponible',    color: '#065f46', bg: '#f0fdf4' };
-      case 'REJETE':           return { label: 'Refusé',        color: '#991b1b', bg: '#fef2f2' };
+      case 'REJETEE':          return { label: 'Refusé',        color: '#991b1b', bg: '#fef2f2' };
       default:                 return { label: statut,           color: '#374151', bg: '#f3f4f6' };
     }
   }
+
+  /** Is the action button (validate/reject confirmation) disabled due to FIFO? */
+  const fifoBlocked = showFifoWarning && !fifoJustification.trim();
+
+  /** Prevent taking a new request if one is already being processed */
+  const hasPendingTraitement = rows.some(r => r.statut === 'EN_TRAITEMENT_RH');
 
   return (
     <div className="page">
@@ -102,14 +133,32 @@ export default function DocumentsAdministratifsPage() {
           <button type="button" className="btn btn--secondary" onClick={() => void load()} disabled={loading}>
             Actualiser
           </button>
-          <button type="button" className="btn btn--primary" onClick={() => void prendreProchaine()}>
-            Prendre la prochaine demande
+          <button 
+            type="button" 
+            className="btn btn--primary" 
+            onClick={() => void prendreProchaine()}
+            disabled={hasPendingTraitement || loading}
+            title={hasPendingTraitement ? "Veuillez terminer le traitement de la demande en cours avant d'en prendre une nouvelle." : undefined}
+            style={{ opacity: hasPendingTraitement ? 0.6 : 1, cursor: hasPendingTraitement ? 'not-allowed' : 'pointer' }}
+          >
+            {hasPendingTraitement ? '🔒 Terminer le traitement en cours' : 'Prendre la prochaine demande'}
           </button>
         </div>
       </div>
 
       {err ? <div className="alert alert--error">{err}</div> : null}
       {msg ? <div className="alert alert--success">{msg}</div> : null}
+
+      {/* ── FIFO Legend ── */}
+      <div style={fifoLegendStyle}>
+        <span style={{ fontWeight: 600, color: '#475569', fontSize: 13 }}>
+          ⓘ Ordre FIFO actif
+        </span>
+        <span style={{ color: '#64748b', fontSize: 12 }}>
+          — Les demandes sont traitées dans l'ordre d'arrivée (premier arrivé, premier servi).
+          La demande avec le rang #1 doit être traitée en priorité.
+        </span>
+      </div>
 
       {/* ── Table ── */}
       <div style={cardStyle}>
@@ -123,7 +172,7 @@ export default function DocumentsAdministratifsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  {['Rang', 'Type de document', 'Statut', 'SLA', 'Retard', ''].map(h => (
+                  {['Rang FIFO', 'Type de document', 'Statut', 'SLA', 'Retard', ''].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
@@ -131,14 +180,44 @@ export default function DocumentsAdministratifsPage() {
               <tbody>
                 {rows.map((d, i) => {
                   const s = statusMeta(d.statut);
+                  const isNext = d.est_prochaine_fifo === true;
                   return (
                     <tr key={d.identifiant}
-                      style={{ borderBottom: i < rows.length - 1 ? '1px solid #f1f5f9' : 'none' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
+                      style={{
+                        borderBottom: i < rows.length - 1 ? '1px solid #f1f5f9' : 'none',
+                        background: isNext ? '#f0fdf4' : 'white',
+                        borderLeft: isNext ? '3px solid #22c55e' : '3px solid transparent',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = isNext ? '#dcfce7' : '#f9fafb')}
+                      onMouseLeave={e => (e.currentTarget.style.background = isNext ? '#f0fdf4' : 'white')}>
                       <td style={tdStyle}>
-                        <span style={{ fontWeight: 600, color: '#374151' }}>
-                          {d.rang_dans_file ?? (d.statut === 'EN_TRAITEMENT_RH' ? '—' : '—')}
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          fontWeight: 700, color: isNext ? '#16a34a' : '#374151',
+                        }}>
+                          {d.rang_dans_file != null ? (
+                            <>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                width: 28, height: 28, borderRadius: '50%', fontSize: 13, fontWeight: 700,
+                                background: isNext ? '#dcfce7' : '#f1f5f9',
+                                color: isNext ? '#16a34a' : '#64748b',
+                                border: isNext ? '2px solid #22c55e' : '1px solid #e2e8f0',
+                              }}>
+                                #{d.rang_dans_file}
+                              </span>
+                              {isNext && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 700, color: '#16a34a',
+                                  textTransform: 'uppercase', letterSpacing: '0.05em',
+                                }}>
+                                  Suivant
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span style={{ color: '#d1d5db' }}>—</span>
+                          )}
                         </span>
                       </td>
                       <td style={tdStyle}>
@@ -199,6 +278,46 @@ export default function DocumentsAdministratifsPage() {
               <button onClick={closeModal} style={closeBtnStyle}>✕</button>
             </div>
 
+            {/* FIFO Warning Banner */}
+            {showFifoWarning && (
+              <div style={fifoWarningBannerStyle}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 18 }}>⚠️</span>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: '#92400e' }}>
+                    Attention — Ordre FIFO non respecté
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: 13, color: '#78350f', lineHeight: 1.5 }}>
+                  Cette demande n'est pas la prochaine dans l'ordre de la file d'attente.
+                  Des demandes antérieures (rang inférieur) sont encore en attente.
+                  Pour continuer, vous devez fournir une <strong>justification obligatoire</strong> expliquant
+                  pourquoi cette demande doit être traitée en priorité.
+                </p>
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ ...labelStyle, color: '#92400e' }}>
+                    Justification de la dérogation FIFO *
+                  </label>
+                  <textarea
+                    style={{
+                      ...inputStyle,
+                      height: 72,
+                      resize: 'vertical',
+                      borderColor: fifoJustification.trim() ? '#fbbf24' : '#f87171',
+                      background: '#fffbeb',
+                    }}
+                    value={fifoJustification}
+                    onChange={e => setFifoJustification(e.target.value)}
+                    placeholder="Ex. Demande urgente du PDG, Contrat requis aujourd'hui, Besoin administratif critique…"
+                  />
+                  {!fifoJustification.trim() && (
+                    <p style={{ margin: '4px 0 0', fontSize: 11, color: '#dc2626', fontWeight: 500 }}>
+                      La justification est obligatoire pour traiter cette demande hors ordre.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Info section */}
             <div style={infoGridStyle}>
               <InfoRow label="Type de document" value={pickedDemande.type_document} highlight />
@@ -208,8 +327,20 @@ export default function DocumentsAdministratifsPage() {
               {pickedDemande.commentaire_demandeur && (
                 <InfoRow label="Motif de la demande" value={pickedDemande.commentaire_demandeur} full />
               )}
+              <InfoRow label="Rang FIFO" value={
+                pickedDemande.rang_dans_file != null
+                  ? `#${pickedDemande.rang_dans_file}${pickedDemande.est_prochaine_fifo ? ' (Suivant)' : ''}`
+                  : '—'
+              } highlight={pickedDemande.est_prochaine_fifo === true} />
               <InfoRow label="SLA" value={`${pickedDemande.delai_sla_heures}h`} />
               <InfoRow label="Retard" value={pickedDemande.en_retard ? 'Oui' : 'Non'} danger={pickedDemande.en_retard} />
+              {pickedDemande.justification_derogation_fifo && (
+                <InfoRow
+                  label="Dérogation FIFO appliquée"
+                  value={pickedDemande.justification_derogation_fifo}
+                  full
+                />
+              )}
             </div>
 
             {/* Action zone — only shown when explicitly triggered */}
@@ -235,7 +366,16 @@ export default function DocumentsAdministratifsPage() {
             <div style={{ display: 'flex', gap: 10, marginTop: 24, flexWrap: 'wrap' }}>
               {actionMode === 'info' && (
                 <>
-                  <button style={{ ...footerBtnStyle, background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}
+                  <button style={{ 
+                    ...footerBtnStyle, 
+                    background: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '#f87171' : '#fef2f2', 
+                    color: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'white' : '#dc2626', 
+                    border: '1px solid #fecaca',
+                    opacity: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 0.6 : 1,
+                    cursor: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'not-allowed' : 'pointer'
+                  }}
+                    disabled={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH'}
+                    title={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'Terminez d\'abord le traitement en cours' : undefined}
                     onClick={() => setActionMode('reject')}>
                     Refuser
                   </button>
@@ -244,9 +384,17 @@ export default function DocumentsAdministratifsPage() {
                     onClick={closeModal}>
                     Fermer
                   </button>
-                  <button style={{ ...footerBtnStyle, background: '#1e40af', color: 'white' }}
+                  <button style={{ 
+                    ...footerBtnStyle, 
+                    background: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '#94a3b8' : '#1e40af', 
+                    color: 'white',
+                    opacity: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 0.6 : 1,
+                    cursor: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'not-allowed' : 'pointer'
+                  }}
+                    disabled={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH'}
+                    title={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'Terminez d\'abord le traitement en cours' : undefined}
                     onClick={() => setActionMode('validate')}>
-                    Valider le document
+                    {hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '🔒 Traitement bloqué' : 'Valider le document'}
                   </button>
                 </>
               )}
@@ -257,10 +405,17 @@ export default function DocumentsAdministratifsPage() {
                     Retour
                   </button>
                   <div style={{ flex: 1 }} />
-                  <button style={{ ...footerBtnStyle, background: '#1e40af', color: 'white' }}
-                    disabled={!ref.trim()}
+                  <button style={{
+                    ...footerBtnStyle,
+                    background: fifoBlocked ? '#94a3b8' : '#1e40af',
+                    color: 'white',
+                    cursor: fifoBlocked || !ref.trim() ? 'not-allowed' : 'pointer',
+                    opacity: fifoBlocked || !ref.trim() ? 0.6 : 1,
+                  }}
+                    disabled={!ref.trim() || fifoBlocked}
+                    title={fifoBlocked ? 'Justification FIFO obligatoire' : undefined}
                     onClick={() => void marquerDisponible()}>
-                    Confirmer la validation
+                    {fifoBlocked ? '🔒 Justification requise' : 'Confirmer la validation'}
                   </button>
                 </>
               )}
@@ -271,10 +426,17 @@ export default function DocumentsAdministratifsPage() {
                     Retour
                   </button>
                   <div style={{ flex: 1 }} />
-                  <button style={{ ...footerBtnStyle, background: '#dc2626', color: 'white' }}
-                    disabled={!comment.trim()}
+                  <button style={{
+                    ...footerBtnStyle,
+                    background: fifoBlocked ? '#94a3b8' : '#dc2626',
+                    color: 'white',
+                    cursor: fifoBlocked || !comment.trim() ? 'not-allowed' : 'pointer',
+                    opacity: fifoBlocked || !comment.trim() ? 0.6 : 1,
+                  }}
+                    disabled={!comment.trim() || fifoBlocked}
+                    title={fifoBlocked ? 'Justification FIFO obligatoire' : undefined}
                     onClick={() => void rejeterDemande()}>
-                    Confirmer le refus
+                    {fifoBlocked ? '🔒 Justification requise' : 'Confirmer le refus'}
                   </button>
                 </>
               )}
@@ -309,6 +471,25 @@ function InfoRow({ label, value, highlight, full, danger }: {
 }
 
 // ── Styles ───────────────────────────────────────────────────────────────────
+
+const fifoLegendStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '12px 20px',
+  background: '#f8fafc',
+  border: '1px solid #e2e8f0',
+  borderRadius: 12,
+  marginBottom: 16,
+};
+
+const fifoWarningBannerStyle: React.CSSProperties = {
+  padding: '16px 20px',
+  background: '#fffbeb',
+  border: '1px solid #fbbf24',
+  borderRadius: 12,
+  marginBottom: 20,
+};
 
 const cardStyle: React.CSSProperties = {
   background: 'white',
@@ -364,7 +545,7 @@ const modalStyle: React.CSSProperties = {
   borderRadius: 20,
   padding: 28,
   width: '100%',
-  maxWidth: 540,
+  maxWidth: 580,
   boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
   maxHeight: '90vh',
   overflowY: 'auto',

@@ -21,13 +21,13 @@ public class WebSocketNotificationService {
         
         // Use convertAndSendToUser for proper /user/{userId}/queue routing
         String queue = "/queue/notifications";
-        log.info("   - Destination: /user/{}/{}", userId, queue);
+        log.info("   - Destination: /user/{}{}", userId, queue);
         
         try {
             messagingTemplate.convertAndSendToUser(userId, queue, message);
-            log.info("✅ Notification sent successfully to /user/{}/{}", userId, queue);
+            log.info("✅ Notification sent successfully to /user/{}{}", userId, queue);
         } catch (MessagingException e) {
-            log.error("❌ Failed to send notification to /user/{}/{}", userId, queue, e);
+            log.error("❌ Failed to send notification to /user/{}{}", userId, queue, e);
             throw new RuntimeException(e);
         }
     }

@@ -20,7 +20,7 @@ export default function CollaborateursPage() {
 
   const [matricule, setMatricule] = useState('');
   const [prenom, setPrenom] = useState('');
-  const [nom, setNom] = useState('');
+  const [name, setNom] = useState('');
   const [courriel, setCourriel] = useState('');
   const [posteLibelle, setPosteLibelle] = useState('');
   const [fonction, setFonction] = useState('');
@@ -66,7 +66,7 @@ export default function CollaborateursPage() {
       await postCollaborateur({
         matricule: matricule.trim(),
         prenom: prenom.trim(),
-        nom: nom.trim(),
+        name: name.trim(),
         courriel_professionnel: courriel.trim(),
         poste_libelle: posteLibelle.trim() || undefined,
         fonction: fonction.trim() || undefined,
@@ -101,7 +101,7 @@ export default function CollaborateursPage() {
 
   async function archiveCollaborateur(row: CollaborateurRow) {
     if (row.statut === 'ARCHIVE') return;
-    if (!window.confirm(`Archiver ${row.prenom} ${row.nom} ?`)) return;
+    if (!window.confirm(`Archiver ${row.prenom} ${row.name} ?`)) return;
     setErr(null);
     setMsg(null);
     try {
@@ -156,7 +156,7 @@ export default function CollaborateursPage() {
                       <tr key={r.identifiant}>
                         <td className="mono">{r.matricule}</td>
                         <td>
-                          {r.prenom} {r.nom}
+                          {r.prenom} {r.name}
                         </td>
                         <td className="muted">{r.courriel_professionnel ?? '-'}</td>
                         <td>{r.statut}</td>
@@ -218,7 +218,7 @@ export default function CollaborateursPage() {
             </div>
             <div>
               <label className="field-label">Nom</label>
-              <input className="field-input" value={nom} onChange={(e) => setNom(e.target.value)} required />
+              <input className="field-input" value={name} onChange={(e) => setNom(e.target.value)} required />
             </div>
             <div>
               <label className="field-label">Courriel</label>

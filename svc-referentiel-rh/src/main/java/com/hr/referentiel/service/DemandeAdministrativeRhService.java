@@ -7,7 +7,6 @@ import com.hr.referentiel.dto.*;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.entity.DemandeAdministrativeRh;
 import com.hr.referentiel.entity.DemandeAdminWorkflowHistory;
-import com.hr.referentiel.entity.UniteOrganisation;
 import com.hr.referentiel.kafka.RhNotificationPublisher;
 import com.hr.referentiel.repository.CollaborateurRepository;
 import com.hr.referentiel.repository.DemandeAdministrativeRhRepository;
@@ -70,8 +69,8 @@ public class DemandeAdministrativeRhService {
 		d.setContenu(new HashMap<>(req.getContenu()));
 		DemandeAdministrativePeriodeHelper.appliquerPeriodeIndexee(d);
 
-		boolean aUnRo = roDeUnite(demandeur.getUnite()) != null;
-		d.setStatut(aUnRo
+		boolean aUnSuperieur = superieurActif(demandeur) != null;
+		d.setStatut(aUnSuperieur
 				? StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR
 				: StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
 
@@ -113,13 +112,9 @@ public class DemandeAdministrativeRhService {
 
 	@Transactional(readOnly = true)
 	public List<DemandeAdministrativeRhResponse> demandesEnAttenteRo(Jwt jwt) {
-		Collaborateur ro = collaborateurConnecteService.exigerCollaborateur(jwt);
-		UniteOrganisation unite = ro.getUnite();
-		if (unite == null) return List.of();
-		return collaborateurRepository.findByUniteId(unite.getId()).stream()
-				.filter(m -> !m.getId().equals(ro.getId()))
-				.flatMap(m -> demandeRepo.findByDemandeurIdOrderByCreeLeDesc(m.getId()).stream()
-						.filter(dem -> dem.getStatut() == StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR))
+		Collaborateur superieur = collaborateurConnecteService.exigerCollaborateur(jwt);
+		return demandeRepo.findByDemandeurSuperieurIdAndStatutOrderByCreeLeDesc(
+						superieur.getId(), StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR).stream()
 				.map(this::toResponse)
 				.collect(Collectors.toList());
 	}
@@ -162,7 +157,7 @@ public class DemandeAdministrativeRhService {
 		}
 		Collaborateur demandeur = collaborateurRepository.findDetailById(d.getDemandeur().getId())
 				.orElseThrow(() -> new IllegalStateException("Collaborateur introuvable."));
-		boolean avecRo = roDeUnite(demandeur.getUnite()) != null;
+		boolean avecRo = superieurActif(demandeur) != null;
 		return new DemandeAdministrativeSuiviResponse(d.getId(), d.getTypeDemande(), d.getStatut(),
 				avecRo, etapesAdministratif(d.getStatut(), avecRo));
 	}
@@ -318,17 +313,19 @@ public class DemandeAdministrativeRhService {
 	private Collaborateur verifierEstRoDuDemandeurEtRetourner(Jwt jwt, DemandeAdministrativeRh d) {
 		Collaborateur connecte = collaborateurConnecteService.exigerCollaborateur(jwt);
 		Collaborateur demandeur = chargerDemandeurDetail(d);
-		Collaborateur ro = roDeUnite(demandeur.getUnite());
-		if (ro == null || !ro.getId().equals(connecte.getId())) {
+		Collaborateur superieur = superieurActif(demandeur);
+		if (superieur == null || !superieur.getId().equals(connecte.getId())) {
 			throw new IllegalArgumentException(
 					"Seul le Responsable Opérationnel (RO) de l'unité du demandeur peut valider cette étape.");
 		}
-		return ro;
+		return superieur;
 	}
 
-	private Collaborateur roDeUnite(UniteOrganisation unite) {
-		if (unite == null) return null;
-		return collaborateurRepository.findRoByUniteId(unite.getId()).orElse(null);
+	private Collaborateur superieurActif(Collaborateur demandeur) {
+		if (demandeur == null || demandeur.getSuperieur() == null) return null;
+		Collaborateur superieur = demandeur.getSuperieur();
+		if (!"ACTIF".equalsIgnoreCase(superieur.getStatut())) return null;
+		return superieur;
 	}
 
 	private static List<DemandeAdministrativeRh> filtrerStatut(

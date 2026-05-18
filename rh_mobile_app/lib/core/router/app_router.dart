@@ -18,6 +18,7 @@ import '../../features/formations/presentation/formation_create_screen.dart';
 import '../../features/formations/presentation/formations_list_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
+import '../../features/evaluations/presentation/evaluations_list_screen.dart';
 import '../../features/plaintes/presentation/plainte_create_screen.dart';
 import '../../features/plaintes/presentation/plainte_detail_screen.dart';
 import '../../features/plaintes/presentation/plaintes_list_screen.dart';
@@ -85,6 +86,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/documents/:id',
         builder: (c, s) => DocumentDetailScreen(id: s.pathParameters['id']!),
       ),
+      GoRoute(path: '/evaluations', builder: (_, __) => const EvaluationsListScreen()),
       GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
     ],
   );

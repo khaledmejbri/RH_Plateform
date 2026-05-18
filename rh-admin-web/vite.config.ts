@@ -9,6 +9,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // All API requests go through Gateway (port 8080)
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,

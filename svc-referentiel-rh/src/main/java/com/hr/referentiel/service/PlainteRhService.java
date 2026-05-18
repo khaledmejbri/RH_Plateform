@@ -122,6 +122,42 @@ public class PlainteRhService {
 	}
 
 	@Transactional
+	public PlainteRhResponse validerPlainteExterneParRo(UUID id, Jwt jwt) {
+		PlainteRh p = charger(id);
+		if (p.getTypePlainte() != TypePlainteRh.EXTERNE) {
+			throw new IllegalArgumentException("Seules les plaintes externes passent par une validation RO.");
+		}
+		if (p.getStatut() != StatutPlainteRh.NOUVEAU) {
+			throw new IllegalArgumentException("Cette plainte externe n'est pas en attente de validation RO.");
+		}
+
+		Collaborateur ro = collaborateurConnecteService.exigerCollaborateur(jwt);
+		Collaborateur auteur = p.getAuteur();
+		Collaborateur roAttendu = auteur.getSuperieur();
+		if (roAttendu == null || !"ACTIF".equalsIgnoreCase(roAttendu.getStatut())
+				|| !roAttendu.getId().equals(ro.getId())) {
+			throw new IllegalArgumentException(
+					"Seul le supérieur direct du demandeur peut valider cette plainte.");
+		}
+
+		p.setStatut(StatutPlainteRh.EN_ANALYSE);
+		List<Map<String, String>> log = new ArrayList<>(
+				p.getLogActions() != null ? p.getLogActions() : List.of());
+		Map<String, String> logEntry = new LinkedHashMap<>();
+		logEntry.put("ancien_statut", StatutPlainteRh.NOUVEAU.name());
+		logEntry.put("nouveau_statut", StatutPlainteRh.EN_ANALYSE.name());
+		logEntry.put("acteur_id", ro.getId().toString());
+		logEntry.put("horodatage", Instant.now().toString());
+		logEntry.put("commentaire", "Validée par le RO et transmise au RH");
+		log.add(logEntry);
+		p.setLogActions(log);
+
+		PlainteRh saved = plainteRhRepository.save(p);
+		notificationPublisher.notifierValidationRoPlainteExterne(auteur, p.getNumeroTicket(), ro);
+		return toResponse(saved);
+	}
+
+	@Transactional
 	public PlainteRhResponse mettreAJourStatut(UUID id, PlainteRhStatutMiseAJourRequest req, UUID acteurId) {
 		PlainteRh p = charger(id);
 		StatutPlainteRh ancienStatut = p.getStatut();

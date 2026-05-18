@@ -37,8 +37,15 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
   final SecureTokenStorage _storage;
   StompClient? _client;
   String? _currentUserId;
+  bool _connecting = false;
+  final Set<String> _seenNotificationKeys = <String>{};
 
   Future<void> connect(String userId) async {
+    if (_connecting) {
+      debugPrint('[STOMP] Connection already in progress, skipping duplicate connect()');
+      return;
+    }
+    _connecting = true;
     try {
       final token = await _storage.readAccessToken();
 
@@ -93,6 +100,19 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       debugPrint('[STOMP] Token length: ${token?.length ?? 0}');
       debugPrint('[STOMP] ═════════════════════════════════════════');
 
+      if (state.connected && _currentUserId == finalUserId && _client != null) {
+        debugPrint('[STOMP] Already connected for user $finalUserId, skipping duplicate connect()');
+        return;
+      }
+
+      if (_client != null) {
+        debugPrint('[STOMP] Existing client found, deactivating before reconnect');
+        _client!.deactivate();
+        // Give it a moment to disconnect
+        await Future.delayed(const Duration(milliseconds: 500));
+        state = state.copyWith(connected: false);
+      }
+
       _currentUserId = finalUserId;
 
       // STOMP-level headers — these populate the CONNECT frame that
@@ -139,23 +159,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
               destination: userQueueDest,
               callback: _handleFrame,
             );
-
-            // Also subscribe to topic
-            final userTopicDest = '/topic/$finalUserId';
-            debugPrint('[STOMP] 📨 Subscribing to: $userTopicDest');
-            _client?.subscribe(
-              destination: userTopicDest,
-              callback: _handleFrame,
-            );
-
-            // Subscribe to broadcast
-            debugPrint('[STOMP] 📨 Subscribing to: /topic/RH');
-            _client?.subscribe(
-              destination: '/topic/RH',
-              callback: _handleFrame,
-            );
-            
-            debugPrint('[STOMP] ✅ All subscriptions active');
+            debugPrint('[STOMP] User queue subscription active');
           },
           onDisconnect: (frame) {
             debugPrint('[STOMP] ❌ DISCONNECTED');
@@ -227,6 +231,8 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       debugPrint('[STOMP] ❌ Fatal Connection Error: $e');
       debugPrint('[STOMP] Stack trace: $stackTrace');
       state = state.copyWith(connected: false);
+    } finally {
+      _connecting = false;
     }
   }
 
@@ -239,6 +245,16 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       debugPrint('[STOMP] 📥 Raw frame received');
       debugPrint('[STOMP] Command: ${frame.command}');
       debugPrint('[STOMP] Body: ${frame.body}');
+
+      final notificationKey = frame.body!;
+      if (_seenNotificationKeys.contains(notificationKey)) {
+        debugPrint('[STOMP] Duplicate notification frame ignored');
+        return;
+      }
+      _seenNotificationKeys.add(notificationKey);
+      if (_seenNotificationKeys.length > 200) {
+        _seenNotificationKeys.remove(_seenNotificationKeys.first);
+      }
 
       final json = jsonDecode(frame.body!) as Map<String, dynamic>;
       debugPrint('[STOMP] ✅ JSON decoded: $json');
@@ -264,6 +280,9 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
   void disconnect() {
     debugPrint('[STOMP] Disconnecting...');
     _client?.deactivate();
+    _client = null;
+    _currentUserId = null;
+    _connecting = false;
     state = state.copyWith(connected: false);
   }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Client } from '@stomp/stompjs';
+import { getToken } from '../api/auth';
 
 export default function NotificationBell() {
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -10,7 +11,7 @@ export default function NotificationBell() {
     // Get user ID from localStorage or JWT token
     const getUserId = () => {
       try {
-        const token = localStorage.getItem('access_token');
+        const token = getToken();
         if (token) {
           const parts = token.split('.');
           if (parts.length === 3) {
@@ -28,12 +29,15 @@ export default function NotificationBell() {
     console.log('[STOMP] User ID:', userId);
 
     // Get token for STOMP auth header
-    const token = localStorage.getItem('access_token');
+    const token = getToken();
 
     // Use native WebSocket instead of SockJS for better compatibility
     const client = new Client({
       brokerURL: 'ws://localhost:8080/ws',
-      connectHeaders: token ? { Authorization: `Bearer ${token}` } : {},
+      connectHeaders: token ? {
+        Authorization: `Bearer ${token}`,
+        authorization: `Bearer ${token}`,
+      } : {},
       debug: (str) => {
         console.log('[STOMP]', str);
       },

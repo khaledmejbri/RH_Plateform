@@ -34,7 +34,7 @@ public class CollaborateurWelcomeMailService {
 		this.mailExecutor = mailExecutor;
 	}
 
-	public void scheduleWelcomeEmail(String to, String prenom, String nom, String username, String initialPassword) {
+	public void scheduleWelcomeEmail(String to, String prenom, String name, String username, String initialPassword) {
 		if (!welcomeEnabled) {
 			log.debug("Courriel bienvenue collaborateur désactivé (app.mail.collaborateur-welcome-enabled=false).");
 			return;
@@ -45,13 +45,13 @@ public class CollaborateurWelcomeMailService {
 		}
 		
 		String p = prenom != null ? prenom : "";
-		String n = nom != null ? nom : "";
+		String n = name != null ? name : "";
 		mailExecutor.execute(() -> sendToKafka(to.trim(), p, n, username, initialPassword));
 	}
 
-	private void sendToKafka(String to, String prenom, String nom, String username, String initialPassword) {
+	private void sendToKafka(String to, String prenom, String name, String username, String initialPassword) {
 		try {
-			String body = buildBody(prenom, nom, username, initialPassword);
+			String body = buildBody(prenom, name, username, initialPassword);
 			NotificationMessage notification = new NotificationMessage("EMAIL", to, "Bienvenue — accès application mobile RH", body);
 			String payload = objectMapper.writeValueAsString(notification);
 
@@ -62,8 +62,8 @@ public class CollaborateurWelcomeMailService {
 		}
 	}
 
-	private static String buildBody(String prenom, String nom, String username, String initialPassword) {
-		return salutation(prenom, nom)
+	private static String buildBody(String prenom, String name, String username, String initialPassword) {
+		return salutation(prenom, name)
 				+ """
 				Bienvenue sur la plateforme RH.
 
@@ -79,16 +79,16 @@ public class CollaborateurWelcomeMailService {
 				""".formatted(username, initialPassword);
 	}
 
-	private static String salutation(String prenom, String nom) {
-		if ((prenom == null || prenom.isBlank()) && (nom == null || nom.isBlank())) {
+	private static String salutation(String prenom, String name) {
+		if ((prenom == null || prenom.isBlank()) && (name == null || name.isBlank())) {
 			return "Bonjour,\n\n";
 		}
 		StringBuilder b = new StringBuilder("Bonjour");
 		if (prenom != null && !prenom.isBlank()) {
 			b.append(' ').append(prenom.trim());
 		}
-		if (nom != null && !nom.isBlank()) {
-			b.append(' ').append(nom.trim());
+		if (name != null && !name.isBlank()) {
+			b.append(' ').append(name.trim());
 		}
 		b.append(",\n\n");
 		return b.toString();
