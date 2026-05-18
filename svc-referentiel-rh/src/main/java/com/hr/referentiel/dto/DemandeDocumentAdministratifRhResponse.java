@@ -52,6 +52,18 @@ public class DemandeDocumentAdministratifRhResponse {
 	@JsonProperty("en_retard")
 	private boolean enRetard;
 
+	/** true si cette demande est la prochaine à traiter selon l'ordre FIFO. */
+	@JsonProperty("est_prochaine_fifo")
+	private boolean estProchaineFifo;
+
+	/** Justification fournie par le RH lorsqu'une dérogation FIFO a été appliquée. */
+	@JsonProperty("justification_derogation_fifo")
+	private String justificationDerogationFifo;
+
+	/** Identifiant du RH ayant autorisé la dérogation FIFO. */
+	@JsonProperty("derogation_fifo_par")
+	private UUID derogationFifoPar;
+
 	public DemandeDocumentAdministratifRhResponse() {
 	}
 
@@ -59,7 +71,8 @@ public class DemandeDocumentAdministratifRhResponse {
 			TypeDocumentAdministratifDemandeRh typeDocument, StatutDocumentAdministratifDemandeRh statut,
 			String reglePriorite, int delaiSlaHeures, Instant dateEcheanceTraitement, String commentaireDemandeur,
 			String commentaireRh, String referenceLivrable, Instant creeLe, Instant modifieLe,
-			Integer rangDansFile, boolean enRetard) {
+			Integer rangDansFile, boolean enRetard, boolean estProchaineFifo,
+			String justificationDerogationFifo, UUID derogationFifoPar) {
 		this.identifiant = identifiant;
 		this.demandeurIdentifiant = demandeurIdentifiant;
 		this.typeDocument = typeDocument;
@@ -74,6 +87,9 @@ public class DemandeDocumentAdministratifRhResponse {
 		this.modifieLe = modifieLe;
 		this.rangDansFile = rangDansFile;
 		this.enRetard = enRetard;
+		this.estProchaineFifo = estProchaineFifo;
+		this.justificationDerogationFifo = justificationDerogationFifo;
+		this.derogationFifoPar = derogationFifoPar;
 	}
 
 	public UUID getIdentifiant() {
@@ -130,5 +146,17 @@ public class DemandeDocumentAdministratifRhResponse {
 
 	public boolean isEnRetard() {
 		return enRetard;
+	}
+
+	public boolean isEstProchaineFifo() {
+		return estProchaineFifo;
+	}
+
+	public String getJustificationDerogationFifo() {
+		return justificationDerogationFifo;
+	}
+
+	public UUID getDerogationFifoPar() {
+		return derogationFifoPar;
 	}
 }

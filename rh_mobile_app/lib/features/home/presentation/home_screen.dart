@@ -387,7 +387,7 @@ class _DashboardPage extends ConsumerWidget {
                                 const SizedBox(height: 2),
                                 Text(
                                   user != null
-                                      ? '${user.prenom} ${user.nom}'
+                                      ? '${user.prenom} ${user.name}'
                                       : 'Bienvenue',
                                   style: Theme.of(context).textTheme.titleLarge
                                       ?.copyWith(fontWeight: FontWeight.w700),
@@ -550,6 +550,14 @@ class _DashboardPage extends ConsumerWidget {
                     iconBg: const Color(0xFFFFF1F2),
                     iconColor: const Color(0xFFE11D48),
                     onTap: () => context.push('/plaintes'),
+                  ),
+                  _ServiceCard(
+                    title: 'Évaluations',
+                    subtitle: 'Performance',
+                    icon: Icons.star_outline_rounded,
+                    iconBg: const Color(0xFFFEF3C7),
+                    iconColor: const Color(0xFFD97706),
+                    onTap: () => context.push('/evaluations'),
                   ),
                   _ServiceCard(
                     title: 'Autorisation',

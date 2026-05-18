@@ -75,6 +75,7 @@ public class SecurityConfig {
         http
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/internal/users/by-role").permitAll()
                         .requestMatchers("/oauth2/jwks").permitAll()
                         .requestMatchers("/.well-known/**").permitAll()
                         .requestMatchers("/error").permitAll()

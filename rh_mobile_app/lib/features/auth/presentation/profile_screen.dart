@@ -53,7 +53,7 @@ class ProfileScreen extends ConsumerWidget {
           }
 
           final initials =
-              '${user.prenom.isNotEmpty ? user.prenom[0] : ""}${user.nom.isNotEmpty ? user.nom[0] : ""}';
+              '${user.prenom.isNotEmpty ? user.prenom[0] : ""}${user.name.isNotEmpty ? user.name[0] : ""}';
 
           return CustomScrollView(
             slivers: [
@@ -131,7 +131,7 @@ class ProfileScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          '${user.prenom} ${user.nom}',
+                          '${user.prenom} ${user.name}',
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,

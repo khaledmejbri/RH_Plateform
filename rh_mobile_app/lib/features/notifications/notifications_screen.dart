@@ -272,7 +272,7 @@ class _EmptyState extends ConsumerWidget {
                 debugPrint('[AUTH] ═════════════════════════════════════════');
                 debugPrint('[AUTH] REFRESH TRIGGERED - USER INFO:');
                 debugPrint('[AUTH] ID: ${user?.identifiant}');
-                debugPrint('[AUTH] NOM: ${user?.nom}');
+                debugPrint('[AUTH] NOM: ${user?.name}');
                 debugPrint('[AUTH] PRENOM: ${user?.prenom}');
                 debugPrint('[AUTH] EMAIL: ${user?.email}');
                 debugPrint('[AUTH] ═════════════════════════════════════════');

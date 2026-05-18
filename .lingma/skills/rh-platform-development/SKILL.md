@@ -824,7 +824,7 @@ public class SecurityConfig {
 CREATE TABLE employes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     matricule VARCHAR(50) UNIQUE NOT NULL,
-    nom VARCHAR(100) NOT NULL,
+    name VARCHAR(100) NOT NULL,
     prenom VARCHAR(100) NOT NULL,
     email_professionnel VARCHAR(255) UNIQUE NOT NULL,
     poste VARCHAR(200),

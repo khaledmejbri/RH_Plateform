@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -25,6 +26,12 @@ import java.util.stream.Collectors;
 public class DemandeDocumentAdministratifRhService {
 
 	public static final String REGLE_FIFO = "FIFO_PREMIER_ARRIVE_PREMIER_SERVI";
+
+	/** Message retourné lorsque le traitement viole l'ordre FIFO sans justification. */
+	public static final String MSG_VIOLATION_FIFO =
+			"Des demandes antérieures sont encore en attente. "
+					+ "Pour traiter cette demande hors ordre FIFO, veuillez fournir une justification obligatoire "
+					+ "(champ justification_derogation_fifo).";
 
 	private final DemandeDocumentAdministratifRhRepository repository;
 	private final CollaborateurConnecteService collaborateurConnecteService;
@@ -136,6 +143,10 @@ public class DemandeDocumentAdministratifRhService {
 
 	@Transactional
 	public DemandeDocumentAdministratifRhResponse prendreProchaineDeLaFile() {
+		if (repository.existsByStatut(StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH)) {
+			throw new IllegalArgumentException("Vous devez terminer le traitement en cours avant de prendre une nouvelle demande.");
+		}
+
 		List<DemandeDocumentAdministratifRh> file = repository
 				.findQueueForUpdate(StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE);
 		if (file.isEmpty()) {
@@ -147,13 +158,18 @@ public class DemandeDocumentAdministratifRhService {
 	}
 
 	@Transactional
-	public DemandeDocumentAdministratifRhResponse marquerDisponible(UUID id, DemandeDocumentDisponibleRequest req) {
+	public DemandeDocumentAdministratifRhResponse marquerDisponible(UUID id, DemandeDocumentDisponibleRequest req, Jwt jwt) {
 
 		DemandeDocumentAdministratifRh d = repository.findById(id)
 				.orElseThrow(() -> new IllegalArgumentException("Demande introuvable."));
-		if (d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH) {
-			throw new IllegalArgumentException("La demande doit être en traitement RH.");
+		if (d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
+				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
+			throw new IllegalArgumentException("La demande doit être en traitement RH ou en file d'attente.");
 		}
+
+		// ── Validation FIFO ──────────────────────────────────────────────────
+		validerOrdreFifo(d, req.getJustificationDerogationFifo(), jwt);
+
 		d.setStatut(StatutDocumentAdministratifDemandeRh.DISPONIBLE);
 		d.setReferenceLivrable(req.getReferenceLivrable().trim());
 		if (req.getCommentaireRh() != null) {
@@ -171,17 +187,91 @@ public class DemandeDocumentAdministratifRhService {
 	}
 
 	@Transactional
-	public DemandeDocumentAdministratifRhResponse rejeter(UUID id, DocumentRejetRhRequest req) {
+	public DemandeDocumentAdministratifRhResponse rejeter(UUID id, DocumentRejetRhRequest req, Jwt jwt) {
 		DemandeDocumentAdministratifRh d = repository.findById(id)
 				.orElseThrow(() -> new IllegalArgumentException("Demande introuvable."));
 		if (d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
 			throw new IllegalArgumentException("Impossible de rejeter cette demande dans son état actuel.");
 		}
+
+		// ── Validation FIFO ──────────────────────────────────────────────────
+		validerOrdreFifo(d, req.getJustificationDerogationFifo(), jwt);
+
 		d.setStatut(StatutDocumentAdministratifDemandeRh.REJETEE);
 		d.setCommentaireRh(req.getMotif().trim());
 		return toResponse(repository.save(d));
 	}
+
+	// ─── FIFO Validation ─────────────────────────────────────────────────────
+
+	/**
+	 * Vérifie l'ordre FIFO avant de traiter une demande.
+	 *
+	 * <p>Règle métier : la plus ancienne demande en attente doit toujours être traitée en premier.
+	 * Si la demande courante n'est pas la plus ancienne, le RH doit fournir une justification
+	 * obligatoire pour déroger à l'ordre FIFO (cas prioritaire exceptionnel).</p>
+	 *
+	 * @param demande                 la demande que le RH tente de traiter
+	 * @param justificationDerogation justification de la dérogation FIFO (nullable)
+	 * @param jwt                     le token du RH effectuant l'action
+	 * @throws IllegalStateException si l'ordre FIFO est violé sans justification
+	 */
+	void validerOrdreFifo(DemandeDocumentAdministratifRh demande, String justificationDerogation, Jwt jwt) {
+		// Si le RH tente de traiter une nouvelle demande alors qu'il y en a déjà une en cours, on bloque.
+		if (demande.getStatut() == StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
+			if (repository.existsByStatut(StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH)) {
+				throw new IllegalStateException("Vous devez terminer le traitement en cours avant de prendre une nouvelle demande.");
+			}
+		}
+
+		Optional<DemandeDocumentAdministratifRh> plusAncienne = repository
+				.findFirstByStatutOrderByCreeLeAsc(StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE);
+
+		// S'il n'y a aucune demande en attente, ou si la demande courante EST la plus ancienne → OK
+		// Pas besoin de donnée justificative pour le premier
+		if (plusAncienne.isEmpty() || plusAncienne.get().getId().equals(demande.getId())) {
+			return;
+		}
+
+		// La demande n'est pas la prochaine dans l'ordre FIFO
+		// → une justification est obligatoire
+		if (justificationDerogation == null || justificationDerogation.isBlank()) {
+			throw new IllegalStateException(MSG_VIOLATION_FIFO);
+		}
+
+		// Justification fournie → enregistrer la dérogation
+		demande.setJustificationDerogationFifo(justificationDerogation.trim());
+		
+		Collaborateur rhActeur = null;
+		if (jwt != null) {
+			try {
+				rhActeur = collaborateurConnecteService.exigerCollaborateur(jwt);
+				demande.setDerogationFifoPar(rhActeur.getId());
+			} catch (Exception e) {
+				log.warn("Impossible d'identifier le RH acteur pour la dérogation FIFO", e);
+			}
+		}
+
+		log.info("Dérogation FIFO autorisée pour la demande {} — justification : {}",
+				demande.getId(), justificationDerogation.trim());
+
+		// Envoi de la notification au DRH (supérieur du RH)
+		if (rhActeur != null) {
+			try {
+				notificationPublisher.notifierDerogationFifo(
+						rhActeur, 
+						demande.getTypeDocument().name(), 
+						justificationDerogation.trim(), 
+						demande.getDemandeur()
+				);
+			} catch (Exception e) {
+				log.error("Erreur lors de l'envoi de la notification au DRH pour dérogation FIFO", e);
+			}
+		}
+	}
+
+	// ─── Workflow Steps ──────────────────────────────────────────────────────
 
 	private static List<WorkflowEtapeResponse> etapesDocument(StatutDocumentAdministratifDemandeRh s) {
 		List<WorkflowEtapeResponse> list = new ArrayList<>();
@@ -208,16 +298,27 @@ public class DemandeDocumentAdministratifRhService {
 		return list;
 	}
 
+	// ─── Response Mapping ────────────────────────────────────────────────────
+
 	private DemandeDocumentAdministratifRhResponse toResponse(DemandeDocumentAdministratifRh d) {
 		Integer rang = null;
+		boolean estProchaineFifo = false;
+
 		if (d.getStatut() == StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
 			long avant = repository.countByStatutAndCreeLeBefore(
 					StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE, d.getCreeLe());
 			rang = (int) avant + 1;
+			estProchaineFifo = (rang == 1);
+		} else if (d.getStatut() == StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH) {
+			// Une demande en traitement a déjà passé le contrôle FIFO, elle ne doit pas déclencher d'alerte
+			estProchaineFifo = true;
+			rang = 1;
 		}
+
 		boolean enRetard = d.getStatut() != StatutDocumentAdministratifDemandeRh.DISPONIBLE
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.REJETEE
 				&& Instant.now().isAfter(d.getDateEcheanceTraitement());
+
 		return new DemandeDocumentAdministratifRhResponse(
 				d.getId(),
 				d.getDemandeur().getId(),
@@ -232,6 +333,9 @@ public class DemandeDocumentAdministratifRhService {
 				d.getCreeLe(),
 				d.getModifieLe(),
 				rang,
-				enRetard);
+				enRetard,
+				estProchaineFifo,
+				d.getJustificationDerogationFifo(),
+				d.getDerogationFifoPar());
 	}
 }

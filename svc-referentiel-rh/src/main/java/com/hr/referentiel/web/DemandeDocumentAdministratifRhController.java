@@ -73,9 +73,10 @@ public class DemandeDocumentAdministratifRhController {
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
 	public ResponseEntity<DemandeDocumentAdministratifRhResponse> marquerDisponible(
 			@PathVariable UUID identifiant,
-			@Valid @RequestBody DemandeDocumentDisponibleRequest requete) {
+			@Valid @RequestBody DemandeDocumentDisponibleRequest requete,
+			JwtAuthenticationToken principal) {
 		return ResponseEntity.ok(
-				demandeDocumentAdministratifRhService.marquerDisponible(identifiant, requete));
+				demandeDocumentAdministratifRhService.marquerDisponible(identifiant, requete, principal.getToken()));
 	}
 
 	/**
@@ -86,8 +87,9 @@ public class DemandeDocumentAdministratifRhController {
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
 	public ResponseEntity<DemandeDocumentAdministratifRhResponse> refuser(
 			@PathVariable UUID identifiant,
-			@Valid @RequestBody DocumentRejetRhRequest requete) {
-		return ResponseEntity.ok(demandeDocumentAdministratifRhService.rejeter(identifiant, requete));
+			@Valid @RequestBody DocumentRejetRhRequest requete,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(demandeDocumentAdministratifRhService.rejeter(identifiant, requete, principal.getToken()));
 	}
 
 	/** Suivi visuel avec étapes workflow et SLA restant. */

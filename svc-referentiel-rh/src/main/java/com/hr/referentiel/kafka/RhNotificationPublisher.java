@@ -167,6 +167,28 @@ public class RhNotificationPublisher {
                         + " n'a pas pu être traitée. Motif : " + (motif != null ? motif : "Non précisé"));
     }
 
+    /**
+     * Dérogation FIFO → notifie le supérieur hiérarchique (RO/DRH) du RH ayant effectué la dérogation.
+     * Si aucun supérieur actif n'est trouvé, la notification est envoyée à tous les RH.
+     */
+    public void notifierDerogationFifo(Collaborateur rhActeur, String typeDocument,
+                                       String justification, Collaborateur demandeurDocument) {
+        Collaborateur superieur = rhActeur.getSuperieur();
+        String sujet = "Dérogation FIFO — Document " + libelleDocument(typeDocument);
+        String corps = nomComplet(rhActeur)
+                + " a traité la demande de " + libelleDocument(typeDocument)
+                + " de " + nomComplet(demandeurDocument)
+                + " hors de l'ordre FIFO. Justification : " + justification;
+
+        if (superieur != null && "ACTIF".equalsIgnoreCase(superieur.getStatut())) {
+            envoyer(superieur.getId().toString(), sujet, corps);
+        } else {
+            log.warn("Aucun supérieur actif pour le RH {} — notification dérogation FIFO envoyée à tous les RH",
+                    rhActeur.getId());
+            notifierTousLesRh(sujet, corps);
+        }
+    }
+
     // ─── Plaintes ───────────────────────────────────────────────────────────
 
     /**
@@ -186,11 +208,23 @@ public class RhNotificationPublisher {
     public void notifierPlainteExterne(Collaborateur auteur, String numeroTicket) {
         String sujet = "Nouvelle plainte externe — " + numeroTicket;
         String corps = nomComplet(auteur) + " a déposé une plainte externe [" + numeroTicket + "]."
-                + " Traitement requis par votre service.";
+                + " Votre validation RO est requise.";
 
-        notifierTousLesRh(sujet, corps);
-        notifierParProfil("SERVICES_TECHNIQUES", sujet, corps);
-        notifierParProfil("DIRECTION_ENV_SOCIAL", sujet, corps);
+        Collaborateur superieur = auteur.getSuperieur();
+        if (superieur != null && "ACTIF".equalsIgnoreCase(superieur.getStatut())) {
+            envoyer(superieur.getId().toString(), sujet, corps);
+            return;
+        }
+
+        notifierTousLesRh(sujet, corps + " Aucun superieur direct actif n'a ete trouve.");
+    }
+
+    public void notifierValidationRoPlainteExterne(Collaborateur auteur, String numeroTicket, Collaborateur ro) {
+        notifierTousLesRh(
+                "Plainte externe validee par le RO - " + numeroTicket,
+                "La plainte externe [" + numeroTicket + "] de " + nomComplet(auteur)
+                        + " a ete validee par " + nomComplet(ro)
+                        + ". Traitement RH requis.");
     }
 
     /**

@@ -15,6 +15,11 @@ public class DemandeDocumentDisponibleRequest {
 	@JsonProperty("commentaire_rh")
 	private String commentaireRh;
 
+	/** Justification obligatoire si la demande n'est pas la prochaine dans l'ordre FIFO. */
+	@Size(max = 2000)
+	@JsonProperty("justification_derogation_fifo")
+	private String justificationDerogationFifo;
+
 	public String getReferenceLivrable() {
 		return referenceLivrable;
 	}
@@ -29,5 +34,13 @@ public class DemandeDocumentDisponibleRequest {
 
 	public void setCommentaireRh(String commentaireRh) {
 		this.commentaireRh = commentaireRh;
+	}
+
+	public String getJustificationDerogationFifo() {
+		return justificationDerogationFifo;
+	}
+
+	public void setJustificationDerogationFifo(String justificationDerogationFifo) {
+		this.justificationDerogationFifo = justificationDerogationFifo;
 	}
 }

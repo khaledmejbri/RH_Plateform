@@ -208,7 +208,7 @@ Le système détecte automatiquement les patterns et génère des recommandation
 
 ### **Catalogue EPI**
 
-- Base de données des EPI : nom, catégorie, taille, quantité stock, date expiration, fournisseur
+- Base de données des EPI : name, catégorie, taille, quantité stock, date expiration, fournisseur
 - Gestion par le HSE : ajout, modification, désactivation
 - Alertes automatiques stock bas + EPI en expiration (< 30 jours)
 
