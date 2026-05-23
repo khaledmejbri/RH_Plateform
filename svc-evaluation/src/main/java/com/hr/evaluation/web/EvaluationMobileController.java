@@ -97,6 +97,11 @@ public class EvaluationMobileController {
         
         Evaluation evaluation = workflowService.obtenirEvaluation(id);
         
+        // Check campaign and template
+        if (evaluation.getCampaign() == null) {
+            throw new IllegalStateException("L'évaluation n'a pas de campagne associée");
+        }
+        
         if (evaluation.getEtapeActuelle() == EvaluationStep.EVALUATION_TECHNIQUE) {
             throw new IllegalStateException("L'évaluation est déjà passée à l'étape technique");
         }
@@ -374,6 +379,11 @@ public class EvaluationMobileController {
     public ResponseEntity<EvaluationItemResponse> getEvaluationDetails(@PathVariable UUID id) {
         verifyOwnership(id);
         Evaluation evaluation = workflowService.obtenirEvaluation(id);
+        
+        // Add null check for campaign
+        if (evaluation.getCampaign() == null) {
+            throw new IllegalStateException("L'évaluation n'a pas de campagne associée");
+        }
 
         return ResponseEntity.ok(new EvaluationItemResponse(
             evaluation.getId().toString(),
