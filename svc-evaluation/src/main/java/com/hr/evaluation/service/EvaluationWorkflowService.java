@@ -226,12 +226,12 @@ public class EvaluationWorkflowService {
 
     @Transactional(readOnly = true)
     public List<Evaluation> listerEvaluationsCollaborateur(UUID collaborateurId) {
-        return evaluationRepository.findByCollaborateurIdentifiantOrderByCreeLeDesc(collaborateurId);
+        return evaluationRepository.findByCollaborateurIdentifiantOrderByCreeLeDescWithCampaign(collaborateurId);
     }
 
     @Transactional(readOnly = true)
     public List<Evaluation> listerEvaluationsManager(UUID managerId) {
-        return evaluationRepository.findBySuperieurIdentifiantOrderByCreeLeDesc(managerId);
+        return evaluationRepository.findBySuperieurIdentifiantOrderByCreeLeDescWithCampaign(managerId);
     }
 
     @Transactional(readOnly = true)
@@ -271,7 +271,7 @@ public class EvaluationWorkflowService {
     }
 
     private Evaluation chargerEvaluation(UUID id) {
-        return evaluationRepository.findById(id)
+        return evaluationRepository.findByIdWithCampaign(id)
                 .orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable: " + id));
     }
 

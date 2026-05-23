@@ -53,29 +53,76 @@ public class EvaluationSchedulerService {
         log.info(" [EVALUATION SCHEDULER] Starting evaluation cycle...");
 
         try {
-            // Step 1: Check if we're in an evaluation period
-            if (!campaignService.estPeriodeEvaluationActive()) {
-                log.info("️  [EVALUATION SCHEDULER] No active evaluation campaign. Skipping.");
-                return;
+            LocalDate now = LocalDate.now();
+            int currentMonth = now.getMonthValue();
+            int currentYear = now.getYear();
+            
+            boolean hasActiveCampaign = false;
+            
+            // Step 1: Check for ANNUAL evaluation campaign
+            EvaluationCampaign annualCampaign = campaignService.obtenirCampagneActive(
+                EvaluationCampaignType.ANNUELLE, 
+                currentYear
+            );
+            
+            if (annualCampaign != null && campaignService.estPeriodeEvaluationActive()) {
+                log.info("✅ [EVALUATION SCHEDULER] Active ANNUAL evaluation campaign found!");
+                processCampaign(annualCampaign);
+                hasActiveCampaign = true;
+            }
+            
+            // Step 2: Check for SEMI-ANNUAL evaluation campaign
+            // Only process if we're within 1 month before the start date
+            EvaluationCampaign semestrielleCampaign = campaignService.obtenirCampagneActive(
+                EvaluationCampaignType.SEMESTRIELLE, 
+                currentYear
+            );
+            
+            if (semestrielleCampaign != null) {
+                LocalDate startDate = semestrielleCampaign.getDateDebut().atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+                long monthsUntilStart = java.time.temporal.ChronoUnit.MONTHS.between(now, startDate);
+                
+                // Process if start date is within 1 month (or already started)
+                if (monthsUntilStart <= 1) {
+                    log.info("✅ [EVALUATION SCHEDULER] Active SEMI-ANNUAL evaluation campaign found! ({} months until start)", monthsUntilStart);
+                    processCampaign(semestrielleCampaign);
+                    hasActiveCampaign = true;
+                } else {
+                    log.debug("⏭️  [EVALUATION SCHEDULER] Semi-annual campaign starts in {} months - skipping for now", monthsUntilStart);
+                }
+            }
+            
+            if (!hasActiveCampaign) {
+                log.info("⏭️  [EVALUATION SCHEDULER] No active evaluation campaign. Skipping.");
             }
 
-            log.info("✅ [EVALUATION SCHEDULER] Active evaluation campaign found!");
-
-            // Step 2: Get all evaluations that need to be created
-            List<UUID> employeesToEvaluate = getEmployeesNeedingEvaluation();
+        } catch (Exception e) {
+            log.error("❌ [EVALUATION SCHEDULER] Error in evaluation cycle: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Process a single campaign - create evaluations for employees
+     */
+    private void processCampaign(EvaluationCampaign campaign) {
+        try {
+            // Get all evaluations that need to be created
+            List<UUID> employeesToEvaluate = getEmployeesNeedingEvaluation(campaign);
             
             if (employeesToEvaluate.isEmpty()) {
-                log.info("️  [EVALUATION SCHEDULER] All employees already have evaluations. Nothing to do.");
+                log.info("⏭️  [EVALUATION SCHEDULER] All employees already have evaluations for campaign {}. Nothing to do.", 
+                        campaign.getNom());
                 return;
             }
 
-            log.info("📊 [EVALUATION SCHEDULER] Found {} employees needing evaluation", employeesToEvaluate.size());
+            log.info("📊 [EVALUATION SCHEDULER] Found {} employees needing evaluation for campaign {}", 
+                    employeesToEvaluate.size(), campaign.getNom());
 
-            // Step 3: Create evaluations for each employee
+            // Create evaluations for each employee
             int createdCount = 0;
             for (UUID employeeId : employeesToEvaluate) {
                 try {
-                    Evaluation evaluation = createEvaluationForEmployee(employeeId);
+                    Evaluation evaluation = createEvaluationForEmployee(employeeId, campaign);
                     if (evaluation != null) {
                         createdCount++;
                                     
@@ -89,25 +136,20 @@ public class EvaluationSchedulerService {
                 }
             }
 
-            log.info("✅ [EVALUATION SCHEDULER] Evaluation cycle completed. Created {} evaluations.", createdCount);
-
+            log.info("✅ [EVALUATION SCHEDULER] Campaign {} completed. Created {} evaluations.", 
+                    campaign.getNom(), createdCount);
         } catch (Exception e) {
-            log.error("❌ [EVALUATION SCHEDULER] Error in evaluation cycle: {}", e.getMessage(), e);
+            log.error("❌ [EVALUATION SCHEDULER] Error processing campaign {}: {}", 
+                    campaign.getNom(), e.getMessage(), e);
         }
     }
 
     /**
-     * Get list of employees who need evaluations.
+     * Get list of employees who need evaluations for a specific campaign.
      * In a real system, this would query the employee database.
      * For testing, we'll use hardcoded test employee IDs.
      */
-    private List<UUID> getEmployeesNeedingEvaluation() {
-        // Get active campaign
-        EvaluationCampaign campaign = campaignService.obtenirCampagneActive(
-            EvaluationCampaignType.ANNUELLE, 
-            LocalDate.now().getYear()
-        );
-
+    private List<UUID> getEmployeesNeedingEvaluation(EvaluationCampaign campaign) {
         if (campaign == null) {
             return List.of();
         }
@@ -121,26 +163,21 @@ public class EvaluationSchedulerService {
     }
 
     /**
-     * Create evaluation for a single employee.
+     * Create evaluation for a single employee in a specific campaign.
      */
     @Transactional
-    public Evaluation createEvaluationForEmployee(UUID employeeId) {
+    public Evaluation createEvaluationForEmployee(UUID employeeId, EvaluationCampaign campaign) {
         // Check if evaluation already exists for this employee in current campaign
         List<Evaluation> existingEvals = evaluationRepository
             .findByCollaborateurIdentifiantOrderByCreeLeDesc(employeeId);
-            
-        // Check if any evaluation is in current active campaign
-        EvaluationCampaign campaign = campaignService.obtenirCampagneActive(
-            EvaluationCampaignType.ANNUELLE,
-            LocalDate.now().getYear()
-        );
             
         if (campaign != null) {
             boolean exists = existingEvals.stream()
                 .anyMatch(eval -> eval.getCampaign().getId().equals(campaign.getId()));
                 
             if (exists) {
-                log.debug("⏭️  [EVALUATION SCHEDULER] Evaluation already exists for employee {}", employeeId);
+                log.debug("⏭️  [EVALUATION SCHEDULER] Evaluation already exists for employee {} in campaign {}", 
+                        employeeId, campaign.getNom());
                 return null;
             }
         }
@@ -160,8 +197,8 @@ public class EvaluationSchedulerService {
             managerId
         );
         
-        log.info("✅ [EVALUATION SCHEDULER] Created evaluation {} for employee {}", 
-                evaluation.getId(), employeeId);
+        log.info("✅ [EVALUATION SCHEDULER] Created evaluation {} for employee {} in campaign {} ({})", 
+                evaluation.getId(), employeeId, campaign.getNom(), campaign.getType());
             
         return evaluation;
     }
@@ -199,7 +236,19 @@ public class EvaluationSchedulerService {
         evalRh.setId(evaluation.getId());
         evalRh.setCollaborateurIdentifiant(evaluation.getCollaborateurIdentifiant());
         evalRh.setSuperieurIdentifiant(evaluation.getSuperieurIdentifiant());
-        evalRh.setType(com.hr.evaluation.domain.TypeEvaluationRh.ANNUELLE);
+        
+        // Map campaign type to evaluation type
+        if (evaluation.getCampaign() != null) {
+            EvaluationCampaignType campaignType = evaluation.getCampaign().getType();
+            if (campaignType == EvaluationCampaignType.SEMESTRIELLE) {
+                evalRh.setType(com.hr.evaluation.domain.TypeEvaluationRh.SEMESTRIELLE);
+            } else {
+                evalRh.setType(com.hr.evaluation.domain.TypeEvaluationRh.ANNUELLE);
+            }
+        } else {
+            evalRh.setType(com.hr.evaluation.domain.TypeEvaluationRh.ANNUELLE);
+        }
+        
         evalRh.setAnnee(LocalDate.now().getYear());
         evalRh.setStatut(evaluation.getStatut());
         return evalRh;

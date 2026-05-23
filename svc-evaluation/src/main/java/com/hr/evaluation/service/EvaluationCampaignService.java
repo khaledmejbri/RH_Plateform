@@ -168,9 +168,9 @@ public class EvaluationCampaignService {
     @Transactional(readOnly = true)
     public List<EvaluationCampaign> listerCampagnes(EvaluationCampaignStatus statut) {
         if (statut != null) {
-            return campaignRepository.findByStatutOrderByDateDebutDesc(statut);
+            return campaignRepository.findByStatutOrderByDateDebutDescWithTemplates(statut);
         }
-        return campaignRepository.findAll();
+        return campaignRepository.findAllWithTemplates();
     }
 
     @Transactional(readOnly = true)
