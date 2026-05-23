@@ -2,3 +2,4 @@ target/
 *.jar
 *.rar
 gittoken.txt
+/docs
