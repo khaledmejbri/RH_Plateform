@@ -1,5 +1,6 @@
 package com.hr.evaluation.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.hr.evaluation.domain.SkillLevel;
 import jakarta.persistence.*;
 
@@ -22,10 +23,12 @@ public class SkillAnswer {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "evaluation_identifiant", nullable = false)
+    @JsonIgnore
     private Evaluation evaluation;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "question_technique_identifiant", nullable = false)
+    @JsonIgnore
     private TechnicalQuestion questionTechnique;
 
     @Enumerated(EnumType.STRING)

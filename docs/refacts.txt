@@ -1,0 +1,14 @@
+change request : 
+ formation : change durée by month
+ Affichage : Solde Congé (bootstrap)
+
+Portail Admin : 
+ Formation : afficher la liste des collaborateurs demandé par leur supp
+
+
+Collaborateur : 
+Affectation , Modification du collaborateur
+
+
+Creer organigramme ( forme drag and drop --> affectation)
+ 

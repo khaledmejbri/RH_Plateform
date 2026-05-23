@@ -171,7 +171,7 @@ export default function PlaintesSuiviPage() {
                       </div>
                     </td>
                     <td>
-                      {p.pieces_jointes.length > 0 ? (
+                      {(p.pieces_jointes?.length ?? 0) > 0 ? (
                         <span title={`${p.pieces_jointes.length} fichier(s)`} style={{ fontSize: 13 }}>
                           📎 {p.pieces_jointes.length}
                         </span>
@@ -225,7 +225,7 @@ export default function PlaintesSuiviPage() {
             <p className="muted small" style={{ marginBottom: 12 }}>{edit.description}</p>
 
             {/* Pièces jointes */}
-            {edit.pieces_jointes.length > 0 && (
+            {(edit.pieces_jointes?.length ?? 0) > 0 && (
               <div style={{ marginBottom: 14 }}>
                 <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 6px', color: '#64748b' }}>
                   Pièces jointes ({edit.pieces_jointes.length})
@@ -272,7 +272,7 @@ export default function PlaintesSuiviPage() {
             />
 
             {/* Log d'actions */}
-            {edit.log_actions.length > 0 && (
+            {(edit.log_actions?.length ?? 0) > 0 && (
               <div style={{ marginBottom: 14 }}>
                 <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 6px', color: '#64748b' }}>
                   Historique des actions

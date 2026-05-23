@@ -79,7 +79,7 @@ class EvaluationRepository {
     try {
       await dio.post('/api/rh/v1/evaluations/$evaluationId/reponses/techniques', data: {
         'questionId': questionId,
-        'niveau': niveau.name.toUpperCase(),
+        'niveau': niveau.apiValue,
         'commentaire': commentaire,
       });
     } catch (e) {
@@ -102,6 +102,15 @@ class EvaluationRepository {
       return data.map((e) => EvaluationAnswer.fromJson(e)).toList();
     } catch (e) {
       throw Exception('Erreur lors du chargement des réponses: $e');
+    }
+  }
+
+  Future<EvaluationAnalytics> obtenirAnalytics(String evaluationId) async {
+    try {
+      final response = await dio.get('/api/rh/v1/evaluations/$evaluationId/analytics');
+      return EvaluationAnalytics.fromJson(response.data as Map<String, dynamic>);
+    } catch (e) {
+      throw Exception('Erreur lors du chargement des analytics: $e');
     }
   }
 }
