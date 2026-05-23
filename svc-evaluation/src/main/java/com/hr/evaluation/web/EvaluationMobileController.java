@@ -398,21 +398,35 @@ public class EvaluationMobileController {
 
     /**
      * Extract current user ID from Spring Security context (JWT token).
+     * Reads "identifiant_utilisateur" claim injected by svc-identite-acces.
      */
-
-
     private UUID getCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new SecurityException("Utilisateur non authentifié");
         }
-       // String idUser = jwt.getClaimAsString("identifiant_utilisateur");
-        // The principal should be the username/userId from the JWT token
-        try {
-            return UUID.fromString("0a4f7069-0737-4207-97dd-7a46a45f5429");
-        } catch (IllegalArgumentException e) {
-            throw new SecurityException("ID utilisateur invalide dans le token JWT: ");
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof Jwt jwt) {
+            // Primary: custom claim set by svc-identite-acces
+            String idUser = jwt.getClaimAsString("identifiant_utilisateur");
+            if (idUser != null && !idUser.isBlank()) {
+                try {
+                    return UUID.fromString(idUser);
+                } catch (IllegalArgumentException e) {
+                    throw new SecurityException("ID utilisateur invalide dans le token JWT: " + idUser);
+                }
+            }
+            // Fallback: standard JWT subject
+            String subject = jwt.getSubject();
+            if (subject != null && !subject.isBlank()) {
+                try {
+                    return UUID.fromString(subject);
+                } catch (IllegalArgumentException ignored) {
+                    // subject may be a username, not a UUID
+                }
+            }
         }
+        throw new SecurityException("Impossible d'extraire l'ID utilisateur du token JWT");
     }
 
     /**
