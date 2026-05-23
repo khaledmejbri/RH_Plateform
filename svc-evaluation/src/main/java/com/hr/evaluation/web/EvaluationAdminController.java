@@ -7,6 +7,7 @@ import com.hr.evaluation.dto.*;
 import com.hr.evaluation.entity.*;
 import com.hr.evaluation.repository.*;
 import com.hr.evaluation.service.EvaluationCampaignService;
+import com.hr.evaluation.service.EvaluationScoringService;
 import com.hr.evaluation.service.EvaluationTemplateService;
 import com.hr.evaluation.service.EvaluationWorkflowService;
 import com.hr.evaluation.service.TechnicalTemplateService;
@@ -35,6 +36,8 @@ public class EvaluationAdminController {
     private final EvaluationTemplateService templateService;
     private final TechnicalTemplateService technicalTemplateService;
     private final EvaluationWorkflowService workflowService;
+    private final com.hr.evaluation.service.TemplateService enhancedTemplateService;
+    private final EvaluationScoringService scoringService;
     private final EvaluationRepository evaluationRepository;
     private final EvaluationCampaignRepository campaignRepository;
 
@@ -43,12 +46,16 @@ public class EvaluationAdminController {
             EvaluationTemplateService templateService,
             TechnicalTemplateService technicalTemplateService,
             EvaluationWorkflowService workflowService,
+            com.hr.evaluation.service.TemplateService enhancedTemplateService,
+            EvaluationScoringService scoringService,
             EvaluationRepository evaluationRepository,
             EvaluationCampaignRepository campaignRepository) {
         this.campaignService = campaignService;
         this.templateService = templateService;
         this.technicalTemplateService = technicalTemplateService;
         this.workflowService = workflowService;
+        this.enhancedTemplateService = enhancedTemplateService;
+        this.scoringService = scoringService;
         this.evaluationRepository = evaluationRepository;
         this.campaignRepository = campaignRepository;
     }
@@ -80,7 +87,7 @@ public class EvaluationAdminController {
             if (campaign.getTemplateGeneral() != null) {
                 Map<String, String> templateInfo = new HashMap<>();
                 templateInfo.put("identifiant", campaign.getTemplateGeneral().getId().toString());
-                templateInfo.put("nom", campaign.getTemplateGeneral().getName());
+                templateInfo.put("nom", campaign.getTemplateGeneral().getNom());
                 campaignMap.put("templateGeneral", templateInfo);
             }
             
@@ -88,6 +95,13 @@ public class EvaluationAdminController {
                 Map<String, String> templateInfo = new HashMap<>();
                 templateInfo.put("identifiant", campaign.getTemplateTechnique().getId().toString());
                 templateInfo.put("nom", campaign.getTemplateTechnique().getNom());
+                campaignMap.put("templateTechnique", templateInfo);
+            }
+
+            if (campaign.getTemplateCompetence() != null) {
+                Map<String, String> templateInfo = new HashMap<>();
+                templateInfo.put("identifiant", campaign.getTemplateCompetence().getId().toString());
+                templateInfo.put("nom", campaign.getTemplateCompetence().getNom());
                 campaignMap.put("templateTechnique", templateInfo);
             }
             
@@ -156,9 +170,21 @@ public class EvaluationAdminController {
 
     @GetMapping("/templates")
     public ResponseEntity<List<Map<String, Object>>> listTemplates() {
-        // TODO: Implement template list method in service
-        // For now, return empty list
-        return ResponseEntity.ok(new ArrayList<>());
+        List<EvaluationTemplate> templates = templateService.listerTemplates(false);
+        List<Map<String, Object>> response = new ArrayList<>();
+        for (EvaluationTemplate template : templates) {
+            Map<String, Object> templateMap = new HashMap<>();
+            templateMap.put("identifiant", template.getId().toString());
+            templateMap.put("nom", template.getNom());
+            templateMap.put("description", template.getDescription());
+            templateMap.put("type", template.getType().name());
+            templateMap.put("statut", template.getStatut().name());
+            templateMap.put("version", template.getVersion());
+            templateMap.put("actif", template.isActif());
+            templateMap.put("creeLe", template.getCreeLe());
+            response.add(templateMap);
+        }
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/templates")
@@ -173,7 +199,7 @@ public class EvaluationAdminController {
         
         Map<String, Object> response = new HashMap<>();
         response.put("identifiant", template.getId().toString());
-        response.put("name", template.getName());
+        response.put("nom", template.getNom());
         response.put("creeLe", template.getCreeLe());
         
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -241,7 +267,94 @@ public class EvaluationAdminController {
     public ResponseEntity<Void> deleteQuestion(
             @PathVariable UUID templateId,
             @PathVariable UUID questionId) {
-        templateService.desactiverTemplate(templateId);
+        enhancedTemplateService.supprimerQuestion(templateId, questionId);
+        return ResponseEntity.ok().build();
+    }
+
+    // ========== ENHANCED TEMPLATE MANAGEMENT ==========
+
+    /**
+     * Create template with DTO (enhanced version)
+     */
+    @PostMapping("/v2")
+    @PreAuthorize("hasAnyRole('RH', 'ADMIN')")
+    public ResponseEntity<EvaluationTemplate> createTemplateV2(
+            @Valid @RequestBody CreateTemplateRequest request,
+            @RequestParam UUID userId) {
+        
+        EvaluationTemplate template = enhancedTemplateService.creerTemplate(request, userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(template);
+    }
+
+    /**
+     * Get template with questions
+     */
+    @GetMapping("/v2/{templateId}")
+    @PreAuthorize("hasAnyRole('RH', 'ADMIN', 'RO', 'COLLABORATOR')")
+    public ResponseEntity<EvaluationTemplate> getTemplateV2(@PathVariable UUID templateId) {
+        EvaluationTemplate template = enhancedTemplateService.getTemplateWithQuestions(templateId);
+        return ResponseEntity.ok(template);
+    }
+
+    /**
+     * List templates with filters
+     */
+    @GetMapping("/v2")
+    @PreAuthorize("hasAnyRole('RH', 'ADMIN', 'RO')")
+    public ResponseEntity<List<EvaluationTemplate>> listTemplatesV2(
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String statut) {
+        
+        List<EvaluationTemplate> templates = enhancedTemplateService.listerTemplates(type, statut);
+        return ResponseEntity.ok(templates);
+    }
+
+    /**
+     * Publish template
+     */
+    @PostMapping("/v2/{templateId}/publish")
+    @PreAuthorize("hasAnyRole('RH', 'ADMIN')")
+    public ResponseEntity<EvaluationTemplate> publishTemplate(
+            @PathVariable UUID templateId,
+            @RequestParam UUID userId) {
+        
+        EvaluationTemplate template = enhancedTemplateService.publierTemplate(templateId, userId);
+        return ResponseEntity.ok(template);
+    }
+
+    /**
+     * Archive template
+     */
+    @PostMapping("/v2/{templateId}/archive")
+    @PreAuthorize("hasAnyRole('RH', 'ADMIN')")
+    public ResponseEntity<Void> archiveTemplate(@PathVariable UUID templateId) {
+        enhancedTemplateService.archiverTemplate(templateId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Add question to template (enhanced)
+     */
+    @PostMapping("/v2/{templateId}/questions")
+    @PreAuthorize("hasAnyRole('RH', 'ADMIN')")
+    public ResponseEntity<EvaluationQuestion> addQuestionV2(
+            @PathVariable UUID templateId,
+            @Valid @RequestBody CreateQuestionRequest request) {
+        
+        EvaluationQuestion question = enhancedTemplateService.ajouterQuestion(templateId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(question);
+    }
+
+    /**
+     * Reorder questions
+     */
+    @PostMapping("/v2/{templateId}/questions/reorder")
+    @PreAuthorize("hasAnyRole('RH', 'ADMIN')")
+    public ResponseEntity<Void> reorderQuestions(
+            @PathVariable UUID templateId,
+            @RequestBody List<UUID> questionIdsInOrder) {
+        
+        enhancedTemplateService.reorderQuestions(templateId, questionIdsInOrder);
         return ResponseEntity.ok().build();
     }
 
@@ -317,6 +430,40 @@ public class EvaluationAdminController {
         response.put("scoreSur20", evaluation.getScoreSur20());
         response.put("creeLe", evaluation.getCreeLe());
         
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}/analytics")
+    public ResponseEntity<EvaluationAnalyticsResponse> getEvaluationAnalytics(@PathVariable UUID id) {
+        workflowService.obtenirEvaluation(id);
+        return ResponseEntity.ok(scoringService.analyser(
+                workflowService.obtenirReponsesEvaluation(id),
+                workflowService.obtenirReponsesTechniques(id)
+        ));
+    }
+
+    @GetMapping("/campaigns/{campaignId}/analytics")
+    public ResponseEntity<Map<String, Object>> getCampaignAnalytics(@PathVariable UUID campaignId) {
+        List<Evaluation> evaluations = evaluationRepository.findByCampaignId(campaignId);
+        List<EvaluationAnalyticsResponse> analytics = evaluations.stream()
+                .map(evaluation -> scoringService.analyser(
+                        workflowService.obtenirReponsesEvaluation(evaluation.getId()),
+                        workflowService.obtenirReponsesTechniques(evaluation.getId())))
+                .toList();
+
+        double averageFinal = analytics.stream()
+                .map(EvaluationAnalyticsResponse::finalScore)
+                .mapToDouble(java.math.BigDecimal::doubleValue)
+                .average()
+                .orElse(0);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("campaignId", campaignId.toString());
+        response.put("evaluationCount", evaluations.size());
+        response.put("completedCount", evaluations.stream().filter(e -> "VALIDEE".equals(e.getStatut().name())).count());
+        response.put("averageFinalScore", Math.round(averageFinal * 100.0) / 100.0);
+        response.put("completionPercentage", evaluations.isEmpty() ? 0 : Math.round(
+                evaluations.stream().filter(e -> e.getValidationCollaborateurLe() != null).count() * 100.0 / evaluations.size()));
         return ResponseEntity.ok(response);
     }
 

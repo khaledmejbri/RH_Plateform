@@ -94,6 +94,7 @@ public class EvaluationWorkflowService {
 
         answer.setReponseCollaborateur(reponse);
         answer.setNoteAttribuee(note);
+        answer.setNoteCollaborateur(note);
         answer.setReponduParCollaborateurLe(Instant.now());
 
         answerRepository.save(answer);
@@ -119,7 +120,7 @@ public class EvaluationWorkflowService {
 
         answer.setReponseManager(reponseManager);
         answer.setCommentaireManager(commentaireManager);
-        answer.setNoteAttribuee(note);
+        answer.setNoteManager(note);
         answer.setReponduParManagerLe(Instant.now());
 
         answerRepository.save(answer);

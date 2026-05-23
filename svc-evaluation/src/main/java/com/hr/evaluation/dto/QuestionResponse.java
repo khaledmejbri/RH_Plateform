@@ -9,9 +9,15 @@ public record QuestionResponse(
     @JsonProperty("identifiant")
     String id,
     
+    @JsonProperty("libelle")
+    String libelle,
+
     @JsonProperty("intitule")
     String intitule,
-    
+
+    @JsonProperty("typeQuestion")
+    String typeQuestion,
+
     @JsonProperty("type")
     String type,
     
@@ -23,6 +29,27 @@ public record QuestionResponse(
     
     @JsonProperty("options")
     String options,
+
+    @JsonProperty("optionsReponses")
+    java.util.List<String> optionsReponses,
+
+    @JsonProperty("valeurMinimale")
+    java.math.BigDecimal valeurMinimale,
+
+    @JsonProperty("valeurMaximale")
+    java.math.BigDecimal valeurMaximale,
+
+    @JsonProperty("sectionCode")
+    String sectionCode,
+
+    @JsonProperty("sectionLibelle")
+    String sectionLibelle,
+
+    @JsonProperty("poids")
+    java.math.BigDecimal poids,
+
+    @JsonProperty("labelsEchelle")
+    java.util.List<String> labelsEchelle,
     
     @JsonProperty("reponseExistante")
     String reponseExistante,

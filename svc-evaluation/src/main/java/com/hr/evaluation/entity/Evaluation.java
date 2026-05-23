@@ -1,5 +1,6 @@
 package com.hr.evaluation.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.hr.evaluation.domain.EvaluationStep;
 import com.hr.evaluation.domain.StatutEvaluationRh;
 import jakarta.persistence.*;
@@ -22,6 +23,7 @@ public class Evaluation {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "campaign_identifiant", nullable = false)
+    @JsonIgnore
     private EvaluationCampaign campaign;
 
     @Column(name = "collaborateur_identifiant", nullable = false)

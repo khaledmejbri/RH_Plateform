@@ -27,9 +27,10 @@ public class EvaluationTemplateService {
     @Transactional
     public EvaluationTemplate creerTemplate(String nom, String description, UUID creePar) {
         EvaluationTemplate template = new EvaluationTemplate();
-        template.setName(nom);
+        template.setNom(nom);
         template.setDescription(description);
-        template.setReutilisable(true);
+        template.setType(com.hr.evaluation.domain.TemplateType.GENERIC);
+        template.setStatut(com.hr.evaluation.domain.TemplateStatus.DRAFT);
         template.setActif(true);
         template.setCreePar(creePar);
         return templateRepository.save(template);
@@ -55,9 +56,20 @@ public class EvaluationTemplateService {
         question.setTypeQuestion(typeQuestion);
         question.setOrdre(ordre);
         question.setObligatoire(obligatoire);
-        question.setOptionsReponses(optionsReponses);
-        question.setValeurMinimale(valeurMinimale);
-        question.setValeurMaximale(valeurMaximale);
+        
+        // Convert options from String to List if provided
+        if (optionsReponses != null && !optionsReponses.isEmpty()) {
+            question.setOptionsReponses(java.util.Arrays.asList(optionsReponses.split(",")));
+        }
+        
+        // Convert Integer to BigDecimal for min/max values
+        if (valeurMinimale != null) {
+            question.setValeurMinimale(java.math.BigDecimal.valueOf(valeurMinimale));
+        }
+        if (valeurMaximale != null) {
+            question.setValeurMaximale(java.math.BigDecimal.valueOf(valeurMaximale));
+        }
+        
         question.setActif(true);
         question.setCreePar(creePar);
 
@@ -66,10 +78,8 @@ public class EvaluationTemplateService {
 
     @Transactional(readOnly = true)
     public List<EvaluationTemplate> listerTemplates(boolean uniquementReutilisables) {
-        if (uniquementReutilisables) {
-            return templateRepository.findByReutilisableTrueAndActifTrueOrderByNameAsc();
-        }
-        return templateRepository.findByActifTrueOrderByNameAsc();
+        // For backward compatibility, return all active templates
+        return templateRepository.findAllByActifTrue();
     }
 
     @Transactional(readOnly = true)

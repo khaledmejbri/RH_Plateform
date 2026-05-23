@@ -15,6 +15,7 @@ public class EvaluationAnswerRequest {
     private String reponse;
 
     private Integer note;
+    private String commentaire;
 
     // Getters and Setters
     public String getQuestionId() { return questionId; }
@@ -25,4 +26,7 @@ public class EvaluationAnswerRequest {
     
     public Integer getNote() { return note; }
     public void setNote(Integer note) { this.note = note; }
+
+    public String getCommentaire() { return commentaire; }
+    public void setCommentaire(String commentaire) { this.commentaire = commentaire; }
 }

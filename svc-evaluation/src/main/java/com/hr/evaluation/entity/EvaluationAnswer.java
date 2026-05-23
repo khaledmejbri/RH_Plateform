@@ -1,5 +1,6 @@
 package com.hr.evaluation.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -21,10 +22,12 @@ public class EvaluationAnswer {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "evaluation_identifiant", nullable = false)
+    @JsonIgnore
     private Evaluation evaluation;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "question_identifiant", nullable = false)
+    @JsonIgnore
     private EvaluationQuestion question;
 
     @Column(name = "reponse_collaborateur", length = 4000)
@@ -38,6 +41,12 @@ public class EvaluationAnswer {
 
     @Column(name = "note_attribuee")
     private Integer noteAttribuee; // For scale-type questions
+
+    @Column(name = "note_collaborateur")
+    private Integer noteCollaborateur;
+
+    @Column(name = "note_manager")
+    private Integer noteManager;
 
     @Column(name = "repondu_par_collaborateur_le")
     private Instant reponduParCollaborateurLe;
@@ -92,6 +101,12 @@ public class EvaluationAnswer {
     public void setNoteAttribuee(Integer noteAttribuee) { 
         this.noteAttribuee = noteAttribuee; 
     }
+
+    public Integer getNoteCollaborateur() { return noteCollaborateur; }
+    public void setNoteCollaborateur(Integer noteCollaborateur) { this.noteCollaborateur = noteCollaborateur; }
+
+    public Integer getNoteManager() { return noteManager; }
+    public void setNoteManager(Integer noteManager) { this.noteManager = noteManager; }
     
     public Instant getReponduParCollaborateurLe() { return reponduParCollaborateurLe; }
     public void setReponduParCollaborateurLe(Instant reponduParCollaborateurLe) { 

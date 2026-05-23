@@ -2,9 +2,9 @@ package com.hr.evaluation.service;
 
 import com.hr.evaluation.domain.EvaluationCampaignStatus;
 import com.hr.evaluation.domain.EvaluationCampaignType;
+import com.hr.evaluation.domain.TemplateType;
 import com.hr.evaluation.entity.EvaluationCampaign;
 import com.hr.evaluation.entity.EvaluationTemplate;
-import com.hr.evaluation.entity.TechnicalTemplate;
 import com.hr.evaluation.repository.EvaluationCampaignRepository;
 import com.hr.evaluation.repository.EvaluationTemplateRepository;
 import com.hr.evaluation.repository.TechnicalTemplateRepository;
@@ -43,18 +43,16 @@ public class EvaluationCampaignService {
             Integer moisFin,
             UUID creePar) {
 
-        // Validate that evaluations only happen in June (6) or December (12)
         if (!moisDebut.equals(6) && !moisDebut.equals(12)) {
             throw new IllegalArgumentException(
-                    "Les campagnes d'évaluation ne peuvent commencer qu'en juin (6) ou décembre (12).");
+                    "Les campagnes d'evaluation ne peuvent commencer qu'en juin (6) ou decembre (12).");
         }
 
         if (!moisFin.equals(6) && !moisFin.equals(12)) {
             throw new IllegalArgumentException(
-                    "Les campagnes d'évaluation ne peuvent se terminer qu'en juin (6) ou décembre (12).");
+                    "Les campagnes d'evaluation ne peuvent se terminer qu'en juin (6) ou decembre (12).");
         }
 
-        // Check if a campaign already exists for this type and year
         List<EvaluationCampaignStatus> activeStatuses = List.of(
                 EvaluationCampaignStatus.PLANIFIEE,
                 EvaluationCampaignStatus.ACTIVE);
@@ -62,12 +60,11 @@ public class EvaluationCampaignService {
         campaignRepository.findFirstByTypeAndAnneeAndStatutIn(type, annee, activeStatuses)
                 .ifPresent(existing -> {
                     throw new IllegalStateException(
-                            "Une campagne " + type + " existe déjà pour l'année " + annee);
+                            "Une campagne " + type + " existe deja pour l'annee " + annee);
                 });
 
-        // Calculate start and end dates based on month
         ZonedDateTime startDate = ZonedDateTime.of(annee, moisDebut, 1, 0, 0, 0, 0, ZoneId.of("UTC"));
-        ZonedDateTime endDate = ZonedDateTime.of(annee, moisFin, 
+        ZonedDateTime endDate = ZonedDateTime.of(annee, moisFin,
                 moisFin == 6 ? 30 : 31, 23, 59, 59, 0, ZoneId.of("UTC"));
 
         EvaluationCampaign campaign = new EvaluationCampaign();
@@ -88,18 +85,10 @@ public class EvaluationCampaignService {
     @Transactional
     public EvaluationCampaign activerCampagne(UUID campaignId) {
         EvaluationCampaign campaign = chargerCampagne(campaignId);
-        
+
         if (campaign.getStatut() != EvaluationCampaignStatus.PLANIFIEE) {
             throw new IllegalStateException(
-                    "Seule une campagne planifiée peut être activée. Statut actuel: " + campaign.getStatut());
-        }
-
-        // Verify current date is within campaign window
-        Instant now = Instant.now();
-        if (now.isBefore(campaign.getDateDebut()) || now.isAfter(campaign.getDateFin())) {
-            throw new IllegalStateException(
-                    "La campagne ne peut être activée que pendant sa période valide (" +
-                    campaign.getDateDebut() + " à " + campaign.getDateFin() + ")");
+                    "Seule une campagne planifiee peut etre activee. Statut actuel: " + campaign.getStatut());
         }
 
         campaign.setStatut(EvaluationCampaignStatus.ACTIVE);
@@ -109,10 +98,10 @@ public class EvaluationCampaignService {
     @Transactional
     public EvaluationCampaign terminerCampagne(UUID campaignId) {
         EvaluationCampaign campaign = chargerCampagne(campaignId);
-        
+
         if (campaign.getStatut() != EvaluationCampaignStatus.ACTIVE) {
             throw new IllegalStateException(
-                    "Seule une campagne active peut être terminée. Statut actuel: " + campaign.getStatut());
+                    "Seule une campagne active peut etre terminee. Statut actuel: " + campaign.getStatut());
         }
 
         campaign.setStatut(EvaluationCampaignStatus.TERMINEE);
@@ -129,33 +118,39 @@ public class EvaluationCampaignService {
 
         if (campaign.getStatut() != EvaluationCampaignStatus.PLANIFIEE) {
             throw new IllegalStateException(
-                    "Les templates ne peuvent être assignés qu'à une campagne planifiée");
+                    "Les templates ne peuvent etre assignes qu'a une campagne planifiee");
         }
 
-        // Load and validate general template
         if (templateGeneralId != null) {
             EvaluationTemplate templateGeneral = templateRepository.findById(templateGeneralId)
                     .orElseThrow(() -> new IllegalArgumentException(
-                            "Template général introuvable: " + templateGeneralId));
-            
-            if (!templateGeneral.isActif()) {
-                throw new IllegalStateException("Le template général doit être actif");
+                            "Template general introuvable: " + templateGeneralId));
+
+            if (!templateGeneral.isActif() || templateGeneral.getType() != TemplateType.GENERIC) {
+                throw new IllegalStateException("Le template general doit etre actif et de type GENERIC");
             }
-            
+
             campaign.setTemplateGeneral(templateGeneral);
         }
 
-        // Load and validate technical template
         if (templateTechniqueId != null) {
-            TechnicalTemplate templateTechnique = technicalTemplateRepository.findById(templateTechniqueId)
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Template technique introuvable: " + templateTechniqueId));
-            
-            if (!templateTechnique.isActif()) {
-                throw new IllegalStateException("Le template technique doit être actif");
-            }
-            
-            campaign.setTemplateTechnique(templateTechnique);
+            technicalTemplateRepository.findById(templateTechniqueId)
+                    .ifPresentOrElse(templateTechnique -> {
+                        if (!templateTechnique.isActif()) {
+                            throw new IllegalStateException("Le template technique doit etre actif");
+                        }
+                        campaign.setTemplateTechnique(templateTechnique);
+                        campaign.setTemplateCompetence(null);
+                    }, () -> {
+                        EvaluationTemplate templateCompetence = templateRepository.findById(templateTechniqueId)
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                        "Template de competences introuvable: " + templateTechniqueId));
+                        if (!templateCompetence.isActif() || templateCompetence.getType() != TemplateType.TECHNICAL) {
+                            throw new IllegalStateException("Le template de competences doit etre actif et de type TECHNICAL");
+                        }
+                        campaign.setTemplateCompetence(templateCompetence);
+                        campaign.setTemplateTechnique(null);
+                    });
         }
 
         return campaignRepository.save(campaign);
@@ -164,9 +159,9 @@ public class EvaluationCampaignService {
     @Transactional(readOnly = true)
     public EvaluationCampaign obtenirCampagneActive(EvaluationCampaignType type, Integer annee) {
         return campaignRepository.findFirstByTypeAndAnneeAndStatutIn(
-                type, 
-                annee, 
-                List.of(EvaluationCampaignStatus.ACTIVE))
+                        type,
+                        annee,
+                        List.of(EvaluationCampaignStatus.ACTIVE))
                 .orElse(null);
     }
 
@@ -183,15 +178,15 @@ public class EvaluationCampaignService {
         Instant now = Instant.now();
         List<EvaluationCampaign> activeCampaigns = campaignRepository
                 .findByDateDebutBeforeAndDateFinAfterAndStatut(
-                        now, 
-                        now, 
+                        now,
+                        now,
                         EvaluationCampaignStatus.ACTIVE);
-        return activeCampaigns.isEmpty();
+        return !activeCampaigns.isEmpty();
     }
 
     private EvaluationCampaign chargerCampagne(UUID id) {
         return campaignRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "Campagne d'évaluation introuvable: " + id));
+                        "Campagne d'evaluation introuvable: " + id));
     }
 }

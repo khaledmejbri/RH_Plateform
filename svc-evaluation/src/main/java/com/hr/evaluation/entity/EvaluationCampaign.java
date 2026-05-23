@@ -1,5 +1,6 @@
 package com.hr.evaluation.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.hr.evaluation.domain.EvaluationCampaignStatus;
 import com.hr.evaluation.domain.EvaluationCampaignType;
 import jakarta.persistence.*;
@@ -56,11 +57,18 @@ public class EvaluationCampaign {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "template_general_identifiant")
+    @JsonIgnore
     private EvaluationTemplate templateGeneral;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "template_technique_identifiant")
+    @JsonIgnore
     private TechnicalTemplate templateTechnique;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "template_competence_identifiant")
+    @JsonIgnore
+    private EvaluationTemplate templateCompetence;
 
     @PrePersist
     public void prePersist() {
@@ -119,4 +127,7 @@ public class EvaluationCampaign {
     
     public TechnicalTemplate getTemplateTechnique() { return templateTechnique; }
     public void setTemplateTechnique(TechnicalTemplate templateTechnique) { this.templateTechnique = templateTechnique; }
+
+    public EvaluationTemplate getTemplateCompetence() { return templateCompetence; }
+    public void setTemplateCompetence(EvaluationTemplate templateCompetence) { this.templateCompetence = templateCompetence; }
 }
