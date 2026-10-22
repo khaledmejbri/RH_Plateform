@@ -19,5 +19,5 @@ class SecureTokenStorage {
 
   Future<String?> readAccessToken() => _storage.read(key: _keyAccess);
 
-  Future<void> clear() => _storage.deleteAll();
+  Future<void> clear() => _storage.delete(key: _keyAccess);
 }

@@ -3,9 +3,11 @@
 # Docs : https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
 #
 # Workflow par défaut = compile iOS SANS profil Apple (pas d’IPA installable).
-# Pour un iPhone réel : ajouter certificat + profil dans Codemagic, puis lancer
-# manuellement « RH Connect iOS (signé) ».
-# API LAN iPhone : API_BASE_URL = http://<IP-PC>:8080
+# Il produit aussi RHConnect-unsigned.ipa, installable sur iPhone depuis Windows
+# avec Sideloadly + Apple ID gratuit (re-signature, valable 7 jours).
+# Avec un compte Apple Developer : certificat + profil dans Codemagic, puis
+# lancer manuellement « RH Connect iOS (signé) ».
+# API : modifiable dans l'app (écran de connexion → « Serveur »), ex. URL de tunnel.
 
 workflows:
   rh-connect-ios:
@@ -19,7 +21,8 @@ workflows:
       cocoapods: default
       vars:
         BUNDLE_ID: tn.agua.rhconnect
-        API_BASE_URL: http://127.0.0.1:8080
+        # Tunnel Cloudflare courant (change à chaque redémarrage : modifiable dans l'app)
+        API_BASE_URL: https://civil-sims-productions-res.trycloudflare.com
     cache:
       cache_paths:
         - $HOME/.pub-cache
@@ -29,6 +32,9 @@ workflows:
         - pull_request
       branch_patterns:
         - pattern: develop_4
+          include: true
+          source: true
+        - pattern: delivery
           include: true
           source: true
       cancel_previous_builds: true
@@ -51,7 +57,15 @@ workflows:
             --build-name=1.0.0 \
             --build-number=${BUILD_NUMBER:-$PROJECT_BUILD_NUMBER} \
             --dart-define="API_BASE_URL=$API_BASE_URL"
+      - name: Package unsigned IPA (Sideloadly / AltStore)
+        script: |
+          cd build/ios/iphoneos
+          rm -rf Payload RHConnect-unsigned.ipa
+          mkdir Payload
+          cp -R Runner.app Payload/
+          zip -qry RHConnect-unsigned.ipa Payload
     artifacts:
+      - rh_mobile_app/build/ios/iphoneos/*.ipa
       - rh_mobile_app/build/ios/iphoneos/*.app
       - /tmp/xcodebuild_logs/*.log
 

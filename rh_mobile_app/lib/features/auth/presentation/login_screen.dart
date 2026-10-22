@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -60,6 +59,37 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       setState(() => _loading = false);
       context.go('/home');
     }
+  }
+
+  Future<void> _editServer() async {
+    final ctrl = TextEditingController(text: ApiConstants.baseUrl);
+    final url = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Adresse du serveur'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            hintText: 'https://xxxx.trycloudflare.com',
+            helperText: 'Vide = valeur par défaut',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (url == null) return;
+    await ApiConstants.setBaseUrl(url);
+    if (mounted) setState(() {});
   }
 
   @override
@@ -144,16 +174,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         'Accédez à votre espace RH',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
-                      if (kDebugMode) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'API ${ApiConstants.baseUrl}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontSize: 11,
-                                color: AppTheme.textSecondary,
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: _loading ? null : _editServer,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Serveur ${ApiConstants.baseUrl}',
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      fontSize: 11,
+                                      color: AppTheme.textSecondary,
+                                    ),
                               ),
+                            ),
+                            const Icon(Icons.edit, size: 14, color: AppTheme.textSecondary),
+                          ],
                         ),
-                      ],
+                      ),
                       const SizedBox(height: 24),
 
                       // Email
