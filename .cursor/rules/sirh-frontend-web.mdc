@@ -1,0 +1,14 @@
+---
+description: Portail admin React — appels via gateway, RBAC, files SLA, organigramme
+globs: rh-admin-web/**/*.{ts,tsx,css}
+alwaysApply: false
+---
+
+# Front web (Plateforme RH)
+
+- Appels **relatifs** `/api/**` (proxy → gateway 8080). Pas de ports microservices.
+- Composants fonctionnels, un fichier = un composant, props typées, React Query pour le serveur.
+- Gérer loading / error / empty. Listes : clés = id métier, pas l’index.
+- Back-office : écrans RH (files M01/M02, FIFO, dérogation justifiée, campagnes M07, organigramme éditable).
+- M12 actuel = compteurs seulement ; ne pas inventer des KPI non spécifiés.
+- Accessibilité : labels, focus, contrastes (cible WCAG 2.1 AA). UI en **français**.

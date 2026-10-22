@@ -4,7 +4,9 @@ import 'default_api_host.dart';
 
 /// Base URL de la gateway.
 /// — `API_BASE_URL` en `--dart-define` (prioritaire)
-/// — sinon Android émulateur → `http://10.0.2.2:8080`, iOS simulateur → `127.0.0.1:8080`
+/// — Android émulateur → `http://10.0.2.2:8080`
+/// — téléphone réel → `http://127.0.0.1:8080` (avec `adb reverse tcp:8080 tcp:8080`)
+///   ou `API_BASE_URL=http://<IP-PC>:8080`
 class ApiConstants {
   ApiConstants._();
 
@@ -13,15 +15,21 @@ class ApiConstants {
     defaultValue: '',
   );
 
-  static String get baseUrl {
+  static String _runtimeBase = getPlatformDefaultGatewayBaseUrl();
+
+  static Future<void> init() async {
     if (_apiBaseFromDefine.isNotEmpty) {
-      return _apiBaseFromDefine;
+      _runtimeBase = _apiBaseFromDefine;
+      return;
     }
     if (kIsWeb) {
-      return 'http://localhost:8080';
+      _runtimeBase = 'http://localhost:8080';
+      return;
     }
-    return getPlatformDefaultGatewayBaseUrl();
+    _runtimeBase = await resolveIoGatewayBaseUrl();
   }
+
+  static String get baseUrl => _runtimeBase;
 
   static const String prefixRh = '/api/rh/v1';
   static const String prefixReferentiel = '/api/referentiel/v1';

@@ -1,0 +1,24 @@
+---
+description: Routage multi-agents SIRH — quel rôle (PO, BA, architecte, senior, UI/UX) et comment travailler en parallèle
+alwaysApply: true
+---
+
+# Multi-agents SIRH
+
+Choisir **un rôle** par conversation / sous-agent. Lire le skill correspondant dans `.cursor/skills/`.
+
+| Intention utilisateur | Skill |
+|---|---|
+| Ajouter une fonctionnalité, clarifier un besoin flou, prioriser, backlog | `sirh-product-owner` |
+| Traduire le besoin en spec développeur (règles, API, AC) | `sirh-business-analyst` |
+| Nouveau service, découpage, ADR, sécurité transverse | `sirh-architect` |
+| Coder / sécuriser / finir un module **backend** | `sirh-senior-backend` |
+| Coder / sécuriser / finir **web** ou **mobile** | `sirh-senior-frontend` |
+| Maquettes, design system, accessibilité, états UI | `sirh-ui-ux` |
+| Plusieurs rôles en même temps | `sirh-orchestrator` |
+
+**Parallèle** : un agent = un dossier (`svc-*` **ou** `rh-admin-web` **ou** `rh_mobile_app`). Pas deux writers sur le même fichier.
+
+**Séquence type** : PO (besoin) → BA + UI/UX en parallèle → Architecte si nouveau module / service → Backend + Frontend en parallèle.
+
+Ne pas coder si le besoin est ambigu (dette § 23 du doc fonctionnel) : renvoyer au PO ou BA.

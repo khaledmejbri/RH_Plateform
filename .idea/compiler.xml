@@ -7,8 +7,9 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="eureka-server" />
         <module name="svc-evaluation" />
+        <module name="eureka-server" />
+        <module name="svc-presence" />
         <module name="gateway" />
       </profile>
       <profile name="Annotation profile for svc-referentiel-rh" enabled="true">
@@ -45,6 +46,7 @@
       <module name="svc-evaluation" options="-parameters" />
       <module name="svc-identite-acces" options="-parameters" />
       <module name="svc-notification" options="-parameters" />
+      <module name="svc-presence" options="-parameters" />
       <module name="svc-referentiel-rh" options="-parameters" />
     </option>
   </component>

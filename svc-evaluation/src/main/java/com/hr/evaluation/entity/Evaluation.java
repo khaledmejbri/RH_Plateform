@@ -56,7 +56,7 @@ public class Evaluation {
     private String roleMetier;
 
     /** true si fiche sans famille_metier à la création (GENERIC seul). */
-    @Column(name = "profil_metier_incomplet", nullable = false)
+    @Column(name = "profil_metier_incomplet", nullable = true)
     private boolean profilMetierIncomplet = false;
 
     /** Template technique résolu selon le grade (prioritaire sur celui de la campagne). */

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/secure_token_storage.dart';
 
@@ -15,6 +16,7 @@ class AuthRepository {
   final SecureTokenStorage _storage;
 
   Future<void> signIn({required String email, required String password}) async {
+    await ApiConstants.init();
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/auth/signin',
@@ -51,6 +53,13 @@ class AuthRepository {
     final data = e.response?.data;
     if (data is Map && data['erreur'] is String) return data['erreur'] as String;
     if (data is Map && data['message'] is String) return data['message'] as String;
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.receiveTimeout) {
+      return 'Impossible de joindre ${ApiConstants.baseUrl}. '
+          'Sur un téléphone réel, relancez :\n'
+          'flutter run --dart-define=API_BASE_URL=http://<IP-PC>:8080';
+    }
     return e.message ?? 'Erreur réseau';
   }
 }

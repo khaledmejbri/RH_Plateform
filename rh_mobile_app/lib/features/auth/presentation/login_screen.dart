@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/auth_repository.dart';
 import '../providers/auth_notifier.dart';
@@ -142,6 +144,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         'Accédez à votre espace RH',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
+                      if (kDebugMode) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'API ${ApiConstants.baseUrl}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontSize: 11,
+                                color: AppTheme.textSecondary,
+                              ),
+                        ),
+                      ],
                       const SizedBox(height: 24),
 
                       // Email

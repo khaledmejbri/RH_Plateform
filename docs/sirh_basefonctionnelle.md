@@ -194,7 +194,7 @@ L’organigramme est la **structure organisationnelle éditable** (services / un
 - **Écriture** (RH) : créer / modifier un nœud, assigner ou retirer un manager, rattacher un parent.
 - Assigner / retirer un manager **ne modifie pas** `profil_acces` (`role_workflow` ignoré s’il est encore envoyé).
 - Vue : racines → enfants, membres de l’unité, manager du nœud (signal « Sans responsable » critique pour le routage M01).
-- UX cible (vague hiérarchie H1) : édition fiable (sélecteur parent), responsable dominant — voir `docs/sirh_hierarchie_ux.md` / `docs/sirh_hierarchie_vague.md`.
+- UX Plateforme RH : organigramme en cartes par niveaux (pas de glisser-déposer). Sélection d’une carte, puis actions explicites : créer une unité enfant, modifier (dont `titre_poste`), rattacher via une liste de parents valides ou « Racine », nommer ou retirer le responsable. Le rôle d’accès (`profil_acces`) se lit, il ne se change pas depuis cet écran. Direction = lecture seule.
 
 ### 5.4 Provisionnement de compte
 

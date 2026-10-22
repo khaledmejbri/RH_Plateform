@@ -1,0 +1,15 @@
+---
+description: Source de vérité SIRH RH-Évènement — modules, rôles, contraintes, écarts Livré/Partiel/Cible
+alwaysApply: true
+---
+
+# SIRH — source de vérité
+
+Avant toute spec, ticket ou code : lire `docs/sirh_basefonctionnelle.md`.
+
+- Produit : SIRH **RH-Évènement** (AGUA). Canaux : mobile **RH Connect** (Flutter) + back-office **Plateforme RH** (React).
+- États module : **Livré** / **Partiel** / **Cible**. Ne pas traiter un *Cible* comme recettable. Ne pas traiter un *Partiel* (M03 mock, M09 UI, M12 compteurs) comme terminé.
+- Hors périmètre immédiat : paie, GED complète, ATS, chatbot, multi-tenant. Préparer l’intégration paie, ne pas l’implémenter.
+- Toute évolution métier (type de demande, rôle, SLA, workflow) **met à jour** `docs/sirh_basefonctionnelle.md` en même temps que le code.
+- Contraintes non négociables : C-M01-01 (sortie ≤ 4 h), C-M02-01 (FIFO), C-S-01 (gateway unique), C-S-02 (RBAC), C-L-03/04 (RGPD / biométrie on-device).
+- Login = **matricule**. Back-office = `RH|DIRECTION|ADMIN`. Validation M01 RO = supérieur **actif** de l’unité uniquement.

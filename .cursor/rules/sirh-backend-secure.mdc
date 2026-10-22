@@ -1,0 +1,15 @@
+---
+description: Développement backend SIRH sécurisé (Spring, JWT, RBAC, pas d’exposition interne)
+globs: "**/*.java,**/application*.yml,**/application*.yaml,**/application*.properties"
+alwaysApply: false
+---
+
+# Backend SIRH — mode sécurisé
+
+- Clients → **gateway uniquement** (C-S-01). Jamais d’URL directe `localhost:8083/8084` dans un client.
+- `@PreAuthorize` : back-office `hasAnyRole('RH','DIRECTION','ADMIN')` ; parcours agent `USER`. Pas d’entité JPA en JSON de réponse.
+- JWT resource server, session **stateless**, secrets hors dépôt.
+- Métier dans le **service** (`@Transactional`), DTO + `@Valid`, `@ControllerAdvice` stable.
+- Kafka : événements idempotents. Notifications via topic `rh.notifications`.
+- Nouveau endpoint : route gateway + rôle + validation métier (contraintes C-M* du doc fonctionnel).
+- Features **Partielles** à ne pas marquer done : M03 (pas de notes), M09 (pas de `svc-presence`), transcription Whisper non branchée.

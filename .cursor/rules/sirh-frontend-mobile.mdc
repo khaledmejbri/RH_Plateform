@@ -1,0 +1,14 @@
+---
+description: App mobile RH Connect — Flutter, workflows collaborateur/RO, pointage prototype
+globs: rh_mobile_app/**/*.dart
+alwaysApply: false
+---
+
+# Mobile (RH Connect)
+
+- Riverpod + `go_router` + Dio. Token dans `flutter_secure_storage`.
+- Validation **client et serveur** : autorisation de sortie ≤ 4 h (C-M01-01).
+- RO : file `en-attente-ro` uniquement pour son unité. Refus = motif obligatoire.
+- M03 Actualités = mock ; M09 Pointage = prototype UX (QR puis face) — **pas** de recette anti-fraude tant que `svc-presence` n’existe pas.
+- Biométrie : aucune photo envoyée au serveur (C-L-04).
+- Offline-first : viser file locale + synchro ; ne pas casser le parcours online existant.

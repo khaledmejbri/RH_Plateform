@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -33,6 +34,31 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "rh_connect/device")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "isEmulator") {
+                    result.success(isEmulator())
+                } else {
+                    result.notImplemented()
+                }
+            }
+    }
+
+    private fun isEmulator(): Boolean {
+        val fingerprint = Build.FINGERPRINT
+        val model = Build.MODEL
+        val product = Build.PRODUCT
+        val hardware = Build.HARDWARE
+        return fingerprint.startsWith("generic") ||
+            fingerprint.startsWith("unknown") ||
+            model.contains("google_sdk") ||
+            model.contains("Emulator") ||
+            model.contains("Android SDK built for") ||
+            hardware.contains("goldfish") ||
+            hardware.contains("ranchu") ||
+            product.contains("sdk") ||
+            product.contains("emulator") ||
+            product.contains("vbox")
     }
 
     private fun obtainPosition(result: MethodChannel.Result) {
