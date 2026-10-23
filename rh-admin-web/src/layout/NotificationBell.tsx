@@ -123,6 +123,9 @@ export default function NotificationBell() {
       <button 
         type="button" 
         className="btn btn--ghost" 
+        aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} non lue(s)` : 'Notifications'}
+        aria-expanded={open}
+        aria-haspopup="true"
         onClick={() => setOpen(!open)}
         style={{ position: 'relative', padding: '8px' }}
       >

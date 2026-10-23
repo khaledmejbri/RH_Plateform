@@ -98,7 +98,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           child: const Icon(
                             Icons.settings_outlined,
                             size: 20,
-                            color: Color(0xFF6B7280),
+                            color: AppTheme.textTertiary,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -305,7 +305,7 @@ class _NavItem extends StatelessWidget {
                     isActive ? activeIcon : icon,
                     size: 22,
                     color:
-                        isActive ? AppTheme.primary : const Color(0xFFADB5BD),
+                        isActive ? AppTheme.primary : AppTheme.textTertiary,
                   ),
                   if (badge > 0)
                     Positioned(
@@ -318,7 +318,7 @@ class _NavItem extends StatelessWidget {
                           minHeight: 16,
                         ),
                         decoration: const BoxDecoration(
-                          color: Color(0xFF16A34A),
+                          color: AppTheme.success,
                           shape: BoxShape.circle,
                         ),
                         child: Text(
@@ -341,7 +341,7 @@ class _NavItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                color: isActive ? AppTheme.primary : const Color(0xFFADB5BD),
+                color: isActive ? AppTheme.primary : AppTheme.textTertiary,
               ),
             ),
           ],
@@ -409,7 +409,7 @@ class _DashboardPage extends ConsumerWidget {
                   constraints: const BoxConstraints(minHeight: 100),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF1E40AF), Color(0xFF3B82F6)],
+                      colors: [AppTheme.primaryDark, Color(0xFF3B82F6)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -564,7 +564,7 @@ class _DashboardPage extends ConsumerWidget {
                     subtitle: 'Attestations',
                     icon: Icons.description_rounded,
                     iconBg: const Color(0xFFF0FDF4),
-                    iconColor: const Color(0xFF16A34A),
+                    iconColor: AppTheme.success,
                     onTap: () => context.push('/documents'),
                   ),
                   _ServiceCard(
@@ -588,7 +588,7 @@ class _DashboardPage extends ConsumerWidget {
                     subtitle: 'Performance',
                     icon: Icons.star_outline_rounded,
                     iconBg: const Color(0xFFFEF3C7),
-                    iconColor: const Color(0xFFD97706),
+                    iconColor: AppTheme.warning,
                     badge: ref.watch(evaluationsBadgeCountProvider).maybeWhen(
                           data: (n) => n,
                           orElse: () => 0,
@@ -618,8 +618,8 @@ class _DashboardPage extends ConsumerWidget {
                     title: 'Actualités',
                     subtitle: 'Lire',
                     icon: Icons.newspaper_rounded,
-                    iconBg: const Color(0xFFF5F3FF),
-                    iconColor: const Color(0xFF7C3AED),
+                    iconBg: AppTheme.primarySurface,
+                    iconColor: AppTheme.primaryDark,
                     onTap: () => context.push('/feed'),
                   ),
                 ],
@@ -791,7 +791,7 @@ class _DemandesPage extends ConsumerWidget {
             subtitle: 'Attestations, bulletins de paie…',
             icon: Icons.description_rounded,
             iconBg: const Color(0xFFF0FDF4),
-            iconColor: const Color(0xFF16A34A),
+            iconColor: AppTheme.success,
             onTap: () => context.push('/documents'),
           ),
           const SizedBox(height: 12),
@@ -831,7 +831,7 @@ class _SectionTitle extends StatelessWidget {
       style: const TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w700,
-        color: Color(0xFF64748B),
+        color: AppTheme.textTertiary,
         letterSpacing: 0.3,
       ),
     );
@@ -864,7 +864,7 @@ class _RoValidationCard extends ConsumerWidget {
           border: Border.all(color: const Color(0xFFBBF7D0)),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF16A34A).withOpacity(0.06),
+              color: AppTheme.success.withOpacity(0.06),
               blurRadius: 10,
               offset: const Offset(0, 3),
             ),
@@ -875,12 +875,12 @@ class _RoValidationCard extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFF16A34A).withOpacity(0.1),
+                color: AppTheme.success.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(
                 Icons.how_to_reg_rounded,
-                color: Color(0xFF16A34A),
+                color: AppTheme.success,
                 size: 22,
               ),
             ),
@@ -894,7 +894,7 @@ class _RoValidationCard extends ConsumerWidget {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
-                      color: Color(0xFF1E293B),
+                      color: AppTheme.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -906,8 +906,8 @@ class _RoValidationCard extends ConsumerWidget {
                       fontSize: 12,
                       color:
                           count > 0
-                              ? const Color(0xFF16A34A)
-                              : const Color(0xFF94A3B8),
+                              ? AppTheme.success
+                              : AppTheme.textTertiary,
                       fontWeight:
                           count > 0 ? FontWeight.w600 : FontWeight.normal,
                     ),
@@ -922,7 +922,7 @@ class _RoValidationCard extends ConsumerWidget {
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF16A34A),
+                  color: AppTheme.success,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -937,7 +937,7 @@ class _RoValidationCard extends ConsumerWidget {
             const SizedBox(width: 8),
             const Icon(
               Icons.chevron_right_rounded,
-              color: Color(0xFF94A3B8),
+              color: AppTheme.textTertiary,
               size: 20,
             ),
           ],
@@ -998,7 +998,7 @@ class _RoBanner extends StatelessWidget {
                     '$libelle — demandes de votre nœud à valider',
                     style: const TextStyle(
                       fontSize: 12,
-                      color: Color(0xFF64748B),
+                      color: AppTheme.textTertiary,
                     ),
                   ),
                 ],

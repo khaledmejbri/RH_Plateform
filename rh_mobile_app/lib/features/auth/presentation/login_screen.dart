@@ -106,10 +106,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               width: double.infinity,
               height: size.height * 0.32,
               decoration: const BoxDecoration(
-                color: AppTheme.primary,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppTheme.primary, AppTheme.primaryDark],
+                ),
                 borderRadius: BorderRadius.only(
-                  bottomLeft:  Radius.circular(32),
-                  bottomRight: Radius.circular(32),
+                  bottomLeft:  Radius.circular(28),
+                  bottomRight: Radius.circular(28),
                 ),
               ),
               child: SafeArea(
@@ -124,7 +128,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Icon(Icons.groups_2_rounded,
-                          size: 40, color: Colors.white),
+                          size: 40, color: Colors.white, semanticLabel: 'RH Connect'),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -139,7 +143,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     Text(
                       'Votre espace RH',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.white.withOpacity(0.65),
+                            color: Colors.white.withValues(alpha: 0.88),
+                            fontSize: 14,
                           ),
                     ),
                   ],
@@ -153,8 +158,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: Container(
                 decoration: BoxDecoration(
                   color: AppTheme.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppTheme.border, width: 0.5),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                  border: Border.all(color: AppTheme.border),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x0F0F172A), blurRadius: 24, offset: Offset(0, 8)),
+                  ],
                 ),
                 padding: const EdgeInsets.all(24),
                 child: Form(
@@ -164,33 +172,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     children: [
                       Text(
                         'Connexion',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.textPrimary,
-                            ),
+                        style: Theme.of(context).textTheme.headlineSmall,
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Accédez à votre espace RH',
-                        style: Theme.of(context).textTheme.bodySmall,
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
                       InkWell(
                         onTap: _loading ? null : _editServer,
-                        child: Row(
+                        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 44),
+                          child: Row(
                           children: [
                             Expanded(
                               child: Text(
                                 'Serveur ${ApiConstants.baseUrl}',
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      fontSize: 11,
-                                      color: AppTheme.textSecondary,
-                                    ),
+                                style: Theme.of(context).textTheme.bodySmall,
                               ),
                             ),
-                            const Icon(Icons.edit, size: 14, color: AppTheme.textSecondary),
+                            const Icon(Icons.edit_outlined,
+                                size: 18, color: AppTheme.textTertiary, semanticLabel: 'Modifier le serveur'),
                           ],
+                        ),
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -220,6 +227,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           prefixIcon:
                               const Icon(Icons.lock_outline_rounded, size: 20),
                           suffixIcon: IconButton(
+                            tooltip: _obscure ? 'Afficher le mot de passe' : 'Masquer le mot de passe',
                             onPressed: () =>
                                 setState(() => _obscure = !_obscure),
                             icon: Icon(
@@ -246,9 +254,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             );
                           },
                           style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 0, vertical: 8),
-                            foregroundColor: AppTheme.primary,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                           ),
                           child: const Text('Mot de passe oublié ?',
                               style: TextStyle(fontSize: 13)),

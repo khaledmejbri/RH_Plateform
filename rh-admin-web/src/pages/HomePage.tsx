@@ -47,8 +47,8 @@ export default function HomePage() {
       label: 'Plaintes',
       sub: 'Suivi et traitement',
       icon: <IconChat />,
-      accent: '#7c3aed',
-      bg: '#f5f3ff',
+      accent: '#1d4ed8',
+      bg: '#eff6ff',
     },
     {
       to: '/app/demandes-administratives',
@@ -56,8 +56,8 @@ export default function HomePage() {
       label: 'Demandes',
       sub: 'Congés et autorisations',
       icon: <IconFile />,
-      accent: '#1e40af',
-      bg: '#eff6ff',
+      accent: '#0f766e',
+      bg: '#f0fdfa',
     },
     {
       to: '/app/documents-administratifs',
@@ -65,8 +65,8 @@ export default function HomePage() {
       label: 'Documents',
       sub: 'Attestations et bulletins',
       icon: <IconDoc />,
-      accent: '#065f46',
-      bg: '#f0fdf4',
+      accent: '#b45309',
+      bg: '#fffbeb',
     },
     {
       to: '/app/collaborateurs',
@@ -74,101 +74,74 @@ export default function HomePage() {
       label: 'Collaborateurs',
       sub: 'Fiches et comptes',
       icon: <IconUsers />,
-      accent: '#92400e',
-      bg: '#fffbeb',
+      accent: '#4338ca',
+      bg: '#eef2ff',
     },
   ];
 
   return (
     <div className="page">
-      {/* ── Hero ── */}
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#0f172a' }}>
-          Tableau de bord
-        </h2>
-        <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: 14 }}>
+      <header className="dash-hero">
+        <h2>Tableau de bord</h2>
+        <p>
           {lectureSeule
             ? 'Vue d’ensemble — consultation Direction (compteurs et listes).'
-            : 'Vue d\'ensemble de l\'activité RH en temps réel.'}
+            : 'Vue d’ensemble de l’activité RH.'}
         </p>
-      </div>
+      </header>
 
-      {err ? <div className="alert alert--error">{err}</div> : null}
+      {err ? <div className="alert alert--error" role="alert">{err}</div> : null}
 
-      {/* ── Stats grid ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, marginBottom: 32 }}>
-        {stats.map(s => (
-          <Link key={s.to} to={s.to} style={{ textDecoration: 'none' }}>
-            <div style={{
-              background: 'white',
-              border: '1px solid #e2e8f0',
-              borderRadius: 16,
-              padding: 24,
-              transition: 'box-shadow 0.2s, transform 0.2s',
-              cursor: 'pointer',
-            }}
-              onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)';
-                (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.boxShadow = 'none';
-                (e.currentTarget as HTMLElement).style.transform = 'none';
-              }}>
-              <div style={{
-                width: 44, height: 44, borderRadius: 12,
-                background: s.bg, color: s.accent,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                marginBottom: 16,
-              }}>
-                {s.icon}
-              </div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: '#0f172a', lineHeight: 1, marginBottom: 6 }}>
-                {s.value}
-              </div>
-              <div style={{ fontWeight: 600, fontSize: 15, color: '#1e293b' }}>{s.label}</div>
-              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{s.sub}</div>
-            </div>
+      <section className="dash-stats" aria-label="Indicateurs">
+        {stats.map((s) => (
+          <Link key={s.to} to={s.to} className="dash-stat card anim-lift">
+            <span className="dash-stat__icon" style={{ background: s.bg, color: s.accent }} aria-hidden>
+              {s.icon}
+            </span>
+            <div className="dash-stat__value" aria-busy={s.value === '…'}>{s.value}</div>
+            <div className="dash-stat__label">{s.label}</div>
+            <div className="dash-stat__sub">{s.sub}</div>
           </Link>
         ))}
-      </div>
+      </section>
 
-      {/* ── Quick links ── */}
-      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 16, padding: 24 }}>
-        <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
-          Accès rapide
-        </h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <section className="panel" aria-labelledby="quick-title">
+        <h3 id="quick-title" className="panel__title">Accès rapide</h3>
+        <div className="quick-actions">
           {(lectureSeule
             ? [
-                { to: '/app/documents-administratifs', label: 'File documents (consultation)', icon: '📄' },
-                { to: '/app/collaborateurs',           label: 'Collaborateurs', icon: '👤' },
-                { to: '/app/organigramme',             label: 'Organigramme', icon: '🌳' },
+                { to: '/app/documents-administratifs', label: 'File documents (consultation)', icon: <IconDoc /> },
+                { to: '/app/collaborateurs', label: 'Collaborateurs', icon: <IconUsers /> },
+                { to: '/app/organigramme', label: 'Organigramme', icon: <IconTree /> },
               ]
             : [
-                { to: '/app/unites',                   label: 'Unités organisationnelles', icon: '🏢' },
-                { to: '/app/documents-administratifs', label: 'Traiter une demande de document', icon: '📄' },
-                { to: '/app/collaborateurs',           label: 'Créer un collaborateur', icon: '👤' },
+                { to: '/app/unites', label: 'Unités organisationnelles', icon: <IconBuilding /> },
+                { to: '/app/documents-administratifs', label: 'Traiter une demande de document', icon: <IconDoc /> },
+                { to: '/app/collaborateurs', label: 'Créer un collaborateur', icon: <IconUserPlus /> },
               ]
-          ).map(l => (
-            <Link key={l.to} to={l.to} style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '12px 14px', borderRadius: 10,
-              background: '#f8fafc', textDecoration: 'none',
-              color: '#1e293b', fontSize: 14, fontWeight: 500,
-              transition: 'background 0.15s',
-            }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#f1f5f9')}
-              onMouseLeave={e => (e.currentTarget.style.background = '#f8fafc')}>
-              <span style={{ fontSize: 18 }}>{l.icon}</span>
+          ).map((l) => (
+            <Link key={l.to} to={l.to} className="quick-action">
+              <span aria-hidden>{l.icon}</span>
               {l.label}
-              <span style={{ marginLeft: 'auto', color: '#cbd5e1' }}>›</span>
+              <svg className="quick-action__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </Link>
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
+}
+
+function IconTree() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 3v6M6 15v-3h12v3M12 9v3" strokeLinecap="round" strokeLinejoin="round" /><rect x="9" y="3" width="6" height="5" rx="1" /><rect x="3" y="15" width="6" height="5" rx="1" /><rect x="15" y="15" width="6" height="5" rx="1" /></svg>;
+}
+function IconBuilding() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 13v.01M9 17v.01" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+function IconUserPlus() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function IconChat() {

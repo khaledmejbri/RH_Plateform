@@ -277,7 +277,7 @@ export default function DocumentsAdministratifsPage() {
                 <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
                   Détail de la demande
                 </h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#94a3b8' }}>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
                   #{pickedDemande.identifiant}
                 </p>
               </div>
@@ -463,7 +463,7 @@ function InfoRow({ label, value, highlight, full, danger }: {
 }) {
   return (
     <div style={{ gridColumn: full ? '1 / -1' : 'span 1' }}>
-      <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+      <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
         {label}
       </p>
       <p style={{

@@ -95,7 +95,7 @@ export default function FormationsPage() {
         {loading ? (
           <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Chargement...</div>
         ) : rows.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>Aucune demande de formation.</div>
+          <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Aucune demande de formation.</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>

@@ -5,6 +5,7 @@ import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import './app.css';
+import './design-system.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
