@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getDemandesAdministrativesListe, type DemandeAdministrative } from '../api/rhClient';
+import { Avatar, Chip, EmptyState, ErrorAlert, LoadingState, PageHeader, StatusBadge, formatDateTime, type IconName, type Tone } from '../components/ui';
 
 export default function DemandesAdministrativesPage() {
   const [rows, setRows] = useState<DemandeAdministrative[]>([]);
@@ -23,52 +24,6 @@ export default function DemandesAdministrativesPage() {
     };
   }, []);
 
-  function getStatusColor(statut: string): string {
-    switch (statut.toUpperCase()) {
-      case 'APPROUVEE':
-      case 'VALIDEE':
-        return '#10b981';
-      case 'REJETEE':
-      case 'REFUSEE':
-        return '#ef4444';
-      case 'EN_ATTENTE_VALIDATION':
-      case 'EN_COURS':
-        return '#f59e0b';
-      default:
-        return '#64748b';
-    }
-  }
-
-  function getStatusIcon(statut: string): string {
-    switch (statut.toUpperCase()) {
-      case 'APPROUVEE':
-      case 'VALIDEE':
-        return '✓';
-      case 'REJETEE':
-      case 'REFUSEE':
-        return '✕';
-      case 'EN_ATTENTE_VALIDATION':
-      case 'EN_COURS':
-        return '⏳';
-      default:
-        return '•';
-    }
-  }
-
-  function formatDate(iso: string): string {
-    try {
-      return new Date(iso).toLocaleString('fr-FR', { 
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch {
-      return iso;
-    }
-  }
-
   function formatTypeDemande(type: string): string {
     if (type === 'AUTORISATION_SORTIE') return 'Autorisation de sortie';
     if (type === 'CONGE') return 'Congé';
@@ -89,16 +44,10 @@ export default function DemandesAdministrativesPage() {
     return map[code.toUpperCase()] ?? code;
   }
 
-  function getTypeStyle(type: string): { bg: string; color: string } {
-    if (type === 'AUTORISATION_SORTIE') return { bg: '#eff6ff', color: '#2563eb' };
-    if (type === 'CONGE') return { bg: '#fff7ed', color: '#ea580c' };
-    return { bg: '#f0fdf4', color: '#16a34a' };
-  }
-
-  function getTypeIcon(type: string): string {
-    if (type === 'AUTORISATION_SORTIE') return '⏰';
-    if (type === 'CONGE') return '📅';
-    return '📋';
+  function typeChip(type: string): { tone: Tone; icon: IconName } {
+    if (type === 'AUTORISATION_SORTIE') return { tone: 'info', icon: 'clock' };
+    if (type === 'CONGE') return { tone: 'warning', icon: 'calendar' };
+    return { tone: 'success', icon: 'clipboard' };
   }
 
   function formatPeriode(d: DemandeAdministrative): string {
@@ -126,178 +75,63 @@ export default function DemandesAdministrativesPage() {
 
   return (
     <div className="page">
-      <div className="page__head">
-        <div>
-          <h2 className="page__title">Demandes administratives</h2>
-          <p className="page__lead">Consultation des congés et autorisations - Informations détaillées.</p>
-        </div>
-      </div>
-      
-      {err ? (
-        <div className="alert alert--error" style={{
-          padding: '16px 20px',
-          background: '#fef2f2',
-          border: '1px solid #fecaca',
-          borderRadius: '12px',
-          color: '#991b1b',
-          marginBottom: '20px'
-        }}>
-          <strong>Erreur:</strong> {err}
-        </div>
-      ) : null}
-      
-      <div className="panel" style={{
-        background: 'white',
-        borderRadius: '16px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06)',
-        overflow: 'hidden'
-      }}>
+      <PageHeader title="Demandes administratives" lead="Congés, autorisations de sortie et ordres de mission." />
+
+      {err ? <ErrorAlert>{err}</ErrorAlert> : null}
+
+      <div className="panel panel--flush">
         {loading ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              border: '3px solid #e5e7eb',
-              borderTopColor: '#3b82f6',
-              borderRadius: '50%',
-              animation: 'spin 0.8s linear infinite',
-              margin: '0 auto 16px'
-            }} />
-            <p className="muted">Chargement des demandes...</p>
-          </div>
+          <LoadingState label="Chargement des demandes…" />
+        ) : rows.length === 0 ? (
+          <EmptyState icon="clipboard" title="Aucune demande administrative">
+            Les demandes apparaîtront ici dès qu’un collaborateur les soumettra.
+          </EmptyState>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              fontSize: '14px'
-            }}>
+          <div className="table-wrap">
+            <table className="data-table data-table--responsive">
+              <caption className="sr-only">Liste des demandes administratives</caption>
               <thead>
-                <tr style={{
-                  background: 'linear-gradient(to right, #f9fafb, #f3f4f6)',
-                  borderBottom: '2px solid #e5e7eb'
-                }}>
-                  <th style={{ padding: '16px 20px', textAlign: 'left', fontWeight: '600', color: '#374151' }}>Date de création</th>
-                  <th style={{ padding: '16px 20px', textAlign: 'left', fontWeight: '600', color: '#374151' }}>Type de demande</th>
-                  <th style={{ padding: '16px 20px', textAlign: 'left', fontWeight: '600', color: '#374151' }}>Statut</th>
-                  <th style={{ padding: '16px 20px', textAlign: 'left', fontWeight: '600', color: '#374151' }}>Période</th>
-                  <th style={{ padding: '16px 20px', textAlign: 'left', fontWeight: '600', color: '#374151' }}>Demandeur</th>
+                <tr>
+                  <th scope="col">Créée le</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Statut</th>
+                  <th scope="col">Période</th>
+                  <th scope="col">Demandeur</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((d, index) => {
-                  const statusColor = getStatusColor(d.statut);
+                {rows.map((d) => {
+                  const chip = typeChip(d.type_demande);
+                  const typeConge =
+                    d.type_demande === 'CONGE'
+                      ? formatTypeConge((d.contenu as { type_conge?: string } | undefined)?.type_conge)
+                      : null;
                   return (
-                    <tr 
-                      key={d.identifiant}
-                      style={{
-                        borderBottom: index < rows.length - 1 ? '1px solid #f3f4f6' : 'none',
-                        transition: 'background 0.2s',
-                        cursor: 'pointer'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
-                    >
-                      <td style={{ padding: '16px 20px', color: '#6b7280', fontSize: '13px' }}>
-                        {formatDate(d.cree_le)}
-                      </td>
-                      <td style={{ padding: '16px 20px' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 12px',
-                          background: getTypeStyle(d.type_demande).bg,
-                          color: getTypeStyle(d.type_demande).color,
-                          borderRadius: '8px',
-                          fontSize: '13px',
-                          fontWeight: '600'
-                        }}>
-                          <span>{getTypeIcon(d.type_demande)}</span>
+                    <tr key={d.identifiant}>
+                      <td data-label="Créée le" className="cell-meta">{formatDateTime(d.cree_le)}</td>
+                      <td data-label="Type">
+                        <Chip tone={chip.tone} icon={chip.icon}>
                           {formatTypeDemande(d.type_demande)}
-                          {d.type_demande === 'CONGE' && formatTypeConge(
-                            (d.contenu as { type_conge?: string } | undefined)?.type_conge,
-                          ) ? (
-                            <span style={{ fontWeight: 500, opacity: 0.85 }}>
-                              · {formatTypeConge(
-                                (d.contenu as { type_conge?: string }).type_conge,
-                              )}
-                            </span>
-                          ) : null}
-                        </span>
+                          {typeConge ? <span className="muted">· {typeConge}</span> : null}
+                        </Chip>
                       </td>
-                      <td style={{ padding: '16px 20px' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 12px',
-                          background: `${statusColor}15`,
-                          color: statusColor,
-                          borderRadius: '8px',
-                          fontSize: '13px',
-                          fontWeight: '600',
-                          border: `1px solid ${statusColor}30`
-                        }}>
-                          <span>{getStatusIcon(d.statut)}</span>
-                          <span>{d.statut}</span>
-                        </span>
+                      <td data-label="Statut">
+                        <StatusBadge statut={d.statut} />
                       </td>
-                      <td style={{ padding: '16px 20px', color: '#6b7280', fontSize: '13px' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span>{getTypeIcon(d.type_demande)}</span>
-                          <span>{formatPeriode(d)}</span>
-                        </span>
-                      </td>
-                      <td style={{ padding: '16px 20px' }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px'
-                        }}>
-                          <div style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '50%',
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white',
-                            fontSize: '12px',
-                            fontWeight: '700'
-                          }}>
-                            {d.demandeur_identifiant.substring(0, 2).toUpperCase()}
-                          </div>
-                          <code style={{
-                            fontSize: '12px',
-                            color: '#6b7280',
-                            background: '#f3f4f6',
-                            padding: '4px 8px',
-                            borderRadius: '6px'
-                          }}>
-                            {d.demandeur_identifiant}
+                      <td data-label="Période" className="cell-meta">{formatPeriode(d)}</td>
+                      <td data-label="Demandeur">
+                        <span className="cell-user">
+                          <Avatar name={d.demandeur_identifiant} size={28} />
+                          <code className="cell-code" title={d.demandeur_identifiant}>
+                            {d.demandeur_identifiant.slice(0, 8)}…
                           </code>
-                        </div>
+                        </span>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-            {rows.length === 0 ? (
-              <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5" style={{ marginBottom: '16px' }}>
-                  <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <p style={{ color: '#9ca3af', fontSize: '15px', fontWeight: '500', margin: '0 0 8px' }}>
-                  Aucune demande administrative
-                </p>
-                <p style={{ color: '#d1d5db', fontSize: '13px', margin: 0 }}>
-                  Les demandes apparaîtront ici lorsqu'elles seront soumises
-                </p>
-              </div>
-            ) : null}
           </div>
         )}
       </div>

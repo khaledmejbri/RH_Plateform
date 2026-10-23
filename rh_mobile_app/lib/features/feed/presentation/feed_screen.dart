@@ -139,7 +139,7 @@ class PostCard extends ConsumerWidget {
                         : Icons.favorite_outline_rounded,
                     label: '${post.likes}',
                     color:
-                        post.isLiked ? Colors.red : AppTheme.textSecondary,
+                        post.isLiked ? AppTheme.error : AppTheme.textSecondary,
                     onTap: () =>
                         ref.read(feedProvider.notifier).toggleLike(post.id),
                   ),

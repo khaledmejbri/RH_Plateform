@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../data/demande_admin_repository.dart';
 import 'demandes_admin_list_screen.dart';
+import 'package:rh_mobile_app/core/theme/app_theme.dart';
 
 class DemandeAutorisationSortieCreateScreen extends ConsumerStatefulWidget {
   const DemandeAutorisationSortieCreateScreen({super.key});
@@ -16,7 +17,7 @@ class DemandeAutorisationSortieCreateScreen extends ConsumerStatefulWidget {
 
 class _DemandeAutorisationSortieCreateScreenState
     extends ConsumerState<DemandeAutorisationSortieCreateScreen> {
-  static const Color _blue = Color(0xFF2563EB);
+  static const Color _blue = AppTheme.primary;
 
   DateTime? _dateJour;
   TimeOfDay? _heureDebut;
@@ -123,7 +124,7 @@ class _DemandeAutorisationSortieCreateScreenState
     final dureeDepasse = duree > 4 * 60;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('Autorisation de sortie',
             style: TextStyle(fontWeight: FontWeight.bold)),
@@ -138,9 +139,9 @@ class _DemandeAutorisationSortieCreateScreenState
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: _blue.withOpacity(0.06),
+              color: _blue.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _blue.withOpacity(0.2)),
+              border: Border.all(color: _blue.withValues(alpha: 0.2)),
             ),
             child: Row(
               children: [
@@ -149,7 +150,7 @@ class _DemandeAutorisationSortieCreateScreenState
                 const Expanded(
                   child: Text(
                     'Autorisation de sortie courte uniquement — maximum 4h (moins de la moitié de la journée)',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF1D4ED8)),
+                    style: TextStyle(fontSize: 13, color: AppTheme.primaryDark),
                   ),
                 ),
               ],
@@ -191,20 +192,20 @@ class _DemandeAutorisationSortieCreateScreenState
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: dureeDepasse
-                    ? Colors.red.withOpacity(0.08)
-                    : dureeValide ? Colors.green.withOpacity(0.08) : Colors.orange.withOpacity(0.08),
+                    ? Colors.red.withValues(alpha: 0.08)
+                    : dureeValide ? Colors.green.withValues(alpha: 0.08) : Colors.orange.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: dureeDepasse
-                      ? Colors.red.withOpacity(0.3)
-                      : dureeValide ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3),
+                      ? Colors.red.withValues(alpha: 0.3)
+                      : dureeValide ? Colors.green.withValues(alpha: 0.3) : Colors.orange.withValues(alpha: 0.3),
                 ),
               ),
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Icon(
                   dureeDepasse ? Icons.warning_amber_rounded : Icons.timer_outlined,
                   size: 16,
-                  color: dureeDepasse ? Colors.red : dureeValide ? Colors.green : Colors.orange,
+                  color: dureeDepasse ? AppTheme.error : dureeValide ? AppTheme.success : AppTheme.warning,
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -215,7 +216,7 @@ class _DemandeAutorisationSortieCreateScreenState
                           : 'Durée : ${_formatDuree(duree)} / 4h max',
                   style: TextStyle(
                     fontSize: 13, fontWeight: FontWeight.w600,
-                    color: dureeDepasse ? Colors.red : dureeValide ? Colors.green.shade700 : Colors.orange,
+                    color: dureeDepasse ? AppTheme.error : dureeValide ? AppTheme.success : AppTheme.warning,
                   ),
                 ),
               ]),
@@ -229,14 +230,14 @@ class _DemandeAutorisationSortieCreateScreenState
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade200),
+              border: Border.all(color: AppTheme.border),
             ),
             child: TextField(
               controller: _motifController,
               maxLines: 3,
               decoration: InputDecoration(
                 hintText: 'Raison de la sortie...',
-                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                hintStyle: TextStyle(color: AppTheme.textTertiary, fontSize: 14),
                 prefixIcon: Padding(
                   padding: const EdgeInsets.only(bottom: 44),
                   child: Icon(Icons.notes_rounded, color: _blue),
@@ -274,7 +275,7 @@ class _DemandeAutorisationSortieCreateScreenState
   }
 
   Widget _label(String text) => Text(text,
-      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)));
+      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textTertiary));
 }
 
 class _Tile extends StatelessWidget {
@@ -301,7 +302,7 @@ class _Tile extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected ? color.withOpacity(0.3) : Colors.grey.shade200, width: 1.5,
+            color: selected ? color.withValues(alpha: 0.3) : AppTheme.border, width: 1.5,
           ),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -309,22 +310,22 @@ class _Tile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: (selected ? color : Colors.grey).withOpacity(0.1),
+                color: (selected ? color : AppTheme.textTertiary).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: selected ? color : Colors.grey, size: 18),
+              child: Icon(icon, color: selected ? color : AppTheme.textTertiary, size: 18),
             ),
             const Spacer(),
-            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade300, size: 18),
+            Icon(Icons.chevron_right_rounded, color: AppTheme.border, size: 18),
           ]),
           const SizedBox(height: 10),
-          Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.w500)),
+          Text(label, style: TextStyle(color: AppTheme.textTertiary, fontSize: 11, fontWeight: FontWeight.w500)),
           const SizedBox(height: 2),
           Text(
             value,
             style: TextStyle(
               fontSize: 15, fontWeight: FontWeight.bold,
-              color: selected ? const Color(0xFF1E293B) : Colors.grey.shade400,
+              color: selected ? AppTheme.textPrimary : AppTheme.textTertiary,
             ),
           ),
         ]),

@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +5,8 @@ import 'package:intl/intl.dart';
 
 import '../data/document_models.dart';
 import '../data/document_repository.dart';
+import 'package:rh_mobile_app/core/theme/app_theme.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 const int _pageSize = 10;
 
@@ -26,10 +27,9 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(documentsListProvider);
-    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4FF),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('Mes documents', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
         backgroundColor: Colors.white,
@@ -47,38 +47,21 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error_outline, size: 48, color: colorScheme.error.withOpacity(0.5)),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Text(e is DioException ? '${e.message}' : '$e', textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.tonal(onPressed: () => ref.invalidate(documentsListProvider), child: const Text('Réessayer'))
-            ],
-          ),
+        error: (e, _) => RhErrorState(
+          message: rhErrorMessage(e),
+          onRetry: () => ref.invalidate(documentsListProvider),
         ),
         data: (items) {
           if (items.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.description_outlined, size: 80, color: colorScheme.outline.withOpacity(0.3)),
-                  const SizedBox(height: 16),
-                  const Text('Aucun document demandé', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey)),
-                  const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed: () => context.push('/documents/nouveau'),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Nouvelle demande'),
-                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF1E40AF)),
-                  ),
-                ],
+            return RhEmptyState(
+              icon: Icons.description_outlined,
+              title: 'Aucun document demandé',
+              message: 'Demandez une attestation ou un bulletin en quelques secondes.',
+              action: FilledButton.icon(
+                onPressed: () => context.push('/documents/nouveau'),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Nouvelle demande'),
+                style: FilledButton.styleFrom(minimumSize: const Size(200, AppTheme.minTouch)),
               ),
             );
           }
@@ -112,7 +95,7 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
                       color: Colors.white,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+                          color: AppTheme.textPrimary.withValues(alpha: 0.05),
                           blurRadius: 10,
                           offset: const Offset(0, -2),
                         ),
@@ -124,18 +107,18 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
                         IconButton(
                           icon: const Icon(Icons.chevron_left, size: 20),
                           onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
-                          color: _currentPage > 0 ? const Color(0xFF1E40AF) : Colors.grey.shade300,
+                          color: _currentPage > 0 ? AppTheme.primaryDark : AppTheme.border,
                         ),
                         const SizedBox(width: 8),
                         Text(
                           'Page ${_currentPage + 1} / $totalPages',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textTertiary),
                         ),
                         const SizedBox(width: 8),
                         IconButton(
                           icon: const Icon(Icons.chevron_right, size: 20),
                           onPressed: _currentPage < totalPages - 1 ? () => setState(() => _currentPage++) : null,
-                          color: _currentPage < totalPages - 1 ? const Color(0xFF1E40AF) : Colors.grey.shade300,
+                          color: _currentPage < totalPages - 1 ? AppTheme.primaryDark : AppTheme.border,
                         ),
                       ],
                     ),
@@ -147,7 +130,7 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push('/documents/nouveau'),
-        backgroundColor: const Color(0xFF1E40AF),
+        backgroundColor: AppTheme.primaryDark,
         elevation: 4,
         child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
@@ -176,23 +159,23 @@ class _DocumentCard extends StatelessWidget {
     switch (document.statut) {
       case 'DISPONIBLE':
         statusLabel = 'Prêt';
-        statusColor = const Color(0xFF10B981);
+        statusColor = AppTheme.success;
         statusIcon = Icons.check_circle_rounded;
         break;
       case 'REJETEE':
         statusLabel = 'Refusé';
-        statusColor = const Color(0xFFEF4444);
+        statusColor = AppTheme.error;
         statusIcon = Icons.cancel_rounded;
         break;
       case 'EN_TRAITEMENT_RH':
       case 'EN_ATTENTE_FILE':
         statusLabel = 'En cours';
-        statusColor = const Color(0xFFF59E0B);
+        statusColor = AppTheme.warning;
         statusIcon = Icons.access_time_filled_rounded;
         break;
       default:
         statusLabel = 'Envoyé';
-        statusColor = const Color(0xFF3B82F6);
+        statusColor = AppTheme.primaryLight;
         statusIcon = Icons.send_rounded;
     }
 
@@ -200,10 +183,10 @@ class _DocumentCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade100, width: 1),
+        border: Border.all(color: AppTheme.surfaceMuted, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: AppTheme.textPrimary.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -224,7 +207,7 @@ class _DocumentCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.08),
+                        color: statusColor.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
@@ -240,14 +223,14 @@ class _DocumentCard extends StatelessWidget {
                         children: [
                           Text(
                             _formatTypeDocument(document.typeDocument),
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Color(0xFF1E293B)),
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: AppTheme.textPrimary),
                           ),
                           if (document.dateCreation != null)
                             Padding(
                               padding: const EdgeInsets.only(top: 2),
                               child: Text(
                                 DateFormat('dd MMM yyyy', 'fr_FR').format(document.dateCreation!),
-                                style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                                style: TextStyle(color: AppTheme.textTertiary, fontSize: 12),
                               ),
                             ),
                         ],
@@ -257,7 +240,7 @@ class _DocumentCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
+                        color: statusColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(

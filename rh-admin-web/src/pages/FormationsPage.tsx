@@ -7,6 +7,7 @@ import {
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { DialogPanel } from '../components/useDialogA11y';
+import { EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, formatDateTime } from '../components/ui';
 
 type StatutFilter = '' | 'EN_VALIDATION_RRH' | 'INTEGREE_PLAN' | 'REFUSEE' | 'ANNULEE';
 
@@ -19,6 +20,10 @@ export default function FormationsPage() {
   const [statut, setStatut] = useState<StatutFilter>('EN_VALIDATION_RRH');
   const [selectedFormation, setSelectedFormation] = useState<DemandeFormation | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [action, setAction] = useState<{ kind: 'integrer' | 'refuser'; demande: DemandeFormation } | null>(null);
+  const [actionText, setActionText] = useState('');
+  const [actionErr, setActionErr] = useState<string | null>(null);
+  const [acting, setActing] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -34,27 +39,37 @@ export default function FormationsPage() {
 
   useEffect(() => { void load(); }, [statut]);
 
-  async function integrer(d: DemandeFormation) {
-    const commentaire = window.prompt('Commentaire RH (optionnel)') ?? undefined;
+  async function confirmAction() {
+    if (!action) return;
+    const text = actionText.trim();
+    if (action.kind === 'refuser' && !text) {
+      setActionErr('Le motif de refus est obligatoire.');
+      return;
+    }
+    setActing(true);
+    setActionErr(null);
     try {
-      await postFormationIntegrerPlan(d.identifiant, commentaire);
-      setMsg('Demande intégrée au plan annuel.');
+      if (action.kind === 'integrer') {
+        await postFormationIntegrerPlan(action.demande.identifiant, text || undefined);
+        setMsg('Demande intégrée au plan annuel.');
+      } else {
+        await postFormationRefuser(action.demande.identifiant, text);
+        setMsg('Demande refusée.');
+      }
+      setAction(null);
       await load();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Erreur');
+      setActionErr(e instanceof Error ? e.message : 'Erreur');
+    } finally {
+      setActing(false);
     }
   }
 
-  async function refuser(d: DemandeFormation) {
-    const motif = window.prompt('Motif de refus');
-    if (!motif?.trim()) return;
-    try {
-      await postFormationRefuser(d.identifiant, motif.trim());
-      setMsg('Demande refusée.');
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Erreur');
-    }
+  function openAction(kind: 'integrer' | 'refuser', demande: DemandeFormation) {
+    setAction({ kind, demande });
+    setActionText('');
+    setActionErr(null);
+    setMsg(null);
   }
 
   function viewDetail(d: DemandeFormation) {
@@ -67,69 +82,89 @@ export default function FormationsPage() {
     setSelectedFormation(null);
   }
 
+  const cibleLabel = (d: DemandeFormation) =>
+    d.cible === 'UNITE'
+      ? d.unite_cible_libelle ?? 'Unité'
+      : `${d.collaborateurs_cibles_identifiants?.length ?? 0} collaborateur(s)`;
+
   return (
     <div className="page">
-      <div className="page__head">
-        <div>
-          <h2 className="page__title">Formations</h2>
-          <p className="page__lead">Validation RH des demandes et integration au plan annuel.</p>
-        </div>
-        <div className="page__head-actions">
-          <select className="input" value={statut} onChange={e => setStatut(e.target.value as StatutFilter)}>
-            <option value="">Tous les statuts</option>
-            <option value="EN_VALIDATION_RRH">En attente RH</option>
-            <option value="INTEGREE_PLAN">Integrees au plan</option>
-            <option value="REFUSEE">Refusees</option>
-            <option value="ANNULEE">Annulees</option>
-          </select>
+      <PageHeader
+        title="Formations"
+        lead="Validation RH des demandes et intégration au plan annuel."
+        actions={
           <button type="button" className="btn btn--secondary" onClick={() => void load()} disabled={loading}>
+            <Icon name="refresh" />
             Actualiser
           </button>
+        }
+      />
+
+      <div className="toolbar-filters">
+        <div>
+          <label htmlFor="formations-statut" className="field-label">Statut</label>
+          <select id="formations-statut" className="field-input" value={statut} onChange={(e) => setStatut(e.target.value as StatutFilter)}>
+            <option value="">Tous les statuts</option>
+            <option value="EN_VALIDATION_RRH">En attente RH</option>
+            <option value="INTEGREE_PLAN">Intégrées au plan</option>
+            <option value="REFUSEE">Refusées</option>
+            <option value="ANNULEE">Annulées</option>
+          </select>
         </div>
       </div>
 
-      {err ? <div className="alert alert--error">{err}</div> : null}
-      {msg ? <div className="alert alert--success">{msg}</div> : null}
+      {err ? <ErrorAlert>{err}</ErrorAlert> : null}
+      {msg ? <div className="alert alert--success" role="status"><Icon name="check" />{msg}</div> : null}
 
-      <div style={cardStyle}>
+      <div className="panel panel--flush">
         {loading ? (
-          <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Chargement...</div>
+          <LoadingState label="Chargement des demandes de formation…" />
         ) : rows.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Aucune demande de formation.</div>
+          <EmptyState icon="graduation" title="Aucune demande de formation">
+            Aucune demande ne correspond à ce statut.
+          </EmptyState>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <div className="table-wrap">
+            <table className="data-table data-table--responsive">
+              <caption className="sr-only">Demandes de formation</caption>
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  {['Formation', 'Demandeur', 'Cible', 'Budget', 'Statut', ''].map(h => <th key={h} style={thStyle}>{h}</th>)}
+                <tr>
+                  <th scope="col">Formation</th>
+                  <th scope="col">Demandeur</th>
+                  <th scope="col">Cible</th>
+                  <th scope="col">Budget</th>
+                  <th scope="col">Statut</th>
+                  <th scope="col"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(d => (
-                  <tr key={d.identifiant} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={tdStyle}>
-                      <strong>{d.type_formation}</strong>
-                      <div style={muted}>{d.organisme} - {d.duree_heures}h</div>
-                      <div style={{ ...muted, marginTop: 6 }}>{d.objectifs_pedagogiques}</div>
+                {rows.map((d) => (
+                  <tr key={d.identifiant}>
+                    <td data-label="Formation" className="cell-main">
+                      <div className="cell-main__title">{d.type_formation}</div>
+                      <div className="cell-main__sub">{d.organisme} · {d.duree_heures} h</div>
                     </td>
-                    <td style={tdStyle}>
+                    <td data-label="Demandeur">
                       <div>{d.demandeur_nom ?? d.demandeur_identifiant}</div>
-                      <div style={muted}>{d.origine === 'CHEF_DEPARTEMENT' ? 'Chef departement' : 'RO'}</div>
+                      <div className="cell-meta">{d.origine === 'CHEF_DEPARTEMENT' ? 'Chef de département' : 'Responsable opérationnel'}</div>
                     </td>
-                    <td style={tdStyle}>
-                      {d.cible === 'UNITE'
-                        ? d.unite_cible_libelle ?? 'Unite'
-                        : `${d.collaborateurs_cibles_identifiants?.length ?? 0} collaborateur(s)`}
-                    </td>
-                    <td style={tdStyle}>{d.cout_estime ?? 0}</td>
-                    <td style={tdStyle}><span style={statusStyle(d.statut)}>{labelStatut(d.statut)}</span></td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                        <button className="btn btn--ghost" onClick={() => viewDetail(d)}>Détails</button>
+                    <td data-label="Cible">{cibleLabel(d)}</td>
+                    <td data-label="Budget" style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{formatTnd(d.cout_estime)}</td>
+                    <td data-label="Statut"><StatusBadge statut={d.statut} label={labelStatut(d.statut)} /></td>
+                    <td data-label="Actions">
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                        <button type="button" className="btn btn--sm btn--ghost" onClick={() => viewDetail(d)}>
+                          <Icon name="eye" size={14} />
+                          Détails
+                        </button>
                         {!lectureSeule && d.statut === 'EN_VALIDATION_RRH' ? (
                           <>
-                            <button className="btn btn--ghost" onClick={() => void refuser(d)}>Refuser</button>
-                            <button className="btn btn--primary" onClick={() => void integrer(d)}>Intégrer</button>
+                            <button type="button" className="btn btn--sm btn--secondary" onClick={() => openAction('refuser', d)}>
+                              Refuser
+                            </button>
+                            <button type="button" className="btn btn--sm btn--primary" onClick={() => openAction('integrer', d)}>
+                              Intégrer au plan
+                            </button>
                           </>
                         ) : null}
                       </div>
@@ -142,62 +177,96 @@ export default function FormationsPage() {
         )}
       </div>
 
-      {/* Detail Modal */}
       {showDetailModal && selectedFormation && (
-        <div style={modalOverlayStyle} role="presentation" onClick={closeDetailModal}>
-          <DialogPanel label="Détails de la formation" style={modalContentStyle} onClose={closeDetailModal}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: 20 }}>Détails de la formation</h3>
-              <button type="button" aria-label="Fermer" onClick={closeDetailModal} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer' }}>×</button>
-            </div>
-            
-            <div style={{ display: 'grid', gap: 12 }}>
-              <InfoRow label="Formation" value={selectedFormation.type_formation} />
-              <InfoRow label="Organisme" value={selectedFormation.organisme} />
-              <InfoRow label="Durée" value={`${selectedFormation.duree_heures} heures`} />
-              <InfoRow label="Budget" value={`${selectedFormation.cout_estime ?? 0} TND`} />
-              <InfoRow label="Demandeur" value={selectedFormation.demandeur_nom ?? selectedFormation.demandeur_identifiant} />
-              <InfoRow label="Origine" value={selectedFormation.origine === 'CHEF_DEPARTEMENT' ? 'Chef département' : 'RO'} />
-              <InfoRow label="Cible" value={
-                selectedFormation.cible === 'UNITE'
-                  ? selectedFormation.unite_cible_libelle ?? 'Unité'
-                  : `${selectedFormation.collaborateurs_cibles_identifiants?.length ?? 0} collaborateur(s)`
-              } />
-              <InfoRow label="Statut" value={<span style={statusStyle(selectedFormation.statut)}>{labelStatut(selectedFormation.statut)}</span>} />
-              
-              {selectedFormation.objectifs_pedagogiques && (
-                <div>
-                  <div style={labelStyle}>Objectifs pédagogiques</div>
-                  <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>{selectedFormation.objectifs_pedagogiques}</div>
-                </div>
-              )}
-              
-              {selectedFormation.justification && (
-                <div>
-                  <div style={labelStyle}>Justification</div>
-                  <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>{selectedFormation.justification}</div>
-                </div>
-              )}
-              
-              {selectedFormation.commentaire_rh && (
-                <div>
-                  <div style={labelStyle}>Commentaire RH</div>
-                  <div style={{ fontSize: 14, color: '#475569', marginTop: 4, padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                    {selectedFormation.commentaire_rh}
-                  </div>
-                </div>
-              )}
-              
+        <div className="modal-backdrop" role="presentation" onClick={closeDetailModal}>
+          <DialogPanel label="Détails de la formation" className="modal modal--md" onClose={closeDetailModal}>
+            <div className="modal__head">
               <div>
-                <div style={labelStyle}>Date de création</div>
-                <div style={{ fontSize: 14, color: '#64748b', marginTop: 4 }}>
-                  {new Date(selectedFormation.cree_le).toLocaleString('fr-FR')}
-                </div>
+                <h3 className="modal__title" style={{ margin: 0 }}>{selectedFormation.type_formation}</h3>
+                <span className="cell-meta">{selectedFormation.organisme}</span>
               </div>
+              <button type="button" className="modal__close" aria-label="Fermer" onClick={closeDetailModal}>
+                <Icon name="x" size={18} />
+              </button>
             </div>
 
-            <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>
-              <button className="btn btn--primary" onClick={closeDetailModal}>Fermer</button>
+            <div className="modal__scroll">
+              <dl className="detail-grid">
+                <div><dt>Durée</dt><dd>{selectedFormation.duree_heures} heures</dd></div>
+                <div><dt>Budget</dt><dd>{formatTnd(selectedFormation.cout_estime)}</dd></div>
+                <div><dt>Demandeur</dt><dd>{selectedFormation.demandeur_nom ?? selectedFormation.demandeur_identifiant}</dd></div>
+                <div><dt>Origine</dt><dd>{selectedFormation.origine === 'CHEF_DEPARTEMENT' ? 'Chef de département' : 'Responsable opérationnel'}</dd></div>
+                <div><dt>Cible</dt><dd>{cibleLabel(selectedFormation)}</dd></div>
+                <div><dt>Statut</dt><dd><StatusBadge statut={selectedFormation.statut} label={labelStatut(selectedFormation.statut)} /></dd></div>
+                <div><dt>Créée le</dt><dd>{formatDateTime(selectedFormation.cree_le)}</dd></div>
+              </dl>
+
+              {selectedFormation.objectifs_pedagogiques && (
+                <>
+                  <p className="section-title">Objectifs pédagogiques</p>
+                  <p className="small" style={{ marginTop: 0 }}>{selectedFormation.objectifs_pedagogiques}</p>
+                </>
+              )}
+              {selectedFormation.justification && (
+                <>
+                  <p className="section-title">Justification</p>
+                  <p className="small" style={{ marginTop: 0 }}>{selectedFormation.justification}</p>
+                </>
+              )}
+              {selectedFormation.commentaire_rh && (
+                <div className="callout">
+                  <p className="callout__title">Commentaire RH</p>
+                  <p>{selectedFormation.commentaire_rh}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="modal__actions">
+              <button type="button" className="btn btn--secondary" onClick={closeDetailModal}>Fermer</button>
+            </div>
+          </DialogPanel>
+        </div>
+      )}
+
+      {action && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setAction(null)}>
+          <DialogPanel
+            label={action.kind === 'integrer' ? 'Intégrer au plan annuel' : 'Refuser la demande'}
+            className="modal"
+            onClose={() => setAction(null)}
+          >
+            <h3 className="modal__title">
+              {action.kind === 'integrer' ? 'Intégrer au plan annuel' : 'Refuser la demande'}
+            </h3>
+            <p className="small muted" style={{ marginTop: 0 }}>
+              {action.demande.type_formation} · {action.demande.demandeur_nom ?? action.demande.demandeur_identifiant}
+            </p>
+            <label htmlFor="formation-action-text" className="field-label">
+              {action.kind === 'integrer' ? 'Commentaire RH (optionnel)' : 'Motif du refus (obligatoire)'}
+            </label>
+            <textarea
+              id="formation-action-text"
+              className="field-input field-input--area"
+              rows={4}
+              value={actionText}
+              onChange={(e) => setActionText(e.target.value)}
+              aria-invalid={!!actionErr}
+              aria-describedby={actionErr ? 'formation-action-err' : undefined}
+            />
+            {actionErr ? (
+              <p id="formation-action-err" className="alert alert--error" role="alert">{actionErr}</p>
+            ) : null}
+            <div className="modal__actions">
+              <button type="button" className="btn btn--ghost" onClick={() => setAction(null)}>Annuler</button>
+              <button
+                type="button"
+                className={`btn ${action.kind === 'refuser' ? 'btn--danger' : 'btn--primary'}`}
+                disabled={acting}
+                aria-busy={acting}
+                onClick={() => void confirmAction()}
+              >
+                {acting ? 'Envoi…' : action.kind === 'integrer' ? 'Intégrer' : 'Refuser'}
+              </button>
             </div>
           </DialogPanel>
         </div>
@@ -208,84 +277,13 @@ export default function FormationsPage() {
 
 function labelStatut(statut: string) {
   switch (statut) {
-    case 'INTEGREE_PLAN': return 'Integree au plan';
-    case 'REFUSEE': return 'Refusee';
-    case 'ANNULEE': return 'Annulee';
+    case 'INTEGREE_PLAN': return 'Intégrée au plan';
+    case 'REFUSEE': return 'Refusée';
+    case 'ANNULEE': return 'Annulée';
     default: return 'En attente RH';
   }
 }
 
-function statusStyle(statut: string): React.CSSProperties {
-  const meta = statut === 'INTEGREE_PLAN'
-    ? ['#dcfce7', '#166534']
-    : statut === 'REFUSEE'
-      ? ['#fee2e2', '#991b1b']
-      : statut === 'ANNULEE'
-        ? ['#f1f5f9', '#475569']
-        : ['#dbeafe', '#1e40af'];
-  return { background: meta[0], color: meta[1], borderRadius: 999, padding: '5px 10px', fontWeight: 700, fontSize: 12 };
+function formatTnd(v?: number | null) {
+  return `${(v ?? 0).toLocaleString('fr-FR')} TND`;
 }
-
-const cardStyle: React.CSSProperties = {
-  background: 'white',
-  borderRadius: 16,
-  border: '1px solid #e2e8f0',
-  overflow: 'hidden',
-};
-
-const thStyle: React.CSSProperties = {
-  padding: '14px 18px',
-  textAlign: 'left',
-  color: '#475569',
-  fontWeight: 700,
-  fontSize: 12,
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '14px 18px',
-  verticalAlign: 'top',
-};
-
-const muted: React.CSSProperties = {
-  color: '#64748b',
-  fontSize: 12,
-};
-
-function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, alignItems: 'start' }}>
-      <div style={labelStyle}>{label}</div>
-      <div style={{ fontSize: 14, color: '#1e293b' }}>{value}</div>
-    </div>
-  );
-}
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#64748b',
-};
-
-const modalOverlayStyle: React.CSSProperties = {
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  background: 'rgba(0, 0, 0, 0.5)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000,
-};
-
-const modalContentStyle: React.CSSProperties = {
-  background: 'white',
-  borderRadius: 16,
-  padding: 24,
-  maxWidth: 600,
-  width: '90%',
-  maxHeight: '80vh',
-  overflowY: 'auto',
-  boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
-};

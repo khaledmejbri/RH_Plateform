@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/demande_admin_repository.dart';
 import '../data/demande_admin_models.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 const int _pageSize = 10;
 
@@ -69,7 +70,7 @@ class _DemandesAdminListScreenState
               const Icon(Icons.wifi_off_rounded,
                   size: 48, color: AppTheme.textSecondary),
               const SizedBox(height: 12),
-              Text('Erreur: $e',
+              Text(rhErrorMessage(e),
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AppTheme.textSecondary)),
               const SizedBox(height: 16),
@@ -139,10 +140,10 @@ class _DemandesAdminListScreenState
                 leading: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7ED),
+                    color: AppTheme.accentSurface,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.calendar_month_rounded, color: Color(0xFFEA580C)),
+                  child: const Icon(Icons.calendar_month_rounded, color: AppTheme.accent),
                 ),
                 title: const Text('Congé', style: TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: const Text('Absence sur plusieurs jours'),
@@ -157,10 +158,10 @@ class _DemandesAdminListScreenState
                 leading: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
+                    color: AppTheme.primarySurface,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.access_time_rounded, color: Color(0xFF3B82F6)),
+                  child: const Icon(Icons.access_time_rounded, color: AppTheme.primaryLight),
                 ),
                 title: const Text('Autorisation de sortie', style: TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: const Text('Sortie courte (max 4h)'),
@@ -188,31 +189,10 @@ class _DemandeList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: AppTheme.primarySurface,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(Icons.assignment_outlined,
-                  size: 36, color: AppTheme.primary),
-            ),
-            const SizedBox(height: 16),
-            const Text('Aucune demande',
-                style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
-                    fontSize: 16)),
-            const SizedBox(height: 4),
-            const Text('Vos demandes apparaîtront ici.',
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-          ],
-        ),
+      return const RhEmptyState(
+        icon: Icons.assignment_outlined,
+        title: 'Aucune demande',
+        message: 'Vos demandes apparaîtront ici.',
       );
     }
 
@@ -311,7 +291,7 @@ class _DemandeCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF1F2),
+                    color: AppTheme.errorSurface,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -345,46 +325,46 @@ class _DemandeCard extends StatelessWidget {
     if (statut == 'EN_VALIDATION_SUPERIEUR') {
       return (
         'En attente RO',
-        const Color(0xFFFEF9C3),
-        const Color(0xFFA16207),
-        const Color(0xFFFFF7ED),
-        const Color(0xFFEA580C),
+        AppTheme.warningSurface,
+        AppTheme.warning,
+        AppTheme.accentSurface,
+        AppTheme.accent,
         Icons.supervisor_account_rounded,
       );
     } else if (statut == 'EN_VALIDATION_RRH' || statut == 'SOUMISE') {
       return (
         'En attente RRH',
-        const Color(0xFFDBEAFE),
-        const Color(0xFF1E40AF),
-        const Color(0xFFEFF6FF),
-        const Color(0xFF2563EB),
+        AppTheme.primarySurface,
+        AppTheme.primaryDark,
+        AppTheme.primarySurface,
+        AppTheme.primary,
         Icons.hourglass_top_rounded,
       );
     } else if (statut == 'APPROUVEE') {
       return (
         'Approuvée',
-        const Color(0xFFDCFCE7),
-        const Color(0xFF166534),
-        const Color(0xFFF0FDF4),
-        const Color(0xFF16A34A),
+        AppTheme.successSurface,
+        AppTheme.success,
+        AppTheme.successSurface,
+        AppTheme.success,
         Icons.check_circle_outline_rounded,
       );
     } else if (statut == 'ANNULEE') {
       return (
         'Annulée',
-        const Color(0xFFF1F5F9),
-        const Color(0xFF475569),
-        const Color(0xFFF8FAFC),
-        const Color(0xFF94A3B8),
+        AppTheme.surfaceMuted,
+        AppTheme.textSecondary,
+        AppTheme.background,
+        AppTheme.textTertiary,
         Icons.cancel_outlined,
       );
     } else {
       return (
         'Refusée',
-        const Color(0xFFFEE2E2),
-        const Color(0xFF991B1B),
-        const Color(0xFFFFF1F2),
-        const Color(0xFFE11D48),
+        AppTheme.errorSurface,
+        AppTheme.errorDark,
+        AppTheme.errorSurface,
+        AppTheme.error,
         Icons.cancel_outlined,
       );
     }

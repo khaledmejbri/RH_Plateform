@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/formation_models.dart';
 import '../data/formation_repository.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final formationsListProvider = FutureProvider.autoDispose<List<FormationItem>>((
   ref,
@@ -40,7 +41,7 @@ class FormationsListScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error:
             (e, _) => _ErrorState(
-              message: e.toString(),
+              message: rhErrorMessage(e),
               onRetry: () => ref.invalidate(formationsListProvider),
             ),
         data:
@@ -85,7 +86,7 @@ class _FormationCard extends StatelessWidget {
           border: Border.all(color: AppTheme.border, width: 0.5),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+              color: AppTheme.textPrimary.withValues(alpha: 0.04),
               blurRadius: 18,
               offset: const Offset(0, 8),
             ),
@@ -100,12 +101,12 @@ class _FormationCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
+                    color: AppTheme.primarySurface,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Icon(
                     Icons.school_rounded,
-                    color: Color(0xFF2563EB),
+                    color: AppTheme.primary,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -185,7 +186,7 @@ class _FormationCard extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: AppTheme.background,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -207,20 +208,20 @@ class _FormationCard extends StatelessWidget {
     return switch (statut) {
       'INTEGREE_PLAN' => (
         'Planifiee',
-        const Color(0xFFDCFCE7),
-        const Color(0xFF166534),
+        AppTheme.successSurface,
+        AppTheme.success,
       ),
       'REFUSEE' => (
         'Refusee',
-        const Color(0xFFFEE2E2),
-        const Color(0xFF991B1B),
+        AppTheme.errorSurface,
+        AppTheme.errorDark,
       ),
       'ANNULEE' => (
         'Annulee',
-        const Color(0xFFF1F5F9),
-        const Color(0xFF475569),
+        AppTheme.surfaceMuted,
+        AppTheme.textSecondary,
       ),
-      _ => ('RH', const Color(0xFFDBEAFE), const Color(0xFF1E40AF)),
+      _ => ('RH', AppTheme.primarySurface, AppTheme.primaryDark),
     };
   }
 }
@@ -236,7 +237,7 @@ class _MetaChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.background,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: AppTheme.border, width: 0.5),
       ),
@@ -267,44 +268,10 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: AppTheme.primarySurface,
-                borderRadius: BorderRadius.circular(22),
-              ),
-              child: const Icon(
-                Icons.school_rounded,
-                color: AppTheme.primary,
-                size: 34,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Aucune demande de formation',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Les demandes envoyees au RH apparaitront ici avec leur statut.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.textSecondary),
-            ),
-          ],
-        ),
-      ),
+    return const RhEmptyState(
+      icon: Icons.school_rounded,
+      title: 'Aucune demande de formation',
+      message: 'Les demandes envoyées aux RH apparaîtront ici avec leur statut.',
     );
   }
 }

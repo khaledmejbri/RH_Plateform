@@ -93,6 +93,8 @@ export default function EvaluationFormRenderer({ questions, onSubmit, readOnly =
                 key={star}
                 type="button"
                 className={`star ${value >= star ? 'active' : ''}`}
+                aria-label={`${star} sur 5`}
+                aria-pressed={value === star}
                 onClick={() => !readOnly && setResponses({...responses, [question.identifiant]: star})}
                 disabled={readOnly}
               >
@@ -209,7 +211,7 @@ export default function EvaluationFormRenderer({ questions, onSubmit, readOnly =
       {!readOnly && (
         <div className="form-actions">
           <button type="submit" className="btn btn--primary btn--lg">
-            ✓ Soumettre l'évaluation
+            Soumettre l’évaluation
           </button>
         </div>
       )}

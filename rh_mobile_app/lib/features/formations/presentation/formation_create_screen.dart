@@ -8,6 +8,7 @@ import '../../auth/providers/collaborateur_notifier.dart';
 import '../data/formation_models.dart';
 import '../data/formation_repository.dart';
 import 'formations_list_screen.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final formationUnitesCiblesProvider =
     FutureProvider.autoDispose<List<FormationUniteCible>>((ref) async {
@@ -85,7 +86,7 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
         context.pop();
       }
     } catch (e) {
-      if (mounted) _snack(e.toString());
+      if (mounted) _snack(rhErrorMessage(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -299,7 +300,7 @@ class _FormSection extends StatelessWidget {
         border: Border.all(color: AppTheme.border, width: 0.5),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.03),
+            color: AppTheme.textPrimary.withValues(alpha: 0.03),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -360,7 +361,7 @@ class _TextField extends StatelessWidget {
         labelText: label,
         prefixIcon: Icon(icon),
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: AppTheme.background,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -392,7 +393,7 @@ class _UnitePicker extends ConsumerWidget {
               labelText: 'Unite cible',
               prefixIcon: const Icon(Icons.account_tree_outlined),
               filled: true,
-              fillColor: const Color(0xFFF8FAFC),
+              fillColor: AppTheme.background,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -437,7 +438,7 @@ class _CollaborateursPicker extends ConsumerWidget {
       data:
           (items) => Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: AppTheme.background,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: AppTheme.border),
             ),
@@ -511,7 +512,7 @@ class _PickerError extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF1F2),
+        color: AppTheme.errorSurface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFFECACA)),
       ),

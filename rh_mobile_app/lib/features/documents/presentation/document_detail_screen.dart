@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../data/document_models.dart';
+import 'package:rh_mobile_app/core/theme/app_theme.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final documentDetailProvider = FutureProvider.family.autoDispose<Map<String, dynamic>, String>((ref, id) async {
   final dio = ref.watch(dioProvider);
@@ -39,16 +41,16 @@ class DocumentDetailScreen extends ConsumerWidget {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: AppTheme.background,
         appBar: AppBar(
           title: const Text('Détail du document', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
           backgroundColor: Colors.white,
           elevation: 0,
           centerTitle: true,
           bottom: TabBar(
-            labelColor: const Color(0xFF2563EB),
-            unselectedLabelColor: Colors.grey.shade600,
-            indicatorColor: const Color(0xFF2563EB),
+            labelColor: AppTheme.primary,
+            unselectedLabelColor: AppTheme.textSecondary,
+            indicatorColor: AppTheme.primary,
             tabs: const [
               Tab(text: 'Résumé'),
               Tab(text: 'Suivi'),
@@ -59,7 +61,7 @@ class DocumentDetailScreen extends ConsumerWidget {
           children: [
             detail.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('$e')),
+              error: (e, _) => Center(child: Text(rhErrorMessage(e))),
               data: (j) {
                 String statusLabel = 'Envoyé';
                 String statusDescription = 'Votre demande a été envoyée et sera traitée prochainement.';
@@ -88,13 +90,13 @@ class DocumentDetailScreen extends ConsumerWidget {
                   statusDescription = 'Votre demande a été refusée. Veuillez consulter le motif ci-dessous.';
                 }
                 
-                Color statusColor = const Color(0xFF64748B);
+                Color statusColor = AppTheme.textTertiary;
                 if (statusLabel.contains('validation') || statusLabel.contains('traitement')) {
-                  statusColor = const Color(0xFFF59E0B);
+                  statusColor = AppTheme.warning;
                 } else if (statusLabel == 'Validée') {
-                  statusColor = const Color(0xFF10B981);
+                  statusColor = AppTheme.success;
                 } else if (statusLabel == 'Refusée') {
-                  statusColor = const Color(0xFFEF4444);
+                  statusColor = AppTheme.error;
                 }
 
                 return ListView(
@@ -105,10 +107,10 @@ class DocumentDetailScreen extends ConsumerWidget {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.grey.shade100),
+                        border: Border.all(color: AppTheme.surfaceMuted),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.03),
+                            color: AppTheme.textPrimary.withValues(alpha: 0.03),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -122,7 +124,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                               Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.1),
+                                  color: statusColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Icon(
@@ -141,7 +143,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 18,
-                                        color: Color(0xFF1E293B),
+                                        color: AppTheme.textPrimary,
                                       ),
                                     ),
                                     if (j['date_creation'] != null)
@@ -149,7 +151,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                                         padding: const EdgeInsets.only(top: 4),
                                         child: Text(
                                           'Demandé le ${DateFormat('dd MMM yyyy', 'fr_FR').format(DateTime.parse(j['date_creation']))}',
-                                          style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                                          style: TextStyle(color: AppTheme.textTertiary, fontSize: 13),
                                         ),
                                       ),
                                   ],
@@ -161,9 +163,9 @@ class DocumentDetailScreen extends ConsumerWidget {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.08),
+                              color: statusColor.withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: statusColor.withOpacity(0.2)),
+                              border: Border.all(color: statusColor.withValues(alpha: 0.2)),
                             ),
                             child: Row(
                               children: [
@@ -187,7 +189,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                             statusDescription,
                             style: const TextStyle(
                               fontSize: 14,
-                              color: Color(0xFF64748B),
+                              color: AppTheme.textTertiary,
                               height: 1.5,
                             ),
                           ),
@@ -197,15 +199,15 @@ class DocumentDetailScreen extends ConsumerWidget {
                             const SizedBox(height: 8),
                             Row(
                               children: [
-                                Icon(Icons.queue_rounded, size: 18, color: Colors.grey.shade600),
+                                Icon(Icons.queue_rounded, size: 18, color: AppTheme.textSecondary),
                                 const SizedBox(width: 8),
                                 Text(
                                   'Position dans la file : ',
-                                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                                 ),
                                 Text(
                                   '${j['rang_dans_file']}',
-                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF1E293B)),
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textPrimary),
                                 ),
                               ],
                             ),
@@ -218,23 +220,23 @@ class DocumentDetailScreen extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444).withOpacity(0.08),
+                          color: AppTheme.error.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.2)),
+                          border: Border.all(color: AppTheme.error.withValues(alpha: 0.2)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 20),
+                                const Icon(Icons.warning_amber_rounded, color: AppTheme.error, size: 20),
                                 const SizedBox(width: 8),
                                 const Text(
                                   'Motif du refus',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 14,
-                                    color: Color(0xFFEF4444),
+                                    color: AppTheme.error,
                                   ),
                                 ),
                               ],
@@ -242,7 +244,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                             const SizedBox(height: 8),
                             Text(
                               j['motif_rejet'],
-                              style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B), height: 1.5),
+                              style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary, height: 1.5),
                             ),
                           ],
                         ),
@@ -254,7 +256,7 @@ class DocumentDetailScreen extends ConsumerWidget {
             ),
             suivi.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('$e')),
+              error: (e, _) => Center(child: Text(rhErrorMessage(e))),
               data: (s) => ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -264,10 +266,10 @@ class DocumentDetailScreen extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey.shade100),
+                      border: Border.all(color: AppTheme.surfaceMuted),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
+                          color: AppTheme.textPrimary.withValues(alpha: 0.03),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -278,7 +280,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                       children: [
                         const Text(
                           'File d\'attente',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF1E293B)),
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.textPrimary),
                         ),
                         const SizedBox(height: 12),
                         if (s.rangDansFile != null)
@@ -286,7 +288,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                             icon: Icons.queue_rounded,
                             label: 'Votre position',
                             value: '${s.rangDansFile}',
-                            color: const Color(0xFF2563EB),
+                            color: AppTheme.primary,
                           ),
                         if (s.nombreDevant != null)
                           Padding(
@@ -295,7 +297,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                               icon: Icons.people_outline,
                               label: 'Demandes avant vous',
                               value: '${s.nombreDevant}',
-                              color: const Color(0xFF64748B),
+                              color: AppTheme.textTertiary,
                             ),
                           ),
                         if (s.enRetard)
@@ -304,17 +306,17 @@ class DocumentDetailScreen extends ConsumerWidget {
                             child: Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEF4444).withOpacity(0.08),
+                                color: AppTheme.error.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 16),
+                                  const Icon(Icons.warning_amber_rounded, color: AppTheme.error, size: 16),
                                   const SizedBox(width: 6),
                                   const Text(
                                     'Hors délai SLA',
                                     style: TextStyle(
-                                      color: Color(0xFFEF4444),
+                                      color: AppTheme.error,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -328,7 +330,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                   ),
                   const Text(
                     'Étapes de traitement',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF1E293B)),
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.textPrimary),
                   ),
                   const SizedBox(height: 12),
                   ...s.etapes.asMap().entries.map((entry) {
@@ -348,10 +350,10 @@ class DocumentDetailScreen extends ConsumerWidget {
                               height: 32,
                               decoration: BoxDecoration(
                                 color: term
-                                    ? const Color(0xFF10B981)
+                                    ? AppTheme.success
                                     : cours
-                                        ? const Color(0xFF2563EB)
-                                        : Colors.grey.shade200,
+                                        ? AppTheme.primary
+                                        : AppTheme.border,
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
@@ -360,7 +362,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                                     : cours
                                         ? Icons.circle_rounded
                                         : Icons.circle_outlined,
-                                color: term || cours ? Colors.white : Colors.grey.shade400,
+                                color: term || cours ? Colors.white : AppTheme.textTertiary,
                                 size: 18,
                               ),
                             ),
@@ -368,7 +370,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                               Container(
                                 width: 2,
                                 height: 40,
-                                color: term ? const Color(0xFF10B981) : Colors.grey.shade200,
+                                color: term ? AppTheme.success : AppTheme.border,
                               ),
                           ],
                         ),
@@ -384,14 +386,14 @@ class DocumentDetailScreen extends ConsumerWidget {
                                   style: TextStyle(
                                     fontWeight: term || cours ? FontWeight.w600 : FontWeight.w500,
                                     fontSize: 14,
-                                    color: term || cours ? const Color(0xFF1E293B) : Colors.grey.shade600,
+                                    color: term || cours ? AppTheme.textPrimary : AppTheme.textSecondary,
                                   ),
                                 ),
                                 Text(
                                   '${e['code']}',
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: Colors.grey.shade500,
+                                    color: AppTheme.textTertiary,
                                   ),
                                 ),
                               ],
@@ -432,7 +434,7 @@ class _InfoRow extends StatelessWidget {
         const SizedBox(width: 8),
         Text(
           '$label : ',
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
         ),
         Text(
           value,

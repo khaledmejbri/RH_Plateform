@@ -9,6 +9,7 @@ import '../data/demande_admin_errors.dart';
 import '../data/demande_admin_repository.dart';
 import '../data/type_conge.dart';
 import 'demandes_admin_list_screen.dart';
+import 'package:rh_mobile_app/core/theme/app_theme.dart';
 
 class DemandeCongeCreateScreen extends ConsumerStatefulWidget {
   const DemandeCongeCreateScreen({super.key});
@@ -155,10 +156,10 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
 
   @override
   Widget build(BuildContext context) {
-    const primaryBlue = Color(0xFF2563EB);
+    const primaryBlue = AppTheme.primary;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4FF),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('Nouvelle Demande de Congé', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
@@ -170,7 +171,7 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
         children: [
           const Text(
             'Détails du congé',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
           ),
           const SizedBox(height: 20),
           _DateTile(
@@ -191,14 +192,14 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
           const SizedBox(height: 24),
           const Text(
             'Type de congé',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textTertiary),
           ),
           const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade200),
+              border: Border.all(color: AppTheme.border),
             ),
             child: DropdownButtonFormField<String>(
               value: _typeConge,
@@ -223,14 +224,14 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
             const SizedBox(height: 24),
             Text(
               _typeConge == 'MATERNITE' ? 'Justificatif (obligatoire)' : 'Certificat médical (obligatoire)',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textTertiary),
             ),
             const SizedBox(height: 4),
             Text(
               _typeConge == 'MATERNITE'
                   ? 'Joignez le certificat ou justificatif de maternité.'
                   : 'Joignez le certificat médical pour ce congé maladie.',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 8),
             InkWell(
@@ -242,7 +243,7 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _pieceJointe != null ? Colors.green : Colors.grey.shade200,
+                    color: _pieceJointe != null ? AppTheme.success : AppTheme.border,
                     width: 2,
                   ),
                 ),
@@ -251,12 +252,12 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: (_pieceJointe != null ? Colors.green : primaryBlue).withOpacity(0.1),
+                        color: (_pieceJointe != null ? AppTheme.success : primaryBlue).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
                         _pieceJointe != null ? Icons.check_circle : Icons.upload_file,
-                        color: _pieceJointe != null ? Colors.green : primaryBlue,
+                        color: _pieceJointe != null ? AppTheme.success : primaryBlue,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -268,23 +269,23 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
                             _pieceJointe != null ? 'Document joint' : 'Ajouter un justificatif',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
-                              color: _pieceJointe != null ? Colors.green : const Color(0xFF1E293B),
+                              color: _pieceJointe != null ? AppTheme.success : AppTheme.textPrimary,
                             ),
                           ),
                           if (_pieceJointe != null)
                             Text(
                               _pieceJointe!.path.split(RegExp(r'[/\\]')).last,
-                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              style: const TextStyle(fontSize: 12, color: AppTheme.textTertiary),
                             )
                           else
                             const Text(
                               'Photo ou image du certificat',
-                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                              style: TextStyle(fontSize: 12, color: AppTheme.textTertiary),
                             ),
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right_rounded, color: Colors.grey.shade300),
+                    Icon(Icons.chevron_right_rounded, color: AppTheme.border),
                   ],
                 ),
               ),
@@ -340,10 +341,10 @@ class _DateTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: date != null ? color.withOpacity(0.2) : Colors.grey.shade200, width: 1.5),
+          border: Border.all(color: date != null ? color.withValues(alpha: 0.2) : AppTheme.border, width: 1.5),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+              color: AppTheme.textPrimary.withValues(alpha: 0.02),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -354,10 +355,10 @@ class _DateTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: (date != null ? color : Colors.grey).withOpacity(0.1),
+                color: (date != null ? color : AppTheme.textTertiary).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(icon, color: date != null ? color : Colors.grey, size: 24),
+              child: Icon(icon, color: date != null ? color : AppTheme.textTertiary, size: 24),
             ),
             const SizedBox(width: 16),
             Column(
@@ -365,7 +366,7 @@ class _DateTile extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13, fontWeight: FontWeight.w500),
+                  style: TextStyle(color: AppTheme.textTertiary, fontSize: 13, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -373,13 +374,13 @@ class _DateTile extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: date == null ? Colors.grey.shade400 : const Color(0xFF1E293B),
+                    color: date == null ? AppTheme.textTertiary : AppTheme.textPrimary,
                   ),
                 ),
               ],
             ),
             const Spacer(),
-            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade300),
+            Icon(Icons.chevron_right_rounded, color: AppTheme.border),
           ],
         ),
       ),

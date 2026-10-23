@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/formation_models.dart';
 import '../data/formation_repository.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final formationDetailProvider = FutureProvider.family<FormationItem, String>((ref, id) async {
   final repo = ref.watch(formationRepositoryProvider);
@@ -35,7 +36,7 @@ class FormationDetailScreen extends ConsumerWidget {
       ),
       body: formationAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Erreur: $e')),
+        error: (e, _) => Center(child: Text(rhErrorMessage(e))),
         data: (formation) {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -76,10 +77,10 @@ class FormationDetailScreen extends ConsumerWidget {
                   width: 56,
                   height: 56,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
+                    color: AppTheme.primarySurface,
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const Icon(Icons.school_rounded, color: Color(0xFF2563EB), size: 28),
+                  child: const Icon(Icons.school_rounded, color: AppTheme.primary, size: 28),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -173,7 +174,7 @@ class FormationDetailScreen extends ConsumerWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: AppTheme.background,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -230,7 +231,7 @@ class FormationDetailScreen extends ConsumerWidget {
             const SizedBox(height: 16),
             historyAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Text('Erreur: $e'),
+              error: (e, _) => Text(rhErrorMessage(e)),
               data: (items) {
                 if (items.isEmpty) {
                   return const Center(
@@ -330,10 +331,10 @@ class FormationDetailScreen extends ConsumerWidget {
 
   (String, Color, Color) _statusMeta(String statut) {
     return switch (statut) {
-      'INTEGREE_PLAN' => ('Planifiée', const Color(0xFFDCFCE7), const Color(0xFF166534)),
-      'REFUSEE' => ('Refusée', const Color(0xFFFEE2E2), const Color(0xFF991B1B)),
-      'ANNULEE' => ('Annulée', const Color(0xFFF1F5F9), const Color(0xFF475569)),
-      _ => ('En attente RH', const Color(0xFFDBEAFE), const Color(0xFF1E40AF)),
+      'INTEGREE_PLAN' => ('Planifiée', AppTheme.successSurface, AppTheme.success),
+      'REFUSEE' => ('Refusée', AppTheme.errorSurface, AppTheme.errorDark),
+      'ANNULEE' => ('Annulée', AppTheme.surfaceMuted, AppTheme.textSecondary),
+      _ => ('En attente RH', AppTheme.primarySurface, AppTheme.primaryDark),
     };
   }
 }

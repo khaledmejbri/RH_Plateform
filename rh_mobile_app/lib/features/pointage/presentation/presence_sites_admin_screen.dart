@@ -195,8 +195,8 @@ class _SiteTile extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: site.actif
-                        ? const Color(0xFFF0FDF4)
-                        : const Color(0xFFF3F4F6),
+                        ? AppTheme.successSurface
+                        : AppTheme.surfaceMuted,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(

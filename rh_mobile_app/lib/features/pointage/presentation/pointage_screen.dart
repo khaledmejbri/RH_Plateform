@@ -249,7 +249,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
 
     return _StepCard(
       icon: ok ? Icons.check_circle_rounded : Icons.cancel_rounded,
-      iconBg: ok ? const Color(0xFFF0FDF4) : const Color(0xFFFFF1F2),
+      iconBg: ok ? AppTheme.successSurface : AppTheme.errorSurface,
       iconColor: ok ? AppTheme.success : AppTheme.error,
       title: title,
       subtitle: subtitle.isEmpty ? (ok ? 'Enregistré.' : 'Refusé.') : subtitle,

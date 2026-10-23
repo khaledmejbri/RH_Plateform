@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../data/plainte_repository.dart';
 import 'plaintes_list_screen.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 class PlainteCreateScreen extends ConsumerStatefulWidget {
   const PlainteCreateScreen({super.key});
@@ -42,7 +43,7 @@ class _PlainteCreateScreenState extends ConsumerState<PlainteCreateScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(rhErrorMessage(e))));
       }
     } finally {
       if (mounted) setState(() => _loading = false);

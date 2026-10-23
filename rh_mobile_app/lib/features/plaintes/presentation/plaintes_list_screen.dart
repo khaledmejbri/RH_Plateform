@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/widgets/pressable_scale.dart';
 import '../data/plainte_models.dart';
 import '../data/plainte_repository.dart';
+import 'package:rh_mobile_app/core/theme/app_theme.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 const int _pageSize = 10;
 
@@ -27,7 +29,7 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
   Widget build(BuildContext context) {
     final async = ref.watch(plaintesListProvider);
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4FF),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('Mes plaintes', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
         backgroundColor: Colors.white,
@@ -51,20 +53,15 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
         ),
         data: (items) {
           if (items.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.inbox_rounded, size: 64, color: Theme.of(context).colorScheme.outline.withOpacity(0.3)),
-                  const SizedBox(height: 12),
-                  const Text('Aucune plainte pour le moment', style: TextStyle(fontSize: 16, color: Colors.grey)),
-                  const SizedBox(height: 20),
-                  FilledButton.icon(
-                    onPressed: () => context.push('/plaintes/nouveau'),
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: const Text('Nouvelle plainte'),
-                  ),
-                ],
+            return RhEmptyState(
+              icon: Icons.inbox_rounded,
+              title: 'Aucune plainte pour le moment',
+              message: 'Signalez un problème : vous suivrez son traitement ici.',
+              action: FilledButton.icon(
+                onPressed: () => context.push('/plaintes/nouveau'),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Nouvelle plainte'),
+                style: FilledButton.styleFrom(minimumSize: const Size(200, AppTheme.minTouch)),
               ),
             );
           }
@@ -102,7 +99,7 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
                       color: Colors.white,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+                          color: AppTheme.textPrimary.withValues(alpha: 0.05),
                           blurRadius: 10,
                           offset: const Offset(0, -2),
                         ),
@@ -114,18 +111,18 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
                         IconButton(
                           icon: const Icon(Icons.chevron_left, size: 20),
                           onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
-                          color: _currentPage > 0 ? const Color(0xFF1E40AF) : Colors.grey.shade300,
+                          color: _currentPage > 0 ? AppTheme.primaryDark : AppTheme.border,
                         ),
                         const SizedBox(width: 8),
                         Text(
                           'Page ${_currentPage + 1} / $totalPages',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textTertiary),
                         ),
                         const SizedBox(width: 8),
                         IconButton(
                           icon: const Icon(Icons.chevron_right, size: 20),
                           onPressed: _currentPage < totalPages - 1 ? () => setState(() => _currentPage++) : null,
-                          color: _currentPage < totalPages - 1 ? const Color(0xFF1E40AF) : Colors.grey.shade300,
+                          color: _currentPage < totalPages - 1 ? AppTheme.primaryDark : AppTheme.border,
                         ),
                       ],
                     ),
@@ -137,7 +134,7 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push('/plaintes/nouveau'),
-        backgroundColor: const Color(0xFF1E40AF),
+        backgroundColor: AppTheme.primaryDark,
         elevation: 4,
         child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
@@ -176,15 +173,15 @@ class _PlainteCard extends StatelessWidget {
     switch (statut.toUpperCase()) {
       case 'EN_COURS':
       case 'EN_ATTENTE':
-        return const Color(0xFFF59E0B);
+        return AppTheme.warning;
       case 'RESOLUE':
       case 'TRAITEE':
-        return const Color(0xFF10B981);
+        return AppTheme.success;
       case 'REJETEE':
       case 'REFUSEE':
-        return const Color(0xFFEF4444);
+        return AppTheme.error;
       default:
-        return Colors.grey;
+        return AppTheme.textTertiary;
     }
   }
 
@@ -197,10 +194,10 @@ class _PlainteCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade100, width: 1),
+        border: Border.all(color: AppTheme.surfaceMuted, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: AppTheme.textPrimary.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -216,7 +213,7 @@ class _PlainteCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.08),
+                    color: statusColor.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -235,7 +232,7 @@ class _PlainteCard extends StatelessWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
-                          color: Color(0xFF1E293B),
+                          color: AppTheme.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -244,7 +241,7 @@ class _PlainteCard extends StatelessWidget {
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(
                           _formatTypePlainte(plainte.typePlainte),
-                          style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                          style: TextStyle(color: AppTheme.textTertiary, fontSize: 12),
                         ),
                       ),
                     ],
@@ -254,7 +251,7 @@ class _PlainteCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
+                    color: statusColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(

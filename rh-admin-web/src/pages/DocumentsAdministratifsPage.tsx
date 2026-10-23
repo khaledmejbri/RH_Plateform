@@ -8,6 +8,7 @@ import {
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { DialogPanel } from '../components/useDialogA11y';
+import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, formatDateTime } from '../components/ui';
 
 export default function DocumentsAdministratifsPage() {
   const lectureSeule = useLectureSeule();
@@ -104,149 +105,101 @@ export default function DocumentsAdministratifsPage() {
     setShowFifoWarning(outOfOrder);
   }
 
-  function formatDate(iso: string) {
-    try { return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }); }
-    catch { return iso; }
-  }
-
-  function statusMeta(statut: string): { label: string; color: string; bg: string } {
-    switch (statut.toUpperCase()) {
-      case 'EN_TRAITEMENT_RH': return { label: 'En traitement', color: '#1e40af', bg: '#eff6ff' };
-      case 'EN_ATTENTE_FILE':  return { label: 'En attente',    color: '#92400e', bg: '#fffbeb' };
-      case 'DISPONIBLE':       return { label: 'Disponible',    color: '#065f46', bg: '#f0fdf4' };
-      case 'REJETEE':          return { label: 'Refusé',        color: '#991b1b', bg: '#fef2f2' };
-      default:                 return { label: statut,           color: '#374151', bg: '#f3f4f6' };
-    }
-  }
-
   /** Is the action button (validate/reject confirmation) disabled due to FIFO? */
   const fifoBlocked = showFifoWarning && !fifoJustification.trim();
 
   /** Prevent taking a new request if one is already being processed */
   const hasPendingTraitement = rows.some(r => r.statut === 'EN_TRAITEMENT_RH');
 
+  /** Une autre demande est en cours : on ne peut pas traiter celle-ci. */
+  const blockedByOther = hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH';
+
   return (
     <div className="page">
-      {/* ── Header ── */}
-      <div className="page__head">
-        <div>
-          <h2 className="page__title">Documents administratifs</h2>
-          <p className="page__lead">Traitement des attestations, bulletins et courriers RH.</p>
-        </div>
-        <div className="page__head-actions">
-          <button type="button" className="btn btn--secondary" onClick={() => void load()} disabled={loading}>
-            Actualiser
-          </button>
-          {!lectureSeule ? (
-            <button 
-              type="button" 
-              className="btn btn--primary" 
-              onClick={() => void prendreProchaine()}
-              disabled={hasPendingTraitement || loading}
-              title={hasPendingTraitement ? "Veuillez terminer le traitement de la demande en cours avant d'en prendre une nouvelle." : undefined}
-              style={{ opacity: hasPendingTraitement ? 0.6 : 1, cursor: hasPendingTraitement ? 'not-allowed' : 'pointer' }}
-            >
-              {hasPendingTraitement ? '🔒 Terminer le traitement en cours' : 'Prendre la prochaine demande'}
+      <PageHeader
+        title="Documents administratifs"
+        lead="Traitement des attestations, bulletins et courriers RH."
+        actions={
+          <>
+            <button type="button" className="btn btn--secondary" onClick={() => void load()} disabled={loading}>
+              <Icon name="refresh" />
+              Actualiser
             </button>
-          ) : null}
-        </div>
+            {!lectureSeule ? (
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => void prendreProchaine()}
+                disabled={hasPendingTraitement || loading}
+                aria-describedby={hasPendingTraitement ? 'docs-pending-hint' : undefined}
+              >
+                <Icon name={hasPendingTraitement ? 'lock' : 'plus'} />
+                {hasPendingTraitement ? 'Traitement en cours' : 'Prendre la prochaine demande'}
+              </button>
+            ) : null}
+          </>
+        }
+      />
+
+      {err && !pickedDemande ? <ErrorAlert>{err}</ErrorAlert> : null}
+      {msg ? <div className="alert alert--success" role="status"><Icon name="check" />{msg}</div> : null}
+
+      <div className="callout" id="docs-pending-hint">
+        <p className="callout__title"><Icon name="info" size={14} /> Ordre FIFO actif</p>
+        <p className="muted">
+          Les demandes sont traitées dans l’ordre d’arrivée : la demande de rang 1 est prioritaire.
+          {hasPendingTraitement ? ' Terminez la demande en cours avant d’en prendre une nouvelle.' : ''}
+        </p>
       </div>
 
-      {err ? <div className="alert alert--error">{err}</div> : null}
-      {msg ? <div className="alert alert--success">{msg}</div> : null}
-
-      {/* ── FIFO Legend ── */}
-      <div style={fifoLegendStyle}>
-        <span style={{ fontWeight: 600, color: '#475569', fontSize: 13 }}>
-          ⓘ Ordre FIFO actif
-        </span>
-        <span style={{ color: '#64748b', fontSize: 12 }}>
-          — Les demandes sont traitées dans l'ordre d'arrivée (premier arrivé, premier servi).
-          La demande avec le rang #1 doit être traitée en priorité.
-        </span>
-      </div>
-
-      {/* ── Table ── */}
-      <div style={cardStyle}>
+      <div className="panel panel--flush">
         {loading ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-            <div style={spinnerStyle} />
-            <p style={{ color: '#6b7280', marginTop: 16 }}>Chargement…</p>
-          </div>
+          <LoadingState label="Chargement de la file…" />
+        ) : rows.length === 0 ? (
+          <EmptyState icon="file" title="Aucune demande en attente">
+            La file est vide : les nouvelles demandes de documents apparaîtront ici.
+          </EmptyState>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <div className="table-wrap">
+            <table className="data-table data-table--responsive">
+              <caption className="sr-only">File d’attente des demandes de documents</caption>
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  {['Rang FIFO', 'Type de document', 'Statut', 'SLA', 'Retard', ''].map(h => (
-                    <th key={h} style={thStyle}>{h}</th>
-                  ))}
+                <tr>
+                  <th scope="col">Rang</th>
+                  <th scope="col">Type de document</th>
+                  <th scope="col">Statut</th>
+                  <th scope="col">SLA</th>
+                  <th scope="col">Retard</th>
+                  <th scope="col"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((d, i) => {
-                  const s = statusMeta(d.statut);
+                {rows.map((d) => {
                   const isNext = d.est_prochaine_fifo === true;
                   return (
-                    <tr key={d.identifiant}
-                      style={{
-                        borderBottom: i < rows.length - 1 ? '1px solid #f1f5f9' : 'none',
-                        background: isNext ? '#f0fdf4' : 'white',
-                        borderLeft: isNext ? '3px solid #22c55e' : '3px solid transparent',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = isNext ? '#dcfce7' : '#f9fafb')}
-                      onMouseLeave={e => (e.currentTarget.style.background = isNext ? '#f0fdf4' : 'white')}>
-                      <td style={tdStyle}>
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 6,
-                          fontWeight: 700, color: isNext ? '#16a34a' : '#374151',
-                        }}>
-                          {d.rang_dans_file != null ? (
-                            <>
-                              <span style={{
-                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                width: 28, height: 28, borderRadius: '50%', fontSize: 13, fontWeight: 700,
-                                background: isNext ? '#dcfce7' : '#f1f5f9',
-                                color: isNext ? '#16a34a' : '#64748b',
-                                border: isNext ? '2px solid #22c55e' : '1px solid #e2e8f0',
-                              }}>
-                                #{d.rang_dans_file}
-                              </span>
-                              {isNext && (
-                                <span style={{
-                                  fontSize: 10, fontWeight: 700, color: '#16a34a',
-                                  textTransform: 'uppercase', letterSpacing: '0.05em',
-                                }}>
-                                  Suivant
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <span style={{ color: '#d1d5db' }}>—</span>
-                          )}
-                        </span>
+                    <tr key={d.identifiant} className={isNext ? 'row--next' : undefined}>
+                      <td data-label="Rang">
+                        {d.rang_dans_file != null ? (
+                          <span className="rank">
+                            <span className={`rank__num${isNext ? ' rank__num--next' : ''}`}>{d.rang_dans_file}</span>
+                            {isNext ? <span className="status status--success">Suivante</span> : null}
+                          </span>
+                        ) : (
+                          <span className="cell-meta">—</span>
+                        )}
                       </td>
-                      <td style={tdStyle}>
-                        <span style={{ ...tagStyle, background: '#eff6ff', color: '#1e40af' }}>
-                          {d.type_document}
-                        </span>
-                      </td>
-                      <td style={tdStyle}>
-                        <span style={{ ...tagStyle, background: s.bg, color: s.color }}>
-                          {s.label}
-                        </span>
-                      </td>
-                      <td style={{ ...tdStyle, color: '#6b7280' }}>{d.delai_sla_heures}h</td>
-                      <td style={tdStyle}>
+                      <td data-label="Type"><Chip tone="info" icon="file">{d.type_document}</Chip></td>
+                      <td data-label="Statut"><StatusBadge statut={d.statut} label={docStatusLabel(d.statut)} /></td>
+                      <td data-label="SLA" className="cell-meta">{d.delai_sla_heures} h</td>
+                      <td data-label="Retard">
                         {d.en_retard
-                          ? <span style={{ ...tagStyle, background: '#fef2f2', color: '#dc2626' }}>En retard</span>
-                          : <span style={{ color: '#d1d5db' }}>—</span>}
+                          ? <StatusBadge statut="REJETEE" label="En retard" />
+                          : <span className="cell-meta">—</span>}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>
-                        <button type="button"
-                          style={btnInfoStyle}
-                          onClick={() => openInfo(d)}>
+                      <td data-label="Action" style={{ textAlign: 'right' }}>
+                        <button type="button" className="btn btn--sm btn--secondary" onClick={() => openInfo(d)}>
                           Voir le détail
+                          <Icon name="chevronRight" size={14} />
                         </button>
                       </td>
                     </tr>
@@ -254,202 +207,143 @@ export default function DocumentsAdministratifsPage() {
                 })}
               </tbody>
             </table>
-            {rows.length === 0 && (
-              <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5" style={{ marginBottom: 12 }}>
-                  <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <p style={{ color: '#9ca3af', fontWeight: 500 }}>Aucune demande en attente</p>
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {/* ── Modal ── */}
       {pickedDemande && actionMode && (
-        <div style={backdropStyle} role="presentation" onClick={closeModal}>
-          <DialogPanel label="Traitement de la demande" style={modalStyle} onClose={closeModal}>
-
-            {/* Modal header */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div className="modal-backdrop" role="presentation" onClick={closeModal}>
+          <DialogPanel label="Traitement de la demande" className="modal modal--md" onClose={closeModal}>
+            <div className="modal__head">
               <div>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
-                  Détail de la demande
+                <h3 className="modal__title" style={{ margin: 0 }}>
+                  {actionMode === 'validate' ? 'Valider le document' : actionMode === 'reject' ? 'Refuser la demande' : 'Détail de la demande'}
                 </h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
-                  #{pickedDemande.identifiant}
-                </p>
+                <code className="cell-code">{pickedDemande.identifiant.slice(0, 8)}…</code>
               </div>
-              <button onClick={closeModal} style={closeBtnStyle}>✕</button>
+              <button type="button" className="modal__close" aria-label="Fermer" onClick={closeModal}>
+                <Icon name="x" size={18} />
+              </button>
             </div>
 
-            {/* FIFO Warning Banner */}
-            {showFifoWarning && (
-              <div style={fifoWarningBannerStyle}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 18 }}>⚠️</span>
-                  <span style={{ fontWeight: 700, fontSize: 14, color: '#92400e' }}>
-                    Attention — Ordre FIFO non respecté
-                  </span>
-                </div>
-                <p style={{ margin: 0, fontSize: 13, color: '#78350f', lineHeight: 1.5 }}>
-                  Cette demande n'est pas la prochaine dans l'ordre de la file d'attente.
-                  Des demandes antérieures (rang inférieur) sont encore en attente.
-                  Pour continuer, vous devez fournir une <strong>justification obligatoire</strong> expliquant
-                  pourquoi cette demande doit être traitée en priorité.
-                </p>
-                <div style={{ marginTop: 12 }}>
-                  <label htmlFor="documentsadministratifs-f1" style={{ ...labelStyle, color: '#92400e' }}>
-                    Justification de la dérogation FIFO *
-                  </label>
-                  <textarea id="documentsadministratifs-f1"
-                    style={{
-                      ...inputStyle,
-                      height: 72,
-                      resize: 'vertical',
-                      borderColor: fifoJustification.trim() ? '#fbbf24' : '#f87171',
-                      background: '#fffbeb',
-                    }}
+            <div className="modal__scroll">
+              {showFifoWarning && (
+                <div className="alert alert--warning" role="alert" style={{ display: 'block' }}>
+                  <p className="callout__title" style={{ color: 'inherit' }}>
+                    <Icon name="alert" size={14} /> Ordre FIFO non respecté
+                  </p>
+                  <p style={{ margin: '0 0 10px' }}>
+                    Des demandes plus anciennes attendent encore. Justifiez pourquoi celle-ci doit passer en priorité.
+                  </p>
+                  <label htmlFor="documentsadministratifs-f1" className="field-label">Justification de la dérogation (obligatoire)</label>
+                  <textarea
+                    id="documentsadministratifs-f1"
+                    className="field-input field-input--area"
+                    rows={3}
                     value={fifoJustification}
-                    onChange={e => setFifoJustification(e.target.value)}
-                    placeholder="Ex. Demande urgente du PDG, Contrat requis aujourd'hui, Besoin administratif critique…"
+                    onChange={(e) => setFifoJustification(e.target.value)}
+                    placeholder="Ex. contrat requis aujourd’hui, besoin administratif critique…"
+                    aria-invalid={!fifoJustification.trim()}
+                    style={{ marginBottom: 0 }}
                   />
-                  {!fifoJustification.trim() && (
-                    <p style={{ margin: '4px 0 0', fontSize: 11, color: '#dc2626', fontWeight: 500 }}>
-                      La justification est obligatoire pour traiter cette demande hors ordre.
-                    </p>
-                  )}
                 </div>
-              </div>
-            )}
-
-            {/* Info section */}
-            <div style={infoGridStyle}>
-              <InfoRow label="Type de document" value={pickedDemande.type_document} highlight />
-              <InfoRow label="Demandeur" value={pickedDemande.demandeur_identifiant} />
-              <InfoRow label="Département" value={pickedDemande.departement_libelle ?? 'Non renseigné'} />
-              <InfoRow label="Date de la demande" value={formatDate(pickedDemande.cree_le)} />
-              {pickedDemande.commentaire_demandeur && (
-                <InfoRow label="Motif de la demande" value={pickedDemande.commentaire_demandeur} full />
               )}
-              <InfoRow label="Rang FIFO" value={
-                pickedDemande.rang_dans_file != null
-                  ? `#${pickedDemande.rang_dans_file}${pickedDemande.est_prochaine_fifo ? ' (Suivant)' : ''}`
-                  : '—'
-              } highlight={pickedDemande.est_prochaine_fifo === true} />
-              <InfoRow label="SLA" value={`${pickedDemande.delai_sla_heures}h`} />
-              <InfoRow label="Retard" value={pickedDemande.en_retard ? 'Oui' : 'Non'} danger={pickedDemande.en_retard} />
+
+              <dl className="detail-grid">
+                <div><dt>Type de document</dt><dd><Chip tone="info" icon="file">{pickedDemande.type_document}</Chip></dd></div>
+                <div><dt>Statut</dt><dd><StatusBadge statut={pickedDemande.statut} label={docStatusLabel(pickedDemande.statut)} /></dd></div>
+                <div><dt>Demandeur</dt><dd><code className="cell-code">{pickedDemande.demandeur_identifiant}</code></dd></div>
+                <div><dt>Département</dt><dd>{pickedDemande.departement_libelle ?? 'Non renseigné'}</dd></div>
+                <div><dt>Date de la demande</dt><dd>{formatDateTime(pickedDemande.cree_le)}</dd></div>
+                <div>
+                  <dt>Rang FIFO</dt>
+                  <dd>{pickedDemande.rang_dans_file != null ? `${pickedDemande.rang_dans_file}${pickedDemande.est_prochaine_fifo ? ' (suivante)' : ''}` : '—'}</dd>
+                </div>
+                <div><dt>SLA</dt><dd>{pickedDemande.delai_sla_heures} h</dd></div>
+                <div>
+                  <dt>Retard</dt>
+                  <dd>{pickedDemande.en_retard ? <StatusBadge statut="REJETEE" label="En retard" /> : 'Non'}</dd>
+                </div>
+              </dl>
+
+              {pickedDemande.commentaire_demandeur && (
+                <div className="callout">
+                  <p className="callout__title">Motif de la demande</p>
+                  <p>{pickedDemande.commentaire_demandeur}</p>
+                </div>
+              )}
               {pickedDemande.justification_derogation_fifo && (
-                <InfoRow
-                  label="Dérogation FIFO appliquée"
-                  value={pickedDemande.justification_derogation_fifo}
-                  full
-                />
+                <div className="callout">
+                  <p className="callout__title">Dérogation FIFO appliquée</p>
+                  <p>{pickedDemande.justification_derogation_fifo}</p>
+                </div>
+              )}
+
+              {actionMode === 'validate' && (
+                <>
+                  <label htmlFor="documentsadministratifs-f2" className="field-label">Référence du document (obligatoire)</label>
+                  <input id="documentsadministratifs-f2" className="field-input" value={ref} onChange={(e) => setRef(e.target.value)}
+                    placeholder="Ex. numéro, lien, chemin…" autoFocus />
+                  <label htmlFor="documentsadministratifs-f3" className="field-label">Commentaire (optionnel)</label>
+                  <textarea id="documentsadministratifs-f3" className="field-input field-input--area" rows={3}
+                    value={comment} onChange={(e) => setComment(e.target.value)} />
+                </>
+              )}
+
+              {actionMode === 'reject' && (
+                <>
+                  <label htmlFor="documentsadministratifs-f4" className="field-label">Motif du refus (obligatoire)</label>
+                  <textarea id="documentsadministratifs-f4" className="field-input field-input--area" rows={3}
+                    value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Expliquez la raison du refus…" autoFocus />
+                </>
               )}
             </div>
 
-            {/* Action zone — only shown when explicitly triggered */}
-            {actionMode === 'validate' && (
-              <div style={{ marginTop: 20 }}>
-                <label htmlFor="documentsadministratifs-f2" style={labelStyle}>Référence du document *</label>
-                <input id="documentsadministratifs-f2" style={inputStyle} value={ref} onChange={e => setRef(e.target.value)} placeholder="Ex. numéro, lien, chemin…" />
-                <label htmlFor="documentsadministratifs-f3" style={{ ...labelStyle, marginTop: 12 }}>Commentaire (optionnel)</label>
-                <textarea id="documentsadministratifs-f3" style={{ ...inputStyle, height: 80, resize: 'vertical' }} value={comment} onChange={e => setComment(e.target.value)} />
-              </div>
-            )}
+            {err ? <ErrorAlert>{err}</ErrorAlert> : null}
+            {!lectureSeule && actionMode === 'info' && blockedByOther ? (
+              <p className="cell-meta" style={{ whiteSpace: 'normal' }}>
+                <Icon name="lock" size={12} /> Terminez d’abord la demande en cours de traitement.
+              </p>
+            ) : null}
 
-            {actionMode === 'reject' && (
-              <div style={{ marginTop: 20 }}>
-                <label htmlFor="documentsadministratifs-f4" style={labelStyle}>Motif de refus *</label>
-                <textarea id="documentsadministratifs-f4" style={{ ...inputStyle, height: 80, resize: 'vertical' }} value={comment} onChange={e => setComment(e.target.value)} placeholder="Expliquez la raison du refus…" />
-              </div>
-            )}
-
-            {err ? <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef2f2', color: '#dc2626', borderRadius: 10, fontSize: 13 }}>{err}</div> : null}
-
-            {/* Footer actions */}
-            <div style={{ display: 'flex', gap: 10, marginTop: 24, flexWrap: 'wrap' }}>
-              {actionMode === 'info' && (
+            <div className="modal__actions" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              {actionMode === 'info' ? (
                 <>
-                  {!lectureSeule ? (
-                    <button style={{ 
-                      ...footerBtnStyle, 
-                      background: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '#f87171' : '#fef2f2', 
-                      color: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'white' : '#dc2626', 
-                      border: '1px solid #fecaca',
-                      opacity: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 0.6 : 1,
-                      cursor: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'not-allowed' : 'pointer'
-                    }}
-                      disabled={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH'}
-                      title={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'Terminez d\'abord le traitement en cours' : undefined}
-                      onClick={() => setActionMode('reject')}>
-                      Refuser
-                    </button>
-                  ) : null}
-                  <div style={{ flex: 1 }} />
-                  <button style={{ ...footerBtnStyle, background: 'white', border: '1px solid #e2e8f0', color: '#374151' }}
-                    onClick={closeModal}>
-                    Fermer
-                  </button>
-                  {!lectureSeule ? (
-                    <button style={{ 
-                      ...footerBtnStyle, 
-                      background: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '#94a3b8' : '#1e40af', 
-                      color: 'white',
-                      opacity: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 0.6 : 1,
-                      cursor: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'not-allowed' : 'pointer'
-                    }}
-                      disabled={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH'}
-                      title={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'Terminez d\'abord le traitement en cours' : undefined}
-                      onClick={() => setActionMode('validate')}>
-                      {hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '🔒 Traitement bloqué' : 'Valider le document'}
-                    </button>
-                  ) : null}
+                  <div>
+                    {!lectureSeule ? (
+                      <button type="button" className="btn btn--ghost" disabled={blockedByOther} onClick={() => setActionMode('reject')}>
+                        Refuser
+                      </button>
+                    ) : null}
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button type="button" className="btn btn--secondary" onClick={closeModal}>Fermer</button>
+                    {!lectureSeule ? (
+                      <button type="button" className="btn btn--primary" disabled={blockedByOther} onClick={() => setActionMode('validate')}>
+                        Valider le document
+                      </button>
+                    ) : null}
+                  </div>
                 </>
-              )}
-              {!lectureSeule && actionMode === 'validate' && (
+              ) : null}
+
+              {!lectureSeule && actionMode === 'validate' ? (
                 <>
-                  <button style={{ ...footerBtnStyle, background: 'white', border: '1px solid #e2e8f0', color: '#374151' }}
-                    onClick={() => setActionMode('info')}>
-                    Retour
-                  </button>
-                  <div style={{ flex: 1 }} />
-                  <button style={{
-                    ...footerBtnStyle,
-                    background: fifoBlocked ? '#94a3b8' : '#1e40af',
-                    color: 'white',
-                    cursor: fifoBlocked || !ref.trim() ? 'not-allowed' : 'pointer',
-                    opacity: fifoBlocked || !ref.trim() ? 0.6 : 1,
-                  }}
-                    disabled={!ref.trim() || fifoBlocked}
-                    title={fifoBlocked ? 'Justification FIFO obligatoire' : undefined}
-                    onClick={() => void marquerDisponible()}>
-                    {fifoBlocked ? '🔒 Justification requise' : 'Confirmer la validation'}
+                  <button type="button" className="btn btn--secondary" onClick={() => setActionMode('info')}>Retour</button>
+                  <button type="button" className="btn btn--primary" disabled={!ref.trim() || fifoBlocked} onClick={() => void marquerDisponible()}>
+                    {fifoBlocked ? 'Justification requise' : 'Confirmer la validation'}
                   </button>
                 </>
-              )}
-              {!lectureSeule && actionMode === 'reject' && (
+              ) : null}
+
+              {!lectureSeule && actionMode === 'reject' ? (
                 <>
-                  <button style={{ ...footerBtnStyle, background: 'white', border: '1px solid #e2e8f0', color: '#374151' }}
-                    onClick={() => setActionMode('info')}>
-                    Retour
-                  </button>
-                  <div style={{ flex: 1 }} />
-                  <button style={{
-                    ...footerBtnStyle,
-                    background: fifoBlocked ? '#94a3b8' : '#dc2626',
-                    color: 'white',
-                    cursor: fifoBlocked || !comment.trim() ? 'not-allowed' : 'pointer',
-                    opacity: fifoBlocked || !comment.trim() ? 0.6 : 1,
-                  }}
-                    disabled={!comment.trim() || fifoBlocked}
-                    title={fifoBlocked ? 'Justification FIFO obligatoire' : undefined}
-                    onClick={() => void rejeterDemande()}>
-                    {fifoBlocked ? '🔒 Justification requise' : 'Confirmer le refus'}
+                  <button type="button" className="btn btn--secondary" onClick={() => setActionMode('info')}>Retour</button>
+                  <button type="button" className="btn btn--danger" disabled={!comment.trim() || fifoBlocked} onClick={() => void rejeterDemande()}>
+                    {fifoBlocked ? 'Justification requise' : 'Confirmer le refus'}
                   </button>
                 </>
-              )}
+              ) : null}
             </div>
           </DialogPanel>
         </div>
@@ -458,150 +352,12 @@ export default function DocumentsAdministratifsPage() {
   );
 }
 
-function InfoRow({ label, value, highlight, full, danger }: {
-  label: string; value: string; highlight?: boolean; full?: boolean; danger?: boolean;
-}) {
-  return (
-    <div style={{ gridColumn: full ? '1 / -1' : 'span 1' }}>
-      <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
-        {label}
-      </p>
-      <p style={{
-        margin: 0, fontSize: 14, fontWeight: highlight ? 700 : 500,
-        color: danger ? '#dc2626' : highlight ? '#1e40af' : '#1e293b',
-        background: highlight ? '#eff6ff' : 'transparent',
-        padding: highlight ? '4px 10px' : 0,
-        borderRadius: highlight ? 8 : 0,
-        display: highlight ? 'inline-block' : 'block',
-      }}>
-        {value}
-      </p>
-    </div>
-  );
+function docStatusLabel(statut: string): string | undefined {
+  switch (statut.toUpperCase()) {
+    case 'EN_TRAITEMENT_RH': return 'En traitement';
+    case 'EN_ATTENTE_FILE': return 'En attente';
+    case 'DISPONIBLE': return 'Disponible';
+    case 'REJETEE': return 'Refusée';
+    default: return undefined;
+  }
 }
-
-// ── Styles ───────────────────────────────────────────────────────────────────
-
-const fifoLegendStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  padding: '12px 20px',
-  background: '#f8fafc',
-  border: '1px solid #e2e8f0',
-  borderRadius: 12,
-  marginBottom: 16,
-};
-
-const fifoWarningBannerStyle: React.CSSProperties = {
-  padding: '16px 20px',
-  background: '#fffbeb',
-  border: '1px solid #fbbf24',
-  borderRadius: 12,
-  marginBottom: 20,
-};
-
-const cardStyle: React.CSSProperties = {
-  background: 'white',
-  borderRadius: 16,
-  border: '1px solid #e2e8f0',
-  overflow: 'hidden',
-};
-
-const thStyle: React.CSSProperties = {
-  padding: '14px 20px',
-  textAlign: 'left',
-  fontWeight: 600,
-  color: '#475569',
-  fontSize: 12,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '14px 20px',
-  verticalAlign: 'middle',
-};
-
-const tagStyle: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '5px 12px',
-  borderRadius: 8,
-  fontSize: 12,
-  fontWeight: 600,
-};
-
-const btnInfoStyle: React.CSSProperties = {
-  padding: '7px 16px',
-  borderRadius: 8,
-  border: '1px solid #e2e8f0',
-  background: 'white',
-  color: '#374151',
-  fontSize: 13,
-  fontWeight: 500,
-  cursor: 'pointer',
-};
-
-const backdropStyle: React.CSSProperties = {
-  position: 'fixed', inset: 0,
-  background: 'rgba(15,23,42,0.4)',
-  backdropFilter: 'blur(4px)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-  zIndex: 1000, padding: 20,
-};
-
-const modalStyle: React.CSSProperties = {
-  background: 'white',
-  borderRadius: 20,
-  padding: 28,
-  width: '100%',
-  maxWidth: 580,
-  boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
-  maxHeight: '90vh',
-  overflowY: 'auto',
-};
-
-const infoGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: '16px 24px',
-  background: '#f8fafc',
-  borderRadius: 12,
-  padding: 20,
-  border: '1px solid #e2e8f0',
-};
-
-const closeBtnStyle: React.CSSProperties = {
-  width: 32, height: 32, borderRadius: '50%',
-  border: 'none', background: '#f1f5f9',
-  color: '#64748b', cursor: 'pointer', fontSize: 14,
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: 12, fontWeight: 600,
-  color: '#475569', marginBottom: 6,
-  textTransform: 'uppercase', letterSpacing: '0.04em',
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '10px 14px',
-  border: '1px solid #e2e8f0', borderRadius: 10,
-  fontSize: 14, color: '#1e293b',
-  background: '#f8fafc', boxSizing: 'border-box',
-  outline: 'none',
-};
-
-const footerBtnStyle: React.CSSProperties = {
-  padding: '10px 20px', borderRadius: 10,
-  border: 'none', fontWeight: 600, fontSize: 14,
-  cursor: 'pointer',
-};
-
-const spinnerStyle: React.CSSProperties = {
-  width: 36, height: 36, margin: '0 auto',
-  border: '3px solid #e2e8f0',
-  borderTopColor: '#1e40af',
-  borderRadius: '50%',
-  animation: 'spin 0.8s linear infinite',
-};

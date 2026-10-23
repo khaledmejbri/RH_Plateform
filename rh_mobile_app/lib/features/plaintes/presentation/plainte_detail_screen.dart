@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../data/plainte_models.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final plainteDetailProvider = FutureProvider.family.autoDispose<PlainteItem, String>((ref, id) async {
   final dio = ref.watch(dioProvider);
@@ -23,7 +24,7 @@ class PlainteDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Détail plainte')),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => Center(child: Text(rhErrorMessage(e))),
         data: (p) => ListView(
           padding: const EdgeInsets.all(20),
           children: [

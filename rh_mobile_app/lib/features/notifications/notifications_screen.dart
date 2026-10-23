@@ -7,6 +7,7 @@ import '../../../core/notifications/notification_model.dart';
 import '../../../core/notifications/notification_provider.dart';
 import '../auth/providers/collaborateur_notifier.dart';
 import '../evaluations/data/evaluation_models.dart';
+import 'package:rh_mobile_app/core/theme/app_theme.dart';
 
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
@@ -29,7 +30,7 @@ class NotificationsScreen extends ConsumerWidget {
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
-                    color: state.connected ? Colors.green : Colors.red,
+                    color: state.connected ? AppTheme.success : AppTheme.error,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -38,7 +39,7 @@ class NotificationsScreen extends ConsumerWidget {
                   state.connected ? 'Connecté' : 'Déconnecté',
                   style: TextStyle(
                     fontSize: 12,
-                    color: state.connected ? Colors.green : Colors.red,
+                    color: state.connected ? AppTheme.success : AppTheme.error,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -258,7 +259,7 @@ class _EmptyState extends ConsumerWidget {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: connected ? Colors.green : Colors.orange,
+                  color: connected ? AppTheme.success : AppTheme.warning,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -266,7 +267,7 @@ class _EmptyState extends ConsumerWidget {
               Text(
                 connected ? 'Connecté' : 'Déconnecté',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: connected ? Colors.green : Colors.orange,
+                      color: connected ? AppTheme.success : AppTheme.warning,
                       fontWeight: FontWeight.w600,
                     ),
               ),

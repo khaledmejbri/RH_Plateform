@@ -16,6 +16,7 @@ import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
 import { currentUserId } from '../auth/jwtRoles';
 import { useDialogA11y } from '../components/useDialogA11y';
+import { EmptyState, Icon, LoadingState, StatusBadge as Status, formatDate } from '../components/ui';
 
 type Tab = 'campaigns' | 'templates' | 'evaluations';
 type TemplateSubTab = 'GENERIC' | 'TECHNICAL';
@@ -41,7 +42,7 @@ export default function EvaluationsPage() {
       </div>
 
       {lectureSeule && (
-        <div className="alert alert--info" role="status" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert--info" role="status">
           Consultation seule — vous visualisez campagnes, questionnaires et scores sans pouvoir les modifier.
         </div>
       )}
@@ -80,7 +81,7 @@ export default function EvaluationsPage() {
         {activeTab === 'campaigns' && <CampaignsTab lectureSeule={lectureSeule} />}
         {activeTab === 'templates' && (
           <div>
-            <div className="tabs tabs--sub" role="tablist" style={{ marginBottom: '1rem' }}>
+            <div className="tabs tabs--sub" role="tablist">
               <button
                 type="button"
                 className={`tab ${templateSub === 'GENERIC' ? 'tab--active' : ''}`}
@@ -256,12 +257,12 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
       </div>
 
       {actionError && (
-        <div className="alert alert--error" role="alert" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert--error" role="alert">
           {actionError}
         </div>
       )}
       {actionSuccess && (
-        <div className="alert alert--success" role="status" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert--success" role="status">
           {actionSuccess}
         </div>
       )}
@@ -449,40 +450,40 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
   return (
     <div className="card">
       <div className="card__header">
-        <h3 style={{ fontSize: '1rem' }}>{campaign.nom}</h3>
+        <h3 className="struct-title__name">{campaign.nom}</h3>
         <StatusBadge status={campaign.statut} />
       </div>
 
-      <p className="text-muted" style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>
+      <p className="cell-meta" style={{ whiteSpace: 'normal', margin: '0.5rem 0' }}>
         {campaign.description || 'Aucune description'}
       </p>
 
       <div className="template-meta">
         <div><strong>Fréquence :</strong> {campaign.type === 'ANNUELLE' ? 'Annuelle' : 'Semestrielle'}</div>
         <div><strong>Période :</strong> {getMonthName(campaign.moisDebut)} – {getMonthName(campaign.moisFin)} {campaign.annee}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+        <div className="inline-row">
           <strong>Général :</strong>
           {campaign.templateGeneral
-            ? <span className="badge badge--success" style={{ fontSize: '0.75rem' }}>{campaign.templateGeneral.nom}</span>
-            : <span className="badge badge--default" style={{ fontSize: '0.75rem' }}>Non assigné</span>}
+            ? <span className="badge badge--success">{campaign.templateGeneral.nom}</span>
+            : <span className="badge badge--default">Non assigné</span>}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+        <div className="inline-row">
           <strong>Technique (fallback) :</strong>
           {campaign.templateTechnique
-            ? <span className="badge badge--success" style={{ fontSize: '0.75rem' }}>{campaign.templateTechnique.nom}</span>
-            : <span className="badge badge--default" style={{ fontSize: '0.75rem' }}>Non assigné</span>}
+            ? <span className="badge badge--success">{campaign.templateTechnique.nom}</span>
+            : <span className="badge badge--default">Non assigné</span>}
         </div>
       </div>
 
       {analytics && (
-        <div className="stats-grid stats-grid--compact" style={{ marginTop: '0.75rem' }}>
+        <div className="stats-grid stats-grid--compact mt-sm">
           <MiniStat label="Complétion" value={`${analytics.completionPercentage}%`} />
           <MiniStat label="Score moyen" value={`${analytics.averageFinalScore || 0}/5`} />
           <MiniStat label="Évaluations" value={String(analytics.evaluationCount)} />
         </div>
       )}
 
-      <div className="form-actions" style={{ marginTop: '1rem', flexWrap: 'wrap' }}>
+      <div className="form-actions form-actions--wrap">
         {!lectureSeule ? (
           <>
             {!isActive && (
@@ -503,7 +504,7 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
             )}
             {campaign.statut === 'ACTIVE' && (
               <>
-                <span className="badge badge--success" style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem' }}>En cours</span>
+                <Status statut="ACTIVE" label="En cours" />
                 <button type="button" className="btn btn--warning btn--sm" onClick={onTerminate}>
                   Terminer
                 </button>
@@ -512,11 +513,11 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
           </>
         ) : (
           campaign.statut === 'ACTIVE' ? (
-            <span className="badge badge--success" style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem' }}>En cours</span>
+            <Status statut="ACTIVE" label="En cours" />
           ) : null
         )}
         {campaign.statut === 'TERMINEE' && (
-          <span className="badge badge--default" style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem' }}>Terminée</span>
+          <Status statut="TERMINEE" />
         )}
 
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => setExpanded(!expanded)}>
@@ -525,14 +526,14 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
       </div>
 
       {expanded && (
-        <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--bg)', borderRadius: 'var(--radius-sm)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.85rem' }}>
-            <div><strong>Créé le :</strong> {new Date(campaign.creeLe).toLocaleDateString('fr-FR')}</div>
-            {campaign.dateDebut && <div><strong>Début :</strong> {new Date(campaign.dateDebut).toLocaleDateString('fr-FR')}</div>}
-            {campaign.dateFin && <div><strong>Fin :</strong> {new Date(campaign.dateFin).toLocaleDateString('fr-FR')}</div>}
-          </div>
+        <div className="callout mt-md">
+          <dl className="detail-grid" style={{ marginBottom: 0 }}>
+            <div><dt>Créée le</dt><dd>{formatDate(campaign.creeLe)}</dd></div>
+            {campaign.dateDebut && <div><dt>Début</dt><dd>{formatDate(campaign.dateDebut)}</dd></div>}
+            {campaign.dateFin && <div><dt>Fin</dt><dd>{formatDate(campaign.dateFin)}</dd></div>}
+          </dl>
           {!campaign.templateGeneral && campaign.statut === 'PLANIFIEE' && !lectureSeule && (
-            <div className="alert alert--info" style={{ marginTop: '0.75rem' }}>
+            <div className="alert alert--info mt-sm">
               Impossible d’activer : publiez et assignez d’abord un template général.
             </div>
           )}
@@ -578,29 +579,29 @@ function AssignTemplatesModal({ campaign, generalTemplates, competencyTemplates,
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div ref={dialogRef} tabIndex={-1} className="modal" style={{ maxWidth: '520px', width: '90%' }} role="dialog" aria-modal="true" aria-labelledby="assign-tpl-title">
-        <div style={{ padding: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+      <div ref={dialogRef} tabIndex={-1} className="modal modal--md" role="dialog" aria-modal="true" aria-labelledby="assign-tpl-title">
+        <div>
+          <div className="modal__head">
             <h3 id="assign-tpl-title" className="modal__title" style={{ margin: 0 }}>Assigner des templates</h3>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={onClose} aria-label="Fermer">✕</button>
+            <button type="button" className="modal__close" onClick={onClose} aria-label="Fermer">
+              <Icon name="x" size={18} />
+            </button>
           </div>
 
-          <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--bg)', borderRadius: '8px' }}>
-            <p style={{ margin: 0, fontSize: '0.9rem' }}>
-              <strong>Campagne :</strong> {campaign.nom}
-              <span className="badge badge--info" style={{ marginLeft: '0.5rem', fontSize: '0.75rem' }}>{campaign.statut}</span>
-            </p>
+          <div className="callout inline-row">
+            <strong>{campaign.nom}</strong>
+            <Status statut={campaign.statut} />
           </div>
 
           {error && (
-            <div className="alert alert--error" role="alert" style={{ marginBottom: '1rem' }}>{error}</div>
+            <div className="alert alert--error" role="alert">{error}</div>
           )}
 
-          <div className="form-group" style={{ marginBottom: '1rem' }}>
-            <label htmlFor="assign-gen" style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
+          <div className="form-group mb-md">
+            <label htmlFor="assign-gen">
               Template général (évaluation comportementale)
             </label>
-            <select id="assign-gen" value={generalId} onChange={e => setGeneralId(e.target.value)} style={{ width: '100%' }}>
+            <select id="assign-gen" value={generalId} onChange={e => setGeneralId(e.target.value)}>
               <option value="">— Aucun —</option>
               {generalTemplates.map(t => (
                 <option key={t.identifiant} value={t.identifiant}>
@@ -610,11 +611,11 @@ function AssignTemplatesModal({ campaign, generalTemplates, competencyTemplates,
             </select>
           </div>
 
-          <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-            <label htmlFor="assign-tech" style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
+          <div className="form-group mb-lg">
+            <label htmlFor="assign-tech">
               Template technique campagne (fallback)
             </label>
-            <select id="assign-tech" value={techniqueId} onChange={e => setTechniqueId(e.target.value)} style={{ width: '100%' }}>
+            <select id="assign-tech" value={techniqueId} onChange={e => setTechniqueId(e.target.value)}>
               <option value="">— Aucun —</option>
               {competencyTemplates.map(t => (
                 <option key={t.identifiant} value={t.identifiant}>
@@ -725,9 +726,9 @@ function EvaluationsTab() {
         <MiniStat label="Alertes rouge" value={String(stats.rouge)} />
       </div>
 
-      <div className="toolbar" style={{ marginTop: '1.5rem' }}>
+      <div className="toolbar mt-lg">
         <h2>Évaluations</h2>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="inline-row">
           <select
             value={filterStatut}
             onChange={e => setFilterStatut(e.target.value)}
@@ -751,7 +752,7 @@ function EvaluationsTab() {
             <option value="ORANGE">Orange</option>
             <option value="ROUGE">Rouge</option>
           </select>
-          <label className="text-sm" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <label className="text-sm inline-row">
             <input
               type="checkbox"
               checked={filterProfilIncomplet}
@@ -788,7 +789,7 @@ function EvaluationsTab() {
             <tbody>
               {filtered.map(evaluation => (
                 <Fragment key={evaluation.identifiant}>
-                  <tr style={{ background: selectedId === evaluation.identifiant ? 'var(--bg-glow)' : undefined }}>
+                  <tr className={selectedId === evaluation.identifiant ? 'is-selected' : undefined}>
                     <td>
                       <strong>{evaluation.campaignNom}</strong>
                       {evaluation.profilMetierIncomplet && (
@@ -801,7 +802,7 @@ function EvaluationsTab() {
                     </td>
                     <td>{personLabel(evaluation.collaborateurNom, evaluation.collaborateurMatricule, evaluation.collaborateurIdentifiant)}</td>
                     <td>{personLabel(evaluation.superieurNom, undefined, evaluation.superieurIdentifiant)}</td>
-                    <td><span style={{ fontSize: '0.8rem' }}>{etapeLabel(evaluation.etapeActuelle)}</span></td>
+                    <td className="cell-meta">{etapeLabel(evaluation.etapeActuelle)}</td>
                     <td><StatusBadge status={evaluation.statut} /></td>
                     <td>
                       {evaluation.scoreSur20 != null ? (
@@ -826,13 +827,13 @@ function EvaluationsTab() {
                   </tr>
                   {selectedId === evaluation.identifiant && (
                     <tr>
-                      <td colSpan={8} style={{ padding: '0' }}>
+                      <td colSpan={8} className="p-0">
                         {analyticsLoading ? (
-                          <div style={{ padding: '1rem', textAlign: 'center' }}>Chargement analytics…</div>
+                          <LoadingState label="Chargement des analyses…" />
                         ) : analytics ? (
                           <AnalyticsPanel analytics={analytics} />
                         ) : (
-                          <div style={{ padding: '1rem', color: 'var(--muted)' }}>Aucune donnée analytics disponible.</div>
+                          <EmptyState icon="info" title="Aucune donnée d’analyse disponible" />
                         )}
                       </td>
                     </tr>
@@ -849,8 +850,8 @@ function EvaluationsTab() {
 
 function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
   return (
-    <div style={{ padding: '1.25rem', background: 'var(--bg)', borderTop: '1px solid var(--border)' }}>
-      <p className="text-muted text-sm" style={{ marginTop: 0 }}>
+    <div className="analytics-panel">
+      <p className="text-muted text-sm mt-0">
         Score final : 70 % notes manager + 30 % auto-évaluation (si notes manager présentes).
       </p>
       <div className="stats-grid stats-grid--compact">
@@ -860,9 +861,9 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
         <MiniStat label="Écart" value={`${analytics.discrepancyPercentage}%`} />
       </div>
 
-      <div className="grid grid--2" style={{ marginTop: '1rem' }}>
+      <div className="grid grid--2 mt-md">
         <div>
-          <h4 style={{ marginBottom: '0.5rem' }}>Sections</h4>
+          <h4 className="section-title">Sections</h4>
           <div className="questions-list">
             {analytics.sections.map(section => (
               <div key={section.section} className="question-item">
@@ -884,7 +885,7 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
         <div>
           {analytics.recommendations.length > 0 && (
             <>
-              <h4 style={{ marginBottom: '0.5rem' }}>Recommandations</h4>
+              <h4 className="section-title">Recommandations</h4>
               <ul className="insight-list">
                 {analytics.recommendations.map(item => <li key={item}>{item}</li>)}
               </ul>
@@ -892,7 +893,7 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
           )}
           {analytics.gaps.filter(g => g.severity === 'HIGH' || g.severity === 'CRITICAL').length > 0 && (
             <>
-              <h4 style={{ marginBottom: '0.5rem' }}>Écarts élevés</h4>
+              <h4 className="section-title">Écarts élevés</h4>
               <ul className="insight-list">
                 {analytics.gaps
                   .filter(g => g.severity === 'HIGH' || g.severity === 'CRITICAL')
@@ -955,5 +956,5 @@ function personLabel(nom?: string, matricule?: string, id?: string): ReactNode {
     );
   }
   if (!id) return <span className="text-muted">—</span>;
-  return <code style={{ fontSize: '0.75rem' }} title={id}>{id.slice(0, 8)}…</code>;
+  return <code title={id}>{id.slice(0, 8)}…</code>;
 }

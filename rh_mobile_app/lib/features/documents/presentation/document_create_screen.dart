@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 
 import '../data/document_repository.dart';
 import 'documents_list_screen.dart';
+import 'package:rh_mobile_app/core/theme/app_theme.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 class DocumentCreateScreen extends ConsumerStatefulWidget {
   const DocumentCreateScreen({super.key});
@@ -41,13 +43,13 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Mois', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+              const Text('Mois', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textTertiary)),
               const SizedBox(height: 8),
               DropdownButtonFormField<int>(
                 value: selectedMonth,
                 decoration: InputDecoration(
                   filled: true,
-                  fillColor: Colors.grey.shade50,
+                  fillColor: AppTheme.background,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
@@ -63,13 +65,13 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                 },
               ),
               const SizedBox(height: 16),
-              const Text('Année', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+              const Text('Année', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textTertiary)),
               const SizedBox(height: 8),
               DropdownButtonFormField<int>(
                 value: selectedYear,
                 decoration: InputDecoration(
                   filled: true,
-                  fillColor: Colors.grey.shade50,
+                  fillColor: AppTheme.background,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
@@ -87,7 +89,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Annuler', style: TextStyle(color: Colors.grey)),
+            child: const Text('Annuler', style: TextStyle(color: AppTheme.textTertiary)),
           ),
           FilledButton(
             onPressed: () {
@@ -169,7 +171,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
         context.pop();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(rhErrorMessage(e))));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -185,10 +187,10 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
       'DOCUMENT_INTERNE',
       'AUTRE',
     ];
-    const primaryBlue = Color(0xFF2563EB);
+    const primaryBlue = AppTheme.primary;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('Demande de document', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
@@ -200,7 +202,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
         children: [
           const Text(
             "Quel document souhaitez-vous ?",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
           ),
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
@@ -212,11 +214,11 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
               prefixIcon: const Icon(Icons.description_outlined, color: primaryBlue),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Colors.grey.shade200),
+                borderSide: BorderSide(color: AppTheme.border),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Colors.grey.shade200),
+                borderSide: BorderSide(color: AppTheme.border),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -238,14 +240,14 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
             const SizedBox(height: 24),
             const Text(
               "Type de demande",
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textTertiary),
             ),
             const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
+                border: Border.all(color: AppTheme.border),
               ),
               child: Row(
                 children: [
@@ -256,7 +258,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         decoration: BoxDecoration(
-                          color: _bulletinType == 'DERNIERS' ? primaryBlue.withOpacity(0.1) : Colors.transparent,
+                          color: _bulletinType == 'DERNIERS' ? primaryBlue.withValues(alpha: 0.1) : Colors.transparent,
                           borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
                         ),
                         child: Center(
@@ -265,14 +267,14 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: _bulletinType == 'DERNIERS' ? primaryBlue : Colors.grey.shade600,
+                              color: _bulletinType == 'DERNIERS' ? primaryBlue : AppTheme.textSecondary,
                             ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                  Container(width: 1, color: Colors.grey.shade200, height: 48),
+                  Container(width: 1, color: AppTheme.border, height: 48),
                   Expanded(
                     child: InkWell(
                       onTap: () => setState(() => _bulletinType = 'SPECIFIQUE'),
@@ -280,7 +282,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         decoration: BoxDecoration(
-                          color: _bulletinType == 'SPECIFIQUE' ? primaryBlue.withOpacity(0.1) : Colors.transparent,
+                          color: _bulletinType == 'SPECIFIQUE' ? primaryBlue.withValues(alpha: 0.1) : Colors.transparent,
                           borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
                         ),
                         child: Center(
@@ -289,7 +291,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: _bulletinType == 'SPECIFIQUE' ? primaryBlue : Colors.grey.shade600,
+                              color: _bulletinType == 'SPECIFIQUE' ? primaryBlue : AppTheme.textSecondary,
                             ),
                           ),
                         ),
@@ -306,7 +308,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
+                border: Border.all(color: AppTheme.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -315,7 +317,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                     _bulletinType == 'DERNIERS'
                         ? "Nombre de derniers mois"
                         : "Nombre de mois à demander",
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textTertiary),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -347,7 +349,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         'Les $_nombreMois derniers bulletins de paie seront demandés',
-                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                        style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontStyle: FontStyle.italic),
                       ),
                     ),
                 ],
@@ -361,14 +363,14 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(color: AppTheme.border),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
                       "Mois de début",
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textTertiary),
                     ),
                     const SizedBox(height: 8),
                     InkWell(
@@ -376,7 +378,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                         decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade300),
+                          border: Border.all(color: AppTheme.border),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
@@ -386,7 +388,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                               DateFormat('MMMM yyyy', 'fr_FR').format(DateFormat('yyyy-MM').parse(_moisAnnee)),
                               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                             ),
-                            const Icon(Icons.calendar_today, size: 20, color: Colors.grey),
+                            const Icon(Icons.calendar_today, size: 20, color: AppTheme.textTertiary),
                           ],
                         ),
                       ),
@@ -396,7 +398,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                         padding: const EdgeInsets.only(top: 12),
                         child: Text(
                           'Du ${DateFormat('MMMM yyyy', 'fr_FR').format(DateFormat('yyyy-MM').parse(_moisAnnee))} et les ${_nombreMois - 1} mois précédents',
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                          style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontStyle: FontStyle.italic),
                         ),
                       ),
                   ],
@@ -410,18 +412,18 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.orange.shade50,
+                color: AppTheme.warningSurface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.orange.shade200),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
+                  Icon(Icons.warning_amber_rounded, color: AppTheme.warning),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       _restrictionMessage ?? 'Vous avez déjà une demande en cours',
-                      style: TextStyle(color: Colors.orange.shade900, fontSize: 13),
+                      style: TextStyle(color: AppTheme.warning, fontSize: 13),
                     ),
                   ),
                 ],
@@ -432,7 +434,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
           const SizedBox(height: 24),
           const Text(
             "Notes ou commentaires",
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textTertiary),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -444,11 +446,11 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
               hintText: "Précisez votre besoin ici...",
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Colors.grey.shade200),
+                borderSide: BorderSide(color: AppTheme.border),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Colors.grey.shade200),
+                borderSide: BorderSide(color: AppTheme.border),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -463,7 +465,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: AppTheme.textPrimary.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, -5),
                 ),
@@ -475,7 +477,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                 child: FilledButton(
                   onPressed: (!_loading && _canSubmit) ? _submit : null,
                   style: FilledButton.styleFrom(
-                    backgroundColor: _canSubmit ? primaryBlue : Colors.grey,
+                    backgroundColor: _canSubmit ? primaryBlue : AppTheme.textTertiary,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     elevation: 0,
                   ),

@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/notification_action.dart';
 import '../providers/collaborateur_notifier.dart';
 import '../providers/auth_notifier.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -38,7 +39,7 @@ class ProfileScreen extends ConsumerWidget {
             children: [
               const Icon(Icons.error_outline, size: 48, color: AppTheme.error),
               const SizedBox(height: 16),
-              Text('Erreur: $e'),
+              Text(rhErrorMessage(e)),
               TextButton(
                 onPressed: () =>
                     ref.read(collaborateurNotifierProvider.notifier).fetchMoi(),
@@ -65,7 +66,7 @@ class ProfileScreen extends ConsumerWidget {
                     width: double.infinity,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF1E40AF), Color(0xFF3B82F6)],
+                        colors: [AppTheme.primaryDark, AppTheme.primaryLight],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -85,7 +86,7 @@ class ProfileScreen extends ConsumerWidget {
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.1),
+                                    color: AppTheme.textPrimary.withValues(alpha: 0.1),
                                     blurRadius: 20,
                                     offset: const Offset(0, 4),
                                   ),
@@ -106,7 +107,7 @@ class ProfileScreen extends ConsumerWidget {
                               bottom: 0,
                               right: 0,
                               child: Material(
-                                color: const Color(0xFF3B82F6),
+                                color: AppTheme.primaryLight,
                                 shape: const CircleBorder(),
                                 child: InkWell(
                                   onTap: () {
@@ -117,7 +118,7 @@ class ProfileScreen extends ConsumerWidget {
                                     width: 30,
                                     height: 30,
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF3B82F6),
+                                      color: AppTheme.primaryLight,
                                       shape: BoxShape.circle,
                                       border: Border.all(color: Colors.white, width: 2.5),
                                     ),
@@ -143,14 +144,14 @@ class ProfileScreen extends ConsumerWidget {
                           user.email ?? 'Email non renseigné',
                           style: TextStyle(
                             fontSize: 14,
-                            color: Colors.white.withOpacity(0.75),
+                            color: Colors.white.withValues(alpha: 0.75),
                           ),
                         ),
                         const SizedBox(height: 24),
                         // Stats row
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
+                            color: Colors.white.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           padding: const EdgeInsets.symmetric(
@@ -162,7 +163,7 @@ class ProfileScreen extends ConsumerWidget {
                               Container(
                                   width: 0.5,
                                   height: 40,
-                                  color: Colors.white.withOpacity(0.3)),
+                                  color: Colors.white.withValues(alpha: 0.3)),
                               _StatItem(value: '4', label: 'Demandes\nen cours'),
                             ],
                           ),
@@ -203,7 +204,7 @@ class ProfileScreen extends ConsumerWidget {
                     const SizedBox(height: 24),
                     // Logout
                     Material(
-                      color: const Color(0xFFFFF1F2),
+                      color: AppTheme.errorSurface,
                       borderRadius: BorderRadius.circular(14),
                       child: InkWell(
                         onTap: () =>
@@ -251,7 +252,7 @@ class _StatItem extends StatelessWidget {
         Text(label,
             textAlign: TextAlign.center,
             style:
-                TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.65))),
+                TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.65))),
       ],
     );
   }

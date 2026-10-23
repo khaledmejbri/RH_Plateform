@@ -6,6 +6,8 @@ import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../data/demande_admin_models.dart';
 import '../data/demande_admin_repository.dart';
+import 'package:rh_mobile_app/core/theme/app_theme.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final demandeAdminDetailProvider =
     FutureProvider.family.autoDispose<Map<String, dynamic>, String>((ref, id) async {
@@ -45,16 +47,16 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: AppTheme.background,
         appBar: AppBar(
           title: const Text('Détail de la demande', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
           backgroundColor: Colors.white,
           elevation: 0,
           centerTitle: true,
           bottom: TabBar(
-            labelColor: const Color(0xFF2563EB),
-            unselectedLabelColor: Colors.grey.shade600,
-            indicatorColor: const Color(0xFF2563EB),
+            labelColor: AppTheme.primary,
+            unselectedLabelColor: AppTheme.textSecondary,
+            indicatorColor: AppTheme.primary,
             tabs: const [
               Tab(text: 'Résumé'),
               Tab(text: 'Suivi'),
@@ -66,7 +68,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
           children: [
             detail.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('$e')),
+              error: (e, _) => Center(child: Text(rhErrorMessage(e))),
               data: (j) {
                 String statusLabel = 'Envoyée';
                 String statusDescription = 'Votre demande a été envoyée et sera traitée prochainement.';
@@ -82,13 +84,13 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                   statusDescription = 'Votre demande a été refusée. Veuillez consulter le motif ci-dessous.';
                 }
                 
-                Color statusColor = const Color(0xFF64748B);
+                Color statusColor = AppTheme.textTertiary;
                 if (statusLabel.contains('validation')) {
-                  statusColor = const Color(0xFFF59E0B);
+                  statusColor = AppTheme.warning;
                 } else if (statusLabel == 'Approuvée') {
-                  statusColor = const Color(0xFF10B981);
+                  statusColor = AppTheme.success;
                 } else if (statusLabel == 'Refusée') {
-                  statusColor = const Color(0xFFEF4444);
+                  statusColor = AppTheme.error;
                 }
 
                 return ListView(
@@ -99,10 +101,10 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.grey.shade100),
+                        border: Border.all(color: AppTheme.surfaceMuted),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.03),
+                            color: AppTheme.textPrimary.withValues(alpha: 0.03),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -116,7 +118,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                               Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.1),
+                                  color: statusColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Icon(
@@ -135,7 +137,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 18,
-                                        color: Color(0xFF1E293B),
+                                        color: AppTheme.textPrimary,
                                       ),
                                     ),
                                     if (j['date_creation'] != null)
@@ -143,7 +145,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                                         padding: const EdgeInsets.only(top: 4),
                                         child: Text(
                                           'Demandé le ${DateFormat('dd MMM yyyy', 'fr_FR').format(DateTime.parse(j['date_creation']))}',
-                                          style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                                          style: TextStyle(color: AppTheme.textTertiary, fontSize: 13),
                                         ),
                                       ),
                                   ],
@@ -155,9 +157,9 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.08),
+                              color: statusColor.withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: statusColor.withOpacity(0.2)),
+                              border: Border.all(color: statusColor.withValues(alpha: 0.2)),
                             ),
                             child: Row(
                               children: [
@@ -181,7 +183,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                             statusDescription,
                             style: const TextStyle(
                               fontSize: 14,
-                              color: Color(0xFF64748B),
+                              color: AppTheme.textTertiary,
                               height: 1.5,
                             ),
                           ),
@@ -191,15 +193,15 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                             const SizedBox(height: 8),
                             Row(
                               children: [
-                                Icon(Icons.date_range_rounded, size: 18, color: Colors.grey.shade600),
+                                Icon(Icons.date_range_rounded, size: 18, color: AppTheme.textSecondary),
                                 const SizedBox(width: 8),
                                 Text(
                                   'Période : ',
-                                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                                 ),
                                 Text(
                                   '${j['periode_debut']} → ${j['periode_fin']}',
-                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1E293B)),
+                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textPrimary),
                                 ),
                               ],
                             ),
@@ -212,23 +214,23 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444).withOpacity(0.08),
+                          color: AppTheme.error.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.2)),
+                          border: Border.all(color: AppTheme.error.withValues(alpha: 0.2)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 20),
+                                const Icon(Icons.warning_amber_rounded, color: AppTheme.error, size: 20),
                                 const SizedBox(width: 8),
                                 const Text(
                                   'Motif du refus',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 14,
-                                    color: Color(0xFFEF4444),
+                                    color: AppTheme.error,
                                   ),
                                 ),
                               ],
@@ -236,7 +238,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                             const SizedBox(height: 8),
                             Text(
                               j['motif_refus'],
-                              style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B), height: 1.5),
+                              style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary, height: 1.5),
                             ),
                           ],
                         ),
@@ -248,7 +250,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
             ),
             suivi.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('$e')),
+              error: (e, _) => Center(child: Text(rhErrorMessage(e))),
               data: (s) => ListView.builder(
                 padding: const EdgeInsets.all(16),
                 itemCount: s.etapes.length,
@@ -279,7 +281,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                 final historique = ref.watch(demandeAdminHistoriqueProvider(id));
                 return historique.when(
                   loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => Center(child: Text('Erreur: $e')),
+                  error: (e, _) => Center(child: Text(rhErrorMessage(e))),
                   data: (items) {
                     if (items.isEmpty) {
                       return const Center(
@@ -288,9 +290,9 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.history_outlined, size: 48, color: Colors.grey),
+                              Icon(Icons.history_outlined, size: 48, color: AppTheme.textTertiary),
                               SizedBox(height: 16),
-                              Text('Aucun historique disponible', style: TextStyle(color: Colors.grey)),
+                              Text('Aucun historique disponible', style: TextStyle(color: AppTheme.textTertiary)),
                             ],
                           ),
                         ),
@@ -327,13 +329,13 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
             Container(
               width: 2,
               height: 24,
-              color: Colors.grey.shade300,
+              color: AppTheme.border,
             ),
             Container(
               width: 12,
               height: 12,
               decoration: BoxDecoration(
-                color: const Color(0xFF2563EB),
+                color: AppTheme.primary,
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 2),
               ),
@@ -342,7 +344,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
               Container(
                 width: 2,
                 height: 40,
-                color: Colors.grey.shade300,
+                color: AppTheme.border,
               ),
           ],
         ),
@@ -354,7 +356,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
+              border: Border.all(color: AppTheme.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -368,7 +370,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 14,
-                          color: Color(0xFF1E293B),
+                          color: AppTheme.textPrimary,
                         ),
                       ),
                     ),
@@ -376,7 +378,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                       dateFormat.format(date),
                       style: TextStyle(
                         fontSize: 11,
-                        color: Colors.grey.shade500,
+                        color: AppTheme.textTertiary,
                       ),
                     ),
                   ],
@@ -387,7 +389,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                     'Par: ${item.acteurNom}',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey.shade600,
+                      color: AppTheme.textSecondary,
                     ),
                   ),
                 ],
@@ -396,14 +398,14 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
+                      color: AppTheme.background,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       item.commentaire!,
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade700,
+                        color: AppTheme.textSecondary,
                         fontStyle: FontStyle.italic,
                       ),
                     ),

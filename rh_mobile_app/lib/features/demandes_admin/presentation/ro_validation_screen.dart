@@ -6,6 +6,8 @@ import '../data/demande_admin_models.dart';
 import '../data/demande_admin_repository.dart';
 import '../data/demande_admin_errors.dart';
 import '../data/type_conge.dart';
+import 'package:rh_mobile_app/core/theme/app_theme.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
@@ -26,7 +28,7 @@ class RoValidationScreen extends ConsumerWidget {
     final async = ref.watch(roDemandesEnAttenteProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -45,7 +47,7 @@ class RoValidationScreen extends ConsumerWidget {
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorView(
-          message: messageErreurDemandeAdmin(e, fallback: e.toString()),
+          message: messageErreurDemandeAdmin(e, fallback: rhErrorMessage(e)),
           onRetry: () => ref.invalidate(roDemandesEnAttenteProvider),
         ),
         data: (items) => items.isEmpty
@@ -83,10 +85,10 @@ class _DemandeCard extends ConsumerWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppTheme.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: AppTheme.textPrimary.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -105,7 +107,7 @@ class _DemandeCard extends ConsumerWidget {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: typeInfo.color.withOpacity(0.1),
+                        color: typeInfo.color.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(typeInfo.icon,
@@ -121,7 +123,7 @@ class _DemandeCard extends ConsumerWidget {
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
-                              color: Color(0xFF1E293B),
+                              color: AppTheme.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -129,7 +131,7 @@ class _DemandeCard extends ConsumerWidget {
                             'Réf. ${item.id.substring(0, 8).toUpperCase()}',
                             style: const TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF94A3B8),
+                              color: AppTheme.textTertiary,
                               fontFamily: 'monospace',
                             ),
                           ),
@@ -149,14 +151,14 @@ class _DemandeCard extends ConsumerWidget {
                   Row(
                     children: [
                       const Icon(Icons.notes_rounded,
-                          size: 14, color: Color(0xFF94A3B8)),
+                          size: 14, color: AppTheme.textTertiary),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           item.contenu!['motif'] as String,
                           style: const TextStyle(
                             fontSize: 13,
-                            color: Color(0xFF475569),
+                            color: AppTheme.textSecondary,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -171,14 +173,14 @@ class _DemandeCard extends ConsumerWidget {
                   Row(
                     children: [
                       const Icon(Icons.notes_rounded,
-                          size: 14, color: Color(0xFF94A3B8)),
+                          size: 14, color: AppTheme.textTertiary),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           item.contenu!['motif'] as String,
                           style: const TextStyle(
                             fontSize: 13,
-                            color: Color(0xFF475569),
+                            color: AppTheme.textSecondary,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -192,7 +194,7 @@ class _DemandeCard extends ConsumerWidget {
           ),
 
           // Action buttons
-          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+          const Divider(height: 1, color: AppTheme.border),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
@@ -201,7 +203,7 @@ class _DemandeCard extends ConsumerWidget {
                   child: _ActionButton(
                     label: 'Refuser',
                     icon: Icons.close_rounded,
-                    color: const Color(0xFFDC2626),
+                    color: AppTheme.error,
                     onTap: () => _showRefusDialog(context, ref),
                   ),
                 ),
@@ -210,7 +212,7 @@ class _DemandeCard extends ConsumerWidget {
                   child: _ActionButton(
                     label: 'Valider',
                     icon: Icons.check_rounded,
-                    color: const Color(0xFF16A34A),
+                    color: AppTheme.success,
                     filled: true,
                     onTap: () => _confirmerValidation(context, ref),
                   ),
@@ -242,7 +244,7 @@ class _DemandeCard extends ConsumerWidget {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF16A34A),
+              backgroundColor: AppTheme.success,
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Valider'),
@@ -261,7 +263,7 @@ class _DemandeCard extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Demande validée — transmise au RRH ✓'),
-            backgroundColor: Color(0xFF16A34A),
+            backgroundColor: AppTheme.success,
           ),
         );
       }
@@ -270,7 +272,7 @@ class _DemandeCard extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(messageErreurDemandeAdmin(e)),
-            backgroundColor: const Color(0xFFDC2626),
+            backgroundColor: AppTheme.error,
           ),
         );
       }
@@ -292,7 +294,7 @@ class _DemandeCard extends ConsumerWidget {
             const Text(
               'Veuillez indiquer le motif de refus. '
               'Il sera communiqué au collaborateur.',
-              style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 13, color: AppTheme.textTertiary),
             ),
             const SizedBox(height: 14),
             TextField(
@@ -316,7 +318,7 @@ class _DemandeCard extends ConsumerWidget {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
+              backgroundColor: AppTheme.error,
             ),
             onPressed: () {
               final motif = motifController.text.trim();
@@ -340,7 +342,7 @@ class _DemandeCard extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Demande refusée — le collaborateur est notifié'),
-            backgroundColor: Color(0xFFDC2626),
+            backgroundColor: AppTheme.error,
           ),
         );
       }
@@ -349,7 +351,7 @@ class _DemandeCard extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(messageErreurDemandeAdmin(e)),
-            backgroundColor: const Color(0xFFDC2626),
+            backgroundColor: AppTheme.error,
           ),
         );
       }
@@ -392,14 +394,14 @@ class _PeriodRow extends StatelessWidget {
 
     return Row(
       children: [
-        Icon(icon, size: 14, color: const Color(0xFF94A3B8)),
+        Icon(icon, size: 14, color: AppTheme.textTertiary),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             label,
             style: const TextStyle(
               fontSize: 13,
-              color: Color(0xFF475569),
+              color: AppTheme.textSecondary,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -417,21 +419,7 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF9C3),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        'En attente validation',
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFFA16207),
-        ),
-      ),
-    );
+    return const RhStatusChip(label: 'En attente de validation', tone: RhTone.warning);
   }
 }
 
@@ -460,9 +448,9 @@ class _ActionButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: filled ? color : color.withOpacity(0.08),
+          color: filled ? color : color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
-          border: filled ? null : Border.all(color: color.withOpacity(0.3)),
+          border: filled ? null : Border.all(color: color.withValues(alpha: 0.3)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -497,13 +485,13 @@ class _TypeInfo {
 _TypeInfo _typeInfo(String type) {
   return switch (type) {
     'CONGE' => const _TypeInfo(
-        'Demande de congé', Icons.calendar_month_rounded, Color(0xFFEA580C)),
+        'Demande de congé', Icons.calendar_month_rounded, AppTheme.accent),
     'AUTORISATION_SORTIE' => const _TypeInfo(
         'Autorisation de sortie', Icons.access_time_rounded, Color(0xFF0D9488)),
     'ORDRE_MISSION' => const _TypeInfo(
         'Ordre de mission', Icons.business_center_rounded, Color(0xFF7C3AED)),
     _ => const _TypeInfo(
-        'Demande', Icons.assignment_rounded, Color(0xFF2563EB)),
+        'Demande', Icons.assignment_rounded, AppTheme.primary),
   };
 }
 
@@ -514,38 +502,10 @@ class _EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xFF16A34A).withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.check_circle_outline_rounded,
-                  size: 48, color: Color(0xFF16A34A)),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Aucune demande en attente',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B)),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Toutes les demandes assignées à votre nœud ont été traitées.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
-            ),
-          ],
-        ),
-      ),
+    return const RhEmptyState(
+      icon: Icons.check_circle_outline_rounded,
+      title: 'Aucune demande en attente',
+      message: 'Toutes les demandes assignées à votre nœud ont été traitées.',
     );
   }
 }
@@ -564,7 +524,7 @@ class _ErrorView extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(Icons.error_outline_rounded,
-                size: 48, color: Color(0xFFDC2626)),
+                size: 48, color: AppTheme.error),
             const SizedBox(height: 16),
             const Text('Erreur de chargement',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -572,7 +532,7 @@ class _ErrorView extends StatelessWidget {
             Text(message,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                    fontSize: 12, color: Color(0xFF64748B))),
+                    fontSize: 12, color: AppTheme.textTertiary)),
             const SizedBox(height: 20),
             ElevatedButton.icon(
               onPressed: onRetry,

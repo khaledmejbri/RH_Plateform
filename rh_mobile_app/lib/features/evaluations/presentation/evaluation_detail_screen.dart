@@ -6,6 +6,7 @@ import '../../auth/providers/collaborateur_notifier.dart';
 import '../data/evaluation_models.dart';
 import '../data/evaluation_repository.dart';
 import 'evaluations_list_screen.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final evaluationDetailProvider =
     FutureProvider.autoDispose.family<EvaluationItem, String>((ref, id) {
@@ -81,7 +82,7 @@ class _EvaluationDetailScreenState
       ),
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => _ErrorState(message: '$error'),
+        error: (error, _) => _ErrorState(message: rhErrorMessage(error)),
         data: (item) {
           final managerMode = _isManagerMode(item);
           if (managerMode) {
@@ -491,7 +492,7 @@ class _GeneralSection extends ConsumerWidget {
         padding: EdgeInsets.all(24),
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (error, _) => _ErrorState(message: '$error'),
+      error: (error, _) => _ErrorState(message: rhErrorMessage(error)),
       data: (questions) {
         if (questions.isEmpty) {
           return const _InlineAlert(
@@ -574,7 +575,7 @@ class _TechnicalSection extends ConsumerWidget {
         padding: EdgeInsets.all(24),
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (error, _) => _ErrorState(message: '$error'),
+      error: (error, _) => _ErrorState(message: rhErrorMessage(error)),
       data: (questions) {
         if (questions.isEmpty) {
           return const _InlineAlert(
@@ -651,7 +652,7 @@ class _ManagerGeneralSection extends ConsumerWidget {
     final async = ref.watch(generalQuestionsProvider(evaluationId));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => _ErrorState(message: '$e'),
+      error: (e, _) => _ErrorState(message: rhErrorMessage(e)),
       data: (questions) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1091,12 +1092,12 @@ class _StepPill extends StatelessWidget {
     final bg = active
         ? AppTheme.primarySurface
         : done
-            ? const Color(0xFFDCFCE7)
+            ? AppTheme.successSurface
             : Colors.white;
     final fg = active
         ? AppTheme.primary
         : done
-            ? const Color(0xFF166534)
+            ? AppTheme.success
             : AppTheme.textSecondary;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1170,13 +1171,13 @@ class _InlineAlert extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
+        color: AppTheme.accentSurface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFFED7AA)),
       ),
       child: Text(
         message,
-        style: const TextStyle(color: Color(0xFF9A3412), height: 1.35),
+        style: const TextStyle(color: AppTheme.accent, height: 1.35),
       ),
     );
   }

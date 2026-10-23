@@ -19,6 +19,7 @@ import {
   type PresenceSite,
 } from '../api/presenceApi';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { Icon } from '../components/ui';
 
 type Tab = 'sites' | 'pointages';
 type ModalKind = 'creer' | 'regenerer' | 'revoquer' | null;
@@ -80,14 +81,14 @@ function QrExpiryBadge({ site }: { site: PresenceSite }) {
         className="badge badge--warning"
         aria-label={`QR expire le ${formatDateCourteTunis(site.validUntil)}`}
       >
-        <span aria-hidden="true">⚠</span> Expire le {formatDateCourteTunis(site.validUntil)}
+        <Icon name="alert" size={12} /> Expire le {formatDateCourteTunis(site.validUntil)}
       </span>
     );
   }
   if (site.hasQrActif) {
     return (
       <span className="badge badge--success" aria-label="QR actif">
-        <span aria-hidden="true">✓</span> Actif
+        <Icon name="check" size={12} /> Actif
         {site.validUntil ? ` · ${formatDateCourteTunis(site.validUntil)}` : ''}
       </span>
     );
@@ -105,8 +106,8 @@ function PointageStatutBadge({ statut }: { statut: string }) {
         : 'badge badge--default';
   return (
     <span className={cls} aria-label={label}>
-      {statut === 'VALIDE' ? <span aria-hidden="true">✓ </span> : null}
-      {statut.startsWith('REJETE_') ? <span aria-hidden="true">✕ </span> : null}
+      {statut === 'VALIDE' ? <Icon name="check" size={12} /> : null}
+      {statut.startsWith('REJETE_') ? <Icon name="x" size={12} /> : null}
       {label}
     </span>
   );
@@ -412,7 +413,7 @@ export default function PointageSitesPage() {
 
       {showList ? (
         <div className="panel">
-          <div className="form-grid" style={{ marginBottom: 16 }}>
+          <div className="form-grid mb-md">
             <label>
               Recherche
               <input
@@ -557,7 +558,7 @@ export default function PointageSitesPage() {
 
       {showDetail ? (
         <div className="panel">
-          <div className="page__head-actions" style={{ marginBottom: 16 }}>
+          <div className="page__head-actions mb-md">
             <button type="button" className="btn btn--ghost" onClick={backToList}>
               ← Retour à la liste
             </button>
@@ -579,7 +580,7 @@ export default function PointageSitesPage() {
 
           {detail && !detailLoading ? (
             <>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 16 }}>
+              <div className="inline-row mb-md">
                 <span className="mono muted">{detail.code}</span>
                 {detail.actif ? (
                   <span className="badge badge--success">Actif</span>
@@ -601,8 +602,8 @@ export default function PointageSitesPage() {
                 </div>
               ) : null}
 
-              <section style={{ marginBottom: 24 }}>
-                <h3 style={{ marginTop: 0, fontSize: 16 }}>Identité</h3>
+              <section className="mb-lg">
+                <h3 className="section-title">Identité</h3>
                 <dl className="detail-dl">
                   <div>
                     <dt>Code</dt>
@@ -631,8 +632,8 @@ export default function PointageSitesPage() {
                 )}
               </section>
 
-              <section style={{ marginBottom: 24 }}>
-                <h3 style={{ fontSize: 16 }}>Emplacement GPS</h3>
+              <section className="mb-lg">
+                <h3 className="section-title">Emplacement GPS</h3>
                 {detail.latitude != null && detail.longitude != null ? (
                   <p className="mono small">
                     {detail.latitude.toFixed(6)}, {detail.longitude.toFixed(6)}
@@ -646,7 +647,7 @@ export default function PointageSitesPage() {
               </section>
 
               <section>
-                <h3 style={{ fontSize: 16 }}>Code QR</h3>
+                <h3 className="section-title">Code QR</h3>
                 {detail.hasQrActif ? (
                   <p className="small">
                     Version {detail.qrVersion ?? '—'} · valide du {formatDateTunis(detail.validFrom)} au{' '}
@@ -656,7 +657,7 @@ export default function PointageSitesPage() {
                   <p className="muted small">Aucun QR actif — générez un code pour l’afficher sur site.</p>
                 )}
 
-                <div className="page__head-actions" style={{ marginTop: 12, flexWrap: 'wrap', gap: 8 }}>
+                <div className="page__head-actions mt-sm">
                   {!lectureSeule && !detail.hasQrActif ? (
                     <button
                       type="button"
@@ -716,7 +717,7 @@ export default function PointageSitesPage() {
 
       {tab === 'pointages' ? (
         <div className="panel">
-          <div className="form-grid" style={{ marginBottom: 16 }}>
+          <div className="form-grid mb-md">
             <label>
               Site
               <select
@@ -893,7 +894,7 @@ export default function PointageSitesPage() {
               </label>
             </div>
             <p className="muted small">Rayon fixé à 50 m. L’emplacement GPS se pose ensuite via mobile RH.</p>
-            <div className="page__head-actions" style={{ marginTop: 16 }}>
+            <div className="page__head-actions mt-md">
               <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setModal(null)}>
                 Annuler
               </button>
@@ -911,7 +912,7 @@ export default function PointageSitesPage() {
             L’ancien QR sera <strong>immédiatement</strong> invalide. Réimprimez et remplacez l’affichage sur
             site avant de communiquer.
           </p>
-          <div className="page__head-actions" style={{ marginTop: 16 }}>
+          <div className="page__head-actions mt-md">
             <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setModal(null)}>
               Annuler
             </button>
@@ -933,7 +934,7 @@ export default function PointageSitesPage() {
             Le QR actif sera révoqué immédiatement. Aucun collaborateur ne pourra pointer sur ce site tant
             qu’un nouveau QR n’aura pas été généré.
           </p>
-          <div className="page__head-actions" style={{ marginTop: 16 }}>
+          <div className="page__head-actions mt-md">
             <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setModal(null)}>
               Annuler
             </button>

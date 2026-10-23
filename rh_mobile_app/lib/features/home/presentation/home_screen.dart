@@ -92,7 +92,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF3F4F6),
+                            color: AppTheme.surfaceMuted,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
@@ -117,20 +117,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFF1F2),
+                            color: AppTheme.errorSurface,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
                             Icons.logout,
                             size: 20,
-                            color: Colors.red,
+                            color: AppTheme.error,
                           ),
                         ),
                         const SizedBox(width: 12),
                         const Text(
                           'Déconnexion',
                           style: TextStyle(
-                            color: Colors.red,
+                            color: AppTheme.error,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -220,11 +220,11 @@ class _BottomNav extends ConsumerWidget {
                     color:
                         currentIndex == 2
                             ? AppTheme.primary
-                            : AppTheme.primary.withOpacity(0.9),
+                            : AppTheme.primary.withValues(alpha: 0.9),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.primary.withOpacity(0.35),
+                        color: AppTheme.primary.withValues(alpha: 0.35),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
@@ -409,7 +409,7 @@ class _DashboardPage extends ConsumerWidget {
                   constraints: const BoxConstraints(minHeight: 100),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [AppTheme.primaryDark, Color(0xFF3B82F6)],
+                      colors: [AppTheme.primaryDark, AppTheme.primaryLight],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -428,7 +428,7 @@ class _DashboardPage extends ConsumerWidget {
                               style: Theme.of(
                                 context,
                               ).textTheme.bodySmall?.copyWith(
-                                color: Colors.white.withOpacity(0.7),
+                                color: Colors.white.withValues(alpha: 0.7),
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -447,7 +447,7 @@ class _DashboardPage extends ConsumerWidget {
                               style: Theme.of(
                                 context,
                               ).textTheme.bodySmall?.copyWith(
-                                color: Colors.white.withOpacity(0.65),
+                                color: Colors.white.withValues(alpha: 0.65),
                                 fontSize: 11,
                               ),
                             ),
@@ -458,7 +458,7 @@ class _DashboardPage extends ConsumerWidget {
                         width: 52,
                         height: 52,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: const Icon(
@@ -522,13 +522,13 @@ class _DashboardPage extends ConsumerWidget {
                 crossAxisCount: 2,
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
-                childAspectRatio: 1.1,
+                childAspectRatio: 1.45,
                 children: [
                   _ServiceCard(
                     title: 'Pointage',
                     subtitle: 'Scanner QR',
                     icon: Icons.qr_code_scanner_rounded,
-                    iconBg: const Color(0xFFEEF2FF),
+                    iconBg: AppTheme.primarySurface,
                     iconColor: AppTheme.primary,
                     onTap: () => context.push('/pointage'),
                   ),
@@ -555,15 +555,15 @@ class _DashboardPage extends ConsumerWidget {
                     title: 'Congés',
                     subtitle: 'Demander',
                     icon: Icons.calendar_month_rounded,
-                    iconBg: const Color(0xFFFFF7ED),
-                    iconColor: const Color(0xFFEA580C),
+                    iconBg: AppTheme.accentSurface,
+                    iconColor: AppTheme.accent,
                     onTap: () => context.push('/demandes-admin'),
                   ),
                   _ServiceCard(
                     title: 'Documents',
                     subtitle: 'Attestations',
                     icon: Icons.description_rounded,
-                    iconBg: const Color(0xFFF0FDF4),
+                    iconBg: AppTheme.successSurface,
                     iconColor: AppTheme.success,
                     onTap: () => context.push('/documents'),
                   ),
@@ -571,23 +571,23 @@ class _DashboardPage extends ConsumerWidget {
                     title: 'Formations',
                     subtitle: 'Plan annuel',
                     icon: Icons.school_rounded,
-                    iconBg: const Color(0xFFEFF6FF),
-                    iconColor: const Color(0xFF2563EB),
+                    iconBg: AppTheme.primarySurface,
+                    iconColor: AppTheme.primary,
                     onTap: () => context.push('/formations'),
                   ),
                   _ServiceCard(
                     title: 'Plaintes',
                     subtitle: 'Déclarer',
                     icon: Icons.report_problem_rounded,
-                    iconBg: const Color(0xFFFFF1F2),
-                    iconColor: const Color(0xFFE11D48),
+                    iconBg: AppTheme.errorSurface,
+                    iconColor: AppTheme.error,
                     onTap: () => context.push('/plaintes'),
                   ),
                   _ServiceCard(
                     title: 'Évaluations',
                     subtitle: 'Performance',
                     icon: Icons.star_outline_rounded,
-                    iconBg: const Color(0xFFFEF3C7),
+                    iconBg: AppTheme.warningSurface,
                     iconColor: AppTheme.warning,
                     badge: ref.watch(evaluationsBadgeCountProvider).maybeWhen(
                           data: (n) => n,
@@ -599,16 +599,16 @@ class _DashboardPage extends ConsumerWidget {
                     title: 'Organigramme',
                     subtitle: 'Hiérarchie',
                     icon: Icons.account_tree_outlined,
-                    iconBg: const Color(0xFFECFDF5),
-                    iconColor: const Color(0xFF059669),
+                    iconBg: AppTheme.successSurface,
+                    iconColor: AppTheme.success,
                     onTap: () => context.push('/organigramme'),
                   ),
                   _ServiceCard(
                     title: 'Autorisation',
                     subtitle: 'Sortie',
                     icon: Icons.vpn_key_rounded,
-                    iconBg: const Color(0xFFEFF6FF),
-                    iconColor: const Color(0xFF3B82F6),
+                    iconBg: AppTheme.primarySurface,
+                    iconColor: AppTheme.primaryLight,
                     onTap:
                         () => context.push(
                           '/demandes-admin/autorisation/nouveau',
@@ -772,8 +772,8 @@ class _DemandesPage extends ConsumerWidget {
             title: 'Congés',
             subtitle: 'Gérer vos absences et congés',
             icon: Icons.calendar_month_rounded,
-            iconBg: const Color(0xFFFFF7ED),
-            iconColor: const Color(0xFFEA580C),
+            iconBg: AppTheme.accentSurface,
+            iconColor: AppTheme.accent,
             onTap: () => context.push('/demandes-admin'),
           ),
           const SizedBox(height: 12),
@@ -781,8 +781,8 @@ class _DemandesPage extends ConsumerWidget {
             title: 'Autorisations de sortie',
             subtitle: 'Demander une permission (max 4h)',
             icon: Icons.vpn_key_rounded,
-            iconBg: const Color(0xFFEFF6FF),
-            iconColor: const Color(0xFF3B82F6),
+            iconBg: AppTheme.primarySurface,
+            iconColor: AppTheme.primaryLight,
             onTap: () => context.push('/demandes-admin/autorisation/nouveau'),
           ),
           const SizedBox(height: 12),
@@ -790,7 +790,7 @@ class _DemandesPage extends ConsumerWidget {
             title: 'Documents',
             subtitle: 'Attestations, bulletins de paie…',
             icon: Icons.description_rounded,
-            iconBg: const Color(0xFFF0FDF4),
+            iconBg: AppTheme.successSurface,
             iconColor: AppTheme.success,
             onTap: () => context.push('/documents'),
           ),
@@ -800,8 +800,8 @@ class _DemandesPage extends ConsumerWidget {
               title: 'Formations',
               subtitle: 'Unité ou collaborateurs cibles',
               icon: Icons.school_rounded,
-              iconBg: const Color(0xFFEFF6FF),
-              iconColor: const Color(0xFF2563EB),
+              iconBg: AppTheme.primarySurface,
+              iconColor: AppTheme.primary,
               onTap: () => context.push('/formations'),
             ),
             const SizedBox(height: 12),
@@ -810,8 +810,8 @@ class _DemandesPage extends ConsumerWidget {
             title: 'Plaintes',
             subtitle: 'Déclarer une réclamation',
             icon: Icons.report_problem_rounded,
-            iconBg: const Color(0xFFFFF1F2),
-            iconColor: const Color(0xFFE11D48),
+            iconBg: AppTheme.errorSurface,
+            iconColor: AppTheme.error,
             onTap: () => context.push('/plaintes'),
           ),
         ],
@@ -864,7 +864,7 @@ class _RoValidationCard extends ConsumerWidget {
           border: Border.all(color: const Color(0xFFBBF7D0)),
           boxShadow: [
             BoxShadow(
-              color: AppTheme.success.withOpacity(0.06),
+              color: AppTheme.success.withValues(alpha: 0.06),
               blurRadius: 10,
               offset: const Offset(0, 3),
             ),
@@ -875,7 +875,7 @@ class _RoValidationCard extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppTheme.success.withOpacity(0.1),
+                color: AppTheme.success.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(
@@ -954,7 +954,7 @@ class _RoBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isRo ? const Color(0xFF0D9488) : const Color(0xFF2563EB);
+    final color = isRo ? const Color(0xFF0D9488) : AppTheme.primary;
 
     return InkWell(
       onTap: () => GoRouter.of(context).push('/demandes-admin/ro/validation'),
@@ -963,19 +963,19 @@ class _RoBanner extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [color.withOpacity(0.08), color.withOpacity(0.04)],
+            colors: [color.withValues(alpha: 0.08), color.withValues(alpha: 0.04)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withOpacity(0.25)),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
+                color: color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(Icons.how_to_reg_rounded, color: color, size: 20),

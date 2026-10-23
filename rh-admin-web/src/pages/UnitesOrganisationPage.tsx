@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { getUnites, postUnite, type Unite } from '../api/rhClient';
+import { ErrorAlert, LoadingState } from '../components/ui';
 
 export default function UnitesOrganisationPage() {
   const [rows, setRows] = useState<Unite[]>([]);
@@ -52,7 +53,7 @@ export default function UnitesOrganisationPage() {
           <p className="page__lead">Structure services / directions - referentiel RH.</p>
         </div>
       </div>
-      {err ? <div className="alert alert--error">{err}</div> : null}
+      {err ? <ErrorAlert>{err}</ErrorAlert> : null}
       {msg ? <div className="alert alert--success">{msg}</div> : null}
 
       <div className="panel panel--form">
@@ -82,7 +83,7 @@ export default function UnitesOrganisationPage() {
       <div className="panel">
         <h3 className="panel__title">Liste</h3>
         {loading ? (
-          <p className="muted">Chargement</p>
+          <LoadingState label="Chargement des unités…" />
         ) : (
           <div className="table-wrap">
             <table className="data-table">

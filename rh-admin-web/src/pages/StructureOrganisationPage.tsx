@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useDialogA11y } from '../components/useDialogA11y';
+import { Avatar, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, type IconName, type Tone } from '../components/ui';
 import {
   getCollaborateursPage,
   getUnites,
@@ -14,37 +15,9 @@ import {
 
 // ─── Helpers UI ─────────────────────────────────────────────────────────────
 
-function Avatar({ name }: { name: string }) {
-  const initials = name.split(' ').map((w) => w[0] ?? '').slice(0, 2).join('').toUpperCase();
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      width: 32, height: 32, borderRadius: '50%', fontSize: 12, fontWeight: 700,
-      background: 'linear-gradient(135deg, #5b8def, #7c5cff)', color: '#fff',
-      flexShrink: 0,
-    }}>
-      {initials || '?'}
-    </span>
-  );
-}
-
 function Badge({ label, color }: { label: string; color: 'blue' | 'purple' | 'green' | 'gray' }) {
-  const styles: Record<string, { bg: string; text: string }> = {
-    blue:   { bg: 'rgba(91,141,239,0.13)',  text: '#1d4ed8' },
-    purple: { bg: 'rgba(124,92,255,0.13)',  text: '#6d28d9' },
-    green:  { bg: 'rgba(34,197,94,0.13)',   text: '#15803d' },
-    gray:   { bg: 'rgba(100,116,139,0.1)',  text: '#475569' },
-  };
-  const s = styles[color];
-  return (
-    <span style={{
-      display: 'inline-block', padding: '3px 10px', borderRadius: 999,
-      fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
-      background: s.bg, color: s.text,
-    }}>
-      {label}
-    </span>
-  );
+  const tone = { blue: 'info', purple: 'progress', green: 'success', gray: 'neutral' }[color];
+  return <span className={`status status--${tone}`}>{label}</span>;
 }
 
 function CollabOption({ c }: { c: CollaborateurRow }) {
@@ -62,13 +35,12 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal" ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} style={{ maxWidth: 560 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+      <div className="modal modal--md" ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="modal__head">
           <h3 className="modal__title" style={{ margin: 0 }}>{title}</h3>
-          <button type="button" aria-label="Fermer" onClick={onClose} style={{
-            background: 'none', border: 'none', cursor: 'pointer', fontSize: 20,
-            color: 'var(--muted)', lineHeight: 1, padding: '0 4px',
-          }}>×</button>
+          <button type="button" className="modal__close" aria-label="Fermer" onClick={onClose}>
+            <Icon name="x" size={18} />
+          </button>
         </div>
         {children}
       </div>
@@ -150,38 +122,38 @@ function ModalCreerDept({
 
   return (
     <Modal title="Créer un département" onClose={onClose}>
-      {err && <div className="alert alert--error" style={{ marginBottom: '1rem' }}>{err}</div>}
+      {err ? <ErrorAlert>{err}</ErrorAlert> : null}
 
       {step === 'dept' ? (
         <>
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
-            <div style={{ flex: '0 0 120px' }}>
+          <div className="field-row">
+            <div className="field-row__code">
               <label htmlFor="structureorganisation-f1" className="field-label">Code</label>
               <input id="structureorganisation-f1" className="field-input" value={code} onChange={(e) => setCode(e.target.value)} required maxLength={32} placeholder="DRH" />
             </div>
-            <div style={{ flex: 1 }}>
+            <div className="field-row__grow">
               <label htmlFor="structureorganisation-f2" className="field-label">Libellé du département</label>
               <input id="structureorganisation-f2" className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required placeholder="Direction des Ressources Humaines" />
             </div>
           </div>
-          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.5rem 0 1.5rem' }}>
+          <p className="field-help">
             Étape 1/2 — Vous définirez le chef de département à l'étape suivante.
           </p>
           <div className="modal__actions">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
             <button type="button" className="btn btn--primary" disabled={saving || !code.trim() || !libelle.trim()} onClick={handleStepDept}>
-              {saving ? '...' : 'Suivant →'}
+              {saving ? 'Enregistrement…' : 'Suivant'}
             </button>
           </div>
         </>
       ) : (
         <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: '1.25rem' }}>
+          <div className="segmented" role="group" aria-label="Origine du collaborateur">
             {(['existant', 'nouveau'] as const).map((m) => (
               <button key={m} type="button"
-                className={'tab' + (chefMode === m ? ' tab--on' : '')}
-                onClick={() => setChefMode(m)}
-                style={{ borderRadius: 999, padding: '7px 16px', border: '1px solid var(--border)' }}>
+                className="segmented__item"
+                aria-pressed={chefMode === m}
+                onClick={() => setChefMode(m)}>
                 {m === 'existant' ? 'Collaborateur existant' : 'Nouveau collaborateur'}
               </button>
             ))}
@@ -196,7 +168,7 @@ function ModalCreerDept({
               </select>
             </>
           ) : (
-            <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '0 1rem' }}>
+            <div className="form-grid form-grid--2">
               <div>
                 <label htmlFor="structureorganisation-f4" className="field-label">Matricule</label>
                 <input id="structureorganisation-f4" className="field-input" value={cMatricule} onChange={(e) => setCMatricule(e.target.value)} required />
@@ -213,20 +185,20 @@ function ModalCreerDept({
                 <label htmlFor="structureorganisation-f7" className="field-label">Email</label>
                 <input id="structureorganisation-f7" className="field-input" type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} required />
               </div>
-              <div style={{ gridColumn: '1/-1' }}>
+              <div className="form-grid__full">
                 <label htmlFor="structureorganisation-f8" className="field-label">Mot de passe initial</label>
                 <input id="structureorganisation-f8" className="field-input" type="password" minLength={8} value={cMdp} onChange={(e) => setCMdp(e.target.value)} required />
               </div>
             </div>
           )}
 
-          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.75rem 0 1.5rem' }}>
+          <p className="field-help">
             Étape 2/2 — Affectation à l&apos;unité uniquement. Le profil d&apos;accès se définit sur la fiche collaborateur.
           </p>
           <div className="modal__actions">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
             <button type="button" className="btn btn--primary" disabled={saving} onClick={handleStepChef}>
-              {saving ? '...' : 'Créer le département'}
+              {saving ? 'Enregistrement…' : 'Créer le département'}
             </button>
           </div>
         </>
@@ -275,7 +247,7 @@ function ModalEditDept({
 
   return (
     <Modal title={`Modifier — ${dept.libelle}`} onClose={onClose}>
-      {err && <div className="alert alert--error" style={{ marginBottom: '1rem' }}>{err}</div>}
+      {err ? <ErrorAlert>{err}</ErrorAlert> : null}
 
       <label htmlFor="structureorganisation-f9" className="field-label">Libellé du département</label>
       <input id="structureorganisation-f9" className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required />
@@ -285,30 +257,25 @@ function ModalEditDept({
         <option value="">— Aucun —</option>
         {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
       </select>
-      <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.25rem 0 1rem' }}>
+      <p className="field-help">
         Le profil d&apos;accès se définit sur la fiche collaborateur.
       </p>
 
       {unitesRattachees.length > 0 && (
-        <div style={{
-          background: 'rgba(91,141,239,0.06)', border: '1px solid rgba(91,141,239,0.18)',
-          borderRadius: 10, padding: '12px 14px', marginBottom: 14,
-        }}>
-          <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600 }}>
-            Unités rattachées ({unitesRattachees.length})
-          </p>
-          {unitesRattachees.map((u) => (
-            <div key={u.identifiant} style={{ fontSize: 13, color: 'var(--muted)', padding: '3px 0' }}>
-              • {u.code} — {u.libelle}
-            </div>
-          ))}
+        <div className="callout callout--info">
+          <p className="callout__title">Unités rattachées ({unitesRattachees.length})</p>
+          <ul className="plain-list">
+            {unitesRattachees.map((u) => (
+              <li key={u.identifiant}><code className="cell-code">{u.code}</code> {u.libelle}</li>
+            ))}
+          </ul>
         </div>
       )}
 
       <div className="modal__actions">
         <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
         <button type="button" className="btn btn--primary" disabled={saving} onClick={save}>
-          {saving ? '...' : 'Enregistrer'}
+          {saving ? 'Enregistrement…' : 'Enregistrer'}
         </button>
       </div>
     </Modal>
@@ -394,7 +361,7 @@ function ModalCreerUnite({
 
   return (
     <Modal title="Créer une unité" onClose={onClose}>
-      {err && <div className="alert alert--error" style={{ marginBottom: '1rem' }}>{err}</div>}
+      {err ? <ErrorAlert>{err}</ErrorAlert> : null}
 
       {step === 'unite' ? (
         <>
@@ -404,34 +371,34 @@ function ModalCreerUnite({
               <option key={d.identifiant} value={d.identifiant}>{d.code} — {d.libelle}</option>
             ))}
           </select>
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <div style={{ flex: '0 0 120px' }}>
+          <div className="field-row">
+            <div className="field-row__code">
               <label htmlFor="structureorganisation-f12" className="field-label">Code</label>
               <input id="structureorganisation-f12" className="field-input" value={code} onChange={(e) => setCode(e.target.value)} required maxLength={32} placeholder="UAP1" />
             </div>
-            <div style={{ flex: 1 }}>
+            <div className="field-row__grow">
               <label htmlFor="structureorganisation-f13" className="field-label">Libellé de l'unité</label>
               <input id="structureorganisation-f13" className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required placeholder="Unité de Production 1" />
             </div>
           </div>
-          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.5rem 0 1.5rem' }}>
+          <p className="field-help">
             Étape 1/2 — Vous définirez le Responsable Opérationnel à l'étape suivante.
           </p>
           <div className="modal__actions">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
             <button type="button" className="btn btn--primary" disabled={saving || !code.trim() || !libelle.trim() || !deptId} onClick={handleStepUnite}>
-              {saving ? '...' : 'Suivant →'}
+              {saving ? 'Enregistrement…' : 'Suivant'}
             </button>
           </div>
         </>
       ) : (
         <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: '1.25rem' }}>
+          <div className="segmented" role="group" aria-label="Origine du collaborateur">
             {(['existant', 'nouveau'] as const).map((m) => (
               <button key={m} type="button"
-                className={'tab' + (roMode === m ? ' tab--on' : '')}
-                onClick={() => setRoMode(m)}
-                style={{ borderRadius: 999, padding: '7px 16px', border: '1px solid var(--border)' }}>
+                className="segmented__item"
+                aria-pressed={roMode === m}
+                onClick={() => setRoMode(m)}>
                 {m === 'existant' ? 'Collaborateur existant' : 'Nouveau collaborateur'}
               </button>
             ))}
@@ -446,7 +413,7 @@ function ModalCreerUnite({
               </select>
             </>
           ) : (
-            <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '0 1rem' }}>
+            <div className="form-grid form-grid--2">
               <div>
                 <label htmlFor="structureorganisation-f15" className="field-label">Matricule</label>
                 <input id="structureorganisation-f15" className="field-input" value={cMatricule} onChange={(e) => setCMatricule(e.target.value)} required />
@@ -463,20 +430,20 @@ function ModalCreerUnite({
                 <label htmlFor="structureorganisation-f18" className="field-label">Email</label>
                 <input id="structureorganisation-f18" className="field-input" type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} required />
               </div>
-              <div style={{ gridColumn: '1/-1' }}>
+              <div className="form-grid__full">
                 <label htmlFor="structureorganisation-f19" className="field-label">Mot de passe initial</label>
                 <input id="structureorganisation-f19" className="field-input" type="password" minLength={8} value={cMdp} onChange={(e) => setCMdp(e.target.value)} required />
               </div>
             </div>
           )}
 
-          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.75rem 0 1.5rem' }}>
+          <p className="field-help">
             Étape 2/2 — Affectation à l&apos;unité uniquement. Le profil d&apos;accès se définit sur la fiche collaborateur.
           </p>
           <div className="modal__actions">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
             <button type="button" className="btn btn--primary" disabled={saving} onClick={handleStepRO}>
-              {saving ? '...' : "Créer l'unité"}
+              {saving ? 'Enregistrement…' : "Créer l'unité"}
             </button>
           </div>
         </>
@@ -524,7 +491,7 @@ function ModalEditUnite({
 
   return (
     <Modal title={`Modifier — ${unite.libelle}`} onClose={onClose}>
-      {err && <div className="alert alert--error" style={{ marginBottom: '1rem' }}>{err}</div>}
+      {err ? <ErrorAlert>{err}</ErrorAlert> : null}
 
       <label htmlFor="structureorganisation-f20" className="field-label">Libellé de l'unité</label>
       <input id="structureorganisation-f20" className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required />
@@ -542,14 +509,14 @@ function ModalEditUnite({
         <option value="">— Aucun —</option>
         {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
       </select>
-      <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.25rem 0 1rem' }}>
+      <p className="field-help">
         Le profil d&apos;accès se définit sur la fiche collaborateur.
       </p>
 
       <div className="modal__actions">
         <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
         <button type="button" className="btn btn--primary" disabled={saving} onClick={save}>
-          {saving ? '...' : 'Enregistrer'}
+          {saving ? 'Enregistrement…' : 'Enregistrer'}
         </button>
       </div>
     </Modal>
@@ -570,6 +537,7 @@ function UniteCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const listId = `unite-${unite.identifiant}-membres`;
 
   return (
     <>
@@ -580,72 +548,65 @@ function UniteCard({
           onDone={() => { setEditOpen(false); onRefresh(); }}
         />
       )}
-      <div style={{
-        background: 'var(--surface-2)', border: '1px solid var(--border)',
-        borderRadius: 12, marginBottom: 10, overflow: 'hidden',
-        transition: 'box-shadow 0.2s',
-      }}>
-        {/* Header unité */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
-          {/* Indent line */}
-          <div style={{ width: 3, height: 36, background: 'linear-gradient(180deg,#7c5cff,#5b8def)', borderRadius: 2, flexShrink: 0 }} />
-
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: 14 }}>{unite.libelle}</span>
+      <div className="struct-unit">
+        <div className="struct-unit__head">
+          <div className="struct-unit__main">
+            <div className="struct-title">
+              <span className="struct-title__name">{unite.libelle}</span>
               <Badge label={unite.code} color="gray" />
-              {!unite.actif && <Badge label="Inactif" color="gray" />}
+              {!unite.actif && <Badge label="Inactive" color="gray" />}
             </div>
             {ro ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                <Avatar name={`${ro.prenom} ${nomCollaborateur(ro)}`} />
+              <div className="struct-person">
+                <Avatar name={`${ro.prenom} ${nomCollaborateur(ro)}`} size={28} />
                 <div>
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>{ro.prenom} {nomCollaborateur(ro)}</span>
+                  <span className="struct-person__name">{ro.prenom} {nomCollaborateur(ro)}</span>{' '}
                   <Badge label="RO" color="purple" />
-                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>{ro.courriel_professionnel ?? ro.matricule}</div>
+                  <div className="struct-person__meta">{ro.courriel_professionnel ?? ro.matricule}</div>
                 </div>
               </div>
             ) : (
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>Aucun Responsable Opérationnel</div>
+              <div className="struct-missing">Aucun responsable opérationnel</div>
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>{travailleurs.length} travailleur{travailleurs.length !== 1 ? 's' : ''}</span>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEditOpen(true)}>Modifier</button>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setExpanded((v) => !v)}>
-              {expanded ? '▲' : '▼'}
+          <div className="struct-actions">
+            <span className="cell-meta">{travailleurs.length} travailleur{travailleurs.length !== 1 ? 's' : ''}</span>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEditOpen(true)}>
+              <Icon name="edit" size={14} />
+              Modifier
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm struct-toggle"
+              aria-expanded={expanded}
+              aria-controls={listId}
+              aria-label={`${expanded ? 'Masquer' : 'Afficher'} les travailleurs de ${unite.libelle}`}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              <Icon name="chevronRight" size={16} />
             </button>
           </div>
         </div>
 
-        {/* Travailleurs */}
         {expanded && (
-          <div style={{ borderTop: '1px solid var(--border)', padding: '10px 16px 14px 36px' }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>
-              Travailleurs ({travailleurs.length})
-            </p>
+          <div className="struct-unit__body" id={listId}>
+            <p className="section-title">Travailleurs ({travailleurs.length})</p>
             {travailleurs.length === 0 ? (
-              <p style={{ fontSize: 13, color: 'var(--muted)', fontStyle: 'italic' }}>Aucun travailleur dans cette unité.</p>
+              <p className="cell-meta">Aucun travailleur dans cette unité.</p>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }}>
+              <ul className="struct-members">
                 {travailleurs.map((t) => (
-                  <div key={t.identifiant} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    background: 'var(--surface)', border: '1px solid var(--border)',
-                    borderRadius: 10, padding: '8px 12px',
-                  }}>
-                    <Avatar name={`${t.prenom} ${nomCollaborateur(t)}`} />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {t.prenom} {nomCollaborateur(t)}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{t.poste_libelle ?? t.fonction ?? t.matricule}</div>
+                  <li key={t.identifiant} className="struct-member">
+                    <Avatar name={`${t.prenom} ${nomCollaborateur(t)}`} size={28} />
+                    <div className="struct-member__text">
+                      <div className="struct-person__name struct-ellipsis">{t.prenom} {nomCollaborateur(t)}</div>
+                      <div className="struct-person__meta">{t.poste_libelle ?? t.fonction ?? t.matricule}</div>
                     </div>
-                    <Badge label={t.statut === 'ACTIF' ? 'Actif' : t.statut} color={t.statut === 'ACTIF' ? 'green' : 'gray'} />
-                  </div>
+                    <StatusBadge statut={t.statut} />
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </div>
         )}
@@ -670,6 +631,7 @@ function DeptCard({
   const [expanded, setExpanded] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [creerUniteOpen, setCreerUniteOpen] = useState(false);
+  const bodyId = `dept-${dept.identifiant}-unites`;
 
   return (
     <>
@@ -688,78 +650,69 @@ function DeptCard({
         />
       )}
 
-      <div style={{
-        background: 'var(--surface)', border: '1px solid var(--border)',
-        borderRadius: 16, marginBottom: 20,
-        boxShadow: '0 6px 24px rgba(16,33,61,0.08)',
-      }}>
-        {/* Header département */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px',
-          borderBottom: expanded ? '1px solid var(--border)' : 'none',
-        }}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-            background: 'linear-gradient(135deg, #5b8def, #7c5cff)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 16px rgba(91,141,239,0.35)',
-          }}>
-            <IconBuilding />
-          </div>
+      <section className="struct-dept" aria-label={`Département ${dept.libelle}`}>
+        <div className={`struct-dept__head${expanded ? ' is-open' : ''}`}>
+          <span className="struct-dept__icon" aria-hidden>
+            <Icon name="building" size={20} />
+          </span>
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: 16 }}>{dept.libelle}</span>
+          <div className="struct-unit__main">
+            <div className="struct-title">
+              <h3 className="struct-title__name struct-title__name--lg">{dept.libelle}</h3>
               <Badge label={dept.code} color="blue" />
-              <Badge label="Département" color="blue" />
             </div>
             {chef ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                <Avatar name={`${chef.prenom} ${nomCollaborateur(chef)}`} />
+              <div className="struct-person">
+                <Avatar name={`${chef.prenom} ${nomCollaborateur(chef)}`} size={28} />
                 <div>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{chef.prenom} {nomCollaborateur(chef)}</span>
-                  {' '}
+                  <span className="struct-person__name">{chef.prenom} {nomCollaborateur(chef)}</span>{' '}
                   <Badge label="Chef de département" color="blue" />
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>{chef.courriel_professionnel ?? chef.matricule}</div>
+                  <div className="struct-person__meta">{chef.courriel_professionnel ?? chef.matricule}</div>
                 </div>
               </div>
             ) : (
-              <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 6, fontStyle: 'italic' }}>
-                ⚠ Aucun chef de département défini
+              <div className="struct-missing struct-missing--warn">
+                <Icon name="alert" size={14} /> Aucun chef de département défini
               </div>
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-              {unites.length} unité{unites.length !== 1 ? 's' : ''}
-            </span>
+          <div className="struct-actions">
+            <span className="cell-meta">{unites.length} unité{unites.length !== 1 ? 's' : ''}</span>
             <button type="button" className="btn btn--secondary btn--sm" onClick={() => setCreerUniteOpen(true)}>
-              + Unité
+              <Icon name="plus" size={14} />
+              Unité
             </button>
             <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEditOpen(true)}>
+              <Icon name="edit" size={14} />
               Modifier
             </button>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setExpanded((v) => !v)}>
-              {expanded ? '▲' : '▼'}
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm struct-toggle"
+              aria-expanded={expanded}
+              aria-controls={bodyId}
+              aria-label={`${expanded ? 'Replier' : 'Déplier'} ${dept.libelle}`}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              <Icon name="chevronRight" size={16} />
             </button>
           </div>
         </div>
 
-        {/* Unités */}
         {expanded && (
-          <div style={{ padding: '16px 20px' }}>
+          <div className="struct-dept__body" id={bodyId}>
             {unites.length === 0 ? (
-              <div style={{
-                textAlign: 'center', padding: '24px 0', color: 'var(--muted)',
-                border: '2px dashed var(--border)', borderRadius: 12, fontSize: 14,
-              }}>
-                Aucune unité dans ce département.{' '}
-                <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, fontSize: 14 }}
-                  onClick={() => setCreerUniteOpen(true)}>
-                  Créer la première unité →
-                </button>
-              </div>
+              <EmptyState
+                icon="building"
+                title="Aucune unité dans ce département"
+                action={
+                  <button type="button" className="btn btn--secondary btn--sm" onClick={() => setCreerUniteOpen(true)}>
+                    <Icon name="plus" size={14} />
+                    Créer la première unité
+                  </button>
+                }
+              />
             ) : (
               unites.map((u) => {
                 const ro = collaborateurs.find(
@@ -782,7 +735,7 @@ function DeptCard({
             )}
           </div>
         )}
-      </div>
+      </section>
     </>
   );
 }
@@ -842,49 +795,48 @@ export default function StructureOrganisationPage() {
         />
       )}
 
-      {/* En-tête */}
-      <div className="page__head" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <h2 className="page__title">Structure organisationnelle</h2>
-          <p className="page__lead">
-            Hiérarchie : <strong>Département</strong> → Chef de département → <strong>Unité</strong> → Responsable Opérationnel → Travailleurs.
-            Le profil d&apos;accès se définit sur la fiche collaborateur.
-          </p>
-        </div>
-        <div className="page__head-actions">
+      <PageHeader
+        title="Structure organisationnelle"
+        lead={
+          <>
+            Département → chef de département → unité → responsable opérationnel → travailleurs.
+            Le profil d’accès se définit sur la fiche collaborateur.
+          </>
+        }
+        actions={
           <button type="button" className="btn btn--primary" onClick={() => setCreerDeptOpen(true)}>
-            + Créer un département
+            <Icon name="plus" />
+            Créer un département
           </button>
-        </div>
-      </div>
+        }
+      />
 
-      {err && <div className="alert alert--error">{err}</div>}
+      {err ? <ErrorAlert>{err}</ErrorAlert> : null}
 
-      {/* Stats */}
-      <div className="grid-stats" style={{ marginBottom: '1.75rem' }}>
-        <StatCard icon="🏢" value={departements.length} label="Départements" gradient="var(--accent-plaintes)" />
-        <StatCard icon="📦" value={unitesEnfants.length} label="Unités" gradient="linear-gradient(135deg,#7c5cff,#a855f7)" />
-        <StatCard icon="👔" value={totalChefs} label="Chefs de département" gradient="var(--accent-demandes)" />
-        <StatCard icon="🎯" value={totalRO} label="Responsables Opérationnels" gradient="var(--accent-docs)" />
-        <StatCard icon="👷" value={totalTravailleurs} label="Collaborateurs actifs" gradient="var(--accent-users)" />
-      </div>
+      <section className="dash-stats" aria-label="Chiffres clés">
+        <StatCard icon="building" value={departements.length} label="Départements" tone="info" />
+        <StatCard icon="clipboard" value={unitesEnfants.length} label="Unités" tone="progress" />
+        <StatCard icon="briefcase" value={totalChefs} label="Chefs de département" tone="success" />
+        <StatCard icon="target" value={totalRO} label="Responsables opérationnels" tone="warning" />
+        <StatCard icon="users" value={totalTravailleurs} label="Collaborateurs actifs" tone="neutral" />
+      </section>
 
-      {/* Arbre hiérarchique */}
       {loading ? (
-        <div className="panel" style={{ textAlign: 'center', padding: '3rem' }}>
-          <div style={{ fontSize: 14, color: 'var(--muted)' }}>Chargement de la structure…</div>
-        </div>
+        <div className="panel"><LoadingState label="Chargement de la structure…" /></div>
       ) : departements.length === 0 ? (
-        <div style={{
-          textAlign: 'center', padding: '4rem 2rem', border: '2px dashed var(--border)',
-          borderRadius: 16, color: 'var(--muted)',
-        }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>🏢</div>
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Aucun département</div>
-          <div style={{ marginBottom: 20 }}>Commencez par créer votre premier département avec son chef.</div>
-          <button type="button" className="btn btn--primary" onClick={() => setCreerDeptOpen(true)}>
-            + Créer le premier département
-          </button>
+        <div className="panel">
+          <EmptyState
+            icon="building"
+            title="Aucun département"
+            action={
+              <button type="button" className="btn btn--primary" onClick={() => setCreerDeptOpen(true)}>
+                <Icon name="plus" />
+                Créer le premier département
+              </button>
+            }
+          >
+            Commencez par créer votre premier département avec son chef.
+          </EmptyState>
         </div>
       ) : (
         departements.map((dept) => {
@@ -913,21 +865,14 @@ export default function StructureOrganisationPage() {
 
 // ─── Petits composants réutilisables ─────────────────────────────────────────
 
-function StatCard({ icon, value, label, gradient }: { icon: string; value: number; label: string; gradient: string }) {
+function StatCard({ icon, value, label, tone }: { icon: IconName; value: number; label: string; tone: Tone }) {
   return (
-    <div className="stat-card anim-lift">
-      <div className="stat-card__accent" style={{ background: gradient }} />
-      <div style={{ fontSize: 28, marginBottom: 6 }}>{icon}</div>
-      <div className="stat-card__value">{value}</div>
-      <div className="stat-card__title">{label}</div>
+    <div className="dash-stat card">
+      <span className={`dash-stat__icon chip--${tone}`} aria-hidden>
+        <Icon name={icon} size={20} />
+      </span>
+      <div className="dash-stat__value">{value}</div>
+      <div className="dash-stat__label">{label}</div>
     </div>
-  );
-}
-
-function IconBuilding() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.75">
-      <path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v0M9 13v0M9 17v0" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

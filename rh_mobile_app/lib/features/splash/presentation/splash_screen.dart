@@ -38,7 +38,7 @@ class _SplashScreenState extends State<SplashScreen>
                 width: 88,
                 height: 88,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(24),
                 ),
                 child: const Icon(
@@ -60,7 +60,7 @@ class _SplashScreenState extends State<SplashScreen>
               Text(
                 'Votre espace RH',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withOpacity(0.65),
+                      color: Colors.white.withValues(alpha: 0.65),
                     ),
               ),
               const SizedBox(height: 48),
@@ -70,7 +70,7 @@ class _SplashScreenState extends State<SplashScreen>
                 child: CircularProgressIndicator(
                   strokeWidth: 2.5,
                   valueColor:
-                      AlwaysStoppedAnimation<Color>(Colors.white.withOpacity(0.7)),
+                      AlwaysStoppedAnimation<Color>(Colors.white.withValues(alpha: 0.7)),
                 ),
               ),
             ],

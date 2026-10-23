@@ -23,6 +23,7 @@ import {
 } from '../api/evaluationCatalog';
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
+import { ErrorAlert, Icon, LoadingState, StatusBadge } from '../components/ui';
 
 const PROFIL_DEFAUT = 'COLLABORATEUR' as const;
 
@@ -244,13 +245,13 @@ export default function CollaborateursPage() {
         </div>
       </div>
 
-      {err ? <div className="alert alert--error">{err}</div> : null}
-      {msg ? <div className="alert alert--success">{msg}</div> : null}
+      {err ? <ErrorAlert>{err}</ErrorAlert> : null}
+      {msg ? <div className="alert alert--success" role="status"><Icon name="check" />{msg}</div> : null}
 
       {tab === 'liste' ? (
         <div className="panel">
           {loading ? (
-            <p className="muted">Chargement</p>
+            <LoadingState label="Chargement des collaborateurs…" />
           ) : (
             <>
               <div className="table-wrap">
@@ -297,7 +298,7 @@ export default function CollaborateursPage() {
                           )}
                         </td>
                         <td>{r.statut}</td>
-                        <td>{r.compte_utilisateur_id ? <span className="pill pill--ok">Lie</span> : '-'}</td>
+                        <td>{r.compte_utilisateur_id ? <StatusBadge statut="VALIDE" label="Lié" /> : '-'}</td>
                         <td>
                           {lectureSeule ? (
                             <span className="muted small">Lecture seule</span>
@@ -419,7 +420,7 @@ export default function CollaborateursPage() {
                 ))}
               </select>
               {catalogueStub ? (
-                <p className="muted small" style={{ margin: '0.35rem 0 0' }}>
+                <p className="field-help" style={{ marginTop: 4 }}>
                   Catalogue familles temporairement indisponible — liste seed affichée.
                 </p>
               ) : null}
@@ -439,7 +440,7 @@ export default function CollaborateursPage() {
                   </option>
                 ))}
               </select>
-              <p className="muted small" style={{ margin: '0.35rem 0 0' }}>
+              <p className="field-help" style={{ marginTop: 4 }}>
                 Clé matching évaluations (indépendant du profil d&apos;accès).
               </p>
             </div>

@@ -14,6 +14,7 @@ import {
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useDialogA11y } from '../components/useDialogA11y';
+import { Icon } from '../components/ui';
 
 type ModalKind = 'creer' | 'editer' | 'manager' | 'rattacher' | 'confirm-retrait' | null;
 
@@ -153,8 +154,8 @@ function Modal({
           <h3 id="org-modal-title" className="modal__title" style={{ margin: 0 }}>
             {title}
           </h3>
-          <button type="button" className="org-modal-close" onClick={onClose} aria-label="Fermer">
-            ×
+          <button type="button" className="modal__close" onClick={onClose} aria-label="Fermer">
+            <Icon name="x" size={18} />
           </button>
         </div>
         {children}
@@ -354,9 +355,10 @@ function OrgTreeBranch({
                   type="button"
                   className={`org-tree__chevron${expanded ? ' org-tree__chevron--open' : ''}`}
                   aria-label={expanded ? 'Replier' : 'Développer'}
+                  aria-expanded={expanded}
                   onClick={() => onToggle(n.identifiant)}
                 >
-                  ▸
+                  <Icon name="chevronRight" size={14} />
                 </button>
               ) : (
                 <span className="org-tree__chevron-spacer" aria-hidden />

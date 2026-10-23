@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/evaluation_models.dart';
 import '../data/evaluation_repository.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final evaluationsListProvider =
     FutureProvider.autoDispose<List<EvaluationItem>>((ref) async {
@@ -116,7 +117,7 @@ class _CollabListBody extends ConsumerWidget {
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _ErrorView(
-        message: '$e',
+        message: rhErrorMessage(e),
         onRetry: () => ref.invalidate(evaluationsListProvider),
       ),
       data: (evaluations) {
@@ -186,7 +187,7 @@ class _ManagerListBody extends ConsumerWidget {
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _ErrorView(
-        message: '$e',
+        message: rhErrorMessage(e),
         onRetry: () => ref.invalidate(managerEvaluationsProvider),
       ),
       data: (items) {
@@ -521,23 +522,23 @@ class _EvaluationCard extends StatelessWidget {
     return switch (statut) {
       'VALIDEE' => (
           EvaluationLabels.statut(statut),
-          const Color(0xFFDCFCE7),
-          const Color(0xFF166534),
+          AppTheme.successSurface,
+          AppTheme.success,
         ),
       'VALIDEE_COLLABORATEUR' => (
           EvaluationLabels.statut(statut),
-          const Color(0xFFDBEAFE),
-          const Color(0xFF1E40AF),
+          AppTheme.primarySurface,
+          AppTheme.primaryDark,
         ),
       'VALIDEE_SUPERIEUR' => (
           EvaluationLabels.statut(statut),
-          const Color(0xFFFEF3C7),
-          const Color(0xFF92400E),
+          AppTheme.warningSurface,
+          AppTheme.warning,
         ),
       _ => (
           EvaluationLabels.statut(statut),
-          const Color(0xFFF1F5F9),
-          const Color(0xFF475569),
+          AppTheme.surfaceMuted,
+          AppTheme.textSecondary,
         ),
     };
   }

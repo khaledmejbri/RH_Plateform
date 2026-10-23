@@ -28,6 +28,10 @@ class AppTheme {
   static const Color warningSurface = Color(0xFFFEF3C7);
   static const Color error          = Color(0xFFDC2626);
   static const Color errorSurface   = Color(0xFFFEE2E2);
+  static const Color errorDark      = Color(0xFFB91C1C);
+  static const Color accentSurface  = Color(0xFFFFF7ED);
+  static const Color info           = primaryDark;
+  static const Color infoSurface    = primarySurface;
 
   // ── Espacements / rayons ─────────────────────────────────────────────────
   static const double spaceXs = 4;

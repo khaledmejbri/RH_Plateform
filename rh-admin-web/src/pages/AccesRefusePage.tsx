@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { clearToken, getToken } from '../api/auth';
 import { canAccessBackoffice, isDirectionOnly, rolesFromAccessToken } from '../auth/jwtRoles';
+import { Icon } from '../components/ui';
 
 export default function AccesRefusePage() {
   const loc = useLocation();
@@ -17,9 +18,9 @@ export default function AccesRefusePage() {
   }
 
   return (
-    <div className="empty-state" style={{ maxWidth: 480, margin: '3rem auto', textAlign: 'center' }}>
-      <div aria-hidden style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
-      <h1 className="page__title" style={{ fontSize: '1.35rem' }}>Accès refusé</h1>
+    <div className="panel empty access-denied">
+      <span className="empty__icon"><Icon name="lock" size={24} /></span>
+      <h1 className="page__title">Accès refusé</h1>
       {!backoffice ? (
         <p className="muted">
           La Plateforme RH est réservée aux comptes RH, Direction et Admin.
@@ -34,7 +35,7 @@ export default function AccesRefusePage() {
       ) : (
         <p className="muted">Vous n’avez pas les droits pour cette page.</p>
       )}
-      <p style={{ marginTop: 24, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+      <p className="empty__action">
         {backoffice ? (
           <Link className="btn btn--primary" to="/app/accueil">Retour à l’accueil</Link>
         ) : (

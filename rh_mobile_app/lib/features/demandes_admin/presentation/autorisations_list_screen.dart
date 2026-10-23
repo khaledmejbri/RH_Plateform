@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/demande_admin_repository.dart';
 import '../data/demande_admin_models.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final autorisationsListProvider =
     FutureProvider.autoDispose<List<DemandeAdminItem>>((ref) async {
@@ -62,7 +63,7 @@ class _AutorisationsListScreenState
               const Icon(Icons.wifi_off_rounded,
                   size: 48, color: AppTheme.textSecondary),
               const SizedBox(height: 12),
-              Text('Erreur: $e',
+              Text(rhErrorMessage(e),
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AppTheme.textSecondary)),
               const SizedBox(height: 16),
@@ -118,32 +119,10 @@ class _AutorisationList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: AppTheme.primarySurface,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(Icons.access_time_rounded,
-                  size: 36, color: AppTheme.primary),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Aucune autorisation',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Vos autorisations de sortie apparaîtront ici',
-              style: TextStyle(color: AppTheme.textSecondary),
-            ),
-          ],
-        ),
+      return const RhEmptyState(
+        icon: Icons.access_time_rounded,
+        title: 'Aucune autorisation',
+        message: 'Vos autorisations de sortie apparaîtront ici.',
       );
     }
 
@@ -269,14 +248,14 @@ class _AutorisationCard extends StatelessWidget {
   Color _getCouleurStatut(String statut) {
     switch (statut) {
       case 'APPROUVEE':
-        return const Color(0xFF10B981);
+        return AppTheme.success;
       case 'REFUSEE':
       case 'ANNULEE':
-        return const Color(0xFFEF4444);
+        return AppTheme.error;
       case 'EN_VALIDATION_SUPERIEUR':
       case 'EN_VALIDATION_RRH':
       case 'SOUMISE':
-        return const Color(0xFFF59E0B);
+        return AppTheme.warning;
       default:
         return AppTheme.textSecondary;
     }
