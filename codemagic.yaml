@@ -22,7 +22,7 @@ workflows:
       vars:
         BUNDLE_ID: tn.agua.rhconnect
         # Tunnel Cloudflare courant (change à chaque redémarrage : modifiable dans l'app)
-        API_BASE_URL: https://civil-sims-productions-res.trycloudflare.com
+        API_BASE_URL: https://possible-interactions-rubber-doctors.trycloudflare.com
     cache:
       cache_paths:
         - $HOME/.pub-cache
