@@ -22,6 +22,7 @@ import {
   normalizeNiveauSeniorite,
 } from '../api/evaluationCatalog';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const PROFIL_DEFAUT = 'COLLABORATEUR' as const;
 
@@ -31,6 +32,7 @@ function profilDepuisLigne(row: CollaborateurRow | null): string {
 }
 
 export default function CollaborateursPage() {
+  const confirm = useConfirm();
   const lectureSeule = useLectureSeule();
   const [tab, setTab] = useState<'liste' | 'form'>('liste');
   const [editing, setEditing] = useState<CollaborateurRow | null>(null);
@@ -198,7 +200,13 @@ export default function CollaborateursPage() {
 
   async function archiveCollaborateur(row: CollaborateurRow) {
     if (row.statut === 'ARCHIVE') return;
-    if (!window.confirm(`Archiver ${row.prenom} ${nomCollaborateur(row)} ?`)) return;
+    const ok = await confirm({
+      title: 'Archiver le collaborateur',
+      message: `Archiver ${row.prenom} ${nomCollaborateur(row)} ?`,
+      confirmLabel: 'Archiver',
+      danger: true,
+    });
+    if (!ok) return;
     setErr(null);
     setMsg(null);
     try {
@@ -348,8 +356,8 @@ export default function CollaborateursPage() {
           </p>
           <div className="form-grid">
             <div>
-              <label className="field-label">Matricule</label>
-              <input
+              <label htmlFor="collaborateurs-f1" className="field-label">Matricule</label>
+              <input id="collaborateurs-f1"
                 className="field-input"
                 value={matricule}
                 onChange={(e) => setMatricule(e.target.value)}
@@ -358,28 +366,28 @@ export default function CollaborateursPage() {
               />
             </div>
             <div>
-              <label className="field-label">Prenom</label>
-              <input className="field-input" value={prenom} onChange={(e) => setPrenom(e.target.value)} required />
+              <label htmlFor="collaborateurs-f2" className="field-label">Prenom</label>
+              <input id="collaborateurs-f2" className="field-input" value={prenom} onChange={(e) => setPrenom(e.target.value)} required />
             </div>
             <div>
-              <label className="field-label">Nom</label>
-              <input className="field-input" value={name} onChange={(e) => setNom(e.target.value)} required />
+              <label htmlFor="collaborateurs-f3" className="field-label">Nom</label>
+              <input id="collaborateurs-f3" className="field-input" value={name} onChange={(e) => setNom(e.target.value)} required />
             </div>
             <div>
-              <label className="field-label">Courriel</label>
-              <input className="field-input" type="email" value={courriel} onChange={(e) => setCourriel(e.target.value)} required />
+              <label htmlFor="collaborateurs-f4" className="field-label">Courriel</label>
+              <input id="collaborateurs-f4" className="field-input" type="email" value={courriel} onChange={(e) => setCourriel(e.target.value)} required />
             </div>
             <div>
-              <label className="field-label">Statut</label>
-              <select className="field-input" value={statut} onChange={(e) => setStatut(e.target.value)} required>
+              <label htmlFor="collaborateurs-f5" className="field-label">Statut</label>
+              <select id="collaborateurs-f5" className="field-input" value={statut} onChange={(e) => setStatut(e.target.value)} required>
                 <option value="ACTIF">ACTIF</option>
                 <option value="SUSPENDU">SUSPENDU</option>
                 <option value="ARCHIVE">ARCHIVE</option>
               </select>
             </div>
             <div>
-              <label className="field-label">Profil d&apos;accès</label>
-              <select
+              <label htmlFor="collaborateurs-f6" className="field-label">Profil d&apos;accès</label>
+              <select id="collaborateurs-f6"
                 className="field-input"
                 value={profilAcces}
                 onChange={(e) => setProfilAcces(e.target.value)}
@@ -436,8 +444,8 @@ export default function CollaborateursPage() {
               </p>
             </div>
             <div>
-              <label className="field-label">Unite</label>
-              <select className="field-input" value={uniteId} onChange={(e) => setUniteId(e.target.value)} required>
+              <label htmlFor="collaborateurs-f7" className="field-label">Unite</label>
+              <select id="collaborateurs-f7" className="field-input" value={uniteId} onChange={(e) => setUniteId(e.target.value)} required>
                 {unites.map((u) => (
                   <option key={u.identifiant} value={u.identifiant}>
                     {u.code} - {u.libelle}
@@ -447,17 +455,17 @@ export default function CollaborateursPage() {
             </div>
 
             <div>
-              <label className="field-label">Poste</label>
-              <input className="field-input" value={posteLibelle} onChange={(e) => setPosteLibelle(e.target.value)} />
+              <label htmlFor="collaborateurs-f8" className="field-label">Poste</label>
+              <input id="collaborateurs-f8" className="field-input" value={posteLibelle} onChange={(e) => setPosteLibelle(e.target.value)} />
             </div>
             <div>
-              <label className="field-label">Fonction</label>
-              <input className="field-input" value={fonction} onChange={(e) => setFonction(e.target.value)} />
+              <label htmlFor="collaborateurs-f9" className="field-label">Fonction</label>
+              <input id="collaborateurs-f9" className="field-input" value={fonction} onChange={(e) => setFonction(e.target.value)} />
             </div>
 
             <div>
-              <label className="field-label">Date recrutement</label>
-              <input
+              <label htmlFor="collaborateurs-f10" className="field-label">Date recrutement</label>
+              <input id="collaborateurs-f10"
                 className="field-input"
                 type="date"
                 value={dateRecrutement}
@@ -467,8 +475,8 @@ export default function CollaborateursPage() {
 
             {!editing ? (
               <div>
-                <label className="field-label">Mot de passe initial</label>
-                <input
+                <label htmlFor="collaborateurs-f11" className="field-label">Mot de passe initial</label>
+                <input id="collaborateurs-f11"
                   className="field-input"
                   type="password"
                   minLength={8}

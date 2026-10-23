@@ -2,6 +2,14 @@ import { useState, useEffect } from 'react';
 import { Client } from '@stomp/stompjs';
 import { getToken } from '../api/auth';
 
+/** Même origine que la page (ws/wss), surchargeable par VITE_WS_URL. */
+function resolveBrokerUrl(): string {
+  const fromEnv = import.meta.env.VITE_WS_URL as string | undefined;
+  if (fromEnv) return fromEnv;
+  const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${scheme}://${window.location.host}/ws`;
+}
+
 export default function NotificationBell() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
@@ -33,13 +41,13 @@ export default function NotificationBell() {
 
     // Use native WebSocket instead of SockJS for better compatibility
     const client = new Client({
-      brokerURL: 'ws://localhost:8080/ws',
+      brokerURL: resolveBrokerUrl(),
       connectHeaders: token ? {
         Authorization: `Bearer ${token}`,
         authorization: `Bearer ${token}`,
       } : {},
       debug: (str) => {
-        console.log('[STOMP]', str);
+        if (import.meta.env.DEV) console.log('[STOMP]', str);
       },
       reconnectDelay: 5000,
       heartbeatIncoming: 4000,

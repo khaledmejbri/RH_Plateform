@@ -7,6 +7,7 @@ import {
   type DemandeDocument,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { DialogPanel } from '../components/useDialogA11y';
 
 export default function DocumentsAdministratifsPage() {
   const lectureSeule = useLectureSeule();
@@ -267,8 +268,8 @@ export default function DocumentsAdministratifsPage() {
 
       {/* ── Modal ── */}
       {pickedDemande && actionMode && (
-        <div style={backdropStyle} onClick={closeModal}>
-          <div style={modalStyle} onClick={e => e.stopPropagation()}>
+        <div style={backdropStyle} role="presentation" onClick={closeModal}>
+          <DialogPanel label="Traitement de la demande" style={modalStyle} onClose={closeModal}>
 
             {/* Modal header */}
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -299,10 +300,10 @@ export default function DocumentsAdministratifsPage() {
                   pourquoi cette demande doit être traitée en priorité.
                 </p>
                 <div style={{ marginTop: 12 }}>
-                  <label style={{ ...labelStyle, color: '#92400e' }}>
+                  <label htmlFor="documentsadministratifs-f1" style={{ ...labelStyle, color: '#92400e' }}>
                     Justification de la dérogation FIFO *
                   </label>
-                  <textarea
+                  <textarea id="documentsadministratifs-f1"
                     style={{
                       ...inputStyle,
                       height: 72,
@@ -351,17 +352,17 @@ export default function DocumentsAdministratifsPage() {
             {/* Action zone — only shown when explicitly triggered */}
             {actionMode === 'validate' && (
               <div style={{ marginTop: 20 }}>
-                <label style={labelStyle}>Référence du document *</label>
-                <input style={inputStyle} value={ref} onChange={e => setRef(e.target.value)} placeholder="Ex. numéro, lien, chemin…" />
-                <label style={{ ...labelStyle, marginTop: 12 }}>Commentaire (optionnel)</label>
-                <textarea style={{ ...inputStyle, height: 80, resize: 'vertical' }} value={comment} onChange={e => setComment(e.target.value)} />
+                <label htmlFor="documentsadministratifs-f2" style={labelStyle}>Référence du document *</label>
+                <input id="documentsadministratifs-f2" style={inputStyle} value={ref} onChange={e => setRef(e.target.value)} placeholder="Ex. numéro, lien, chemin…" />
+                <label htmlFor="documentsadministratifs-f3" style={{ ...labelStyle, marginTop: 12 }}>Commentaire (optionnel)</label>
+                <textarea id="documentsadministratifs-f3" style={{ ...inputStyle, height: 80, resize: 'vertical' }} value={comment} onChange={e => setComment(e.target.value)} />
               </div>
             )}
 
             {actionMode === 'reject' && (
               <div style={{ marginTop: 20 }}>
-                <label style={labelStyle}>Motif de refus *</label>
-                <textarea style={{ ...inputStyle, height: 80, resize: 'vertical' }} value={comment} onChange={e => setComment(e.target.value)} placeholder="Expliquez la raison du refus…" />
+                <label htmlFor="documentsadministratifs-f4" style={labelStyle}>Motif de refus *</label>
+                <textarea id="documentsadministratifs-f4" style={{ ...inputStyle, height: 80, resize: 'vertical' }} value={comment} onChange={e => setComment(e.target.value)} placeholder="Expliquez la raison du refus…" />
               </div>
             )}
 
@@ -450,7 +451,7 @@ export default function DocumentsAdministratifsPage() {
                 </>
               )}
             </div>
-          </div>
+          </DialogPanel>
         </div>
       )}
     </div>

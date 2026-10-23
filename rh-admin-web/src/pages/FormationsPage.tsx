@@ -6,6 +6,7 @@ import {
   type DemandeFormation,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { DialogPanel } from '../components/useDialogA11y';
 
 type StatutFilter = '' | 'EN_VALIDATION_RRH' | 'INTEGREE_PLAN' | 'REFUSEE' | 'ANNULEE';
 
@@ -143,11 +144,11 @@ export default function FormationsPage() {
 
       {/* Detail Modal */}
       {showDetailModal && selectedFormation && (
-        <div style={modalOverlayStyle} onClick={closeDetailModal}>
-          <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
+        <div style={modalOverlayStyle} role="presentation" onClick={closeDetailModal}>
+          <DialogPanel label="Détails de la formation" style={modalContentStyle} onClose={closeDetailModal}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <h3 style={{ margin: 0, fontSize: 20 }}>Détails de la formation</h3>
-              <button onClick={closeDetailModal} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer' }}>×</button>
+              <button type="button" aria-label="Fermer" onClick={closeDetailModal} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer' }}>×</button>
             </div>
             
             <div style={{ display: 'grid', gap: 12 }}>
@@ -198,7 +199,7 @@ export default function FormationsPage() {
             <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>
               <button className="btn btn--primary" onClick={closeDetailModal}>Fermer</button>
             </div>
-          </div>
+          </DialogPanel>
         </div>
       )}
     </div>

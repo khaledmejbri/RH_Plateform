@@ -1,8 +1,9 @@
 import { useMemo, useState, type ComponentType } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { clearToken, getToken } from '../api/auth';
 import { canWriteBackoffice, isDirectionOnly } from '../auth/jwtRoles';
 import NotificationBell from './NotificationBell';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 type NavItem = {
   to: string;
@@ -30,6 +31,7 @@ const navAll: NavItem[] = [
 export default function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const token = getToken();
   const direction = isDirectionOnly(token);
   const canWrite = canWriteBackoffice(token);
@@ -100,7 +102,9 @@ export default function AppShell() {
           </div>
         ) : null}
         <main className="shell__content anim-fade-in">
-          <Outlet context={{ lectureSeule: direction }} />
+          <ErrorBoundary resetKey={location.pathname}>
+            <Outlet context={{ lectureSeule: direction }} />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

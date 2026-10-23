@@ -9,6 +9,8 @@ import {
 } from '../api/evaluationCatalog';
 import { getFamillesMetier } from '../api/rhClient';
 import TemplateBuilder from '../components/TemplateBuilder';
+import { useConfirm } from '../components/ConfirmDialog';
+import { currentUserId } from '../auth/jwtRoles';
 
 interface EnhancedTemplatesTabProps {
   templateType: 'GENERIC' | 'TECHNICAL';
@@ -30,6 +32,7 @@ export default function EnhancedTemplatesTab({
   templateType,
   lectureSeule = false,
 }: EnhancedTemplatesTabProps) {
+  const confirm = useConfirm();
   const [templates, setTemplates] = useState<EvaluationTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -80,14 +83,18 @@ export default function EnhancedTemplatesTab({
   };
 
   const handlePublish = async (templateId: string) => {
-    if (!confirm(
-      templateType === 'TECHNICAL'
-        ? 'Publier ce template ? Il sera proposé aux collaborateurs de la famille et du niveau choisis.'
-        : 'Publier ce template ? Il sera utilisable dans les campagnes.'
-    )) return;
+    const ok = await confirm({
+      title: 'Publier le template',
+      message:
+        templateType === 'TECHNICAL'
+          ? 'Il sera proposé aux collaborateurs de la famille et du niveau choisis.'
+          : 'Il sera utilisable dans les campagnes.',
+      confirmLabel: 'Publier',
+    });
+    if (!ok) return;
     setActionError(null);
     try {
-      await templateApi.publish(templateId, '0a4f7069-0737-4207-97dd-7a46a45f5429');
+      await templateApi.publish(templateId, currentUserId());
       await loadTemplates();
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err
@@ -98,7 +105,13 @@ export default function EnhancedTemplatesTab({
   };
 
   const handleArchive = async (templateId: string) => {
-    if (!confirm('Archiver ce template ?')) return;
+    const ok = await confirm({
+      title: 'Archiver le template',
+      message: 'Il ne pourra plus être utilisé dans de nouvelles campagnes.',
+      confirmLabel: 'Archiver',
+      danger: true,
+    });
+    if (!ok) return;
     setActionError(null);
     try {
       await templateApi.archive(templateId);

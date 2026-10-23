@@ -85,6 +85,7 @@ export interface EvaluationQuestion {
   sectionLibelle?: string;
   poids?: number;
   labelsEchelle?: string[];
+  placeholder?: string;
   actif?: boolean;
 }
 

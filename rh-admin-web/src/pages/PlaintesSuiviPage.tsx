@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getPlaintesRh, patchPlainteStatut, type PlainteRh } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { DialogPanel } from '../components/useDialogA11y';
 
 /**
  * CDC v2 §M04 corrections :
@@ -107,8 +108,8 @@ export default function PlaintesSuiviPage() {
       {/* Filtres */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
         <div>
-          <label className="field-label" style={{ marginBottom: 4 }}>Type</label>
-          <select className="field-input" style={{ minWidth: 160 }}
+          <label htmlFor="plaintessuivi-f1" className="field-label" style={{ marginBottom: 4 }}>Type</label>
+          <select id="plaintessuivi-f1" className="field-input" style={{ minWidth: 160 }}
             value={filterType} onChange={(e) => setFilterType(e.target.value as TypePlainte)}>
             <option value="">Tous les types</option>
             <option value="INTERNE">🔒 Interne</option>
@@ -116,8 +117,8 @@ export default function PlaintesSuiviPage() {
           </select>
         </div>
         <div>
-          <label className="field-label" style={{ marginBottom: 4 }}>Statut</label>
-          <select className="field-input" style={{ minWidth: 180 }}
+          <label htmlFor="plaintessuivi-f2" className="field-label" style={{ marginBottom: 4 }}>Statut</label>
+          <select id="plaintessuivi-f2" className="field-input" style={{ minWidth: 180 }}
             value={filterStatut} onChange={(e) => setFilterStatut(e.target.value as StatutPlainte)}>
             <option value="">Tous les statuts</option>
             {Object.entries(STATUT_LABELS).map(([v, l]) => (
@@ -209,7 +210,7 @@ export default function PlaintesSuiviPage() {
       {/* Modal traitement */}
       {edit && (
         <div className="modal-backdrop" role="presentation" onClick={() => setEdit(null)}>
-          <div className="modal" role="dialog" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+          <DialogPanel label={`Traiter — ${edit.titre}`} className="modal" style={{ maxWidth: 560 }} onClose={() => setEdit(null)}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
               <div>
                 <h3 className="modal__title" style={{ margin: 0 }}>Traiter — {edit.titre}</h3>
@@ -254,8 +255,8 @@ export default function PlaintesSuiviPage() {
             )}
 
             {/* Transition statut */}
-            <label className="field-label">Nouveau statut</label>
-            <select className="field-input" value={newStatut} onChange={(e) => setNewStatut(e.target.value)}>
+            <label htmlFor="plaintessuivi-f3" className="field-label">Nouveau statut</label>
+            <select id="plaintessuivi-f3" className="field-input" value={newStatut} onChange={(e) => setNewStatut(e.target.value)}>
               {(TRANSITIONS[edit.statut] ?? []).map((s) => (
                 <option key={s} value={s}>{STATUT_LABELS[s] ?? s}</option>
               ))}
@@ -264,10 +265,10 @@ export default function PlaintesSuiviPage() {
               Transition autorisée : {STATUT_LABELS[edit.statut]} → {STATUT_LABELS[newStatut] ?? newStatut}
             </p>
 
-            <label className="field-label">
+            <label htmlFor="plaintessuivi-f4" className="field-label">
               Commentaire RH {(newStatut === 'RESOLU' || newStatut === 'FERME') ? <span style={{ color: '#dc2626' }}>*</span> : '(optionnel)'}
             </label>
-            <textarea
+            <textarea id="plaintessuivi-f4"
               className="field-input field-input--area"
               rows={4}
               value={commentaire}
@@ -285,7 +286,7 @@ export default function PlaintesSuiviPage() {
                   {edit.log_actions.map((log, i) => (
                     <div key={i} style={{ fontSize: 12, padding: '6px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
                       <span style={{ fontWeight: 600 }}>{log.ancien_statut} → {log.nouveau_statut}</span>
-                      <span className="muted" style={{ marginLeft: 8 }}>{formatDate(log.horodatage)}</span>
+                      <span className="muted" style={{ marginLeft: 8 }}>{log.horodatage ? formatDate(log.horodatage) : ''}</span>
                       {log.commentaire && <div style={{ marginTop: 2, color: '#475569' }}>{log.commentaire}</div>}
                     </div>
                   ))}
@@ -301,7 +302,7 @@ export default function PlaintesSuiviPage() {
                 {saving ? 'Enregistrement…' : 'Confirmer la transition'}
               </button>
             </div>
-          </div>
+          </DialogPanel>
         </div>
       )}
     </div>

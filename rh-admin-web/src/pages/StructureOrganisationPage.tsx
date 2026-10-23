@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useDialogA11y } from '../components/useDialogA11y';
 import {
   getCollaborateursPage,
   getUnites,
@@ -10,11 +11,6 @@ import {
   type CollaborateurRow,
   type Unite,
 } from '../api/rhClient';
-
-// ─── Types locaux ────────────────────────────────────────────────────────────
-
-type Dept = Unite & { parent_identifiant: null };
-type UniteRaw = Unite & { parent_identifiant: string };
 
 // ─── Helpers UI ─────────────────────────────────────────────────────────────
 
@@ -62,19 +58,14 @@ function CollabOption({ c }: { c: CollaborateurRow }) {
 // ─── Modal générique ─────────────────────────────────────────────────────────
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const ref = useDialogA11y(onClose);
 
   return (
-    <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal" ref={ref} style={{ maxWidth: 560 }}>
+    <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} style={{ maxWidth: 560 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
           <h3 className="modal__title" style={{ margin: 0 }}>{title}</h3>
-          <button type="button" onClick={onClose} style={{
+          <button type="button" aria-label="Fermer" onClick={onClose} style={{
             background: 'none', border: 'none', cursor: 'pointer', fontSize: 20,
             color: 'var(--muted)', lineHeight: 1, padding: '0 4px',
           }}>×</button>
@@ -165,12 +156,12 @@ function ModalCreerDept({
         <>
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
             <div style={{ flex: '0 0 120px' }}>
-              <label className="field-label">Code</label>
-              <input className="field-input" value={code} onChange={(e) => setCode(e.target.value)} required maxLength={32} placeholder="DRH" />
+              <label htmlFor="structureorganisation-f1" className="field-label">Code</label>
+              <input id="structureorganisation-f1" className="field-input" value={code} onChange={(e) => setCode(e.target.value)} required maxLength={32} placeholder="DRH" />
             </div>
             <div style={{ flex: 1 }}>
-              <label className="field-label">Libellé du département</label>
-              <input className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required placeholder="Direction des Ressources Humaines" />
+              <label htmlFor="structureorganisation-f2" className="field-label">Libellé du département</label>
+              <input id="structureorganisation-f2" className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required placeholder="Direction des Ressources Humaines" />
             </div>
           </div>
           <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.5rem 0 1.5rem' }}>
@@ -198,8 +189,8 @@ function ModalCreerDept({
 
           {chefMode === 'existant' ? (
             <>
-              <label className="field-label">Sélectionner le chef de département</label>
-              <select className="field-input" value={chefId} onChange={(e) => setChefId(e.target.value)} required>
+              <label htmlFor="structureorganisation-f3" className="field-label">Sélectionner le chef de département</label>
+              <select id="structureorganisation-f3" className="field-input" value={chefId} onChange={(e) => setChefId(e.target.value)} required>
                 <option value="">— Choisir —</option>
                 {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
               </select>
@@ -207,24 +198,24 @@ function ModalCreerDept({
           ) : (
             <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '0 1rem' }}>
               <div>
-                <label className="field-label">Matricule</label>
-                <input className="field-input" value={cMatricule} onChange={(e) => setCMatricule(e.target.value)} required />
+                <label htmlFor="structureorganisation-f4" className="field-label">Matricule</label>
+                <input id="structureorganisation-f4" className="field-input" value={cMatricule} onChange={(e) => setCMatricule(e.target.value)} required />
               </div>
               <div>
-                <label className="field-label">Prénom</label>
-                <input className="field-input" value={cPrenom} onChange={(e) => setCPrenom(e.target.value)} required />
+                <label htmlFor="structureorganisation-f5" className="field-label">Prénom</label>
+                <input id="structureorganisation-f5" className="field-input" value={cPrenom} onChange={(e) => setCPrenom(e.target.value)} required />
               </div>
               <div>
-                <label className="field-label">Nom</label>
-                <input className="field-input" value={cNom} onChange={(e) => setCNom(e.target.value)} required />
+                <label htmlFor="structureorganisation-f6" className="field-label">Nom</label>
+                <input id="structureorganisation-f6" className="field-input" value={cNom} onChange={(e) => setCNom(e.target.value)} required />
               </div>
               <div>
-                <label className="field-label">Email</label>
-                <input className="field-input" type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} required />
+                <label htmlFor="structureorganisation-f7" className="field-label">Email</label>
+                <input id="structureorganisation-f7" className="field-input" type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} required />
               </div>
               <div style={{ gridColumn: '1/-1' }}>
-                <label className="field-label">Mot de passe initial</label>
-                <input className="field-input" type="password" minLength={8} value={cMdp} onChange={(e) => setCMdp(e.target.value)} required />
+                <label htmlFor="structureorganisation-f8" className="field-label">Mot de passe initial</label>
+                <input id="structureorganisation-f8" className="field-input" type="password" minLength={8} value={cMdp} onChange={(e) => setCMdp(e.target.value)} required />
               </div>
             </div>
           )}
@@ -286,11 +277,11 @@ function ModalEditDept({
     <Modal title={`Modifier — ${dept.libelle}`} onClose={onClose}>
       {err && <div className="alert alert--error" style={{ marginBottom: '1rem' }}>{err}</div>}
 
-      <label className="field-label">Libellé du département</label>
-      <input className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required />
+      <label htmlFor="structureorganisation-f9" className="field-label">Libellé du département</label>
+      <input id="structureorganisation-f9" className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required />
 
-      <label className="field-label">Chef de département</label>
-      <select className="field-input" value={chefId} onChange={(e) => setChefId(e.target.value)}>
+      <label htmlFor="structureorganisation-f10" className="field-label">Chef de département</label>
+      <select id="structureorganisation-f10" className="field-input" value={chefId} onChange={(e) => setChefId(e.target.value)}>
         <option value="">— Aucun —</option>
         {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
       </select>
@@ -407,20 +398,20 @@ function ModalCreerUnite({
 
       {step === 'unite' ? (
         <>
-          <label className="field-label">Département parent</label>
-          <select className="field-input" value={deptId} onChange={(e) => setDeptId(e.target.value)} required>
+          <label htmlFor="structureorganisation-f11" className="field-label">Département parent</label>
+          <select id="structureorganisation-f11" className="field-input" value={deptId} onChange={(e) => setDeptId(e.target.value)} required>
             {departements.map((d) => (
               <option key={d.identifiant} value={d.identifiant}>{d.code} — {d.libelle}</option>
             ))}
           </select>
           <div style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: '0 0 120px' }}>
-              <label className="field-label">Code</label>
-              <input className="field-input" value={code} onChange={(e) => setCode(e.target.value)} required maxLength={32} placeholder="UAP1" />
+              <label htmlFor="structureorganisation-f12" className="field-label">Code</label>
+              <input id="structureorganisation-f12" className="field-input" value={code} onChange={(e) => setCode(e.target.value)} required maxLength={32} placeholder="UAP1" />
             </div>
             <div style={{ flex: 1 }}>
-              <label className="field-label">Libellé de l'unité</label>
-              <input className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required placeholder="Unité de Production 1" />
+              <label htmlFor="structureorganisation-f13" className="field-label">Libellé de l'unité</label>
+              <input id="structureorganisation-f13" className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required placeholder="Unité de Production 1" />
             </div>
           </div>
           <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.5rem 0 1.5rem' }}>
@@ -448,8 +439,8 @@ function ModalCreerUnite({
 
           {roMode === 'existant' ? (
             <>
-              <label className="field-label">Sélectionner le Responsable Opérationnel</label>
-              <select className="field-input" value={roId} onChange={(e) => setRoId(e.target.value)} required>
+              <label htmlFor="structureorganisation-f14" className="field-label">Sélectionner le Responsable Opérationnel</label>
+              <select id="structureorganisation-f14" className="field-input" value={roId} onChange={(e) => setRoId(e.target.value)} required>
                 <option value="">— Choisir —</option>
                 {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
               </select>
@@ -457,24 +448,24 @@ function ModalCreerUnite({
           ) : (
             <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '0 1rem' }}>
               <div>
-                <label className="field-label">Matricule</label>
-                <input className="field-input" value={cMatricule} onChange={(e) => setCMatricule(e.target.value)} required />
+                <label htmlFor="structureorganisation-f15" className="field-label">Matricule</label>
+                <input id="structureorganisation-f15" className="field-input" value={cMatricule} onChange={(e) => setCMatricule(e.target.value)} required />
               </div>
               <div>
-                <label className="field-label">Prénom</label>
-                <input className="field-input" value={cPrenom} onChange={(e) => setCPrenom(e.target.value)} required />
+                <label htmlFor="structureorganisation-f16" className="field-label">Prénom</label>
+                <input id="structureorganisation-f16" className="field-input" value={cPrenom} onChange={(e) => setCPrenom(e.target.value)} required />
               </div>
               <div>
-                <label className="field-label">Nom</label>
-                <input className="field-input" value={cNom} onChange={(e) => setCNom(e.target.value)} required />
+                <label htmlFor="structureorganisation-f17" className="field-label">Nom</label>
+                <input id="structureorganisation-f17" className="field-input" value={cNom} onChange={(e) => setCNom(e.target.value)} required />
               </div>
               <div>
-                <label className="field-label">Email</label>
-                <input className="field-input" type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} required />
+                <label htmlFor="structureorganisation-f18" className="field-label">Email</label>
+                <input id="structureorganisation-f18" className="field-input" type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} required />
               </div>
               <div style={{ gridColumn: '1/-1' }}>
-                <label className="field-label">Mot de passe initial</label>
-                <input className="field-input" type="password" minLength={8} value={cMdp} onChange={(e) => setCMdp(e.target.value)} required />
+                <label htmlFor="structureorganisation-f19" className="field-label">Mot de passe initial</label>
+                <input id="structureorganisation-f19" className="field-input" type="password" minLength={8} value={cMdp} onChange={(e) => setCMdp(e.target.value)} required />
               </div>
             </div>
           )}
@@ -535,19 +526,19 @@ function ModalEditUnite({
     <Modal title={`Modifier — ${unite.libelle}`} onClose={onClose}>
       {err && <div className="alert alert--error" style={{ marginBottom: '1rem' }}>{err}</div>}
 
-      <label className="field-label">Libellé de l'unité</label>
-      <input className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required />
+      <label htmlFor="structureorganisation-f20" className="field-label">Libellé de l'unité</label>
+      <input id="structureorganisation-f20" className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required />
 
-      <label className="field-label">Département parent</label>
-      <select className="field-input" value={deptId} onChange={(e) => setDeptId(e.target.value)}>
+      <label htmlFor="structureorganisation-f21" className="field-label">Département parent</label>
+      <select id="structureorganisation-f21" className="field-input" value={deptId} onChange={(e) => setDeptId(e.target.value)}>
         <option value="">— Aucun —</option>
         {departements.map((d) => (
           <option key={d.identifiant} value={d.identifiant}>{d.code} — {d.libelle}</option>
         ))}
       </select>
 
-      <label className="field-label">Responsable Opérationnel (RO)</label>
-      <select className="field-input" value={roId} onChange={(e) => setRoId(e.target.value)}>
+      <label htmlFor="structureorganisation-f22" className="field-label">Responsable Opérationnel (RO)</label>
+      <select id="structureorganisation-f22" className="field-input" value={roId} onChange={(e) => setRoId(e.target.value)}>
         <option value="">— Aucun —</option>
         {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
       </select>

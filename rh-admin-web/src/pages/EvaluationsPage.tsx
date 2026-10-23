@@ -13,6 +13,9 @@ import { libelleNiveauSeniorite, profilMetierLabel } from '../api/evaluationCata
 import { DiscrepancyLabel, EvalAlertBadge } from '../components/EvalAlertBadge';
 import EnhancedTemplatesTab from './EnhancedTemplatesTab';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { useConfirm } from '../components/ConfirmDialog';
+import { currentUserId } from '../auth/jwtRoles';
+import { useDialogA11y } from '../components/useDialogA11y';
 
 type Tab = 'campaigns' | 'templates' | 'evaluations';
 type TemplateSubTab = 'GENERIC' | 'TECHNICAL';
@@ -20,7 +23,6 @@ type TemplateSubTab = 'GENERIC' | 'TECHNICAL';
 /** Fenêtres Must E1-R02 : juin / décembre uniquement. */
 const CAMPAGNE_MOIS = [6, 12] as const;
 
-const currentUserId = '0a4f7069-0737-4207-97dd-7a46a45f5429';
 
 export default function EvaluationsPage() {
   const lectureSeule = useLectureSeule();
@@ -108,6 +110,7 @@ export default function EvaluationsPage() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
+  const confirm = useConfirm();
   const [campaigns, setCampaigns] = useState<EvaluationCampaign[]>([]);
   const [templates, setTemplates] = useState<EvaluationTemplate[]>([]);
   const [analytics, setAnalytics] = useState<Record<string, CampaignAnalytics>>({});
@@ -172,7 +175,7 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
         annee: formData.annee,
         moisDebut: formData.moisDebut,
         moisFin: formData.moisFin,
-        creePar: currentUserId,
+        creePar: currentUserId(),
       });
       if (formData.templateGeneralId || formData.templateTechniqueId) {
         await campaignApi.assignTemplates(
@@ -220,7 +223,13 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
   };
 
   const handleTerminate = async (campaign: EvaluationCampaign) => {
-    if (!confirm(`Terminer la campagne « ${campaign.nom} » ? Cette action est irréversible.`)) return;
+    const ok = await confirm({
+      title: 'Terminer la campagne',
+      message: `Terminer la campagne « ${campaign.nom} » ? Cette action est irréversible.`,
+      confirmLabel: 'Terminer',
+      danger: true,
+    });
+    if (!ok) return;
     setActionError(null);
     try {
       await campaignApi.terminate(campaign.identifiant);
@@ -542,6 +551,7 @@ interface AssignTemplatesModalProps {
 }
 
 function AssignTemplatesModal({ campaign, generalTemplates, competencyTemplates, onClose, onSaved }: AssignTemplatesModalProps) {
+  const dialogRef = useDialogA11y(onClose);
   const [generalId, setGeneralId] = useState(campaign.templateGeneral?.identifiant || '');
   const [techniqueId, setTechniqueId] = useState(campaign.templateTechnique?.identifiant || '');
   const [saving, setSaving] = useState(false);
@@ -567,8 +577,8 @@ function AssignTemplatesModal({ campaign, generalTemplates, competencyTemplates,
   };
 
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: '520px', width: '90%' }} role="dialog" aria-labelledby="assign-tpl-title">
+    <div className="modal-backdrop" role="presentation" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div ref={dialogRef} tabIndex={-1} className="modal" style={{ maxWidth: '520px', width: '90%' }} role="dialog" aria-modal="true" aria-labelledby="assign-tpl-title">
         <div style={{ padding: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
             <h3 id="assign-tpl-title" className="modal__title" style={{ margin: 0 }}>Assigner des templates</h3>

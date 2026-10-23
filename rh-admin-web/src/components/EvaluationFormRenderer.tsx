@@ -9,6 +9,7 @@ interface EvaluationFormRendererProps {
 
 export default function EvaluationFormRenderer({ questions, onSubmit, readOnly = false }: EvaluationFormRendererProps) {
   const [responses, setResponses] = useState<Record<string, any>>({});
+  const [missing, setMissing] = useState<string | null>(null);
 
   const renderQuestionInput = (question: EvaluationQuestion) => {
     const value = responses[question.identifiant];
@@ -163,11 +164,13 @@ export default function EvaluationFormRenderer({ questions, onSubmit, readOnly =
     // Validate required questions
     for (const question of questions) {
       if (question.obligatoire && !responses[question.identifiant]) {
-        alert(`Veuillez répondre à: ${question.libelle}`);
+        setMissing(question.libelle);
+        document.getElementById(`q-${question.identifiant}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
     }
 
+    setMissing(null);
     onSubmit(responses);
   };
 
@@ -182,7 +185,7 @@ export default function EvaluationFormRenderer({ questions, onSubmit, readOnly =
   return (
     <form onSubmit={handleSubmit} className="evaluation-form">
       {questions.map((question, index) => (
-        <div key={question.identifiant} className="form-question card">
+        <div key={question.identifiant} id={`q-${question.identifiant}`} className="form-question card">
           <label className="question-label">
             <span className="question-number">{index + 1}.</span>
             {question.libelle}
@@ -196,6 +199,12 @@ export default function EvaluationFormRenderer({ questions, onSubmit, readOnly =
           {renderQuestionInput(question)}
         </div>
       ))}
+
+      {missing ? (
+        <p className="alert alert--error" role="alert">
+          Veuillez répondre à : {missing}
+        </p>
+      ) : null}
 
       {!readOnly && (
         <div className="form-actions">

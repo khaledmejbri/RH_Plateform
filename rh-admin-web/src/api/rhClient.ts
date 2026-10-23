@@ -13,7 +13,9 @@ export async function handleRhResponse<T>(res: Response): Promise<T> {
     throw new Error('Session expirée');
   }
   if (!res.ok) {
-    const body = await parseJson<{ erreur?: string; message?: string }>(res).catch(() => ({}));
+    const body = await parseJson<{ erreur?: string; message?: string }>(res).catch(
+      (): { erreur?: string; message?: string } => ({}),
+    );
     throw new Error(body.erreur ?? body.message ?? res.statusText);
   }
   return parseJson<T>(res);
@@ -158,13 +160,21 @@ export type PlainteRh = {
   identifiant: string;
   numero_ticket: string;
   type_plainte: 'INTERNE' | 'EXTERNE';
-  auteur_collaborateur_identifiant: string;
+  auteur_identifiant: string;
   titre: string;
   description: string;
   statut: 'NOUVEAU' | 'EN_ANALYSE' | 'EN_TRAITEMENT' | 'RESOLU' | 'FERME';
   commentaire_rh?: string;
-  pieces_jointes: Array<{ url: string; nom_fichier: string }>;
-  log_actions: Array<{ date: string; action: string; acteur: string }>;
+  /** URLs des pièces jointes (cf. PlainteRhResponse.pieces_jointes). */
+  pieces_jointes: string[];
+  transcription_audio?: string;
+  log_actions: Array<{
+    ancien_statut?: string;
+    nouveau_statut?: string;
+    horodatage?: string;
+    commentaire?: string;
+    acteur_id?: string;
+  }>;
   cree_le: string;
   modifie_le?: string;
 };

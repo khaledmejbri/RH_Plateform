@@ -60,3 +60,11 @@ export function isDirectionOnly(token: string | null): boolean {
 export function canWriteBackoffice(token: string | null): boolean {
   return hasAnyRole(token, 'RH', 'ADMIN');
 }
+
+/** Identifiant de l'utilisateur connecté (claim `identifiant_utilisateur`). */
+export function currentUserId(): string {
+  const token = sessionStorage.getItem('rh_admin_access_token');
+  const id = decodeJwtPayload(token)?.identifiant_utilisateur;
+  if (typeof id !== 'string' || !id) throw new Error('Session invalide : reconnectez-vous.');
+  return id;
+}

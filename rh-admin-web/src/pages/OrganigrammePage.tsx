@@ -12,6 +12,8 @@ import {
   type OrganigrammeNoeud,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { useConfirm } from '../components/ConfirmDialog';
+import { useDialogA11y } from '../components/useDialogA11y';
 
 type ModalKind = 'creer' | 'editer' | 'manager' | 'rattacher' | 'confirm-retrait' | null;
 
@@ -128,13 +130,7 @@ function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const ref = useDialogA11y(onClose);
 
   return (
     <div
@@ -145,6 +141,8 @@ function Modal({
       }}
     >
       <div
+        ref={ref}
+        tabIndex={-1}
         className="modal"
         role="dialog"
         aria-modal="true"
@@ -478,6 +476,7 @@ function ParentPickerList({
 }
 
 export default function OrganigrammePage() {
+  const confirm = useConfirm();
   const lectureSeule = useLectureSeule();
   const [racines, setRacines] = useState<OrganigrammeNoeud[]>([]);
   const [loading, setLoading] = useState(true);
@@ -608,9 +607,11 @@ export default function OrganigrammePage() {
         const from = depthOf(racines, draggedId);
         const to = depthOf(racines, newParentId) + 1;
         if (Math.abs(to - from) >= 2) {
-          const ok = window.confirm(
-            `« ${dragged.libelle} » sera placé sous « ${target.libelle} ». Continuer ?`,
-          );
+          const ok = await confirm({
+            title: 'Déplacer le service',
+            message: `« ${dragged.libelle} » sera placé sous « ${target.libelle} ». Continuer ?`,
+            confirmLabel: 'Déplacer',
+          });
           if (!ok) return;
         }
       }

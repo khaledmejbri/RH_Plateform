@@ -6,6 +6,7 @@ import {
   type FamilleMetier,
 } from '../api/evaluationCatalog';
 import { getFamillesMetier } from '../api/rhClient';
+import { currentUserId } from '../auth/jwtRoles';
 
 interface TemplateBuilderProps {
   templateId?: string;
@@ -170,7 +171,7 @@ export default function TemplateBuilder({ templateType, onSave, onCancel }: Temp
         niveau_seniorite: templateType === 'TECHNICAL' ? templateInfo.niveauSeniorite : undefined,
         domaine: templateType === 'TECHNICAL' ? templateInfo.domaine || undefined : undefined,
         questions,
-      }, '0a4f7069-0737-4207-97dd-7a46a45f5429');
+      }, currentUserId());
       onSave();
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err

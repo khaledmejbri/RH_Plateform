@@ -41,16 +41,16 @@ export default function LoginPage() {
         <h1>Plateforme RH</h1>
         <p className="lead">Connexion sécurisée — compte RH, Direction ou Admin.</p>
         <form onSubmit={onSubmit}>
-          <label className="field-label">Utilisateur ou e-mail</label>
-          <input
+          <label htmlFor="login-f1" className="field-label">Utilisateur ou e-mail</label>
+          <input id="login-f1"
             className="field-input"
             value={user}
             onChange={(e) => setUser(e.target.value)}
             autoComplete="username"
             required
           />
-          <label className="field-label">Mot de passe</label>
-          <input
+          <label htmlFor="login-f2" className="field-label">Mot de passe</label>
+          <input id="login-f2"
             className="field-input"
             type="password"
             value={pass}
