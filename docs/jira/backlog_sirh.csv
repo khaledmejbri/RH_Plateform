@@ -1,0 +1,296 @@
+"Issue Id","Parent Id","Issue Type","Summary","Description","Priority","Labels","Component/s","Story Points"
+"1","","Epic","Stabilisation et corrections de l'existant","Corriger les défauts du code actuel avant tout nouveau développement. Doit être terminé en premier (sprints 1-2).","High","","",""
+"2","","Epic","Socle sécurité, plateforme et DevOps","Sécurité, configuration, migrations BD, CI/CD, environnements.","High","","",""
+"3","","Epic","Référentiel RH : départements, équipes, organigramme","Structure de l'organisation, fiches collaborateurs, rattachement départements / équipes.","Medium","","",""
+"4","","Epic","Demandes administratives : congé, sortie, mission","Workflow demande → manager du nœud → RRH, solde de congés sans paie.","Medium","","",""
+"5","","Epic","Demandes de documents administratifs","Attestations, certificats, file FIFO RH, génération PDF.","Medium","","",""
+"6","","Epic","Formations par département et équipe","Besoins et demandes de formation, plan annuel, évaluation à chaud / à froid.","Medium","","",""
+"7","","Epic","Plaintes internes et externes","Déclaration, suivi, traitement, clôture.","Medium","","",""
+"8","","Epic","Évaluations semestrielles (juin) et annuelles (décembre)","Formulaires savoir-être / savoir-faire / objectifs, compétences techniques en étoiles, envoi au responsable hiérarchique.","Medium","","",""
+"9","","Epic","Pointage : QR code puis reconnaissance faciale","Pointage mobile QR + GPS, puis vérification faciale on-device avec consentement RGPD.","Medium","","",""
+"10","","Epic","Notifications et notes de service","Notifications push / temps réel, notes de service avec accusé de lecture (M03).","Medium","","",""
+"11","","Epic","Tableaux de bord et reporting","KPI RH, Direction, exports.","Medium","","",""
+"12","","Epic","Qualité et tests","Stratégie de test, tests automatisés web / mobile / API, recette.","Medium","","",""
+"101","1","Task","Faire de la branche delivery la référence et l'aligner sur main","Constat : main (4 commits, historique 'Initial commit' cd0038a) et delivery (39 commits, historique f48ceca) ont des historiques sans ancêtre commun ; tout le code récent est sur delivery. develop..develop_4 sont des étapes intermédiaires déjà incluses dans delivery.
+
+À faire : décider de la branche de référence (recommandé : delivery devient main), remplacer main par delivery, archiver develop, develop_2, develop_3, develop_4 après vérification qu'aucun commit n'est perdu, protéger main (PR obligatoire + CI verte).
+
+Critères d'acceptation :
+- main contient tout le code de delivery
+- les branches develop* sont supprimées ou marquées archivées
+- une règle de protection exige une PR pour main","Highest","correction git architecte","DevOps","2"
+"102","1","Bug","Évaluations : le scheduler crée des évaluations pour une liste de collaborateurs codée en dur","Constat : svc-evaluation EvaluationSchedulerService.getEmployeesNeedingEvaluation() renvoie un seul UUID de test (fc9f8ae5-…) et createEvaluationForEmployee() utilise un managerId codé en dur (0a4f7069-…). Résultat : en production, aucun vrai collaborateur ne reçoit son évaluation et le responsable n'est jamais le bon.
+
+À faire : récupérer les collaborateurs ACTIFS concernés par la campagne depuis svc-referentiel-rh (API interne authentifiée ou projection Kafka), et le manager ACTIF du nœud d'affectation comme évaluateur.
+
+Critères d'acceptation :
+- Étant donné une campagne ACTIVE et 3 collaborateurs actifs, quand le scheduler tourne, alors 3 évaluations sont créées, une par collaborateur
+- l'évaluateur de chaque évaluation est le manager ACTIF de son nœud
+- un collaborateur sans manager déclenche une alerte RH (pas d'UUID par défaut)
+- aucun UUID littéral ne reste dans le code","Highest","correction backend evaluation","svc-evaluation","8"
+"103","1","Bug","Évaluations : le scheduler tourne toutes les 2 minutes (réglage de test)","Constat : @Scheduled(fixedRate = 120000) dans EvaluationSchedulerService, commenté 'for testing'.
+
+À faire : cron configurable (propriété evaluation.scheduler.cron, défaut quotidien 06:00) ; le déclenchement manuel reste réservé à RH/ADMIN.
+
+Critères d'acceptation :
+- la fréquence vient de la configuration
+- aucune exécution toutes les 2 minutes en profil prod","Highest","correction backend evaluation","svc-evaluation","1"
+"104","1","Bug","Test unitaire en échec : EvaluationTemplateServiceTest.listerTemplatesRetourneListe","Constat : mvn test échoue sur svc-evaluation. EvaluationTemplateService.listerTemplates(boolean) appelle findAllByActifTrue() et ignore le paramètre, alors que le test (et le besoin d'un tri par nom) attend findByActifTrueOrderByNameAsc().
+
+À faire : trier les templates actifs par nom et appliquer le filtre 'uniquementReutilisables' ou supprimer ce paramètre.
+
+Critères d'acceptation :
+- mvn -pl svc-evaluation test est vert
+- la liste des templates est triée par nom","High","correction backend evaluation qa","svc-evaluation","1"
+"105","1","Bug","Tests contextLoads en échec sans base PostgreSQL","Constat : IdentiteAccesApplicationTests.contextLoads (et équivalents) exigent un PostgreSQL sur localhost:5444 ; mvn test échoue sur un poste ou une CI sans base.
+
+À faire : profil de test avec Testcontainers PostgreSQL (ou H2 si compatible), ou isoler ces tests en tests d'intégration (failsafe).
+
+Critères d'acceptation :
+- mvn -B test passe sur une machine sans base locale
+- les tests d'intégration tournent en CI avec Testcontainers","High","correction backend qa","Tous services","3"
+"106","1","Bug","Secrets et mots de passe par défaut dans application.properties","Constat : spring.datasource.password=password dans svc-evaluation, svc-identite-acces, svc-presence, svc-referentiel-rh ; secret HMAC QR avec valeur par défaut 'dev-only-…'.
+
+À faire : toutes les valeurs sensibles via variables d'environnement sans valeur par défaut en profil prod ; fichier .env.example documenté ; démarrage refusé en prod si le secret manque.
+
+Critères d'acceptation :
+- aucun mot de passe ni secret en clair dans le dépôt
+- le service refuse de démarrer en prod si PRESENCE_QR_HMAC_SECRET est absent","Highest","correction securite backend","Tous services","3"
+"107","1","Bug","CORS ouvert à tous (allowedOriginPatterns '*') sur la gateway et le WebSocket","Constat : gateway application.yml et svc-notification WebSocketConfig acceptent toutes les origines.
+
+À faire : liste blanche configurable (URL de la Plateforme RH, origines mobiles nécessaires).
+
+Critères d'acceptation :
+- une origine non listée reçoit un refus CORS
+- la Plateforme RH et le mobile fonctionnent toujours","High","correction securite backend","gateway","2"
+"108","1","Bug","Endpoint /internal/users/by-role accessible sans authentification","Constat : svc-identite-acces SecurityConfig déclare /internal/users/by-role en permitAll. Il n'est pas routé par la gateway, mais reste joignable par quiconque atteint le port du service (énumération d'utilisateurs). Même problème pour NotificationTestController (/api/notifications/test/*) sans @PreAuthorize.
+
+À faire : authentification service-à-service (token interne / client credentials) ; supprimer ou protéger les endpoints de test en prod.
+
+Critères d'acceptation :
+- un appel sans jeton de service renvoie 401
+- les endpoints de test ne sont pas actifs en profil prod","High","correction securite backend","svc-identite-acces","3"
+"109","1","Bug","Notes de service (M03) : fil d'actualité mobile en données factices","Constat : rh_mobile_app/lib/features/feed/providers/feed_provider.dart affiche une liste mockPosts codée en dur.
+
+À faire (court terme) : masquer la rubrique ou afficher 'Bientôt disponible' tant que le backend M03 n'existe pas (voir épic E09).
+
+Critères d'acceptation :
+- aucun contenu factice n'est montré aux utilisateurs","High","correction mobile","rh_mobile_app","1"
+"110","1","Bug","Mobile : bouton 'Modifier le profil' sans action","Constat : profile_screen.dart contient un TODO 'Navigate to edit profile' ; le bouton ne fait rien.
+
+À faire : masquer le bouton ou ouvrir un écran limité aux champs modifiables par le collaborateur (téléphone, photo) — règle à confirmer par l'expert RH.
+
+Critères d'acceptation :
+- aucun bouton visible sans action","Medium","correction mobile","rh_mobile_app","1"
+"111","1","Task","Nettoyer le dépôt : dossiers en double et fichiers parasites","Constat : rh_mobile_app_temp/ (doublon de l'app), android/ à la racine (build Android orphelin), authenctication/ (module hors pom racine, nom mal orthographié), %TEMP%install-qwen.bat, nombreux .md d'implémentation à la racine (EVALUATION_*.md, FIX_403_ERROR.md…), .idea/.
+
+À faire : vérifier qu'aucun code utile n'y reste, supprimer, déplacer la doc utile sous docs/, compléter .gitignore.
+
+Critères d'acceptation :
+- une seule app mobile (rh_mobile_app)
+- racine du dépôt limitée aux modules, docs/, README, outillage","Medium","correction architecte","DevOps","2"
+"112","1","Task","Mobile : identifiant d'application com.example.rh_mobile_app","Constat : le package Android est com.example.rh_mobile_app, refusé par les stores.
+
+À faire : identifiant définitif (ex. tn.agua.rhconnect) sur Android et iOS, mise à jour Firebase et Codemagic.
+
+Critères d'acceptation :
+- build Android et iOS avec le nouvel identifiant
+- notifications push toujours reçues","Medium","correction mobile","rh_mobile_app","2"
+"113","1","Task","Recette de non-régression de l'existant par module","À faire : dérouler le plan de test (skill sirh-testeur) sur chaque module livré (M00, M01, M02, M04, M05, M07, M09) avec les 5 rôles, sur web et mobile ; créer un ticket Bug par écart dans cet épic.
+
+Critères d'acceptation :
+- un rapport de recette par module dans docs/recette/
+- chaque anomalie a son ticket","Highest","qa correction","Recette","8"
+"114","1","Story","Aligner la durée de vie du JWT et ajouter le refresh token","Constat : app.jwt.access-ttl-seconds=3600 ; le cahier des charges demande 15 min + refresh 7 jours (dette § 23 du doc fonctionnel).
+
+À faire : ADR, endpoint de refresh, rotation, révocation à la déconnexion, prise en charge web et mobile.
+
+Critères d'acceptation :
+- un jeton d'accès expiré est renouvelé sans redemander le mot de passe pendant 7 jours
+- la déconnexion invalide le refresh token","High","securite backend web mobile architecte","svc-identite-acces","5"
+"115","2","Story","Migrations de schéma versionnées avec Flyway","Remplacer ddl-auto=update par Flyway dans chaque service ; script initial = schéma actuel.
+
+Critères d'acceptation :
+- chaque service démarre sur une base vide via Flyway
+- ddl-auto=validate en prod","High","backend architecte","Tous services","5"
+"116","2","Story","Pipeline CI : build, tests et analyse à chaque PR","GitHub Actions : mvn test (avec Testcontainers), build web (tsc + vite build), flutter analyze + flutter test. PR bloquée si rouge.
+
+Critères d'acceptation :
+- chaque PR affiche le statut des trois pipelines","High","devops qa","DevOps","5"
+"117","2","Story","Environnement complet en docker-compose (services + infra)","Un docker-compose qui lance PostgreSQL, Kafka, Redis, MinIO, Eureka, gateway et les services, avec données de démonstration.
+
+Critères d'acceptation :
+- docker compose up démarre la plateforme complète
+- README de démarrage à jour","Medium","devops architecte","DevOps","5"
+"118","2","Story","Journal d'audit immuable des décisions RH","Chaque décision (validation, refus, dérogation FIFO, changement de rôle, clôture de plainte) est tracée : qui, quand, quoi, motif. Conservation 5 ans.
+
+Critères d'acceptation :
+- consultable par RH/ADMIN
+- non modifiable par API","Medium","backend securite rh","svc-referentiel-rh","5"
+"119","2","Story","Stockage objet (MinIO/S3) pour pièces jointes et PDF","Service commun d'upload / téléchargement signé ; métadonnées dans le service métier ; antivirus et taille max.
+
+Critères d'acceptation :
+- une PJ de congé maladie est stockée et téléchargeable uniquement par les personnes autorisées","Medium","backend architecte","Tous services","5"
+"120","3","Story","Notion d'équipe sous le département dans l'organigramme","Le besoin cible les formations et les demandes 'par département et par équipe'. Vérifier que les types de nœud (Direction, Département, Équipe/Unité) sont normalisés et filtrables.
+
+Critères d'acceptation :
+- la RH crée une équipe rattachée à un département
+- un collaborateur appartient à une équipe et donc à son département","High","rh backend web","svc-referentiel-rh","3"
+"121","3","Story","Organigramme web en glisser-déposer pour affecter les collaborateurs","Demande client (docs/refacts.txt) : créer l'organigramme et affecter par glisser-déposer. La lib @hello-pangea/dnd est déjà présente.
+
+Critères d'acceptation :
+- la RH déplace un collaborateur vers une autre unité par glisser-déposer, avec confirmation
+- la Direction ne peut pas déplacer","Medium","web","rh-admin-web","5"
+"122","3","Story","Modification et réaffectation d'un collaborateur depuis la fiche","Demande client : affectation et modification du collaborateur dans le portail admin.
+
+Critères d'acceptation :
+- la RH modifie poste, unité, profil d'accès, famille métier, niveau
+- le changement de profil resynchronise les rôles JWT","Medium","web backend","rh-admin-web","3"
+"123","3","Story","Import en masse des collaborateurs (Excel/CSV)","Import initial des agents avec contrôle des doublons de matricule et rapport d'erreurs.
+
+Critères d'acceptation :
+- un fichier de 500 lignes est importé avec un rapport ligne par ligne","Medium","backend web rh","svc-referentiel-rh","5"
+"124","4","Task","Règles du solde de congés (sans paie) — spécification","Dette § 23 : définir comment le solde est alimenté (acquisition mensuelle, saisie RH, import), report, jours fériés tunisiens, types décomptés ou non.
+
+Livrable : règles + critères d'acceptation validés par le client.","Highest","rh","Spécification","3"
+"125","4","Story","Solde de congés : calcul, affichage mobile et blocage au-delà du solde","Demande client 'Affichage : Solde Congé'.
+
+Critères d'acceptation :
+- le collaborateur voit son solde sur l'accueil mobile
+- une demande dépassant le solde est refusée ou signalée selon la règle
+- la RH ajuste un solde avec motif tracé","High","backend mobile web","svc-referentiel-rh","8"
+"126","4","Story","Autorisation de sortie distincte du congé (max 4 h / demi-journée)","Cette fonctionnalité a été livrée puis annulée sur main (revert 87ef44d). Vérifier son état sur delivery et la finaliser.
+
+Critères d'acceptation :
+- une sortie de plus de 4 h est refusée
+- les sorties ne décomptent pas le solde de congés (règle à confirmer)","High","backend mobile rh","svc-referentiel-rh","3"
+"127","4","Story","Ordre de mission : frais estimés, pièces jointes, PDF signé","Cible CDC § 6.4.
+
+Critères d'acceptation :
+- l'ordre de mission validé produit un PDF archivé","Low","backend mobile","svc-referentiel-rh","5"
+"128","4","Story","Calendrier d'équipe des absences pour le manager","Le manager voit les absences validées et en attente de son équipe avant de valider.
+
+Critères d'acceptation :
+- vue mensuelle mobile pour le manager du nœud","Medium","mobile backend","rh_mobile_app","5"
+"129","5","Story","Génération automatique des attestations en PDF","Attestation de travail, de salaire (montant saisi RH, pas de calcul paie), etc. Modèles éditables par la RH.
+
+Critères d'acceptation :
+- le document est téléchargeable dans l'app mobile une fois prêt","Medium","backend web","svc-referentiel-rh","8"
+"130","5","Story","Suivi des SLA de la file documents avec alertes de retard","Critères d'acceptation :
+- une demande dépassant son SLA passe en rouge dans la file RH et notifie la RH","Medium","backend web","svc-referentiel-rh","3"
+"131","6","Story","Liste des collaborateurs demandés par leur supérieur dans le portail admin","Demande client (refacts.txt) : 'Formation : afficher la liste des collaborateurs demandés par leur supérieur'.
+
+Critères d'acceptation :
+- la RH voit, pour chaque demande de formation, les collaborateurs ciblés et le demandeur","High","web backend","rh-admin-web","3"
+"132","6","Story","Durée de formation exprimée en mois","Demande client (refacts.txt) : 'change durée by month'.
+
+Critères d'acceptation :
+- la durée se saisit et s'affiche en mois sur web et mobile","Medium","web mobile backend","svc-referentiel-rh","2"
+"133","6","Story","Catalogue de formations filtré par département et équipe","Un collaborateur voit et demande les formations proposées à son département / son équipe ; le chef de département cible son périmètre uniquement.
+
+Critères d'acceptation :
+- un chef de département qui cible une unité hors périmètre reçoit 403","High","backend mobile rh","svc-referentiel-rh","5"
+"134","6","Story","Plan annuel de formation et budget","Critères d'acceptation :
+- la RH consolide les demandes validées en plan annuel exportable","Medium","web backend rh","svc-referentiel-rh","5"
+"135","6","Story","Évaluations de formation à chaud et à froid","Dette § 23 : questionnaire envoyé à J+1 (chaud) et J+90 (froid) après la formation.
+
+Critères d'acceptation :
+- le participant reçoit le questionnaire sur mobile aux bonnes dates","Low","backend mobile","svc-referentiel-rh","5"
+"136","7","Story","Clôture automatique des plaintes à J+30","Dette § 23.
+
+Critères d'acceptation :
+- une plainte résolue sans réaction du plaignant est clôturée à J+30 et l'historique le trace","Medium","backend","svc-referentiel-rh","2"
+"137","7","Story","Plainte anonyme et confidentialité","Règle à valider par l'expert RH : possibilité de déposer anonymement ; seuls RH habilités voient l'identité.
+
+Critères d'acceptation :
+- l'identité n'apparaît ni dans les notifications ni dans les listes","Medium","rh backend mobile","svc-referentiel-rh","3"
+"138","7","Story","Transcription vocale des plaintes","Le champ existe, le moteur n'est pas branché.
+
+Critères d'acceptation :
+- un message vocal est transcrit et modifiable avant envoi","Low","backend mobile architecte","svc-referentiel-rh","8"
+"139","8","Story","Ouverture automatique des campagnes : semestrielle en juin, annuelle en décembre","Besoin client : l'évaluation apparaît chaque juin et chaque décembre dans l'app mobile de chacun.
+
+Critères d'acceptation :
+- le 1er juin, la campagne semestrielle de l'année passe ACTIVE (ou est créée depuis un modèle) et les évaluations sont générées pour tous les collaborateurs actifs
+- idem le 1er décembre pour l'annuelle
+- dates paramétrables par la RH
+- dépend du ticket de correction des collaborateurs codés en dur","Highest","backend rh evaluation","svc-evaluation","5"
+"140","8","Story","Formulaire d'évaluation : savoir-être, savoir-faire, objectifs","Sections standard du template général : savoir-être, savoir-faire, bilan des objectifs N, objectifs N+1, commentaires.
+
+Critères d'acceptation :
+- la RH publie un template avec ces sections
+- le collaborateur les remplit sur mobile, brouillon sauvegardé","High","rh web mobile evaluation","svc-evaluation","5"
+"141","8","Story","Compétences techniques notées en étoiles (1 à 5)","Débutant (1) → Expert (5), auto-évaluation puis notation du responsable.
+
+Critères d'acceptation :
+- chaque compétence affiche 5 étoiles sur mobile, libellé du niveau au toucher
+- la note du responsable apparaît à côté de l'auto-évaluation après validation","High","mobile evaluation","rh_mobile_app","3"
+"142","8","Story","Envoi au responsable hiérarchique et notation croisée","Après validation par le collaborateur, le manager ACTIF du nœud est notifié et note ; validation croisée jusqu'à VALIDEE.
+
+Critères d'acceptation :
+- le responsable reçoit une notification push
+- un autre manager reçoit 403
+- relance automatique à J+7 si non traitée","High","backend mobile evaluation","svc-evaluation","5"
+"143","8","Story","Suivi RH des campagnes : taux de complétion, retards, alertes couleur","Critères d'acceptation :
+- tableau par département : non commencées / en cours / validées
+- liste des rouges avec plan d'action obligatoire","Medium","web evaluation","rh-admin-web","5"
+"144","8","Story","Export PDF de l'évaluation et archivage","Critères d'acceptation :
+- le collaborateur et la RH téléchargent le PDF de l'évaluation validée","Low","backend evaluation","svc-evaluation","3"
+"145","9","Story","Recette complète du pointage QR + GPS sur Android et iOS","Le pointage QR + géofence est marqué livré. Vérifier sur vrais appareils.
+
+Critères d'acceptation :
+- QR expiré, GPS > 50 m, GPS coupé, hors ligne : messages clairs, aucun pointage VALIDE","High","qa mobile pointage","rh_mobile_app","3"
+"146","9","Story","Consentement biométrique RGPD avant la reconnaissance faciale","Pré-requis légal (C-M09-01b).
+
+Critères d'acceptation :
+- écran de consentement explicite, révocable dans le profil
+- sans consentement, pointage de repli défini par la RH","Highest","rh mobile backend securite pointage","svc-presence","3"
+"147","9","Task","ADR : reconnaissance faciale on-device","Choisir la bibliothèque (ML Kit retiré précédemment pour incompatibilité Dart 3.7, voir commit 57830bc), l'enrôlement, la détection du vivant, le stockage local du gabarit.
+
+Critères d'acceptation :
+- ADR validé dans docs/adr/","High","architecte pointage","Architecture","3"
+"148","9","Story","Enrôlement facial du collaborateur","Critères d'acceptation :
+- capture guidée, gabarit chiffré stocké uniquement sur l'appareil
+- ré-enrôlement possible par la RH","High","mobile pointage","rh_mobile_app","8"
+"149","9","Story","Pointage : vérification faciale après QR + GPS","Critères d'acceptation :
+- le serveur reçoit un score, jamais d'image
+- score sous le seuil = rejet
+- 3 échecs = alerte RO + blocage 15 min","High","mobile backend pointage","svc-presence","8"
+"150","9","Story","Pointage manuel par le RO et correction par la RH","Cas GPS indisponible ou téléphone en panne.
+
+Critères d'acceptation :
+- pointage MANUEL avec motif, tracé dans l'audit","Medium","backend mobile web pointage","svc-presence","5"
+"151","9","Story","Rapport de présence mensuel par équipe","Données exploitables par une future paie.
+
+Critères d'acceptation :
+- export CSV/Excel par département et période","Medium","web backend pointage","rh-admin-web","5"
+"152","10","Story","Backend des notes de service avec accusé de lecture","Remplacer le fil mobile factice.
+
+Critères d'acceptation :
+- la RH publie une note ciblée (tous / département / équipe)
+- le collaborateur confirme la lecture
+- la RH voit le taux de lecture","Medium","backend web mobile","svc-referentiel-rh","8"
+"153","10","Story","Centre de notifications mobile et préférences","Critères d'acceptation :
+- historique des notifications, marquer comme lu
+- push reçu application fermée sur Android et iOS","Medium","mobile","rh_mobile_app","3"
+"154","11","Story","Tableau de bord RRH","Files en cours, plaintes ouvertes, formations planifiées, absentéisme, délais moyens, alertes.
+
+Critères d'acceptation :
+- indicateurs filtrables par département","Medium","web backend","rh-admin-web","8"
+"155","11","Story","Tableau de bord Direction et rapport mensuel","Effectifs par département, présence, budget formation ; PDF mensuel à J+1.
+
+Critères d'acceptation :
+- accès lecture seule Direction","Low","web backend","rh-admin-web","8"
+"156","12","Story","Mettre en place les tests web (Vitest + Testing Library)","Aucun test sur rh-admin-web.
+
+Critères d'acceptation :
+- tests des pages critiques (login, ProtectedRoute, Direction en lecture seule)
+- lancés en CI","High","web qa","rh-admin-web","5"
+"157","12","Story","Tests de sécurité RBAC / anti-IDOR sur tous les contrôleurs","Un test par endpoint : bon rôle 200, mauvais rôle 403, ressource d'un autre collaborateur 403.
+
+Critères d'acceptation :
+- couverture de tous les contrôleurs de svc-referentiel-rh","High","backend qa securite","Tous services","8"
+"158","12","Story","Tests E2E des parcours principaux","Congé de bout en bout, évaluation de bout en bout, pointage. Playwright pour le web, integration_test pour Flutter.
+
+Critères d'acceptation :
+- les 3 parcours passent en CI","Medium","qa","Recette","8"

@@ -24,3 +24,16 @@ Rules : `.cursor/rules/` · Skills : `.cursor/skills/`
 4. Backend + front (web **ou** mobile) en même temps, **dossiers disjoints**.
 
 Prompt type : *« En tant que [rôle], … »* ou *« Lance PO + BA + UI/UX en parallèle sur M03 »*.
+
+## Skills Claude Code (`.claude/skills/`)
+
+| Rôle | Skill | Labels Jira traités |
+|---|---|---|
+| Expert RH / fonctionnel | `sirh-expert-rh` | `rh` |
+| Architecte applicatif | `sirh-architecte` | `architecte`, `securite`, `devops` |
+| Dev backend Java/Spring | `sirh-dev-backend` | `backend` |
+| Dev web React | `sirh-dev-web` | `web` |
+| Dev mobile Flutter | `sirh-dev-mobile` | `mobile` |
+| Testeur QA | `sirh-testeur` | `qa` |
+
+Backlog : [`docs/jira/README.md`](docs/jira/README.md) (import Jira : `docs/jira/backlog_sirh.csv`). L'épic E00 « Stabilisation » passe avant tout nouveau développement.
