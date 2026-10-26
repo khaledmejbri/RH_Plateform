@@ -1,5 +1,6 @@
 package com.hr.referentiel.web;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -35,6 +36,14 @@ public class ReferentielExceptionHandler {
 	@ExceptionHandler(IllegalStateException.class)
 	public ResponseEntity<Map<String, String>> illegalState(IllegalStateException ex) {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("erreur", ex.getMessage()));
+	}
+
+	/** SCRUM-8 — sans ce handler, l'erreur SQL partait vers /error (protégé) et revenait en 403 vide. */
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	public ResponseEntity<Map<String, String>> integrite(DataIntegrityViolationException ex) {
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+				"code", "VIOLATION_INTEGRITE",
+				"erreur", "La donnée ne respecte pas une contrainte de la base (valeur non autorisée ou doublon)."));
 	}
 
 	@ExceptionHandler(AccessDeniedException.class)

@@ -117,14 +117,8 @@ public class DemandeDocumentAdministratifRhService {
 				throw new IllegalArgumentException("Accès refusé.");
 			}
 		}
-		Integer rang = null;
-		int devant = 0;
-		if (d.getStatut() == StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
-			long avant = repository.countByStatutAndCreeLeBefore(
-					StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE, d.getCreeLe());
-			devant = (int) avant;
-			rang = devant + 1;
-		}
+		Integer rang = rangDansFile(d);
+		int devant = rang != null ? rang - 1 : 0;
 		boolean enRetard = d.getStatut() != StatutDocumentAdministratifDemandeRh.DISPONIBLE
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.REJETEE
 				&& Instant.now().isAfter(d.getDateEcheanceTraitement());
@@ -305,20 +299,30 @@ public class DemandeDocumentAdministratifRhService {
 
 	// ─── Response Mapping ────────────────────────────────────────────────────
 
-	private DemandeDocumentAdministratifRhResponse toResponse(DemandeDocumentAdministratifRh d) {
-		Integer rang = null;
-		boolean estProchaineFifo = false;
-
+	/**
+	 * Position dans la file unique (SCRUM-5) : la demande en traitement occupe la tête (rang 1),
+	 * les demandes en attente suivent par {@code cree_le}. Null une fois la demande clôturée.
+	 */
+	private Integer rangDansFile(DemandeDocumentAdministratifRh d) {
+		if (d.getStatut() == StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH) {
+			return 1;
+		}
 		if (d.getStatut() == StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
+			long enTraitement = repository.countByStatut(StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH);
 			long avant = repository.countByStatutAndCreeLeBefore(
 					StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE, d.getCreeLe());
-			rang = (int) avant + 1;
-			estProchaineFifo = (rang == 1);
-		} else if (d.getStatut() == StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH) {
-			// Une demande en traitement a déjà passé le contrôle FIFO, elle ne doit pas déclencher d'alerte
-			estProchaineFifo = true;
-			rang = 1;
+			return (int) (enTraitement + avant) + 1;
 		}
+		return null;
+	}
+
+	private DemandeDocumentAdministratifRhResponse toResponse(DemandeDocumentAdministratifRh d) {
+		Integer rang = rangDansFile(d);
+		// « Prochaine » = la plus ancienne encore en attente, la seule que prendre-prochaine sélectionnera.
+		// Une demande déjà en traitement n'est pas « prochaine » ; la dérogation FIFO ne la concerne pas (D-F04).
+		boolean estProchaineFifo = d.getStatut() == StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE
+				&& repository.countByStatutAndCreeLeBefore(
+						StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE, d.getCreeLe()) == 0;
 
 		boolean enRetard = d.getStatut() != StatutDocumentAdministratifDemandeRh.DISPONIBLE
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.REJETEE

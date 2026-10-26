@@ -333,6 +333,36 @@ class DemandeDocumentAdministratifRhServiceFifoTest {
 		}
 	}
 
+	// ─── Rang affiché dans la file (SCRUM-5) ─────────────────────────────────
+
+	@Nested
+	@DisplayName("Rang dans la file")
+	class RangDansFileTests {
+
+		@Test
+		@DisplayName("✅ Demande en traitement = rang 1 « en cours », première en attente = rang 2 seule « suivante »")
+		void rangsContinusAvecDemandeEnTraitement() {
+			DemandeDocumentAdministratifRh enTraitement = creerDemande(demandeA.getCreeLe().minus(1, ChronoUnit.HOURS));
+			enTraitement.setStatut(StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH);
+			when(repository.findByStatutInOrderByCreeLeAsc(any()))
+					.thenReturn(java.util.List.of(enTraitement, demandeA, demandeB));
+			when(repository.countByStatut(StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH)).thenReturn(1L);
+			when(repository.countByStatutAndCreeLeBefore(
+					StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE, demandeA.getCreeLe())).thenReturn(0L);
+			when(repository.countByStatutAndCreeLeBefore(
+					StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE, demandeB.getCreeLe())).thenReturn(1L);
+
+			var file = service.fileAttentePourRh();
+
+			assertEquals(1, file.get(0).getRangDansFile());
+			assertFalse(file.get(0).isEstProchaineFifo());
+			assertEquals(2, file.get(1).getRangDansFile());
+			assertTrue(file.get(1).isEstProchaineFifo());
+			assertEquals(3, file.get(2).getRangDansFile());
+			assertFalse(file.get(2).isEstProchaineFifo());
+		}
+	}
+
 	// ─── Edge Cases ──────────────────────────────────────────────────────────
 
 	@Nested

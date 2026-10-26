@@ -37,9 +37,41 @@ export function patchPlainteStatut(id: string, body: { statut: string; commentai
   }).then((r) => handleRhResponse<PlainteRh>(r));
 }
 
-export function getDemandesAdministrativesListe() {
-  return apiFetch('/api/rh/v1/demandes-administratives/liste').then((r) =>
+export function getDemandesAdministrativesListe(filtres: { statut?: string; type_demande?: string } = {}) {
+  const q = new URLSearchParams();
+  if (filtres.statut) q.set('statut', filtres.statut);
+  if (filtres.type_demande) q.set('type_demande', filtres.type_demande);
+  const query = q.toString();
+  return apiFetch(`/api/rh/v1/demandes-administratives/liste${query ? '?' + query : ''}`).then((r) =>
     handleRhResponse<DemandeAdministrative[]>(r),
+  );
+}
+
+/** Approbation finale RRH (M01 § 6.1) — demande en EN_VALIDATION_RRH. */
+export function postDemandeAdministrativeValiderRrh(id: string) {
+  return apiFetch(`/api/rh/v1/demandes-administratives/${id}/valider-rrh`, {
+    method: 'POST',
+  }).then((r) => handleRhResponse<DemandeAdministrative>(r));
+}
+
+/** Refus RRH, motif obligatoire (C-M01-03). */
+export function postDemandeAdministrativeRefuserRrh(id: string, motif_refus: string) {
+  return apiFetch(`/api/rh/v1/demandes-administratives/${id}/refuser-rrh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ motif_refus }),
+  }).then((r) => handleRhResponse<DemandeAdministrative>(r));
+}
+
+export function getDemandeAdministrativeSuivi(id: string) {
+  return apiFetch(`/api/rh/v1/demandes-administratives/${id}/suivi`).then((r) =>
+    handleRhResponse<DemandeAdministrativeSuivi>(r),
+  );
+}
+
+export function getDemandeAdministrativeHistorique(id: string) {
+  return apiFetch(`/api/rh/v1/demandes-administratives/${id}/historique`).then((r) =>
+    handleRhResponse<DemandeAdministrativeHistorique[]>(r),
   );
 }
 
@@ -189,6 +221,25 @@ export type DemandeAdministrative = {
   motif_refus?: string;
   contenu?: Record<string, unknown>;
   cree_le: string;
+};
+
+export type DemandeAdministrativeSuivi = {
+  identifiant: string;
+  statut: string;
+  etape_superieur_requise: boolean;
+  valideur_attendu_nom_complet?: string;
+  valideur_attendu_matricule?: string;
+  message_explication?: string;
+  etapes: Array<{ code: string; libelle: string; terminee: boolean; en_cours: boolean }>;
+};
+
+export type DemandeAdministrativeHistorique = {
+  identifiant: string;
+  action: string;
+  acteur_identifiant?: string;
+  acteur_nom?: string;
+  commentaire?: string;
+  date_action: string;
 };
 
 export type DemandeFormation = {

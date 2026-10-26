@@ -15,12 +15,14 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -423,7 +425,9 @@ public class EvaluationAdminController {
 
     // ========== EVALUATION MONITORING ==========
 
+    /** Transaction lecture : campaign est LAZY et open-in-view=false (SCRUM-10, LazyInitializationException). */
     @GetMapping
+    @Transactional(readOnly = true)
     public ResponseEntity<List<Map<String, Object>>> listAllEvaluations(
             @RequestParam(required = false) UUID campagneId,
             @RequestParam(required = false) Boolean profilIncomplet) {
@@ -444,7 +448,7 @@ public class EvaluationAdminController {
             evalMap.put("identifiant", evaluation.getId().toString());
             evalMap.put("campaignNom", evaluation.getCampaign().getNom());
             evalMap.put("collaborateurIdentifiant", evaluation.getCollaborateurIdentifiant().toString());
-            evalMap.put("superieurIdentifiant", evaluation.getSuperieurIdentifiant().toString());
+            evalMap.put("superieurIdentifiant", Objects.toString(evaluation.getSuperieurIdentifiant(), null));
             evalMap.put("statut", evaluation.getStatut().name());
             evalMap.put("etapeActuelle", evaluation.getEtapeActuelle().name());
             evalMap.put("scoreSur20", evaluation.getScoreSur20());

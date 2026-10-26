@@ -55,9 +55,12 @@ public class Evaluation {
     @Column(name = "role_metier", length = 120)
     private String roleMetier;
 
-    /** true si fiche sans famille_metier à la création (GENERIC seul). */
+    /**
+     * true si fiche sans famille_metier à la création (GENERIC seul).
+     * Wrapper : les évaluations antérieures à la colonne ont NULL en base (SCRUM-10) — lu comme false.
+     */
     @Column(name = "profil_metier_incomplet", nullable = true)
-    private boolean profilMetierIncomplet = false;
+    private Boolean profilMetierIncomplet = false;
 
     /** Template technique résolu selon le grade (prioritaire sur celui de la campagne). */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -124,7 +127,7 @@ public class Evaluation {
     public String getRoleMetier() { return roleMetier; }
     public void setRoleMetier(String roleMetier) { this.roleMetier = roleMetier; }
 
-    public boolean isProfilMetierIncomplet() { return profilMetierIncomplet; }
+    public boolean isProfilMetierIncomplet() { return Boolean.TRUE.equals(profilMetierIncomplet); }
     public void setProfilMetierIncomplet(boolean profilMetierIncomplet) {
         this.profilMetierIncomplet = profilMetierIncomplet;
     }

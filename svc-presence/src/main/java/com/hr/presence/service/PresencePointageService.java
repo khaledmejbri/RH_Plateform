@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -166,10 +167,11 @@ public class PresencePointageService {
 
 	@Transactional(readOnly = true)
 	public PageResponse<PointageResponse> listerAdmin(
-			UUID siteId, PointageStatut statut, Instant from, Instant to, int page, int size) {
+			UUID siteId, PointageStatut statut, PointageType type, Instant from, Instant to, int page, int size) {
 		int pageSize = Math.clamp(size, 1, 50);
-		Page<PresencePointage> result = pointageRepository.searchAdmin(
-				siteId, statut, from, to, PageRequest.of(Math.max(page, 0), pageSize));
+		Page<PresencePointage> result = pointageRepository.findAll(
+				PresencePointageRepository.filtreAdmin(siteId, statut, type, from, to),
+				PageRequest.of(Math.max(page, 0), pageSize, Sort.by(Sort.Direction.DESC, "serverTs")));
 		return toPage(result);
 	}
 

@@ -147,7 +147,7 @@ export default function DocumentsAdministratifsPage() {
       <div className="callout" id="docs-pending-hint">
         <p className="callout__title"><Icon name="info" size={14} /> Ordre FIFO actif</p>
         <p className="muted">
-          Les demandes sont traitées dans l’ordre d’arrivée : la demande de rang 1 est prioritaire.
+          Les demandes sont traitées dans l’ordre d’arrivée : la demande marquée « Suivante » est la prochaine à prendre.
           {hasPendingTraitement ? ' Terminez la demande en cours avant d’en prendre une nouvelle.' : ''}
         </p>
       </div>
@@ -166,6 +166,7 @@ export default function DocumentsAdministratifsPage() {
               <thead>
                 <tr>
                   <th scope="col">Rang</th>
+                  <th scope="col">Demandée le</th>
                   <th scope="col">Type de document</th>
                   <th scope="col">Statut</th>
                   <th scope="col">SLA</th>
@@ -176,18 +177,21 @@ export default function DocumentsAdministratifsPage() {
               <tbody>
                 {rows.map((d) => {
                   const isNext = d.est_prochaine_fifo === true;
+                  const enCours = d.statut === 'EN_TRAITEMENT_RH';
                   return (
                     <tr key={d.identifiant} className={isNext ? 'row--next' : undefined}>
                       <td data-label="Rang">
                         {d.rang_dans_file != null ? (
                           <span className="rank">
                             <span className={`rank__num${isNext ? ' rank__num--next' : ''}`}>{d.rang_dans_file}</span>
+                            {enCours ? <span className="status status--info">En cours</span> : null}
                             {isNext ? <span className="status status--success">Suivante</span> : null}
                           </span>
                         ) : (
                           <span className="cell-meta">—</span>
                         )}
                       </td>
+                      <td data-label="Demandée le" className="cell-meta">{formatDateTime(d.cree_le)}</td>
                       <td data-label="Type"><Chip tone="info" icon="file">{d.type_document}</Chip></td>
                       <td data-label="Statut"><StatusBadge statut={d.statut} label={docStatusLabel(d.statut)} /></td>
                       <td data-label="SLA" className="cell-meta">{d.delai_sla_heures} h</td>

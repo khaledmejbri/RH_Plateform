@@ -22,6 +22,8 @@ public interface DemandeDocumentAdministratifRhRepository extends JpaRepository<
 
 	long countByStatutAndCreeLeBefore(StatutDocumentAdministratifDemandeRh statut, java.time.Instant avant);
 
+	long countByStatut(StatutDocumentAdministratifDemandeRh statut);
+
 	boolean existsByStatut(StatutDocumentAdministratifDemandeRh statut);
 
 	/** Trouve la plus ancienne demande en attente (FIFO). */
