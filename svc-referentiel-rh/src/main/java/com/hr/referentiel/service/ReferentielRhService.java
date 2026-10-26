@@ -140,7 +140,9 @@ public class ReferentielRhService {
 				p.getNumber(), p.getSize());
 	}
 
-	@Cacheable(value = CacheConfig.CACHE_COLLABORATEUR_ID, key = "#id", unless = "#result.isEmpty()")
+	// Spring Cache déballe l'Optional : #result est le CollaborateurResponse (ou null si absent),
+	// donc « #result.isEmpty() » levait une SpelEvaluationException (403 vide) dès que la fiche existait.
+	@Cacheable(value = CacheConfig.CACHE_COLLABORATEUR_ID, key = "#id", unless = "#result == null")
 	@Transactional(readOnly = true)
 	public Optional<CollaborateurResponse> obtenirCollaborateur(UUID id) {
 		return collaborateurRepository.findDetailById(id).map(this::toCollaborateurResponse);
@@ -151,7 +153,7 @@ public class ReferentielRhService {
 		return toCollaborateurResponse(collaborateurConnecteService.exigerCollaborateur(jwt));
 	}
 
-	@Cacheable(value = CacheConfig.CACHE_COLLABORATEUR_MATRICULE, key = "#matricule.toLowerCase()", unless = "#result.isEmpty()")
+	@Cacheable(value = CacheConfig.CACHE_COLLABORATEUR_MATRICULE, key = "#matricule.toLowerCase()", unless = "#result == null")
 	@Transactional(readOnly = true)
 	public Optional<CollaborateurResponse> obtenirCollaborateurParMatricule(String matricule) {
 		return collaborateurRepository.findDetailByMatricule(matricule.trim())
