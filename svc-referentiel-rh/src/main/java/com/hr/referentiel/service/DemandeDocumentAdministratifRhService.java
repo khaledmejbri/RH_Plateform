@@ -328,7 +328,7 @@ public class DemandeDocumentAdministratifRhService {
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.REJETEE
 				&& Instant.now().isAfter(d.getDateEcheanceTraitement());
 
-		return new DemandeDocumentAdministratifRhResponse(
+		DemandeDocumentAdministratifRhResponse r = new DemandeDocumentAdministratifRhResponse(
 				d.getId(),
 				d.getDemandeur().getId(),
 				d.getTypeDocument(),
@@ -346,5 +346,10 @@ public class DemandeDocumentAdministratifRhService {
 				estProchaineFifo,
 				d.getJustificationDerogationFifo(),
 				d.getDerogationFifoPar());
+		Collaborateur demandeur = d.getDemandeur();
+		r.setDemandeurNom((demandeur.getPrenom() + " " + demandeur.getNom()).trim());
+		r.setDemandeurMatricule(demandeur.getMatricule());
+		r.setDemandeurUnite(demandeur.getUnite() != null ? demandeur.getUnite().getLibelle() : null);
+		return r;
 	}
 }

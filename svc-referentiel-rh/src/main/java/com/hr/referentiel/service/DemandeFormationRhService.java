@@ -21,6 +21,7 @@ import com.hr.referentiel.repository.CollaborateurRepository;
 import com.hr.referentiel.repository.DemandeFormationRhRepository;
 import com.hr.referentiel.repository.FormationWorkflowHistoryRepository;
 import com.hr.referentiel.repository.UniteOrganisationRepository;
+import com.hr.referentiel.web.ReferentielMetierException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -124,8 +125,12 @@ public class DemandeFormationRhService {
 	@Transactional(readOnly = true)
 	public List<UniteResponse> unitesCibles(Jwt jwt) {
 		Collaborateur demandeur = exigerCollaborateurDetail(jwt);
+		if (estResponsableOperationnel(demandeur) && demandeur.getUnite() != null) {
+			// SCRUM-14 : le RO ne peut cibler que sa propre unité.
+			return List.of(toUniteResponse(demandeur.getUnite()));
+		}
 		if (!estChefDepartement(demandeur)) {
-			throw new IllegalArgumentException("Seul un chef de departement peut cibler une unite.");
+			throw new IllegalArgumentException("Seul un chef de departement ou un responsable operationnel peut cibler une unite.");
 		}
 		UUID uniteChefId = demandeur.getUnite().getId();
 		return uniteRepository.findByActifTrueOrderByCodeAsc().stream()
@@ -303,8 +308,25 @@ public class DemandeFormationRhService {
 
 		if (estResponsableOperationnel(demandeur)) {
 			Set<UUID> ids = req.getCollaborateursCiblesIdentifiants();
-			if (ids == null || ids.isEmpty()) {
-				throw new IllegalArgumentException("Au moins un collaborateur cible est obligatoire pour un RO.");
+			boolean cibleNominative = ids != null && !ids.isEmpty();
+			if (req.getUniteCibleIdentifiant() != null && cibleNominative) {
+				throw new IllegalArgumentException("Choisissez une seule cible : l'unite ou une liste de collaborateurs.");
+			}
+			// § 10.1 / § 20 (RO) : un RO demande une formation « pour son unité / ses collaborateurs » (SCRUM-14).
+			if (req.getUniteCibleIdentifiant() != null) {
+				UniteOrganisation uniteRo = demandeur.getUnite();
+				if (uniteRo == null || !uniteRo.getId().equals(req.getUniteCibleIdentifiant())) {
+					throw new ReferentielMetierException("UNITE_CIBLE_HORS_PERIMETRE",
+							"Un responsable operationnel ne peut cibler que sa propre unite.", 403);
+				}
+				demande.setOrigine(OrigineDemandeFormationRh.RESPONSABLE_OPERATIONNEL);
+				demande.setCible(CibleDemandeFormationRh.UNITE);
+				demande.setUniteCible(uniteRo);
+				demande.setCollaborateursCibles(new LinkedHashSet<>());
+				return;
+			}
+			if (!cibleNominative) {
+				throw new IllegalArgumentException("Choisissez une cible : votre unite ou au moins un collaborateur.");
 			}
 			List<Collaborateur> collaborateurs = collaborateurRepository.findAllById(ids);
 			if (collaborateurs.size() != ids.size()) {

@@ -66,11 +66,6 @@ function findPathIds(racines: OrganigrammeNoeud[], targetId: string): string[] {
   return path;
 }
 
-function depthOf(racines: OrganigrammeNoeud[], id: string): number {
-  const path = findPathIds(racines, id);
-  return path.length > 0 ? path.length - 1 : 0;
-}
-
 function matchesSearch(n: OrganigrammeNoeud, q: string): boolean {
   if (!q) return true;
   const hay = [
@@ -178,35 +173,18 @@ function OrgNodeCard({
   noeud,
   selected,
   highlighted,
-  draggingId,
-  dropTargetId,
-  invalidDrop,
   lectureSeule,
   onSelect,
   onAddChild,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDrop,
 }: {
   noeud: OrganigrammeNoeud;
   selected: boolean;
   highlighted: boolean;
-  draggingId: string | null;
-  dropTargetId: string | null;
-  invalidDrop: boolean;
   lectureSeule: boolean;
   onSelect: () => void;
   onAddChild: () => void;
-  onDragStart: (id: string) => void;
-  onDragEnd: () => void;
-  onDragOver: (id: string) => void;
-  onDrop: (targetId: string) => void;
 }) {
   const mgr = noeud.manager;
-  const isDragging = draggingId === noeud.identifiant;
-  const isDropTarget =
-    dropTargetId === noeud.identifiant && draggingId !== noeud.identifiant && !invalidDrop;
   const emptyMgr = sansResponsable(noeud);
 
   return (
@@ -216,45 +194,12 @@ function OrgNodeCard({
         selected ? 'org-node--selected' : '',
         !noeud.actif ? 'org-node--inactive' : '',
         emptyMgr ? 'org-node--no-manager' : '',
-        isDragging ? 'org-node--dragging' : '',
-        isDropTarget ? 'org-node--drop-target' : '',
-        invalidDrop && draggingId ? 'org-node--drop-invalid' : '',
         highlighted ? 'org-node--highlight' : '',
         lectureSeule ? 'org-node--readonly' : '',
       ]
         .filter(Boolean)
         .join(' ')}
-      onDragOver={(e) => {
-        if (lectureSeule || !draggingId || draggingId === noeud.identifiant || invalidDrop) return;
-        e.preventDefault();
-        e.stopPropagation();
-        e.dataTransfer.dropEffect = 'move';
-        onDragOver(noeud.identifiant);
-      }}
-      onDrop={(e) => {
-        if (lectureSeule || invalidDrop) return;
-        e.preventDefault();
-        e.stopPropagation();
-        onDrop(noeud.identifiant);
-      }}
     >
-      {!lectureSeule ? (
-        <div
-          className="org-node__handle"
-          draggable
-          title="Glisser pour rattacher"
-          aria-label={`Déplacer ${noeud.libelle}`}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            e.dataTransfer.setData('text/plain', noeud.identifiant);
-            e.dataTransfer.effectAllowed = 'move';
-            onDragStart(noeud.identifiant);
-          }}
-          onDragEnd={onDragEnd}
-        >
-          ⋮⋮
-        </div>
-      ) : null}
       <button type="button" className="org-node__body" onClick={onSelect}>
         <div className="org-node__meta">
           <span className="org-node__type">{noeud.type_noeud || 'Service'}</span>
@@ -306,17 +251,10 @@ function OrgTreeBranch({
   expandedIds,
   highlightIds,
   searchQuery,
-  draggingId,
-  dropTargetId,
-  invalidDropIds,
   lectureSeule,
   onToggle,
   onSelect,
   onAddChild,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDrop,
 }: {
   noeuds: OrganigrammeNoeud[];
   depth: number;
@@ -324,17 +262,10 @@ function OrgTreeBranch({
   expandedIds: Set<string>;
   highlightIds: Set<string>;
   searchQuery: string;
-  draggingId: string | null;
-  dropTargetId: string | null;
-  invalidDropIds: Set<string>;
   lectureSeule: boolean;
   onToggle: (id: string) => void;
   onSelect: (n: OrganigrammeNoeud) => void;
   onAddChild: (parent: OrganigrammeNoeud | null) => void;
-  onDragStart: (id: string) => void;
-  onDragEnd: () => void;
-  onDragOver: (id: string) => void;
-  onDrop: (targetId: string) => void;
 }) {
   const q = searchQuery.trim().toLowerCase();
 
@@ -367,16 +298,9 @@ function OrgTreeBranch({
                 noeud={n}
                 selected={selectedId === n.identifiant}
                 highlighted={selfMatch}
-                draggingId={draggingId}
-                dropTargetId={dropTargetId}
-                invalidDrop={invalidDropIds.has(n.identifiant)}
                 lectureSeule={lectureSeule}
                 onSelect={() => onSelect(n)}
                 onAddChild={() => onAddChild(n)}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-                onDragOver={onDragOver}
-                onDrop={onDrop}
               />
             </div>
             {hasChildren && expanded ? (
@@ -387,17 +311,10 @@ function OrgTreeBranch({
                 expandedIds={expandedIds}
                 highlightIds={highlightIds}
                 searchQuery={searchQuery}
-                draggingId={draggingId}
-                dropTargetId={dropTargetId}
-                invalidDropIds={invalidDropIds}
                 lectureSeule={lectureSeule}
                 onToggle={onToggle}
                 onSelect={onSelect}
                 onAddChild={onAddChild}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-                onDragOver={onDragOver}
-                onDrop={onDrop}
               />
             ) : null}
           </li>
@@ -489,8 +406,6 @@ export default function OrganigrammePage() {
   const [parentPourCreation, setParentPourCreation] = useState<OrganigrammeNoeud | null>(null);
   const [collaborateurs, setCollaborateurs] = useState<CollaborateurRow[]>([]);
   const [saving, setSaving] = useState(false);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   const [search, setSearch] = useState('');
   const [inclureInactifs, setInclureInactifs] = useState(false);
@@ -516,13 +431,6 @@ export default function OrganigrammePage() {
     () => collectSearchMatchIds(racines, searchQ),
     [racines, searchQ],
   );
-
-  const invalidDropIds = useMemo(() => {
-    if (!draggingId) return new Set<string>();
-    const dragged = findNoeud(racines, draggingId);
-    if (!dragged) return new Set<string>();
-    return collectDescendantIds(dragged);
-  }, [draggingId, racines]);
 
   const showSuccess = useCallback((msg: string) => {
     setSuccess(msg);
@@ -591,74 +499,47 @@ export default function OrganigrammePage() {
     });
   }, [searchQ, highlightIds]);
 
-  async function moveNoeud(draggedId: string, newParentId: string | null, confirmDepth = true) {
-    const dragged = findNoeud(racines, draggedId);
-    if (!dragged) return;
+  /**
+   * § 5.3 : rattachement uniquement par action explicite (« Rattacher… »), jamais par glisser-déposer,
+   * toujours confirmé avec le récapitulatif ancien → nouveau parent (SCRUM-6).
+   */
+  async function rattacherNoeud(noeudId: string, newParentId: string | null) {
+    const noeud = findNoeud(racines, noeudId);
+    if (!noeud) return;
 
-    const currentParent = dragged.parent_identifiant ?? null;
-    if (currentParent === newParentId) return;
+    const currentParentId = noeud.parent_identifiant ?? null;
+    if (currentParentId === newParentId) return;
 
-    if (newParentId) {
-      const target = findNoeud(racines, newParentId);
-      if (!target) return;
-      if (collectDescendantIds(dragged).has(newParentId)) {
-        setErr('Impossible : un service ne peut pas être placé sous l’un de ses rattachements.');
-        return;
-      }
-      if (confirmDepth) {
-        const from = depthOf(racines, draggedId);
-        const to = depthOf(racines, newParentId) + 1;
-        if (Math.abs(to - from) >= 2) {
-          const ok = await confirm({
-            title: 'Déplacer le service',
-            message: `« ${dragged.libelle} » sera placé sous « ${target.libelle} ». Continuer ?`,
-            confirmLabel: 'Déplacer',
-          });
-          if (!ok) return;
-        }
-      }
+    const target = newParentId ? findNoeud(racines, newParentId) : null;
+    if (newParentId && !target) return;
+    if (newParentId && collectDescendantIds(noeud).has(newParentId)) {
+      setErr('Impossible : un service ne peut pas être placé sous l’un de ses rattachements.');
+      return;
     }
+    const ancien = currentParentId ? findNoeud(racines, currentParentId)?.libelle ?? '—' : 'Racine';
+    const nouveau = target ? target.libelle : 'Racine';
+    const ok = await confirm({
+      title: 'Rattacher le service',
+      message: `« ${noeud.libelle} » : ${ancien} → ${nouveau}. Les membres et le responsable du service ne changent pas. Continuer ?`,
+      confirmLabel: 'Rattacher',
+    });
+    if (!ok) return;
 
     setMoving(true);
     setErr(null);
     try {
       if (newParentId === null) {
-        await putOrganigrammeNoeud(draggedId, { detacher_du_parent: true });
+        await putOrganigrammeNoeud(noeudId, { detacher_du_parent: true });
       } else {
-        await putOrganigrammeNoeud(draggedId, { parent_identifiant: newParentId });
+        await putOrganigrammeNoeud(noeudId, { parent_identifiant: newParentId });
       }
       showSuccess('Service rattaché.');
-      await reload(selected?.identifiant ?? draggedId, { silent: true });
+      await reload(selected?.identifiant ?? noeudId, { silent: true });
     } catch (e) {
       setErr(writeForbiddenMessage(e));
     } finally {
       setMoving(false);
     }
-  }
-
-  function handleDragStart(id: string) {
-    setDraggingId(id);
-    setDropTargetId(null);
-    setErr(null);
-  }
-
-  function handleDragEnd() {
-    setDraggingId(null);
-    setDropTargetId(null);
-  }
-
-  function handleDragOver(id: string) {
-    if (draggingId && id !== draggingId && !invalidDropIds.has(id)) {
-      setDropTargetId(id);
-    }
-  }
-
-  function handleDrop(targetId: string) {
-    const dragged = draggingId;
-    setDraggingId(null);
-    setDropTargetId(null);
-    if (!dragged || targetId === dragged || invalidDropIds.has(targetId)) return;
-    void moveNoeud(dragged, targetId);
   }
 
   function expandAll() {
@@ -777,7 +658,7 @@ export default function OrganigrammePage() {
       return;
     }
     setModal(null);
-    await moveNoeud(selected.identifiant, newParent, true);
+    await rattacherNoeud(selected.identifiant, newParent);
   }
 
   async function handleAssignManager() {
@@ -897,8 +778,9 @@ export default function OrganigrammePage() {
           </button>
           {aideOpen ? (
             <p className="org-aide-banner__body">
-              Pour rattacher un service : ouvrez le détail puis « Rattacher… », ou utilisez la poignée
-              pour glisser-déposer.
+              Sélectionnez un service pour ouvrir son détail, puis utilisez « Rattacher… » (parents valides ou
+              « Racine »), « Assigner le responsable » ou « Ajouter un service enfant ». Le profil d’accès se
+              modifie sur la fiche collaborateur.
             </p>
           ) : null}
         </div>
@@ -944,7 +826,7 @@ export default function OrganigrammePage() {
         ) : null}
         {moving ? (
           <div className="alert alert--info" style={{ marginBottom: '1rem' }}>
-            Déplacement en cours…
+            Rattachement en cours…
           </div>
         ) : null}
       </div>
@@ -989,17 +871,10 @@ export default function OrganigrammePage() {
               expandedIds={expandedIds}
               highlightIds={highlightIds}
               searchQuery={search}
-              draggingId={draggingId}
-              dropTargetId={dropTargetId}
-              invalidDropIds={invalidDropIds}
               lectureSeule={lectureSeule}
               onToggle={toggleExpand}
               onSelect={setSelected}
               onAddChild={openCreer}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
             />
           )}
         </div>

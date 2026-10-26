@@ -39,6 +39,8 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
 
   String? _uniteId;
   final Set<String> _collaborateurIds = {};
+  /// RO : cibler toute son unité plutôt qu'une liste nominative (§ 10.1, SCRUM-14).
+  bool _roCibleUnite = false;
   bool _loading = false;
 
   @override
@@ -54,11 +56,12 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
 
   Future<void> _submit(bool isChef, bool isRo) async {
     if (!_formKey.currentState!.validate()) return;
-    if (isChef && _uniteId == null) {
+    final cibleUnite = isChef || (isRo && _roCibleUnite);
+    if (cibleUnite && _uniteId == null) {
       _snack('Choisissez une unite cible');
       return;
     }
-    if (isRo && _collaborateurIds.isEmpty) {
+    if (isRo && !_roCibleUnite && _collaborateurIds.isEmpty) {
       _snack('Choisissez au moins un collaborateur');
       return;
     }
@@ -76,9 +79,9 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
             ),
             objectifsPedagogiques: _objectifsController.text.trim(),
             justification: _justificationController.text.trim(),
-            uniteCibleIdentifiant: isChef ? _uniteId : null,
+            uniteCibleIdentifiant: cibleUnite ? _uniteId : null,
             collaborateursCiblesIdentifiants:
-                isRo ? _collaborateurIds.toList() : null,
+                isRo && !_roCibleUnite ? _collaborateurIds.toList() : null,
           );
       ref.invalidate(formationsListProvider);
       if (mounted) {
@@ -260,6 +263,18 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
                             onChanged: (v) => setState(() => _uniteId = v),
                           ),
                         if (isRo)
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Cibler toute mon unite'),
+                            value: _roCibleUnite,
+                            onChanged: (v) => setState(() => _roCibleUnite = v),
+                          ),
+                        if (isRo && _roCibleUnite)
+                          _UnitePicker(
+                            value: _uniteId,
+                            onChanged: (v) => setState(() => _uniteId = v),
+                          ),
+                        if (isRo && !_roCibleUnite)
                           _CollaborateursPicker(
                             selected: _collaborateurIds,
                             onChanged: (id, selected) {

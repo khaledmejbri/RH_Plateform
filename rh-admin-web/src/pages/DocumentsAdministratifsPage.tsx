@@ -167,6 +167,7 @@ export default function DocumentsAdministratifsPage() {
                 <tr>
                   <th scope="col">Rang</th>
                   <th scope="col">Demandée le</th>
+                  <th scope="col">Demandeur</th>
                   <th scope="col">Type de document</th>
                   <th scope="col">Statut</th>
                   <th scope="col">SLA</th>
@@ -192,7 +193,11 @@ export default function DocumentsAdministratifsPage() {
                         )}
                       </td>
                       <td data-label="Demandée le" className="cell-meta">{formatDateTime(d.cree_le)}</td>
-                      <td data-label="Type"><Chip tone="info" icon="file">{d.type_document}</Chip></td>
+                      <td data-label="Demandeur">
+                        <div>{d.demandeur_nom ?? '—'}</div>
+                        {d.demandeur_matricule ? <div className="cell-meta">{d.demandeur_matricule}</div> : null}
+                      </td>
+                      <td data-label="Type"><Chip tone="info" icon="file">{libelleTypeDocument(d.type_document)}</Chip></td>
                       <td data-label="Statut"><StatusBadge statut={d.statut} label={docStatusLabel(d.statut)} /></td>
                       <td data-label="SLA" className="cell-meta">{d.delai_sla_heures} h</td>
                       <td data-label="Retard">
@@ -254,9 +259,15 @@ export default function DocumentsAdministratifsPage() {
               )}
 
               <dl className="detail-grid">
-                <div><dt>Type de document</dt><dd><Chip tone="info" icon="file">{pickedDemande.type_document}</Chip></dd></div>
+                <div><dt>Type de document</dt><dd><Chip tone="info" icon="file">{libelleTypeDocument(pickedDemande.type_document)}</Chip></dd></div>
                 <div><dt>Statut</dt><dd><StatusBadge statut={pickedDemande.statut} label={docStatusLabel(pickedDemande.statut)} /></dd></div>
-                <div><dt>Demandeur</dt><dd><code className="cell-code">{pickedDemande.demandeur_identifiant}</code></dd></div>
+                <div>
+                  <dt>Demandeur</dt>
+                  <dd>
+                    {pickedDemande.demandeur_nom ?? '—'}
+                    {pickedDemande.demandeur_matricule ? <span className="cell-meta"> · {pickedDemande.demandeur_matricule}</span> : null}
+                  </dd>
+                </div>
                 <div><dt>Département</dt><dd>{pickedDemande.departement_libelle ?? 'Non renseigné'}</dd></div>
                 <div><dt>Date de la demande</dt><dd>{formatDateTime(pickedDemande.cree_le)}</dd></div>
                 <div>
@@ -354,6 +365,21 @@ export default function DocumentsAdministratifsPage() {
       )}
     </div>
   );
+}
+
+/** Libellés métier § 7.1 (SCRUM-15) — le code brut reste affiché pour un type inconnu. */
+const LIBELLES_TYPE_DOCUMENT: Record<string, string> = {
+  ATTESTATION_TRAVAIL: 'Attestation de travail',
+  ATTESTATION_SALAIRE: 'Attestation de salaire',
+  BULLETIN_PAIE: 'Bulletin de paie',
+  ATTESTATION_CNSS: 'Attestation CNSS',
+  FEUILLE_POINTAGE_MENSUELLE: 'Feuille de pointage mensuelle',
+  DOCUMENT_INTERNE: 'Document interne',
+  AUTRE: 'Autre',
+};
+
+function libelleTypeDocument(code: string): string {
+  return LIBELLES_TYPE_DOCUMENT[code] ?? code;
 }
 
 function docStatusLabel(statut: string): string | undefined {

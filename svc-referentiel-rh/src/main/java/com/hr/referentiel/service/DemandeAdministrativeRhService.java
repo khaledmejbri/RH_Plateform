@@ -422,6 +422,10 @@ public class DemandeAdministrativeRhService {
 				d.getId(), d.getTypeDemande(), d.getDemandeur().getId(), d.getStatut(),
 				d.getContenu(), d.getPeriodeDebut(), d.getPeriodeFin(),
 				d.getMotifRefus(), d.getCreeLe(), d.getModifieLe());
+		Collaborateur demandeur = d.getDemandeur();
+		r.setDemandeurNom(nomComplet(demandeur));
+		r.setDemandeurMatricule(demandeur.getMatricule());
+		r.setDemandeurUnite(demandeur.getUnite() != null ? demandeur.getUnite().getLibelle() : null);
 		Collaborateur snapshot = d.getValideurAttendu();
 		if (snapshot != null) {
 			r.setValideurAttenduIdentifiant(snapshot.getId());

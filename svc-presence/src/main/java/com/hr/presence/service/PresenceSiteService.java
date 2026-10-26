@@ -119,6 +119,7 @@ public class PresenceSiteService {
 		Optional<PresenceQrCredential> actif = qrRepository.findBySiteIdAndStatut(site.getId(), QrCredentialStatut.ACTIF);
 		boolean qrActif = actif.isPresent();
 		Integer qrVersion = actif.map(PresenceQrCredential::getQrVersion).orElse(null);
+		Instant validFrom = actif.map(PresenceQrCredential::getValidFrom).orElse(null);
 		Instant validUntil = actif.map(PresenceQrCredential::getValidUntil).orElse(null);
 		boolean expireBientot = false;
 		if (validUntil != null) {
@@ -136,6 +137,7 @@ public class PresenceSiteService {
 				site.isActif(),
 				qrActif,
 				qrVersion,
+				validFrom,
 				validUntil,
 				expireBientot,
 				site.getCreatedAt(),

@@ -193,14 +193,20 @@ export type PlainteRh = {
   numero_ticket: string;
   type_plainte: 'INTERNE' | 'EXTERNE';
   auteur_identifiant: string;
+  auteur_nom?: string;
+  auteur_matricule?: string;
   titre: string;
   description: string;
   statut: 'NOUVEAU' | 'EN_ANALYSE' | 'EN_TRAITEMENT' | 'RESOLU' | 'FERME';
+  /** Plainte EXTERNE uniquement (§ 9.2 valider-ro). */
+  validation_ro?: 'EN_ATTENTE' | 'VALIDEE' | 'NON_REQUISE' | null;
   commentaire_rh?: string;
   /** URLs des pièces jointes (cf. PlainteRhResponse.pieces_jointes). */
   pieces_jointes: string[];
   transcription_audio?: string;
   log_actions: Array<{
+    action?: string;
+    acteur_nom?: string;
     ancien_statut?: string;
     nouveau_statut?: string;
     horodatage?: string;
@@ -215,6 +221,10 @@ export type DemandeAdministrative = {
   identifiant: string;
   type_demande: string;
   demandeur_identifiant: string;
+  /** SCRUM-15 : identité lisible du demandeur. */
+  demandeur_nom?: string;
+  demandeur_matricule?: string;
+  demandeur_unite?: string | null;
   statut: string;
   periode_debut?: string;
   periode_fin?: string;
@@ -266,6 +276,10 @@ export type DemandeDocument = {
   identifiant: string;
   type_document: string;
   demandeur_identifiant: string;
+  /** SCRUM-15 : identité lisible du demandeur. */
+  demandeur_nom?: string;
+  demandeur_matricule?: string;
+  demandeur_unite?: string | null;
   statut: string;
   delai_sla_heures: number;
   rang_dans_file?: number;

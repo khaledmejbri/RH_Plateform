@@ -23,6 +23,12 @@ public class PlainteRhResponse {
 	@JsonProperty("auteur_identifiant")
 	private final UUID auteurIdentifiant;
 
+	@JsonProperty("auteur_nom")
+	private final String auteurNom;
+
+	@JsonProperty("auteur_matricule")
+	private final String auteurMatricule;
+
 	@JsonProperty("titre")
 	private final String titre;
 
@@ -44,6 +50,10 @@ public class PlainteRhResponse {
 	@JsonProperty("log_actions")
 	private final List<Map<String, String>> logActions;
 
+	/** EXTERNE uniquement : EN_ATTENTE | VALIDEE | NON_REQUISE ; null pour une plainte interne. */
+	@JsonProperty("validation_ro")
+	private final String validationRo;
+
 	@JsonProperty("cree_le")
 	private final Instant creeLe;
 
@@ -51,14 +61,16 @@ public class PlainteRhResponse {
 	private final Instant modifieLe;
 
 	public PlainteRhResponse(UUID identifiant, String numeroTicket, TypePlainteRh typePlainte,
-			UUID auteurIdentifiant, String titre, String description,
+			UUID auteurIdentifiant, String auteurNom, String auteurMatricule, String titre, String description,
 			List<String> piecesJointes, String transcriptionAudio,
 			StatutPlainteRh statut, String commentaireRh,
-			List<Map<String, String>> logActions, Instant creeLe, Instant modifieLe) {
+			List<Map<String, String>> logActions, String validationRo, Instant creeLe, Instant modifieLe) {
 		this.identifiant = identifiant;
 		this.numeroTicket = numeroTicket;
 		this.typePlainte = typePlainte;
 		this.auteurIdentifiant = auteurIdentifiant;
+		this.auteurNom = auteurNom;
+		this.auteurMatricule = auteurMatricule;
 		this.titre = titre;
 		this.description = description;
 		this.piecesJointes = piecesJointes;
@@ -66,6 +78,7 @@ public class PlainteRhResponse {
 		this.statut = statut;
 		this.commentaireRh = commentaireRh;
 		this.logActions = logActions;
+		this.validationRo = validationRo;
 		this.creeLe = creeLe;
 		this.modifieLe = modifieLe;
 	}
@@ -74,6 +87,9 @@ public class PlainteRhResponse {
 	public String getNumeroTicket() { return numeroTicket; }
 	public TypePlainteRh getTypePlainte() { return typePlainte; }
 	public UUID getAuteurIdentifiant() { return auteurIdentifiant; }
+	public String getAuteurNom() { return auteurNom; }
+	public String getAuteurMatricule() { return auteurMatricule; }
+	public String getValidationRo() { return validationRo; }
 	public String getTitre() { return titre; }
 	public String getDescription() { return description; }
 	public List<String> getPiecesJointes() { return piecesJointes; }

@@ -9,7 +9,6 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,7 +32,8 @@ public class PlainteRhController {
 			@Valid @RequestBody PlainteRhCreationRequest requete,
 			JwtAuthenticationToken principal) {
 		return ResponseEntity.status(HttpStatus.CREATED)
-				.body(plainteRhService.creer(requete, principal.getToken()));
+				.body(plainteRhService.creer(requete, principal.getToken(),
+						ReferentielApiSecurity.peutDeclarerPlainteExterne()));
 	}
 
 	/** Mes plaintes (collaborateur connecté). */
@@ -73,8 +73,7 @@ public class PlainteRhController {
 			@PathVariable UUID identifiant,
 			@Valid @RequestBody PlainteRhStatutMiseAJourRequest requete,
 			JwtAuthenticationToken principal) {
-		UUID acteurId = extraireCollaborateurId(principal.getToken());
-		return ResponseEntity.ok(plainteRhService.mettreAJourStatut(identifiant, requete, acteurId));
+		return ResponseEntity.ok(plainteRhService.mettreAJourStatut(identifiant, requete, principal.getToken()));
 	}
 
 	@GetMapping("/{identifiant}/suivi")
@@ -95,12 +94,4 @@ public class PlainteRhController {
 				plainteRhService.obtenir(identifiant, principal.getToken(), ReferentielApiSecurity.aAutoriteRh()));
 	}
 
-	private static UUID extraireCollaborateurId(Jwt jwt) {
-		try {
-			String sub = jwt.getSubject();
-			return sub != null ? UUID.fromString(sub) : null;
-		} catch (IllegalArgumentException e) {
-			return null;
-		}
-	}
 }

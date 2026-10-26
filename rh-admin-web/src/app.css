@@ -1819,41 +1819,6 @@ textarea {
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35);
 }
 
-.org-node--dragging {
-  opacity: 0.45;
-  transform: scale(0.98);
-}
-
-.org-node--drop-target {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.28);
-}
-
-.org-node--drop-invalid {
-  opacity: 0.4;
-  filter: grayscale(0.35);
-  pointer-events: none;
-}
-
-.org-node__handle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  border-right: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--muted);
-  font-size: 11px;
-  letter-spacing: -1px;
-  user-select: none;
-  cursor: grab;
-  flex-shrink: 0;
-}
-
-.org-node__handle:active {
-  cursor: grabbing;
-}
-
 .org-node__body {
   flex: 1;
   min-width: 0;

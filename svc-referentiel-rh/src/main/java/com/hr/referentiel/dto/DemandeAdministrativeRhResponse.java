@@ -20,6 +20,16 @@ public class DemandeAdministrativeRhResponse {
 	@JsonProperty("demandeur_identifiant")
 	private UUID demandeurIdentifiant;
 
+	/** SCRUM-15 : identité lisible du demandeur pour les écrans RH. */
+	@JsonProperty("demandeur_nom")
+	private String demandeurNom;
+
+	@JsonProperty("demandeur_matricule")
+	private String demandeurMatricule;
+
+	@JsonProperty("demandeur_unite")
+	private String demandeurUnite;
+
 	@JsonProperty("statut")
 	private StatutDemandeAdministrativeRh statut;
 
@@ -120,5 +130,29 @@ public class DemandeAdministrativeRhResponse {
 
 	public void setValideurAttenduNomComplet(String valideurAttenduNomComplet) {
 		this.valideurAttenduNomComplet = valideurAttenduNomComplet;
+	}
+
+	public String getDemandeurNom() {
+		return demandeurNom;
+	}
+
+	public void setDemandeurNom(String demandeurNom) {
+		this.demandeurNom = demandeurNom;
+	}
+
+	public String getDemandeurMatricule() {
+		return demandeurMatricule;
+	}
+
+	public void setDemandeurMatricule(String demandeurMatricule) {
+		this.demandeurMatricule = demandeurMatricule;
+	}
+
+	public String getDemandeurUnite() {
+		return demandeurUnite;
+	}
+
+	public void setDemandeurUnite(String demandeurUnite) {
+		this.demandeurUnite = demandeurUnite;
 	}
 }

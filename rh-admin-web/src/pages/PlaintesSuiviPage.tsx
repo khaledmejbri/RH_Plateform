@@ -34,6 +34,8 @@ export default function PlaintesSuiviPage() {
   const [filterStatut, setFilterStatut] = useState<StatutPlainte>('');
 
   const [edit, setEdit]         = useState<PlainteRh | null>(null);
+  /** Détail consultable par tous (Direction, plaintes clôturées) ; formulaire de transition seulement si RH + transition possible. */
+  const peutTraiter = !!edit && !lectureSeule && (TRANSITIONS[edit.statut]?.length ?? 0) > 0;
   const [newStatut, setNewStatut] = useState('');
   const [commentaire, setCommentaire] = useState('');
   const [saving, setSaving]     = useState(false);
@@ -143,6 +145,7 @@ export default function PlaintesSuiviPage() {
                   <th scope="col">Ticket</th>
                   <th scope="col">Date</th>
                   <th scope="col">Type</th>
+                  <th scope="col">Auteur</th>
                   <th scope="col">Titre</th>
                   <th scope="col">PJ</th>
                   <th scope="col">Statut</th>
@@ -155,6 +158,10 @@ export default function PlaintesSuiviPage() {
                     <td data-label="Ticket"><code className="cell-code">{p.numero_ticket}</code></td>
                     <td data-label="Date" className="cell-meta">{formatDateTime(p.cree_le)}</td>
                     <td data-label="Type"><TypeChip type={p.type_plainte} /></td>
+                    <td data-label="Auteur">
+                      <div>{p.auteur_nom ?? '—'}</div>
+                      {p.auteur_matricule ? <div className="cell-meta">{p.auteur_matricule}</div> : null}
+                    </td>
                     <td data-label="Titre" className="cell-main">
                       <div className="cell-main__title">{p.titre}</div>
                       <div className="cell-main__sub">{p.description}</div>
@@ -170,16 +177,10 @@ export default function PlaintesSuiviPage() {
                     </td>
                     <td data-label="Statut"><StatusBadge statut={p.statut} /></td>
                     <td data-label="Action" className="cell-actions">
-                      {lectureSeule ? (
-                        <span className="cell-meta">Lecture seule</span>
-                      ) : (TRANSITIONS[p.statut]?.length ?? 0) > 0 ? (
-                        <button type="button" className="btn btn--sm btn--secondary" onClick={() => openEdit(p)}>
-                          Traiter
-                          <Icon name="chevronRight" size={14} />
-                        </button>
-                      ) : (
-                        <span className="cell-meta">Clôturée</span>
-                      )}
+                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => openEdit(p)}>
+                        {!lectureSeule && (TRANSITIONS[p.statut]?.length ?? 0) > 0 ? 'Traiter' : 'Voir le détail'}
+                        <Icon name="chevronRight" size={14} />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -208,6 +209,21 @@ export default function PlaintesSuiviPage() {
                 <StatusBadge statut={edit.statut} />
               </div>
 
+              <dl className="detail-grid">
+                <div>
+                  <dt>Auteur</dt>
+                  <dd>{edit.auteur_nom ?? '—'}{edit.auteur_matricule ? ` (${edit.auteur_matricule})` : ''}</dd>
+                </div>
+                <div><dt>Déposée le</dt><dd>{formatDateTime(edit.cree_le)}</dd></div>
+                {edit.type_plainte === 'EXTERNE' ? (
+                  <div>
+                    <dt>Validation RO</dt>
+                    <dd><StatusBadge statut={VALIDATION_RO[edit.validation_ro ?? '']?.statut ?? 'EN_ATTENTE_VALIDATION'}
+                      label={VALIDATION_RO[edit.validation_ro ?? '']?.label ?? '—'} /></dd>
+                  </div>
+                ) : null}
+              </dl>
+
               <p className="small" style={{ marginTop: 0 }}>{edit.description}</p>
 
               {(edit.pieces_jointes?.length ?? 0) > 0 && (
@@ -231,6 +247,7 @@ export default function PlaintesSuiviPage() {
                 </div>
               )}
 
+              {peutTraiter ? (<>
               <label htmlFor="plaintessuivi-f3" className="field-label">Nouveau statut</label>
               <select id="plaintessuivi-f3" className="field-input" value={newStatut} onChange={(e) => setNewStatut(e.target.value)}
                 aria-describedby="plainte-transition-help">
@@ -256,32 +273,42 @@ export default function PlaintesSuiviPage() {
                 placeholder="Message visible dans le suivi collaborateur…"
                 aria-invalid={!!saveErr}
               />
+              </>) : null}
 
-              {(edit.log_actions?.length ?? 0) > 0 && (
-                <div style={{ marginBottom: 8 }}>
-                  <p className="section-title">Historique</p>
-                  <ol className="timeline">
-                    {edit.log_actions.map((log, i) => (
-                      <li key={i}>
-                        <strong>
-                          {STATUT_LABELS[log.ancien_statut ?? ''] ?? log.ancien_statut} → {STATUT_LABELS[log.nouveau_statut ?? ''] ?? log.nouveau_statut}
-                        </strong>
-                        <span className="timeline__meta">{log.horodatage ? formatDateTime(log.horodatage) : ''}</span>
-                        {log.commentaire && <div className="muted">{log.commentaire}</div>}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
+              {/* § 9.2 : journal d'actions — qui a changé le statut, quand, commentaire (SCRUM-13). */}
+              <div style={{ marginBottom: 8 }}>
+                <p className="section-title">Journal</p>
+                <ol className="timeline">
+                  <li>
+                    <strong>Dépôt de la plainte</strong>
+                    <span className="timeline__meta">{formatDateTime(edit.cree_le)}{edit.auteur_nom ? ` · ${edit.auteur_nom}` : ''}</span>
+                  </li>
+                  {(edit.log_actions ?? []).map((log, i) => (
+                    <li key={i}>
+                      <strong>
+                        {log.action === 'VALIDATION_RO' ? 'Validation RO · ' : ''}
+                        {STATUT_LABELS[log.ancien_statut ?? ''] ?? log.ancien_statut} → {STATUT_LABELS[log.nouveau_statut ?? ''] ?? log.nouveau_statut}
+                      </strong>
+                      <span className="timeline__meta">
+                        {log.horodatage ? formatDateTime(log.horodatage) : ''}
+                        {' · '}{log.acteur_nom ?? (log.acteur_id === 'SYSTEME' || !log.acteur_id ? 'Acteur non tracé' : log.acteur_id)}
+                      </span>
+                      {log.commentaire && <div className="muted">{log.commentaire}</div>}
+                    </li>
+                  ))}
+                </ol>
+              </div>
             </div>
 
             {saveErr ? <ErrorAlert>{saveErr}</ErrorAlert> : null}
 
             <div className="modal__actions">
-              <button type="button" className="btn btn--ghost" onClick={() => setEdit(null)}>Annuler</button>
-              <button type="button" className="btn btn--primary" disabled={saving} aria-busy={saving} onClick={() => void saveEdit()}>
-                {saving ? 'Enregistrement…' : 'Confirmer la transition'}
-              </button>
+              <button type="button" className="btn btn--ghost" onClick={() => setEdit(null)}>{peutTraiter ? 'Annuler' : 'Fermer'}</button>
+              {peutTraiter ? (
+                <button type="button" className="btn btn--primary" disabled={saving} aria-busy={saving} onClick={() => void saveEdit()}>
+                  {saving ? 'Enregistrement…' : 'Confirmer la transition'}
+                </button>
+              ) : null}
             </div>
           </DialogPanel>
         </div>
@@ -289,6 +316,12 @@ export default function PlaintesSuiviPage() {
     </div>
   );
 }
+
+const VALIDATION_RO: Record<string, { statut: string; label: string }> = {
+  EN_ATTENTE: { statut: 'EN_ATTENTE_VALIDATION', label: 'En attente du RO' },
+  VALIDEE: { statut: 'VALIDE', label: 'Validée par le RO' },
+  NON_REQUISE: { statut: 'TERMINEE', label: 'Prise en charge directe RH' },
+};
 
 function TypeChip({ type }: { type: string }) {
   return type === 'EXTERNE'

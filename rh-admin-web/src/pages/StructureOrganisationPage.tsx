@@ -2,16 +2,45 @@ import { useEffect, useState } from 'react';
 import { useDialogA11y } from '../components/useDialogA11y';
 import { Avatar, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, type IconName, type Tone } from '../components/ui';
 import {
+  deleteOrganigrammeManager,
   getCollaborateursPage,
+  getOrganigramme,
   getUnites,
   nomCollaborateur,
   postCollaborateur,
+  postOrganigrammeManager,
   postUnite,
-  putCollaborateur,
   putUnite,
   type CollaborateurRow,
+  type OrganigrammeNoeud,
   type Unite,
 } from '../api/rhClient';
+
+/**
+ * § 5.3 / D-H02 : le responsable d'un service est le manager du nœud (valideur M01 1er niveau),
+ * désigné via l'organigramme — pas déduit du profil d'accès, et le profil n'est jamais modifié ici (SCRUM-9).
+ */
+async function designerResponsable(noeudId: string, nouveauId: string, ancienId: string | undefined) {
+  if (nouveauId && nouveauId !== ancienId) {
+    await postOrganigrammeManager(noeudId, { collaborateur_identifiant: nouveauId });
+  } else if (!nouveauId && ancienId) {
+    await deleteOrganigrammeManager(noeudId);
+  }
+}
+
+function indexerManagers(noeuds: OrganigrammeNoeud[], out = new Map<string, string>()): Map<string, string> {
+  for (const n of noeuds) {
+    if (n.manager) out.set(n.identifiant, n.manager.identifiant);
+    indexerManagers(n.enfants, out);
+  }
+  return out;
+}
+
+/** Toutes les unités sous `racineId`, à n'importe quelle profondeur (§ 5.1 : arbre libre). */
+function descendants(unites: Unite[], racineId: string): Unite[] {
+  const enfants = unites.filter((u) => u.parent_identifiant === racineId);
+  return enfants.flatMap((u) => [u, ...descendants(unites, u.identifiant)]);
+}
 
 // ─── Helpers UI ─────────────────────────────────────────────────────────────
 
@@ -97,11 +126,9 @@ function ModalCreerDept({
     try {
       if (chefMode === 'existant') {
         if (!chefId) throw new Error('Sélectionnez un collaborateur');
-        await putCollaborateur(chefId, {
-          unite_identifiant: createdDeptId,
-        });
+        await designerResponsable(createdDeptId, chefId, undefined);
       } else {
-        await postCollaborateur({
+        const cree = await postCollaborateur({
           matricule: cMatricule.trim(),
           prenom: cPrenom.trim(),
           nom: cNom.trim(),
@@ -111,6 +138,7 @@ function ModalCreerDept({
           unite_identifiant: createdDeptId,
           mot_de_passe_initial: cMdp,
         });
+        await designerResponsable(createdDeptId, cree.identifiant, undefined);
       }
       onDone();
     } catch (e) {
@@ -137,7 +165,7 @@ function ModalCreerDept({
             </div>
           </div>
           <p className="field-help">
-            Étape 1/2 — Vous définirez le chef de département à l'étape suivante.
+            Étape 1/2 — Vous désignerez le responsable du département à l'étape suivante.
           </p>
           <div className="modal__actions">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
@@ -161,7 +189,7 @@ function ModalCreerDept({
 
           {chefMode === 'existant' ? (
             <>
-              <label htmlFor="structureorganisation-f3" className="field-label">Sélectionner le chef de département</label>
+              <label htmlFor="structureorganisation-f3" className="field-label">Sélectionner le responsable du département</label>
               <select id="structureorganisation-f3" className="field-input" value={chefId} onChange={(e) => setChefId(e.target.value)} required>
                 <option value="">— Choisir —</option>
                 {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
@@ -193,7 +221,8 @@ function ModalCreerDept({
           )}
 
           <p className="field-help">
-            Étape 2/2 — Affectation à l&apos;unité uniquement. Le profil d&apos;accès se définit sur la fiche collaborateur.
+            Étape 2/2 — Le collaborateur devient responsable du service (valideur des demandes de l&apos;unité).
+            Son profil d&apos;accès ne change pas : il se définit sur la fiche collaborateur.
           </p>
           <div className="modal__actions">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
@@ -229,11 +258,7 @@ function ModalEditDept({
     setSaving(true);
     try {
       await putUnite(dept.identifiant, { libelle: libelle.trim() });
-      if (chefId && chefId !== chef?.identifiant) {
-        await putCollaborateur(chefId, {
-          unite_identifiant: dept.identifiant,
-        });
-      }
+      await designerResponsable(dept.identifiant, chefId, chef?.identifiant);
       onDone();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erreur');
@@ -242,8 +267,8 @@ function ModalEditDept({
     }
   }
 
-  // Unités rattachées à ce département
-  const unitesRattachees = unites.filter((u) => u.parent_identifiant === dept.identifiant);
+  // Unités rattachées à ce département (toute profondeur)
+  const unitesRattachees = unites;
 
   return (
     <Modal title={`Modifier — ${dept.libelle}`} onClose={onClose}>
@@ -252,13 +277,13 @@ function ModalEditDept({
       <label htmlFor="structureorganisation-f9" className="field-label">Libellé du département</label>
       <input id="structureorganisation-f9" className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required />
 
-      <label htmlFor="structureorganisation-f10" className="field-label">Chef de département</label>
+      <label htmlFor="structureorganisation-f10" className="field-label">Responsable du département</label>
       <select id="structureorganisation-f10" className="field-input" value={chefId} onChange={(e) => setChefId(e.target.value)}>
         <option value="">— Aucun —</option>
         {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
       </select>
       <p className="field-help">
-        Le profil d&apos;accès se définit sur la fiche collaborateur.
+        Responsable = manager du nœud (valideur M01). Le profil d&apos;accès se définit sur la fiche collaborateur.
       </p>
 
       {unitesRattachees.length > 0 && (
@@ -336,11 +361,9 @@ function ModalCreerUnite({
     try {
       if (roMode === 'existant') {
         if (!roId) throw new Error('Sélectionnez un collaborateur');
-        await putCollaborateur(roId, {
-          unite_identifiant: createdUniteId,
-        });
+        await designerResponsable(createdUniteId, roId, undefined);
       } else {
-        await postCollaborateur({
+        const cree = await postCollaborateur({
           matricule: cMatricule.trim(),
           prenom: cPrenom.trim(),
           nom: cNom.trim(),
@@ -350,6 +373,7 @@ function ModalCreerUnite({
           unite_identifiant: createdUniteId,
           mot_de_passe_initial: cMdp,
         });
+        await designerResponsable(createdUniteId, cree.identifiant, undefined);
       }
       onDone();
     } catch (e) {
@@ -365,7 +389,7 @@ function ModalCreerUnite({
 
       {step === 'unite' ? (
         <>
-          <label htmlFor="structureorganisation-f11" className="field-label">Département parent</label>
+          <label htmlFor="structureorganisation-f11" className="field-label">Service parent</label>
           <select id="structureorganisation-f11" className="field-input" value={deptId} onChange={(e) => setDeptId(e.target.value)} required>
             {departements.map((d) => (
               <option key={d.identifiant} value={d.identifiant}>{d.code} — {d.libelle}</option>
@@ -382,7 +406,7 @@ function ModalCreerUnite({
             </div>
           </div>
           <p className="field-help">
-            Étape 1/2 — Vous définirez le Responsable Opérationnel à l'étape suivante.
+            Étape 1/2 — Vous désignerez le responsable de l'unité à l'étape suivante.
           </p>
           <div className="modal__actions">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
@@ -406,7 +430,7 @@ function ModalCreerUnite({
 
           {roMode === 'existant' ? (
             <>
-              <label htmlFor="structureorganisation-f14" className="field-label">Sélectionner le Responsable Opérationnel</label>
+              <label htmlFor="structureorganisation-f14" className="field-label">Sélectionner le responsable de l'unité</label>
               <select id="structureorganisation-f14" className="field-input" value={roId} onChange={(e) => setRoId(e.target.value)} required>
                 <option value="">— Choisir —</option>
                 {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
@@ -438,7 +462,8 @@ function ModalCreerUnite({
           )}
 
           <p className="field-help">
-            Étape 2/2 — Affectation à l&apos;unité uniquement. Le profil d&apos;accès se définit sur la fiche collaborateur.
+            Étape 2/2 — Le collaborateur devient responsable du service (valideur des demandes de l&apos;unité).
+            Son profil d&apos;accès ne change pas : il se définit sur la fiche collaborateur.
           </p>
           <div className="modal__actions">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
@@ -478,9 +503,7 @@ function ModalEditUnite({
         libelle: libelle.trim(),
         parent_identifiant: deptId || null,
       });
-      if (roId && roId !== ro?.identifiant) {
-        await putCollaborateur(roId, { unite_identifiant: unite.identifiant });
-      }
+      await designerResponsable(unite.identifiant, roId, ro?.identifiant);
       onDone();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erreur');
@@ -496,7 +519,7 @@ function ModalEditUnite({
       <label htmlFor="structureorganisation-f20" className="field-label">Libellé de l'unité</label>
       <input id="structureorganisation-f20" className="field-input" value={libelle} onChange={(e) => setLibelle(e.target.value)} required />
 
-      <label htmlFor="structureorganisation-f21" className="field-label">Département parent</label>
+      <label htmlFor="structureorganisation-f21" className="field-label">Service parent</label>
       <select id="structureorganisation-f21" className="field-input" value={deptId} onChange={(e) => setDeptId(e.target.value)}>
         <option value="">— Aucun —</option>
         {departements.map((d) => (
@@ -504,13 +527,13 @@ function ModalEditUnite({
         ))}
       </select>
 
-      <label htmlFor="structureorganisation-f22" className="field-label">Responsable Opérationnel (RO)</label>
+      <label htmlFor="structureorganisation-f22" className="field-label">Responsable de l'unité</label>
       <select id="structureorganisation-f22" className="field-input" value={roId} onChange={(e) => setRoId(e.target.value)}>
         <option value="">— Aucun —</option>
         {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
       </select>
       <p className="field-help">
-        Le profil d&apos;accès se définit sur la fiche collaborateur.
+        Responsable = manager du nœud (valideur M01). Le profil d&apos;accès se définit sur la fiche collaborateur.
       </p>
 
       <div className="modal__actions">
@@ -526,9 +549,11 @@ function ModalEditUnite({
 // ─── Carte Unité ─────────────────────────────────────────────────────────────
 
 function UniteCard({
-  unite, ro, travailleurs, collaborateurs, departements, onRefresh,
+  unite, chemin, ro, travailleurs, collaborateurs, departements, onRefresh,
 }: {
   unite: Unite;
+  /** Service intermédiaire entre le département et l'unité (niveau 3 et plus). */
+  chemin: string | null;
   ro: CollaborateurRow | undefined;
   travailleurs: CollaborateurRow[];
   collaborateurs: CollaborateurRow[];
@@ -552,6 +577,7 @@ function UniteCard({
         <div className="struct-unit__head">
           <div className="struct-unit__main">
             <div className="struct-title">
+              {chemin ? <span className="cell-meta">{chemin} ›</span> : null}
               <span className="struct-title__name">{unite.libelle}</span>
               <Badge label={unite.code} color="gray" />
               {!unite.actif && <Badge label="Inactive" color="gray" />}
@@ -561,12 +587,14 @@ function UniteCard({
                 <Avatar name={`${ro.prenom} ${nomCollaborateur(ro)}`} size={28} />
                 <div>
                   <span className="struct-person__name">{ro.prenom} {nomCollaborateur(ro)}</span>{' '}
-                  <Badge label="RO" color="purple" />
+                  <Badge label="Responsable" color="purple" />
                   <div className="struct-person__meta">{ro.courriel_professionnel ?? ro.matricule}</div>
                 </div>
               </div>
             ) : (
-              <div className="struct-missing">Aucun responsable opérationnel</div>
+              <div className="struct-missing struct-missing--warn">
+                <Icon name="alert" size={14} /> Sans responsable — les demandes iront directement à la RRH
+              </div>
             )}
           </div>
 
@@ -618,11 +646,13 @@ function UniteCard({
 // ─── Carte Département ────────────────────────────────────────────────────────
 
 function DeptCard({
-  dept, chef, unites, collaborateurs, allCollaborateurs, allDepts, onRefresh,
+  dept, chef, unites, toutesUnites, managers, collaborateurs, allCollaborateurs, allDepts, onRefresh,
 }: {
   dept: Unite;
   chef: CollaborateurRow | undefined;
   unites: Unite[];
+  toutesUnites: Unite[];
+  managers: Map<string, string>;
   collaborateurs: CollaborateurRow[];
   allCollaborateurs: CollaborateurRow[];
   allDepts: Unite[];
@@ -666,13 +696,13 @@ function DeptCard({
                 <Avatar name={`${chef.prenom} ${nomCollaborateur(chef)}`} size={28} />
                 <div>
                   <span className="struct-person__name">{chef.prenom} {nomCollaborateur(chef)}</span>{' '}
-                  <Badge label="Chef de département" color="blue" />
+                  <Badge label="Responsable" color="blue" />
                   <div className="struct-person__meta">{chef.courriel_professionnel ?? chef.matricule}</div>
                 </div>
               </div>
             ) : (
               <div className="struct-missing struct-missing--warn">
-                <Icon name="alert" size={14} /> Aucun chef de département défini
+                <Icon name="alert" size={14} /> Sans responsable désigné
               </div>
             )}
           </div>
@@ -715,19 +745,23 @@ function DeptCard({
               />
             ) : (
               unites.map((u) => {
-                const ro = collaborateurs.find(
-                  (c) => c.unite?.identifiant === u.identifiant && c.statut === 'ACTIF' &&
-                    c.profil_acces === 'RO',
-                );
+                const roId = managers.get(u.identifiant);
+                const ro = roId ? collaborateurs.find((c) => c.identifiant === roId) : undefined;
                 const travailleurs = collaborateurs.filter(
-                  (c) => c.unite?.identifiant === u.identifiant && c.statut === 'ACTIF' &&
-                    c.profil_acces !== 'RO' && c.profil_acces !== 'RESPONSABLE',
+                  (c) => c.unite?.identifiant === u.identifiant && c.statut === 'ACTIF' && c.identifiant !== roId,
+                );
+                const parent = u.parent_identifiant !== dept.identifiant
+                  ? toutesUnites.find((p) => p.identifiant === u.parent_identifiant)
+                  : undefined;
+                const sousUnites = new Set(descendants(toutesUnites, u.identifiant).map((d) => d.identifiant));
+                const parentsPossibles = toutesUnites.filter(
+                  (p) => p.identifiant !== u.identifiant && !sousUnites.has(p.identifiant),
                 );
                 return (
                   <UniteCard
                     key={u.identifiant}
-                    unite={u} ro={ro} travailleurs={travailleurs}
-                    collaborateurs={allCollaborateurs} departements={allDepts}
+                    unite={u} chemin={parent?.libelle ?? null} ro={ro} travailleurs={travailleurs}
+                    collaborateurs={allCollaborateurs} departements={parentsPossibles}
                     onRefresh={onRefresh}
                   />
                 );
@@ -745,6 +779,7 @@ function DeptCard({
 export default function StructureOrganisationPage() {
   const [unites, setUnites] = useState<Unite[]>([]);
   const [collaborateurs, setCollaborateurs] = useState<CollaborateurRow[]>([]);
+  const [managers, setManagers] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [creerDeptOpen, setCreerDeptOpen] = useState(false);
@@ -753,11 +788,13 @@ export default function StructureOrganisationPage() {
     setLoading(true);
     setErr(null);
     try {
-      const [us, firstPage] = await Promise.all([
+      const [us, firstPage, organigramme] = await Promise.all([
         getUnites(),
         getCollaborateursPage(0, 200),
+        getOrganigramme(true),
       ]);
       setUnites(us);
+      setManagers(indexerManagers(organigramme.racines));
       // Charger toutes les pages si nécessaire
       let allCollabs = firstPage.contenu;
       for (let p = 1; p < firstPage.total_pages; p++) {
@@ -777,13 +814,13 @@ export default function StructureOrganisationPage() {
   // Départements = unités sans parent
   const departements = unites.filter((u) => !u.parent_identifiant);
 
-  // Unités = unités avec parent
+  // Unités = unités avec parent (toute profondeur)
   const unitesEnfants = unites.filter((u) => !!u.parent_identifiant);
 
-  // Stats
+  // Stats — responsables = managers de nœud (même source que l'organigramme)
   const totalTravailleurs = collaborateurs.filter((c) => c.statut === 'ACTIF').length;
-  const totalChefs = collaborateurs.filter((c) => c.profil_acces === 'RESPONSABLE').length;
-  const totalRO = collaborateurs.filter((c) => c.profil_acces === 'RO').length;
+  const totalResponsables = unites.filter((u) => managers.has(u.identifiant)).length;
+  const totalSansResponsable = unites.filter((u) => u.actif && !managers.has(u.identifiant)).length;
 
   return (
     <div className="page">
@@ -799,8 +836,8 @@ export default function StructureOrganisationPage() {
         title="Structure organisationnelle"
         lead={
           <>
-            Département → chef de département → unité → responsable opérationnel → travailleurs.
-            Le profil d’accès se définit sur la fiche collaborateur.
+            Départements et unités (toute profondeur) avec leur responsable, valideur des demandes de l’unité.
+            Mêmes données que l’organigramme ; le profil d’accès se définit sur la fiche collaborateur.
           </>
         }
         actions={
@@ -816,8 +853,8 @@ export default function StructureOrganisationPage() {
       <section className="dash-stats" aria-label="Chiffres clés">
         <StatCard icon="building" value={departements.length} label="Départements" tone="info" />
         <StatCard icon="clipboard" value={unitesEnfants.length} label="Unités" tone="progress" />
-        <StatCard icon="briefcase" value={totalChefs} label="Chefs de département" tone="success" />
-        <StatCard icon="target" value={totalRO} label="Responsables opérationnels" tone="warning" />
+        <StatCard icon="briefcase" value={totalResponsables} label="Services avec responsable" tone="success" />
+        <StatCard icon="target" value={totalSansResponsable} label="Services sans responsable" tone="warning" />
         <StatCard icon="users" value={totalTravailleurs} label="Collaborateurs actifs" tone="neutral" />
       </section>
 
@@ -840,18 +877,14 @@ export default function StructureOrganisationPage() {
         </div>
       ) : (
         departements.map((dept) => {
-          const unitesduDept = unitesEnfants.filter(
-            (u) => u.parent_identifiant === dept.identifiant,
-          );
-          const deptAndChildIds = new Set([dept.identifiant, ...unitesduDept.map(u => u.identifiant)]);
-          const chef = collaborateurs.find(
-            (c) => deptAndChildIds.has(c.unite?.identifiant ?? '') &&
-              c.profil_acces === 'RESPONSABLE' && c.statut === 'ACTIF',
-          );
+          const unitesduDept = descendants(unites, dept.identifiant);
+          const chefId = managers.get(dept.identifiant);
+          const chef = chefId ? collaborateurs.find((c) => c.identifiant === chefId) : undefined;
           return (
             <DeptCard
               key={dept.identifiant}
               dept={dept} chef={chef} unites={unitesduDept}
+              toutesUnites={unites} managers={managers}
               collaborateurs={collaborateurs} allCollaborateurs={collaborateurs}
               allDepts={departements}
               onRefresh={load}

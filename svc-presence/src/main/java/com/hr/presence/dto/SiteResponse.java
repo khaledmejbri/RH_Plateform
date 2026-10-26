@@ -17,6 +17,8 @@ public record SiteResponse(
 		@JsonProperty("actif") boolean actif,
 		@JsonProperty("qr_actif") boolean qrActif,
 		@JsonProperty("qr_version") Integer qrVersion,
+		/** Début de validité du QR actif (SCRUM-16 : affiché « valide du … au … »). */
+		@JsonProperty("valid_from") Instant validFrom,
 		@JsonProperty("valid_until") Instant validUntil,
 		@JsonProperty("expire_bientot") boolean expireBientot,
 		@JsonProperty("created_at") Instant createdAt,

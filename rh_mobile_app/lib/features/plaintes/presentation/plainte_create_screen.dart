@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../auth/providers/collaborateur_notifier.dart';
 import '../data/plainte_repository.dart';
 import 'plaintes_list_screen.dart';
 import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
@@ -52,6 +53,9 @@ class _PlainteCreateScreenState extends ConsumerState<PlainteCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // § 9.1 / C-M04-01 : plainte EXTERNE réservée au RO et à la RH (le serveur refuse aussi en 403).
+    final user = ref.watch(collaborateurNotifierProvider).valueOrNull;
+    final peutDeclarerExterne = user != null && (user.isRo || user.isRh || user.isAdmin);
     return Scaffold(
       appBar: AppBar(title: const Text('Nouvelle plainte')),
       body: SingleChildScrollView(
@@ -64,9 +68,10 @@ class _PlainteCreateScreenState extends ConsumerState<PlainteCreateScreen> {
               DropdownButtonFormField<String>(
                 value: _type,
                 decoration: const InputDecoration(labelText: 'Type'),
-                items: const [
-                  DropdownMenuItem(value: 'INTERNE', child: Text('Interne')),
-                  DropdownMenuItem(value: 'EXTERNE', child: Text('Externe')),
+                items: [
+                  const DropdownMenuItem(value: 'INTERNE', child: Text('Interne')),
+                  if (peutDeclarerExterne)
+                    const DropdownMenuItem(value: 'EXTERNE', child: Text('Externe')),
                 ],
                 onChanged: (v) => setState(() => _type = v ?? 'INTERNE'),
               ),

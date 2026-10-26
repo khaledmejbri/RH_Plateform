@@ -222,13 +222,15 @@ function normalizePage<T>(
 export function formatDateTunis(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
-    return new Intl.DateTimeFormat('fr-TN', {
+    // fr-TN rend l'heure en 12 h (AM/PM) selon les navigateurs : fr-FR + h23 force le format 24 h (SCRUM-16).
+    return new Intl.DateTimeFormat('fr-FR', {
       timeZone: 'Africa/Tunis',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      hourCycle: 'h23',
     }).format(new Date(iso));
   } catch {
     return iso;
@@ -238,7 +240,7 @@ export function formatDateTunis(iso: string | null | undefined): string {
 export function formatDateCourteTunis(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
-    return new Intl.DateTimeFormat('fr-TN', {
+    return new Intl.DateTimeFormat('fr-FR', {
       timeZone: 'Africa/Tunis',
       day: '2-digit',
       month: '2-digit',

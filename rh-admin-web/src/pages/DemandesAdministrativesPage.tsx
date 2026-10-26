@@ -271,10 +271,13 @@ export default function DemandesAdministrativesPage() {
                       <td data-label="Période" className="cell-meta">{formatPeriode(d)}</td>
                       <td data-label="Demandeur">
                         <span className="cell-user">
-                          <Avatar name={d.demandeur_identifiant} size={28} />
-                          <code className="cell-code" title={d.demandeur_identifiant}>
-                            {d.demandeur_identifiant.slice(0, 8)}…
-                          </code>
+                          <Avatar name={d.demandeur_nom ?? d.demandeur_identifiant} size={28} />
+                          <span>
+                            <div>{d.demandeur_nom ?? '—'}</div>
+                            <div className="cell-meta">
+                              {[d.demandeur_matricule, d.demandeur_unite].filter(Boolean).join(' · ')}
+                            </div>
+                          </span>
                         </span>
                       </td>
                       <td data-label="Actions" style={{ textAlign: 'right' }}>
@@ -315,7 +318,14 @@ export default function DemandesAdministrativesPage() {
                     <dd>{formatTypeConge((selected.contenu as { type_conge?: string } | undefined)?.type_conge) ?? '—'}</dd>
                   </div>
                 ) : null}
-                <div><dt>Demandeur</dt><dd><code className="cell-code" style={{ wordBreak: 'break-all' }}>{selected.demandeur_identifiant}</code></dd></div>
+                <div>
+                  <dt>Demandeur</dt>
+                  <dd>
+                    {selected.demandeur_nom ?? '—'}
+                    {selected.demandeur_matricule ? <span className="cell-meta"> · {selected.demandeur_matricule}</span> : null}
+                  </dd>
+                </div>
+                <div><dt>Unité</dt><dd>{selected.demandeur_unite ?? '—'}</dd></div>
                 <div><dt>Créée le</dt><dd>{formatDateTime(selected.cree_le)}</dd></div>
                 {contenuLignes(selected).map(([libelle, valeur]) => (
                   <div key={libelle}><dt>{libelle}</dt><dd>{valeur}</dd></div>
