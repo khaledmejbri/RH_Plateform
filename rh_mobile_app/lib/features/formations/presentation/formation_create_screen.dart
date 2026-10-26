@@ -197,7 +197,7 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
                     ),
                     const SizedBox(height: 14),
                     _FormSection(
-                      title: 'Budget et duree',
+                      title: 'Budget et durée',
                       icon: Icons.payments_outlined,
                       children: [
                         Row(
@@ -205,7 +205,7 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
                             Expanded(
                               child: _TextField(
                                 controller: _dureeController,
-                                label: 'Duree (h)',
+                                label: 'Durée (h)',
                                 icon: Icons.schedule_outlined,
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [
@@ -217,7 +217,7 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
                             Expanded(
                               child: _TextField(
                                 controller: _coutController,
-                                label: 'Cout estime',
+                                label: 'Coût estimé',
                                 icon: Icons.payments_outlined,
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
@@ -236,7 +236,7 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
                       children: [
                         _TextField(
                           controller: _objectifsController,
-                          label: 'Objectifs pedagogiques',
+                          label: 'Objectifs pédagogiques',
                           icon: Icons.flag_outlined,
                           maxLines: 3,
                         ),
@@ -265,7 +265,7 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
                         if (isRo)
                           SwitchListTile(
                             contentPadding: EdgeInsets.zero,
-                            title: const Text('Cibler toute mon unite'),
+                            title: const Text('Cibler toute mon unité'),
                             value: _roCibleUnite,
                             onChanged: (v) => setState(() => _roCibleUnite = v),
                           ),
