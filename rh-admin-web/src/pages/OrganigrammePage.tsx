@@ -18,9 +18,46 @@ import { Icon } from '../components/ui';
 
 type ModalKind = 'creer' | 'editer' | 'manager' | 'rattacher' | 'confirm-retrait' | null;
 
-const TYPE_SUGGESTIONS = ['Direction', 'Département', 'Service', 'Unité', 'Équipe'] as const;
+/** D-H04 : catalogue fermé, du plus haut au plus bas niveau (même ordre que le serveur). */
+const TYPES_NOEUD = ['Direction Générale', 'Direction', 'Département', 'Service'] as const;
+const NIVEAU_DG = 0;
+const NIVEAU_DIRECTION = 1;
 const SUCCESS_DISMISS_MS = 4000;
 const COLLAPSE_DEPTH_DEFAULT = 3;
+const DND_MIME = 'application/x-sirh-noeud';
+
+function normaliserType(t: string): string {
+  return t.normalize('NFD').replace(/\p{M}/gu, '').replace(/[\s_-]/g, '').toLowerCase();
+}
+
+/** Niveau du type (0 = Direction Générale … 3 = Service), -1 si type non reconnu. */
+function niveauType(t: string | null | undefined): number {
+  if (!t) return -1;
+  const cle = normaliserType(t);
+  return TYPES_NOEUD.findIndex((x) => normaliserType(x) === cle);
+}
+
+/** Types qu'on peut créer sous `parent` (ou sans nœud sélectionné). La DG seulement si elle n'existe pas encore. */
+function typesCreables(parent: OrganigrammeNoeud | null, dgExiste: boolean): string[] {
+  if (!parent) {
+    // Une direction est rattachée d'office à la DG : il faut donc que la DG existe.
+    return TYPES_NOEUD.filter((_, i) => (i === NIVEAU_DG ? !dgExiste : i !== NIVEAU_DIRECTION || dgExiste));
+  }
+  const niveau = niveauType(parent.type_noeud);
+  if (niveau < 0) return [];
+  return TYPES_NOEUD.filter((_, i) => i > niveau && (i !== NIVEAU_DIRECTION || niveau === NIVEAU_DG));
+}
+
+/** Même règle que le serveur : parent de niveau strictement supérieur ; une direction uniquement sous la DG. */
+function peutRattacher(noeud: OrganigrammeNoeud, parent: OrganigrammeNoeud | null): boolean {
+  const n = niveauType(noeud.type_noeud);
+  if (n < 0) return false;
+  if (!parent) return n > NIVEAU_DIRECTION;
+  if (n === NIVEAU_DG) return false;
+  const p = niveauType(parent.type_noeud);
+  if (p < 0 || p >= n) return false;
+  return n !== NIVEAU_DIRECTION || p === NIVEAU_DG;
+}
 
 function flattenNoeuds(racines: OrganigrammeNoeud[]): OrganigrammeNoeud[] {
   const out: OrganigrammeNoeud[] = [];
@@ -169,11 +206,22 @@ function OrgSkeleton() {
   );
 }
 
+/** Glisser-déposer des unités « à rattacher » (D-H04) : nœud en cours de glissement + dépôt sur une cible. */
+type DragProps = {
+  dragged: OrganigrammeNoeud | null;
+  onDragStart: (n: OrganigrammeNoeud) => void;
+  onDragEnd: () => void;
+  onDropOn: (cible: OrganigrammeNoeud) => void;
+};
+
 function OrgNodeCard({
   noeud,
   selected,
   highlighted,
   lectureSeule,
+  canAddChild,
+  draggable,
+  drag,
   onSelect,
   onAddChild,
 }: {
@@ -181,11 +229,21 @@ function OrgNodeCard({
   selected: boolean;
   highlighted: boolean;
   lectureSeule: boolean;
+  canAddChild: boolean;
+  draggable?: boolean;
+  drag?: DragProps;
   onSelect: () => void;
   onAddChild: () => void;
 }) {
   const mgr = noeud.manager;
   const emptyMgr = sansResponsable(noeud);
+  const [survol, setSurvol] = useState(false);
+  const enGlissement = drag?.dragged ?? null;
+  const cibleValide =
+    !!enGlissement &&
+    enGlissement.identifiant !== noeud.identifiant &&
+    !collectDescendantIds(enGlissement).has(noeud.identifiant) &&
+    peutRattacher(enGlissement, noeud);
 
   return (
     <div
@@ -196,9 +254,39 @@ function OrgNodeCard({
         emptyMgr ? 'org-node--no-manager' : '',
         highlighted ? 'org-node--highlight' : '',
         lectureSeule ? 'org-node--readonly' : '',
+        draggable ? 'org-node--draggable' : '',
+        enGlissement?.identifiant === noeud.identifiant ? 'org-node--dragging' : '',
+        enGlissement && enGlissement.identifiant !== noeud.identifiant
+          ? cibleValide
+            ? survol
+              ? 'org-node--drop-over'
+              : 'org-node--drop-ok'
+            : 'org-node--drop-ko'
+          : '',
       ]
         .filter(Boolean)
         .join(' ')}
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable || !drag) return;
+        e.dataTransfer.setData(DND_MIME, noeud.identifiant);
+        e.dataTransfer.effectAllowed = 'move';
+        drag.onDragStart(noeud);
+      }}
+      onDragEnd={() => drag?.onDragEnd()}
+      onDragOver={(e) => {
+        if (!cibleValide) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (!survol) setSurvol(true);
+      }}
+      onDragLeave={() => setSurvol(false)}
+      onDrop={(e) => {
+        setSurvol(false);
+        if (!cibleValide || !drag) return;
+        e.preventDefault();
+        drag.onDropOn(noeud);
+      }}
     >
       <button type="button" className="org-node__body" onClick={onSelect}>
         <div className="org-node__meta">
@@ -229,12 +317,12 @@ function OrgNodeCard({
           <div className="org-node__count">{libelleCollaborateurs(noeud.membres.length)}</div>
         ) : null}
       </button>
-      {!lectureSeule ? (
+      {!lectureSeule && canAddChild ? (
         <button
           type="button"
           className="org-node__add"
-          title="Ajouter un service enfant"
-          aria-label={`Ajouter un service sous ${noeud.libelle}`}
+          title="Ajouter un élément enfant"
+          aria-label={`Ajouter un élément sous ${noeud.libelle}`}
           onClick={onAddChild}
         >
           +
@@ -252,6 +340,8 @@ function OrgTreeBranch({
   highlightIds,
   searchQuery,
   lectureSeule,
+  dgExiste,
+  drag,
   onToggle,
   onSelect,
   onAddChild,
@@ -263,6 +353,8 @@ function OrgTreeBranch({
   highlightIds: Set<string>;
   searchQuery: string;
   lectureSeule: boolean;
+  dgExiste: boolean;
+  drag: DragProps;
   onToggle: (id: string) => void;
   onSelect: (n: OrganigrammeNoeud) => void;
   onAddChild: (parent: OrganigrammeNoeud | null) => void;
@@ -299,6 +391,8 @@ function OrgTreeBranch({
                 selected={selectedId === n.identifiant}
                 highlighted={selfMatch}
                 lectureSeule={lectureSeule}
+                canAddChild={typesCreables(n, dgExiste).length > 0}
+                drag={drag}
                 onSelect={() => onSelect(n)}
                 onAddChild={() => onAddChild(n)}
               />
@@ -312,6 +406,8 @@ function OrgTreeBranch({
                 highlightIds={highlightIds}
                 searchQuery={searchQuery}
                 lectureSeule={lectureSeule}
+                dgExiste={dgExiste}
+                drag={drag}
                 onToggle={onToggle}
                 onSelect={onSelect}
                 onAddChild={onAddChild}
@@ -325,18 +421,21 @@ function OrgTreeBranch({
 }
 
 function ParentPickerList({
+  noeud,
   racines,
   excludeIds,
   value,
   onChange,
   filter,
 }: {
+  noeud: OrganigrammeNoeud;
   racines: OrganigrammeNoeud[];
   excludeIds: Set<string>;
   value: string;
   onChange: (id: string) => void;
   filter: string;
 }) {
+  const racineAutorisee = peutRattacher(noeud, null);
   const q = filter.trim().toLowerCase();
   const matchIds = q ? collectSearchMatchIds(racines, q) : null;
   const rows: { id: string; label: string; depth: number; disabled: boolean }[] = [];
@@ -348,7 +447,7 @@ function ParentPickerList({
           id: n.identifiant,
           label: `${n.type_noeud} · ${n.libelle}`,
           depth,
-          disabled: excludeIds.has(n.identifiant),
+          disabled: excludeIds.has(n.identifiant) || !peutRattacher(noeud, n),
         });
       }
       walk(n.enfants, depth + 1);
@@ -357,16 +456,18 @@ function ParentPickerList({
   walk(racines, 0);
 
   return (
-    <div className="org-parent-picker" role="listbox" aria-label="Service parent">
-      <button
-        type="button"
-        role="option"
-        aria-selected={value === ''}
-        className={`org-parent-picker__option${value === '' ? ' org-parent-picker__option--selected' : ''}`}
-        onClick={() => onChange('')}
-      >
-        — Aucun parent (racine) —
-      </button>
+    <div className="org-parent-picker" role="listbox" aria-label="Parent">
+      {racineAutorisee ? (
+        <button
+          type="button"
+          role="option"
+          aria-selected={value === ''}
+          className={`org-parent-picker__option${value === '' ? ' org-parent-picker__option--selected' : ''}`}
+          onClick={() => onChange('')}
+        >
+          — À rattacher (aucun parent) —
+        </button>
+      ) : null}
       {rows.map((r) => (
         <button
           key={r.id}
@@ -387,7 +488,7 @@ function ParentPickerList({
           }}
         >
           {r.label}
-          {r.disabled ? ' (indisponible)' : ''}
+          {r.disabled ? ' (non autorisé)' : ''}
         </button>
       ))}
     </div>
@@ -425,7 +526,13 @@ export default function OrganigrammePage() {
   const [managerTitre, setManagerTitre] = useState('');
   const [collabSearch, setCollabSearch] = useState('');
 
+  const [dragged, setDragged] = useState<OrganigrammeNoeud | null>(null);
+
   const tousNoeuds = useMemo(() => flattenNoeuds(racines), [racines]);
+  const dgExiste = useMemo(() => racines.some((n) => niveauType(n.type_noeud) === NIVEAU_DG), [racines]);
+  /** D-H04 : à droite l'arbre sous la DG ; à gauche les départements / services sans parent, à glisser. */
+  const arbre = useMemo(() => racines.filter((n) => niveauType(n.type_noeud) === NIVEAU_DG), [racines]);
+  const aRattacher = useMemo(() => racines.filter((n) => niveauType(n.type_noeud) !== NIVEAU_DG), [racines]);
   const searchQ = search.trim().toLowerCase();
   const highlightIds = useMemo(
     () => collectSearchMatchIds(racines, searchQ),
@@ -500,8 +607,9 @@ export default function OrganigrammePage() {
   }, [searchQ, highlightIds]);
 
   /**
-   * § 5.3 : rattachement uniquement par action explicite (« Rattacher… »), jamais par glisser-déposer,
-   * toujours confirmé avec le récapitulatif ancien → nouveau parent (SCRUM-6).
+   * § 5.3 / D-H04 : rattachement par « Rattacher… » ou par glisser-déposer d'une unité « à rattacher »,
+   * toujours confirmé avec le récapitulatif ancien → nouveau parent (SCRUM-6). Règles de type vérifiées
+   * ici pour l'affichage et par le serveur.
    */
   async function rattacherNoeud(noeudId: string, newParentId: string | null) {
     const noeud = findNoeud(racines, noeudId);
@@ -513,14 +621,22 @@ export default function OrganigrammePage() {
     const target = newParentId ? findNoeud(racines, newParentId) : null;
     if (newParentId && !target) return;
     if (newParentId && collectDescendantIds(noeud).has(newParentId)) {
-      setErr('Impossible : un service ne peut pas être placé sous l’un de ses rattachements.');
+      setErr('Impossible : un élément ne peut pas être placé sous l’un de ses propres sous-éléments.');
       return;
     }
-    const ancien = currentParentId ? findNoeud(racines, currentParentId)?.libelle ?? '—' : 'Racine';
-    const nouveau = target ? target.libelle : 'Racine';
+    if (!peutRattacher(noeud, target)) {
+      setErr(
+        target
+          ? `Impossible : un(e) ${noeud.type_noeud} ne peut pas être placé(e) sous ${target.type_noeud} « ${target.libelle} ».`
+          : `Impossible : un(e) ${noeud.type_noeud} doit rester rattaché(e).`,
+      );
+      return;
+    }
+    const ancien = currentParentId ? findNoeud(racines, currentParentId)?.libelle ?? '—' : 'À rattacher';
+    const nouveau = target ? target.libelle : 'À rattacher';
     const ok = await confirm({
-      title: 'Rattacher le service',
-      message: `« ${noeud.libelle} » : ${ancien} → ${nouveau}. Les membres et le responsable du service ne changent pas. Continuer ?`,
+      title: `Rattacher « ${noeud.libelle} »`,
+      message: `${noeud.type_noeud} « ${noeud.libelle} » : ${ancien} → ${nouveau}. Ses sous-éléments suivent ; ses membres et son responsable ne changent pas. Continuer ?`,
       confirmLabel: 'Rattacher',
     });
     if (!ok) return;
@@ -533,8 +649,8 @@ export default function OrganigrammePage() {
       } else {
         await putOrganigrammeNoeud(noeudId, { parent_identifiant: newParentId });
       }
-      showSuccess('Service rattaché.');
-      await reload(selected?.identifiant ?? noeudId, { silent: true });
+      showSuccess(`« ${noeud.libelle} » rattaché à ${nouveau}.`);
+      await reload(noeudId, { silent: true });
     } catch (e) {
       setErr(writeForbiddenMessage(e));
     } finally {
@@ -565,18 +681,36 @@ export default function OrganigrammePage() {
   }
 
   function openCreer(parent: OrganigrammeNoeud | null) {
+    const types = typesCreables(parent, dgExiste);
+    if (types.length === 0) return;
     setParentPourCreation(parent);
     setCode('');
     setLibelle('');
-    setTypeNoeud(parent ? 'Service' : 'Direction');
+    setTypeNoeud(types[0]);
     setTitrePoste('');
     setActif(true);
     setModal('creer');
   }
 
-  function openAjouterService() {
+  function openAjouter() {
     openCreer(selected);
   }
+
+  /** Clic sur la carte déjà sélectionnée = désélection (création libre, sans parent). */
+  function selectionner(n: OrganigrammeNoeud) {
+    setSelected((cur) => (cur?.identifiant === n.identifiant ? null : n));
+  }
+
+  const drag: DragProps = {
+    dragged,
+    onDragStart: (n) => setDragged(n),
+    onDragEnd: () => setDragged(null),
+    onDropOn: (cible) => {
+      const n = dragged;
+      setDragged(null);
+      if (n) void rattacherNoeud(n.identifiant, cible.identifiant);
+    },
+  };
 
   function openEditer(n: OrganigrammeNoeud) {
     setSelected(n);
@@ -615,7 +749,12 @@ export default function OrganigrammePage() {
         actif,
       });
       setModal(null);
-      showSuccess('Service créé.');
+      const aRattacherApres = !parentPourCreation && niveauType(typeNoeud) > NIVEAU_DIRECTION;
+      showSuccess(
+        aRattacherApres
+          ? `${typeNoeud} « ${libelle.trim()} » créé(e) : glissez-le(la) dans l’organigramme pour le(la) rattacher.`
+          : `${typeNoeud} « ${libelle.trim()} » créé(e).`,
+      );
       await reload(created.identifiant, { silent: true });
     } catch (e) {
       setErr(writeForbiddenMessage(e));
@@ -636,7 +775,7 @@ export default function OrganigrammePage() {
         actif,
       });
       setModal(null);
-      showSuccess('Service modifié.');
+      showSuccess('Modifications enregistrées.');
       await reload(selected.identifiant, { silent: true });
     } catch (e) {
       setErr(writeForbiddenMessage(e));
@@ -654,7 +793,7 @@ export default function OrganigrammePage() {
       return;
     }
     if (newParent && collectDescendantIds(selected).has(newParent)) {
-      setErr('Impossible : un service ne peut pas être placé sous l’un de ses rattachements.');
+      setErr('Impossible : un élément ne peut pas être placé sous l’un de ses propres sous-éléments.');
       return;
     }
     setModal(null);
@@ -748,15 +887,17 @@ export default function OrganigrammePage() {
             <button
               type="button"
               className="btn btn--primary"
-              onClick={openAjouterService}
-              disabled={saving || moving}
+              onClick={openAjouter}
+              disabled={saving || moving || typesCreables(selected, dgExiste).length === 0}
               title={
                 selected
-                  ? `Créer un service enfant de « ${selected.libelle} »`
-                  : 'Créer un service à la racine'
+                  ? typesCreables(selected, dgExiste).length === 0
+                    ? `Un(e) ${selected.type_noeud} ne contient pas de sous-élément`
+                    : `Créer sous « ${selected.libelle} » : ${typesCreables(selected, dgExiste).join(', ')}`
+                  : 'Créer une direction (rattachée à la DG), un département ou un service à rattacher'
               }
             >
-              + Ajouter un service
+              {selected ? `+ Ajouter sous « ${selected.libelle} »` : '+ Ajouter'}
             </button>
           ) : null}
         </div>
@@ -774,13 +915,16 @@ export default function OrganigrammePage() {
             aria-expanded={aideOpen}
             onClick={() => setAideOpen((v) => !v)}
           >
-            Aide — comment rattacher / assigner
+            Aide — comment créer / rattacher / assigner
           </button>
           {aideOpen ? (
             <p className="org-aide-banner__body">
-              Sélectionnez un service pour ouvrir son détail, puis utilisez « Rattacher… » (parents valides ou
-              « Racine »), « Assigner le responsable » ou « Ajouter un service enfant ». Le profil d’accès se
-              modifie sur la fiche collaborateur.
+              Hiérarchie : Direction Générale → Direction → Département → Service. Sélectionnez un élément pour
+              créer en dessous uniquement les niveaux inférieurs (un service ne contient rien). Sans sélection
+              (cliquez à nouveau sur l’élément sélectionné pour le désélectionner), « + Ajouter » crée une direction
+              — rattachée automatiquement à la Direction Générale — ou un département / service « à rattacher » :
+              il apparaît à gauche, glissez-le sur un élément de niveau supérieur. « Rattacher… » permet aussi de
+              déplacer un élément existant. Le profil d’accès se modifie sur la fiche collaborateur.
             </p>
           ) : null}
         </div>
@@ -831,7 +975,41 @@ export default function OrganigrammePage() {
         ) : null}
       </div>
 
-      <div className="org-layout">
+      <div className={`org-layout${!loading && aRattacher.length > 0 ? ' org-layout--split' : ''}`}>
+        {!loading && aRattacher.length > 0 ? (
+          <section className="org-unassigned" aria-labelledby="org-unassigned-title">
+            <h3 id="org-unassigned-title" className="org-unassigned__title">
+              À rattacher <span className="badge badge--warning">{aRattacher.length}</span>
+            </h3>
+            <p className="text-muted text-sm org-unassigned__hint">
+              {lectureSeule
+                ? 'Départements et services pas encore placés dans la hiérarchie.'
+                : 'Glissez un élément sur une carte de niveau supérieur dans l’organigramme (ou utilisez « Rattacher… »).'}
+            </p>
+            <ul className="org-unassigned__list">
+              {aRattacher.map((n) => (
+                <li key={n.identifiant}>
+                  <OrgNodeCard
+                    noeud={n}
+                    selected={selected?.identifiant === n.identifiant}
+                    highlighted={false}
+                    lectureSeule={lectureSeule}
+                    canAddChild={typesCreables(n, dgExiste).length > 0}
+                    draggable={!lectureSeule && !moving && peutRattacher(n, null)}
+                    drag={drag}
+                    onSelect={() => selectionner(n)}
+                    onAddChild={() => openCreer(n)}
+                  />
+                  {n.enfants.length > 0 ? (
+                    <p className="text-muted text-sm org-unassigned__children">
+                      Contient : {n.enfants.map((e) => e.libelle).join(', ')}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         <div className="org-canvas" aria-busy={loading}>
           {loading ? (
             <>
@@ -845,18 +1023,25 @@ export default function OrganigrammePage() {
                 Réessayer
               </button>
             </div>
-          ) : racines.length === 0 ? (
+          ) : arbre.length === 0 ? (
             <div className="empty-state">
               <h3>
                 {lectureSeule
                   ? 'Aucune structure organisationnelle publiée.'
-                  : 'Aucune structure pour le moment.'}
+                  : 'Aucune Direction Générale pour le moment.'}
               </h3>
               {!lectureSeule ? (
                 <>
-                  <p>Commencez par le sommet de la hiérarchie.</p>
-                  <button type="button" className="btn btn--primary" onClick={() => openCreer(null)}>
-                    Créer le premier service
+                  <p>Commencez par le sommet de la hiérarchie : la Direction Générale.</p>
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    onClick={() => {
+                      setSelected(null);
+                      openCreer(null);
+                    }}
+                  >
+                    Créer la Direction Générale
                   </button>
                 </>
               ) : (
@@ -865,15 +1050,17 @@ export default function OrganigrammePage() {
             </div>
           ) : (
             <OrgTreeBranch
-              noeuds={racines}
+              noeuds={arbre}
               depth={0}
               selectedId={selected?.identifiant ?? null}
               expandedIds={expandedIds}
               highlightIds={highlightIds}
               searchQuery={search}
               lectureSeule={lectureSeule}
+              dgExiste={dgExiste}
+              drag={drag}
               onToggle={toggleExpand}
-              onSelect={setSelected}
+              onSelect={selectionner}
               onAddChild={openCreer}
             />
           )}
@@ -945,7 +1132,9 @@ export default function OrganigrammePage() {
                   </button>
                 ) : (
                   <p className="text-muted text-sm" style={{ margin: 0 }}>
-                    À la racine (aucun parent)
+                    {niveauType(selected.type_noeud) === NIVEAU_DG
+                      ? 'Sommet de la hiérarchie'
+                      : 'À rattacher : glissez-le dans l’organigramme ou utilisez « Rattacher… »'}
                   </p>
                 )}
               </div>
@@ -986,21 +1175,32 @@ export default function OrganigrammePage() {
                   >
                     Modifier
                   </button>
+                  {niveauType(selected.type_noeud) !== NIVEAU_DG ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={saving || moving}
+                      onClick={() => openRattacher(selected)}
+                    >
+                      Rattacher…
+                    </button>
+                  ) : null}
+                  {typesCreables(selected, dgExiste).length > 0 ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={saving || moving}
+                      onClick={() => openCreer(selected)}
+                    >
+                      Ajouter : {typesCreables(selected, dgExiste).join(' / ')}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
-                    disabled={saving || moving}
-                    onClick={() => openRattacher(selected)}
+                    onClick={() => setSelected(null)}
                   >
-                    Rattacher…
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    disabled={saving || moving}
-                    onClick={() => openCreer(selected)}
-                  >
-                    Ajouter un service enfant
+                    Désélectionner
                   </button>
                 </div>
               ) : (
@@ -1011,7 +1211,8 @@ export default function OrganigrammePage() {
             </>
           ) : (
             <p className="text-muted">
-              Sélectionnez un service dans l’arbre pour voir le détail.
+              Sélectionnez un élément pour voir son détail et créer en dessous. Sans sélection, « + Ajouter » crée une
+              direction, un département ou un service.
             </p>
           )}
         </aside>
@@ -1022,7 +1223,7 @@ export default function OrganigrammePage() {
           title={
             parentPourCreation
               ? `Ajouter sous « ${parentPourCreation.libelle} »`
-              : 'Ajouter un service (racine)'
+              : 'Ajouter un élément'
           }
           onClose={() => setModal(null)}
           wide
@@ -1030,18 +1231,13 @@ export default function OrganigrammePage() {
           <div className="form-grid">
             <div className="form-group">
               <label htmlFor="org-type">Type</label>
-              <input
-                id="org-type"
-                value={typeNoeud}
-                onChange={(e) => setTypeNoeud(e.target.value)}
-                placeholder="Direction, Service…"
-                list="org-type-suggestions"
-              />
-              <datalist id="org-type-suggestions">
-                {TYPE_SUGGESTIONS.map((t) => (
-                  <option key={t} value={t} />
+              <select id="org-type" value={typeNoeud} onChange={(e) => setTypeNoeud(e.target.value)}>
+                {typesCreables(parentPourCreation, dgExiste).map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </div>
             <div className="form-group">
               <label htmlFor="org-code">Code</label>
@@ -1077,7 +1273,11 @@ export default function OrganigrammePage() {
                 value={
                   parentPourCreation
                     ? `${parentPourCreation.type_noeud} · ${parentPourCreation.libelle}`
-                    : '— Aucun parent (racine) —'
+                    : niveauType(typeNoeud) === NIVEAU_DIRECTION
+                      ? `Direction Générale (rattachement automatique)`
+                      : niveauType(typeNoeud) === NIVEAU_DG
+                        ? '— Sommet de la hiérarchie —'
+                        : '— À rattacher : à glisser ensuite dans l’organigramme —'
                 }
               />
             </div>
@@ -1105,21 +1305,20 @@ export default function OrganigrammePage() {
       )}
 
       {modal === 'editer' && selected && (
-        <Modal title="Modifier le service" onClose={() => setModal(null)} wide>
+        <Modal title={`Modifier « ${selected.libelle} »`} onClose={() => setModal(null)} wide>
           <div className="form-grid">
             <div className="form-group">
               <label htmlFor="org-edit-type">Type</label>
-              <input
-                id="org-edit-type"
-                value={typeNoeud}
-                onChange={(e) => setTypeNoeud(e.target.value)}
-                list="org-type-suggestions-edit"
-              />
-              <datalist id="org-type-suggestions-edit">
-                {TYPE_SUGGESTIONS.map((t) => (
-                  <option key={t} value={t} />
+              <select id="org-edit-type" value={typeNoeud} onChange={(e) => setTypeNoeud(e.target.value)}>
+                {niveauType(typeNoeud) < 0 ? <option value={typeNoeud}>{typeNoeud || '—'} (non reconnu)</option> : null}
+                {TYPES_NOEUD.filter(
+                  (t) => niveauType(t) !== NIVEAU_DG || !dgExiste || niveauType(selected.type_noeud) === NIVEAU_DG,
+                ).map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </div>
             <div className="form-group">
               <label htmlFor="org-edit-libelle">Libellé</label>
@@ -1176,6 +1375,7 @@ export default function OrganigrammePage() {
             />
           </div>
           <ParentPickerList
+            noeud={selected}
             racines={racines}
             excludeIds={excludeForRattacher}
             value={parentPickerId}

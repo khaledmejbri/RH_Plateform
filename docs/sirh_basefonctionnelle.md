@@ -150,16 +150,22 @@ Les API collaborateur exigent `hasRole('USER')` ou `isAuthenticated()`.
 
 ### 5.1 Unité organisationnelle
 
-Arbre hiérarchique libre (pas limité à 3 niveaux) :
+<!-- HIÉRARCHIE / M00 — décision PO 27/10/2026 (D-H04) : types de nœud fermés et ordonnés -->
+
+Arbre hiérarchique à **4 niveaux typés** : **Direction Générale** → **Direction** → **Département** → **Service**.
 
 - `code` unique, `libelle`, `actif`
-- `type_noeud` libre (ex. Direction, Département, Unité, CEO)
+- `type_noeud` ∈ { `Direction Générale`, `Direction`, `Département`, `Service` } (casse et accents tolérés en saisie ; autre valeur → **400**)
 - `titre_poste` du management du nœud
-- `parent` (optionnel) → racine si absent
+- `parent` (optionnel selon le type, voir ci-dessous)
 - `manager` (collaborateur assigné au nœud)
 
 **Contraintes**
 
+- **Direction Générale** : **unique**, toujours à la racine (pas de parent).
+- **Direction** : toujours rattachée à la Direction Générale ; créée sans parent → rattachée **automatiquement** à la DG (DG inexistante → 400). Ne peut pas être détachée.
+- **Département / Service** : parent de niveau **strictement supérieur** (un département sous la DG ou une direction ; un service sous la DG, une direction ou un département). Peuvent être créés **sans parent** : ils sont alors « **à rattacher** ».
+- Un service ne contient aucun sous-élément. Un changement de type est refusé s'il devient incompatible avec le parent ou les enfants.
 - Code unique (insensible à la casse).
 - Un nœud inactif n’apparaît pas dans l’organigramme « standard ».
 - Impossible d’affecter un collaborateur sans unité.
@@ -195,7 +201,8 @@ L’organigramme est la **structure organisationnelle éditable** (services / un
 - **Écriture** (RH) : créer / modifier un nœud, assigner ou retirer un manager, rattacher un parent.
 - Assigner / retirer un manager **ne modifie pas** `profil_acces` (`role_workflow` ignoré s’il est encore envoyé).
 - Vue : racines → enfants, membres de l’unité, manager du nœud (signal « Sans responsable » critique pour le routage M01).
-- UX Plateforme RH : organigramme en cartes par niveaux (pas de glisser-déposer). Sélection d’une carte, puis actions explicites : créer une unité enfant, modifier (dont `titre_poste`), rattacher via une liste de parents valides ou « Racine », nommer ou retirer le responsable. Le rôle d’accès (`profil_acces`) se lit, il ne se change pas depuis cet écran. Direction = lecture seule.
+- UX Plateforme RH : organigramme en cartes par niveaux. Sélection d’une carte, puis actions explicites : créer en dessous **uniquement les types de niveau inférieur** (DG → Direction / Département / Service ; Direction → Département / Service ; Département → Service ; Service → rien), modifier (dont `titre_poste`), rattacher via une liste limitée aux parents valides, nommer ou retirer le responsable. Le rôle d’accès (`profil_acces`) se lit, il ne se change pas depuis cet écran. Direction = lecture seule.
+- <!-- D-H04 --> **Sans sélection**, « Ajouter » crée une direction (rattachée à la DG) ou un département / service **à rattacher**. Dès qu’il existe des éléments à rattacher, l’écran se partage : à **gauche** la liste « À rattacher », à **droite** la hiérarchie complète. Un élément à rattacher se **glisse-dépose** sur une carte de niveau supérieur (cibles valides mises en évidence, cibles interdites grisées) ; le dépôt est **confirmé** (ancien → nouveau parent, SCRUM-6). Les éléments déjà dans la hiérarchie se déplacent par « Rattacher… ».
 
 ### 5.4 Provisionnement de compte
 

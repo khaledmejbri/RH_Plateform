@@ -3,6 +3,7 @@ package com.hr.referentiel.service;
 import com.hr.referentiel.config.CacheConfig;
 import com.hr.referentiel.domain.NiveauSeniorite;
 import com.hr.referentiel.domain.ProfilAccesCollaborateur;
+import com.hr.referentiel.domain.TypeNoeudOrganisation;
 import com.hr.referentiel.dto.*;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.entity.UniteOrganisation;
@@ -48,7 +49,10 @@ public class ReferentielRhService {
 		this.collaborateurConnecteService = collaborateurConnecteService;
 		this.familleMetierService = familleMetierService;
 		this.collaborateurCompteDemandePublisher = collaborateurCompteDemandePublisher;
+		this.hierarchieTypeRules = new HierarchieTypeRules(uniteRepository);
 	}
+
+	private final HierarchieTypeRules hierarchieTypeRules;
 
 	@Cacheable(value = CacheConfig.CACHE_UNITES, key = "'liste_actives'")
 	@Transactional(readOnly = true)
@@ -74,16 +78,17 @@ public class ReferentielRhService {
 		u.setCode(req.getCode().trim());
 		u.setLibelle(req.getLibelle().trim());
 		u.setActif(req.getActif() == null || req.getActif());
+		UniteOrganisation parent = null;
 		if (req.getParentIdentifiant() != null) {
-			UniteOrganisation parent = uniteRepository.findById(req.getParentIdentifiant())
+			parent = uniteRepository.findById(req.getParentIdentifiant())
 					.orElseThrow(() -> new IllegalArgumentException("Unité parente introuvable."));
-			u.setParent(parent);
 		}
-		String type = trimToNull(req.getTypeNoeud());
-		if (type == null) {
-			type = u.getParent() == null ? "Département" : "Unité";
-		}
-		u.setTypeNoeud(type);
+		// D-H04 : sans type → Département à la racine (à rattacher), Service sous un parent
+		String saisi = trimToNull(req.getTypeNoeud());
+		TypeNoeudOrganisation type = saisi != null ? hierarchieTypeRules.exigerType(saisi)
+				: parent == null ? TypeNoeudOrganisation.DEPARTEMENT : TypeNoeudOrganisation.SERVICE;
+		u.setParent(hierarchieTypeRules.resoudreParentCreation(type, parent));
+		u.setTypeNoeud(type.getLibelle());
 		u.setTitrePoste(trimToNull(req.getTitrePoste()));
 		return toUniteResponse(uniteRepository.save(u));
 	}
@@ -104,10 +109,13 @@ public class ReferentielRhService {
 				}
 				UniteOrganisation parent = uniteRepository.findById(req.getParentIdentifiant())
 						.orElseThrow(() -> new IllegalArgumentException("Unité parente introuvable."));
+				hierarchieTypeRules.verifierRattachement(u, parent);
 				u.setParent(parent);
 			}
 			if (req.getTypeNoeud() != null) {
-				u.setTypeNoeud(trimToNull(req.getTypeNoeud()));
+				TypeNoeudOrganisation type = hierarchieTypeRules.exigerType(req.getTypeNoeud());
+				hierarchieTypeRules.verifierChangementType(u, type);
+				u.setTypeNoeud(type.getLibelle());
 			}
 			if (req.getTitrePoste() != null) {
 				u.setTitrePoste(trimToNull(req.getTitrePoste()));

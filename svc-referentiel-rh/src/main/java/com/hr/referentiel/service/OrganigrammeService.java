@@ -1,6 +1,7 @@
 package com.hr.referentiel.service;
 
 import com.hr.referentiel.config.CacheConfig;
+import com.hr.referentiel.domain.TypeNoeudOrganisation;
 import com.hr.referentiel.dto.*;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.entity.UniteOrganisation;
@@ -29,7 +30,10 @@ public class OrganigrammeService {
 			CollaborateurRepository collaborateurRepository) {
 		this.uniteRepository = uniteRepository;
 		this.collaborateurRepository = collaborateurRepository;
+		this.hierarchieTypeRules = new HierarchieTypeRules(uniteRepository);
 	}
+
+	private final HierarchieTypeRules hierarchieTypeRules;
 
 	@Transactional(readOnly = true)
 	public OrganigrammeResponse obtenirOrganigramme(boolean inclureInactifs) {
@@ -69,14 +73,17 @@ public class OrganigrammeService {
 		UniteOrganisation u = new UniteOrganisation();
 		u.setCode(req.getCode().trim());
 		u.setLibelle(req.getLibelle().trim());
-		u.setTypeNoeud(trimToNull(req.getTypeNoeud()));
+		// D-H04 : type du catalogue ; direction rattachée d'office à la DG ; parent de niveau supérieur
+		TypeNoeudOrganisation type = hierarchieTypeRules.exigerType(req.getTypeNoeud());
+		u.setTypeNoeud(type.getLibelle());
 		u.setTitrePoste(trimToNull(req.getTitrePoste()));
 		u.setActif(req.getActif() == null || req.getActif());
+		UniteOrganisation parent = null;
 		if (req.getParentIdentifiant() != null) {
-			UniteOrganisation parent = uniteRepository.findById(req.getParentIdentifiant())
+			parent = uniteRepository.findById(req.getParentIdentifiant())
 					.orElseThrow(() -> new IllegalArgumentException("Nœud parent introuvable."));
-			u.setParent(parent);
 		}
+		u.setParent(hierarchieTypeRules.resoudreParentCreation(type, parent));
 		UniteOrganisation saved = uniteRepository.save(u);
 		return toNoeud(saved, List.of());
 	}
@@ -91,7 +98,9 @@ public class OrganigrammeService {
 			u.setLibelle(req.getLibelle().trim());
 		}
 		if (req.getTypeNoeud() != null) {
-			u.setTypeNoeud(trimToNull(req.getTypeNoeud()));
+			TypeNoeudOrganisation type = hierarchieTypeRules.exigerType(req.getTypeNoeud());
+			hierarchieTypeRules.verifierChangementType(u, type);
+			u.setTypeNoeud(type.getLibelle());
 		}
 		if (req.getTitrePoste() != null) {
 			u.setTitrePoste(trimToNull(req.getTitrePoste()));
@@ -100,6 +109,7 @@ public class OrganigrammeService {
 			u.setActif(req.getActif());
 		}
 		if (Boolean.TRUE.equals(req.getDetacherDuParent())) {
+			hierarchieTypeRules.verifierRattachement(u, null);
 			u.setParent(null);
 		} else if (req.getParentIdentifiant() != null) {
 			if (req.getParentIdentifiant().equals(id)) {
@@ -108,6 +118,7 @@ public class OrganigrammeService {
 			UniteOrganisation parent = uniteRepository.findById(req.getParentIdentifiant())
 					.orElseThrow(() -> new IllegalArgumentException("Nœud parent introuvable."));
 			verifierPasDeCycle(id, parent);
+			hierarchieTypeRules.verifierRattachement(u, parent);
 			u.setParent(parent);
 			if (u.getManager() != null) {
 				Collaborateur cible = SuperieurHierarchieRules.resoudreSuperieurFiche(u.getManager(), u);
