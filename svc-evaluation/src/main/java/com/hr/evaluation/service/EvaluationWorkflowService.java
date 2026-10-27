@@ -8,6 +8,7 @@ import com.hr.evaluation.domain.StatutEvaluationRh;
 import com.hr.evaluation.domain.TemplateStatus;
 import com.hr.evaluation.domain.TemplateType;
 import com.hr.evaluation.entity.*;
+import com.hr.evaluation.kafka.EvaluationEventPublisher;
 import com.hr.evaluation.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,7 @@ public class EvaluationWorkflowService {
     private final TechnicalQuestionRepository technicalQuestionRepository;
     private final EvaluationTemplateRepository templateRepository;
     private final EvaluationScoringService scoringService;
+    private final EvaluationEventPublisher eventPublisher;
 
     public EvaluationWorkflowService(
             EvaluationRepository evaluationRepository,
@@ -37,7 +39,8 @@ public class EvaluationWorkflowService {
             EvaluationQuestionRepository questionRepository,
             TechnicalQuestionRepository technicalQuestionRepository,
             EvaluationTemplateRepository templateRepository,
-            EvaluationScoringService scoringService) {
+            EvaluationScoringService scoringService,
+            EvaluationEventPublisher eventPublisher) {
         this.evaluationRepository = evaluationRepository;
         this.campaignRepository = campaignRepository;
         this.answerRepository = answerRepository;
@@ -46,6 +49,7 @@ public class EvaluationWorkflowService {
         this.technicalQuestionRepository = technicalQuestionRepository;
         this.templateRepository = templateRepository;
         this.scoringService = scoringService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -324,10 +328,15 @@ public class EvaluationWorkflowService {
     @Transactional
     public Evaluation validerParCollaborateur(UUID evaluationId) {
         Evaluation evaluation = chargerEvaluation(evaluationId);
+        boolean dejaValidee = evaluation.getValidationCollaborateurLe() != null;
         evaluation.setValidationCollaborateurLe(Instant.now());
         recalculerScore(evaluation);
         actualiserStatut(evaluation);
-        return evaluationRepository.save(evaluation);
+        Evaluation saved = evaluationRepository.save(evaluation);
+        if (!dejaValidee && saved.getValidationSuperieurLe() == null) {
+            eventPublisher.publierValidationCollaborateur(saved);
+        }
+        return saved;
     }
 
     @Transactional

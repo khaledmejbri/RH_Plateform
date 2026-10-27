@@ -144,12 +144,16 @@ class EvaluationCampaignServiceTest {
         UUID collabOk = UUID.randomUUID();
         UUID manager = UUID.randomUUID();
         UUID collabSansMgr = UUID.randomUUID();
+        UUID compteCollab = UUID.randomUUID();
+        UUID compteManager = UUID.randomUUID();
 
         when(campaignRepository.findById(campaignId)).thenReturn(Optional.of(campaign));
         when(campaignRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(referentielClient.listerActifsPourEvaluation()).thenReturn(List.of(
-                new CollaborateurEvaluationSnapshot(collabOk, "ACTIF", "DEV_LOGICIEL", "SENIOR", manager, "COLLABORATEUR"),
-                new CollaborateurEvaluationSnapshot(collabSansMgr, "ACTIF", "GENIE_CIVIL", "JUNIOR", null, "RO")
+                new CollaborateurEvaluationSnapshot(collabOk, "ACTIF", "DEV_LOGICIEL", "SENIOR", manager, "COLLABORATEUR",
+                        compteCollab, "Sarra Khemiri", "Développeuse backend", compteManager, "Omar Belhadj"),
+                new CollaborateurEvaluationSnapshot(collabSansMgr, "ACTIF", "GENIE_CIVIL", "JUNIOR", null, "RO",
+                        null, "Sans Manager", null, null, null)
         ));
         when(evaluationRepository.findByCampaignIdAndCollaborateurIdentifiant(eq(campaignId), any()))
                 .thenReturn(Optional.empty());
@@ -168,6 +172,12 @@ class EvaluationCampaignServiceTest {
         assertThat(result.evaluationsCreees()).isEqualTo(1);
         assertThat(result.ignoresManagerManquant()).isEqualTo(1);
         verify(eventPublisher).publierEvaluationCampagneOuverte(created, "Campagne 2026");
+        // SCRUM-31/33/34 : compte et noms figés à l'activation
+        assertThat(created.getCollaborateurCompteId()).isEqualTo(compteCollab);
+        assertThat(created.getCollaborateurNom()).isEqualTo("Sarra Khemiri");
+        assertThat(created.getCollaborateurPoste()).isEqualTo("Développeuse backend");
+        assertThat(created.getSuperieurCompteId()).isEqualTo(compteManager);
+        assertThat(created.getSuperieurNom()).isEqualTo("Omar Belhadj");
         verify(workflowService, never()).creerEvaluationDepuisSnapshot(any(), eq(collabSansMgr), any(), any(), any());
     }
 

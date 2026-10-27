@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -17,9 +18,12 @@ public class EvaluationEventPublisher {
 
 	private static final Logger log = LoggerFactory.getLogger(EvaluationEventPublisher.class);
 
-	private final ObjectProvider<KafkaTemplate<String, Object>> kafkaTemplateProvider;
+	/** Messages envoyés en JSON texte, format lu par svc-notification (comme svc-referentiel-rh). */
+	private static final JsonMapper JSON = JsonMapper.builder().build();
 
-	public EvaluationEventPublisher(ObjectProvider<KafkaTemplate<String, Object>> kafkaTemplateProvider) {
+	private final ObjectProvider<KafkaTemplate<String, String>> kafkaTemplateProvider;
+
+	public EvaluationEventPublisher(ObjectProvider<KafkaTemplate<String, String>> kafkaTemplateProvider) {
 		this.kafkaTemplateProvider = kafkaTemplateProvider;
 	}
 
@@ -58,7 +62,7 @@ public class EvaluationEventPublisher {
 	 * E5 — notif in-app ouverture campagne (topic {@code rh.notifications}, pas alerte couleur).
 	 */
 	public void publierEvaluationCampagneOuverte(Evaluation evaluation, String campagneNom) {
-		UUID collabId = evaluation.getCollaborateurIdentifiant();
+		String destinataire = adresse(evaluation.getCollaborateurCompteId(), evaluation.getCollaborateurIdentifiant());
 		UUID campagneId = evaluation.getCampaign() != null ? evaluation.getCampaign().getId() : null;
 		String nom = campagneNom != null ? campagneNom : "campagne";
 		String content = "EVALUATION_CAMPAGNE_OUVERTE|campagne=" + campagneId
@@ -66,21 +70,55 @@ public class EvaluationEventPublisher {
 				+ "|La campagne « " + nom + " » est active. Merci de compléter votre auto-évaluation (générale puis technique).";
 		NotificationMessage msg = new NotificationMessage(
 				"WEBSOCKET",
-				collabId.toString(),
+				destinataire,
 				"Votre évaluation est ouverte",
 				content);
 		try {
-			publier(RhEvaluationTopics.RH_NOTIFICATIONS, collabId.toString(), msg);
+			publier(RhEvaluationTopics.RH_NOTIFICATIONS, destinataire, msg);
 		} catch (Exception ex) {
 			log.warn("Échec publication notif EVALUATION_CAMPAGNE_OUVERTE pour éval {}: {}",
 					evaluation.getId(), ex.getMessage());
 		}
 	}
 
-	private void publier(String topic, String key, Object payload) {
-		KafkaTemplate<String, Object> kafkaTemplate = kafkaTemplateProvider.getIfAvailable();
-		if (kafkaTemplate != null) {
-			kafkaTemplate.send(topic, key, payload);
+	/**
+	 * Le collaborateur a validé son auto-évaluation : le responsable hiérarchique doit la noter (§ 12).
+	 */
+	public void publierValidationCollaborateur(Evaluation evaluation) {
+		String destinataire = adresse(evaluation.getSuperieurCompteId(), evaluation.getSuperieurIdentifiant());
+		String collaborateur = evaluation.getCollaborateurNom() != null
+				? evaluation.getCollaborateurNom()
+				: "Un collaborateur";
+		String campagne = evaluation.getCampaign() != null ? evaluation.getCampaign().getNom() : "la campagne";
+		String content = "EVALUATION_A_NOTER|evaluation=" + evaluation.getId()
+				+ "|" + collaborateur + " a validé son auto-évaluation (« " + campagne + " »). À vous de la noter.";
+		NotificationMessage msg = new NotificationMessage(
+				"WEBSOCKET",
+				destinataire,
+				"Évaluation à noter — " + collaborateur,
+				content);
+		try {
+			publier(RhEvaluationTopics.RH_NOTIFICATIONS, destinataire, msg);
+		} catch (Exception ex) {
+			log.warn("Échec publication notif EVALUATION_A_NOTER pour éval {}: {}",
+					evaluation.getId(), ex.getMessage());
 		}
+	}
+
+	/**
+	 * svc-notification route sur le claim {@code identifiant_utilisateur} (compte, SCRUM-27) ;
+	 * repli sur l'identifiant de fiche pour les évaluations créées sans snapshot du compte.
+	 */
+	static String adresse(UUID compteId, UUID ficheId) {
+		return compteId != null ? compteId.toString() : ficheId.toString();
+	}
+
+	private void publier(String topic, String key, Object payload) {
+		KafkaTemplate<String, String> kafkaTemplate = kafkaTemplateProvider.getIfAvailable();
+		if (kafkaTemplate == null) {
+			log.warn("KafkaTemplate indisponible : message {} non publié (clé {})", topic, key);
+			return;
+		}
+		kafkaTemplate.send(topic, key, JSON.writeValueAsString(payload));
 	}
 }

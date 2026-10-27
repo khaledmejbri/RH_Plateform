@@ -106,7 +106,7 @@ class _EvaluationDetailScreenState
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
-          _HeaderCard(item: item),
+          _HeaderCard(item: item, managerMode: false),
           const SizedBox(height: 12),
           analytics.maybeWhen(
             data: (value) =>
@@ -252,7 +252,7 @@ class _EvaluationDetailScreenState
             ),
           ),
           const SizedBox(height: 12),
-          _HeaderCard(item: item),
+          _HeaderCard(item: item, managerMode: true),
           const SizedBox(height: 8),
           const Text(
             'Vous ne pouvez noter une question qu’après la réponse du collaborateur.',
@@ -930,9 +930,10 @@ class _QuestionInput extends StatelessWidget {
 }
 
 class _HeaderCard extends StatelessWidget {
-  const _HeaderCard({required this.item});
+  const _HeaderCard({required this.item, required this.managerMode});
 
   final EvaluationItem item;
+  final bool managerMode;
 
   @override
   Widget build(BuildContext context) {
@@ -948,10 +949,16 @@ class _HeaderCard extends StatelessWidget {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            Text(
-              'Manager : ${item.superieurNom}',
-              style: const TextStyle(color: AppTheme.textSecondary),
-            ),
+            if (managerMode && item.collaborateurLibelle != null)
+              Text(
+                'Collaborateur : ${item.collaborateurLibelle}',
+                style: const TextStyle(color: AppTheme.textSecondary),
+              ),
+            if (!managerMode && item.superieurNom != null)
+              Text(
+                'Responsable : ${item.superieurNom}',
+                style: const TextStyle(color: AppTheme.textSecondary),
+              ),
             Text(
               'Statut : ${EvaluationLabels.statut(item.statut)}',
               style: const TextStyle(color: AppTheme.textSecondary),

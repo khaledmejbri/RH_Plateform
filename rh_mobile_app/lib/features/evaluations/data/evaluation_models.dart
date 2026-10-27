@@ -6,8 +6,10 @@ class EvaluationItem {
   final String statut;
   final String collaborateurId;
   final String? collaborateurNom;
+  final String? collaborateurPoste;
   final String superieurId;
-  final String superieurNom;
+  /// Nom du responsable hiérarchique ; null si l'API ne le fournit pas.
+  final String? superieurNom;
   final String? etapeActuelle;
   final int? scoreSur20;
   final String? familleMetierCode;
@@ -25,8 +27,9 @@ class EvaluationItem {
     required this.statut,
     required this.collaborateurId,
     this.collaborateurNom,
+    this.collaborateurPoste,
     required this.superieurId,
-    required this.superieurNom,
+    this.superieurNom,
     this.etapeActuelle,
     this.scoreSur20,
     this.familleMetierCode,
@@ -39,6 +42,14 @@ class EvaluationItem {
   });
 
   bool get isArchived => statut == 'ARCHIVEE';
+
+  /// « Sarra Khemiri — Développeuse backend », ou null sans nom.
+  String? get collaborateurLibelle {
+    if (collaborateurNom == null) return null;
+    return collaborateurPoste == null
+        ? collaborateurNom
+        : '$collaborateurNom — $collaborateurPoste';
+  }
 
   bool get isTermine =>
       statut == 'VALIDEE' || statut == 'ARCHIVEE';
@@ -84,12 +95,10 @@ class EvaluationItem {
       campaignType: json['campaignType'] as String? ?? json['campagneType'] as String?,
       statut: json['statut'] as String? ?? 'EN_ATTENTE_VALIDATION_CROISEE',
       collaborateurId: json['collaborateurIdentifiant'] as String? ?? '',
-      collaborateurNom: json['collaborateurNom'] as String?,
+      collaborateurNom: _displayName(json['collaborateurNom'] as String?),
+      collaborateurPoste: _displayName(json['collaborateurPoste'] as String?),
       superieurId: superieurRaw,
-      superieurNom: _displayName(
-        json['superieurNom'] as String?,
-        fallback: 'Manager',
-      ),
+      superieurNom: _displayName(json['superieurNom'] as String?),
       etapeActuelle: json['etapeActuelle'] as String?,
       scoreSur20: json['scoreSur20'] as int?,
       familleMetierCode: json['familleMetierCode'] as String? ??
@@ -115,13 +124,13 @@ class EvaluationItem {
   }
 
   /// Évite d’afficher un UUID brut comme « nom ».
-  static String _displayName(String? raw, {required String fallback}) {
-    if (raw == null || raw.trim().isEmpty) return fallback;
+  static String? _displayName(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
     final v = raw.trim();
     final uuidLike = RegExp(
       r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
     );
-    if (uuidLike.hasMatch(v)) return fallback;
+    if (uuidLike.hasMatch(v)) return null;
     return v;
   }
 }

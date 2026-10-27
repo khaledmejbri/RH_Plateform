@@ -17,7 +17,19 @@ public record EvaluationItemResponse(
     
     @JsonProperty("statut")
     String statut,
-    
+
+    @JsonProperty("collaborateurIdentifiant")
+    String collaborateurIdentifiant,
+
+    @JsonProperty("collaborateurNom")
+    String collaborateurNom,
+
+    @JsonProperty("collaborateurPoste")
+    String collaborateurPoste,
+
+    @JsonProperty("superieurIdentifiant")
+    String superieurIdentifiant,
+
     @JsonProperty("superieurNom")
     String superieurNom,
     
@@ -26,6 +38,18 @@ public record EvaluationItemResponse(
     
     @JsonProperty("scoreSur20")
     Integer scoreSur20,
+
+    @JsonProperty("familleMetierCode")
+    String familleMetierCode,
+
+    @JsonProperty("niveauSeniorite")
+    String niveauSeniorite,
+
+    @JsonProperty("validationCollaborateurLe")
+    Instant validationCollaborateurLe,
+
+    @JsonProperty("validationSuperieurLe")
+    Instant validationSuperieurLe,
     
     @JsonProperty("creeLe")
     Instant creeLe

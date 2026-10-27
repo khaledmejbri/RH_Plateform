@@ -342,14 +342,28 @@ public class ReferentielRhService {
 	@Transactional(readOnly = true)
 	public List<CollaborateurEvaluationSnapshotResponse> listerActifsPourEvaluation() {
 		return collaborateurRepository.findAllActifsWithUnite().stream()
-				.map(c -> new CollaborateurEvaluationSnapshotResponse(
-						c.getId(),
-						c.getStatut(),
-						c.getFamilleMetierCode(),
-						c.getNiveauSeniorite(),
-						c.getSuperieur() != null ? c.getSuperieur().getId() : null,
-						c.getProfilAcces()))
+				.map(c -> {
+					Collaborateur sup = c.getSuperieur();
+					return new CollaborateurEvaluationSnapshotResponse(
+							c.getId(),
+							c.getStatut(),
+							c.getFamilleMetierCode(),
+							c.getNiveauSeniorite(),
+							sup != null ? sup.getId() : null,
+							c.getProfilAcces(),
+							c.getCompteUtilisateurId(),
+							nomComplet(c),
+							c.getPosteLibelle(),
+							sup != null ? sup.getCompteUtilisateurId() : null,
+							sup != null ? nomComplet(sup) : null);
+				})
 				.toList();
+	}
+
+	private static String nomComplet(Collaborateur c) {
+		String complet = ((c.getPrenom() != null ? c.getPrenom() : "") + " "
+				+ (c.getNom() != null ? c.getNom() : "")).trim();
+		return complet.isEmpty() ? null : complet;
 	}
 
 	/**

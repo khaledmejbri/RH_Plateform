@@ -53,5 +53,33 @@ void main() {
       expect(item.isArchived, isTrue);
       expect(item.actionCollaborateurRequise, isFalse);
     });
+
+    // SCRUM-33 / SCRUM-34
+    test('noms du responsable et du collaborateur', () {
+      final item = EvaluationItem.fromJson({
+        'identifiant': 'e1',
+        'campaignNom': 'Campagne',
+        'statut': 'VALIDEE_COLLABORATEUR',
+        'superieurIdentifiant': '0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0',
+        'superieurNom': 'Omar Belhadj',
+        'collaborateurNom': 'Sarra Khemiri',
+        'collaborateurPoste': 'Développeuse backend',
+        'creeLe': '2026-10-27T10:00:00Z',
+      });
+      expect(item.superieurNom, 'Omar Belhadj');
+      expect(item.collaborateurLibelle, 'Sarra Khemiri — Développeuse backend');
+    });
+
+    test('sans nom ni UUID affiché', () {
+      final item = EvaluationItem.fromJson({
+        'identifiant': 'e1',
+        'campaignNom': 'Campagne',
+        'statut': 'EN_ATTENTE_VALIDATION_CROISEE',
+        'superieurNom': '0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0',
+        'creeLe': '2026-10-27T10:00:00Z',
+      });
+      expect(item.superieurNom, isNull);
+      expect(item.collaborateurLibelle, isNull);
+    });
   });
 }

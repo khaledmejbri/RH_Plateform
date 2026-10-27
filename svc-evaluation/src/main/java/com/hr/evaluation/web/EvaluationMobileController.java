@@ -420,11 +420,19 @@ public class EvaluationMobileController {
                 evaluation.getId().toString(),
                 campaignNom,
                 evaluation.getStatut().name(),
+                evaluation.getCollaborateurIdentifiant().toString(),
+                evaluation.getCollaborateurNom(),
+                evaluation.getCollaborateurPoste(),
                 evaluation.getSuperieurIdentifiant().toString(),
+                evaluation.getSuperieurNom(),
                 evaluation.getEtapeActuelle() != null
                         ? evaluation.getEtapeActuelle().name()
                         : "EVALUATION_GENERALE",
                 evaluation.getScoreSur20(),
+                evaluation.getFamilleMetierCode(),
+                evaluation.getNiveauSeniorite(),
+                evaluation.getValidationCollaborateurLe(),
+                evaluation.getValidationSuperieurLe(),
                 evaluation.getCreeLe()
         );
     }

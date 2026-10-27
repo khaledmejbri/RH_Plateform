@@ -13,6 +13,11 @@ public record CollaborateurEvaluationSnapshotResponse(
 		@JsonProperty("famille_metier_code") String familleMetierCode,
 		@JsonProperty("niveau_seniorite") String niveauSeniorite,
 		@JsonProperty("superieur_identifiant") UUID superieurIdentifiant,
-		@JsonProperty("profil_acces") String profilAcces
+		@JsonProperty("profil_acces") String profilAcces,
+		@JsonProperty("compte_utilisateur_id") UUID compteUtilisateurId,
+		@JsonProperty("nom_complet") String nomComplet,
+		@JsonProperty("poste_libelle") String posteLibelle,
+		@JsonProperty("superieur_compte_utilisateur_id") UUID superieurCompteUtilisateurId,
+		@JsonProperty("superieur_nom_complet") String superieurNomComplet
 ) {
 }

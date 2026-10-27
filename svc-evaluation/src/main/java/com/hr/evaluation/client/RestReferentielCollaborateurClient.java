@@ -46,7 +46,12 @@ public class RestReferentielCollaborateurClient implements ReferentielCollaborat
 							d.familleMetierCode,
 							d.niveauSeniorite,
 							d.superieurIdentifiant,
-							d.profilAcces))
+							d.profilAcces,
+							d.compteUtilisateurId,
+							d.nomComplet,
+							d.posteLibelle,
+							d.superieurCompteUtilisateurId,
+							d.superieurNomComplet))
 					.toList();
 		} catch (Exception ex) {
 			log.error("Échec lecture population ACTIF depuis référentiel: {}", ex.getMessage());
@@ -77,5 +82,15 @@ public class RestReferentielCollaborateurClient implements ReferentielCollaborat
 		UUID superieurIdentifiant;
 		@JsonProperty("profil_acces")
 		String profilAcces;
+		@JsonProperty("compte_utilisateur_id")
+		UUID compteUtilisateurId;
+		@JsonProperty("nom_complet")
+		String nomComplet;
+		@JsonProperty("poste_libelle")
+		String posteLibelle;
+		@JsonProperty("superieur_compte_utilisateur_id")
+		UUID superieurCompteUtilisateurId;
+		@JsonProperty("superieur_nom_complet")
+		String superieurNomComplet;
 	}
 }

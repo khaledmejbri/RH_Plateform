@@ -68,6 +68,22 @@ public class Evaluation {
     @JsonIgnore
     private EvaluationTemplate templateCompetenceAssigne;
 
+    /** Snapshot référentiel à l'activation : compte (adresse des notifications) et libellés affichés. */
+    @Column(name = "collaborateur_compte_id")
+    private UUID collaborateurCompteId;
+
+    @Column(name = "collaborateur_nom", length = 200)
+    private String collaborateurNom;
+
+    @Column(name = "collaborateur_poste", length = 200)
+    private String collaborateurPoste;
+
+    @Column(name = "superieur_compte_id")
+    private UUID superieurCompteId;
+
+    @Column(name = "superieur_nom", length = 200)
+    private String superieurNom;
+
     @Column(name = "validation_collaborateur_le")
     private Instant validationCollaborateurLe;
 
@@ -96,6 +112,21 @@ public class Evaluation {
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
     
+    public UUID getCollaborateurCompteId() { return collaborateurCompteId; }
+    public void setCollaborateurCompteId(UUID collaborateurCompteId) { this.collaborateurCompteId = collaborateurCompteId; }
+
+    public String getCollaborateurNom() { return collaborateurNom; }
+    public void setCollaborateurNom(String collaborateurNom) { this.collaborateurNom = collaborateurNom; }
+
+    public String getCollaborateurPoste() { return collaborateurPoste; }
+    public void setCollaborateurPoste(String collaborateurPoste) { this.collaborateurPoste = collaborateurPoste; }
+
+    public UUID getSuperieurCompteId() { return superieurCompteId; }
+    public void setSuperieurCompteId(UUID superieurCompteId) { this.superieurCompteId = superieurCompteId; }
+
+    public String getSuperieurNom() { return superieurNom; }
+    public void setSuperieurNom(String superieurNom) { this.superieurNom = superieurNom; }
+
     public EvaluationCampaign getCampaign() { return campaign; }
     public void setCampaign(EvaluationCampaign campaign) { this.campaign = campaign; }
     

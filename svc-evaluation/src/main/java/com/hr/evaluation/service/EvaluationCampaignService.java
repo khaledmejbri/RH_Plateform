@@ -157,6 +157,7 @@ public class EvaluationCampaignService {
                 Evaluation evaluation = workflowService.creerEvaluationDepuisSnapshot(
                         campaign, collab.identifiant(), collab.superieurIdentifiant(),
                         collab.familleMetierCode(), collab.niveauSeniorite());
+                appliquerSnapshotIdentite(evaluation, collab);
                 if (evaluation.isProfilMetierIncomplet()) {
                     profilsIncomplets++;
                 }
@@ -174,6 +175,15 @@ public class EvaluationCampaignService {
                 ignoresExistantes,
                 ignoresManager,
                 profilsIncomplets);
+    }
+
+    private void appliquerSnapshotIdentite(Evaluation evaluation, CollaborateurEvaluationSnapshot collab) {
+        evaluation.setCollaborateurCompteId(collab.compteUtilisateurId());
+        evaluation.setCollaborateurNom(collab.nomComplet());
+        evaluation.setCollaborateurPoste(collab.posteLibelle());
+        evaluation.setSuperieurCompteId(collab.superieurCompteUtilisateurId());
+        evaluation.setSuperieurNom(collab.superieurNomComplet());
+        evaluationRepository.save(evaluation);
     }
 
     @Transactional

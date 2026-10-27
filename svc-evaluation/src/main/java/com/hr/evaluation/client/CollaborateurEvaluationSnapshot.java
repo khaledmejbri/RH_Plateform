@@ -11,6 +11,11 @@ public record CollaborateurEvaluationSnapshot(
 		String familleMetierCode,
 		String niveauSeniorite,
 		UUID superieurIdentifiant,
-		String profilAcces
+		String profilAcces,
+		UUID compteUtilisateurId,
+		String nomComplet,
+		String posteLibelle,
+		UUID superieurCompteUtilisateurId,
+		String superieurNomComplet
 ) {
 }

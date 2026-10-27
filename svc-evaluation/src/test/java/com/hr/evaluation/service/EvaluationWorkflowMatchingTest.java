@@ -4,6 +4,7 @@ import com.hr.evaluation.domain.TemplateStatus;
 import com.hr.evaluation.domain.TemplateType;
 import com.hr.evaluation.entity.EvaluationCampaign;
 import com.hr.evaluation.entity.EvaluationTemplate;
+import com.hr.evaluation.kafka.EvaluationEventPublisher;
 import com.hr.evaluation.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,8 @@ class EvaluationWorkflowMatchingTest {
     private EvaluationTemplateRepository templateRepository;
     @Mock
     private EvaluationScoringService scoringService;
+    @Mock
+    private EvaluationEventPublisher eventPublisher;
 
     private EvaluationWorkflowService workflowService;
 
@@ -49,7 +52,8 @@ class EvaluationWorkflowMatchingTest {
                 questionRepository,
                 technicalQuestionRepository,
                 templateRepository,
-                scoringService);
+                scoringService,
+                eventPublisher);
     }
 
     @Test

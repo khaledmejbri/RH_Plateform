@@ -383,6 +383,11 @@ class _EvaluationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, bgColor, fgColor) = _statusMeta(item.statut);
+    final personne = asManager
+        ? item.collaborateurLibelle
+        : (item.superieurNom != null
+            ? 'Responsable : ${item.superieurNom}'
+            : null);
 
     return Card(
       elevation: 0,
@@ -446,30 +451,32 @@ class _EvaluationCard extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.person_outline_rounded,
-                    size: 16,
-                    color: AppTheme.textSecondary,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      asManager
-                          ? (item.collaborateurNom?.isNotEmpty == true
-                              ? 'Collaborateur : ${item.collaborateurNom}'
-                              : 'Notation manager')
-                          : 'Manager : ${item.superieurNom}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppTheme.textSecondary,
+              if (personne != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.person_outline_rounded,
+                      size: 16,
+                      color: AppTheme.textSecondary,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        personne,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight:
+                              asManager ? FontWeight.w600 : FontWeight.w400,
+                          color: asManager
+                              ? AppTheme.textPrimary
+                              : AppTheme.textSecondary,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
               if (item.etapeActuelle != null) ...[
                 const SizedBox(height: 8),
                 Container(
