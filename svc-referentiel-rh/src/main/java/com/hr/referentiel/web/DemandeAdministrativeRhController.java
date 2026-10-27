@@ -102,8 +102,10 @@ public class DemandeAdministrativeRhController {
 	/** Approbation finale RRH. */
 	@PostMapping("/{identifiant}/valider-rrh")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
-	public ResponseEntity<DemandeAdministrativeRhResponse> validerRrh(@PathVariable UUID identifiant) {
-		return ResponseEntity.ok(demandeAdministrativeRhService.validerRrh(identifiant));
+	public ResponseEntity<DemandeAdministrativeRhResponse> validerRrh(
+			@PathVariable UUID identifiant,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(demandeAdministrativeRhService.validerRrh(identifiant, principal.getToken()));
 	}
 
 	/** Refus RRH avec motif obligatoire. */
@@ -111,8 +113,9 @@ public class DemandeAdministrativeRhController {
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<DemandeAdministrativeRhResponse> refuserRrh(
 			@PathVariable UUID identifiant,
-			@Valid @RequestBody DemandeRefusRequest requete) {
-		return ResponseEntity.ok(demandeAdministrativeRhService.refuserRrh(identifiant, requete));
+			@Valid @RequestBody DemandeRefusRequest requete,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(demandeAdministrativeRhService.refuserRrh(identifiant, principal.getToken(), requete));
 	}
 
 	/**

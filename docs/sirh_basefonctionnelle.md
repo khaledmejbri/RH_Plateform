@@ -131,7 +131,7 @@ Reste ouvert : types congés + PJ (story 7) ; refresh token 7 j (story 6 — ADR
 | Répondre à son évaluation | Oui | Oui | Oui (en tant que USER) | Oui |
 
 Expressions Spring : `BACKOFFICE_LECTURE` = RH\|DIRECTION\|ADMIN ; `BACKOFFICE_ECRITURE` = RH\|ADMIN.  
-\*RH/ADMIN traitent l’étape RRH, pas l’étape supérieur (sauf s’ils sont aussi le manager ACTIF du nœud).  
+\*RH/ADMIN traitent l’étape RRH, pas l’étape supérieur (sauf s’ils sont aussi le manager ACTIF du nœud). Jamais sur leur propre demande (D-H03 : 403, un autre RH / ADMIN traite).  
 SPA : `ProtectedRoute` exige JWT RH\|DIRECTION\|ADMIN ; Direction = bandeau « Consultation uniquement ».  
 Les API collaborateur exigent `hasRole('USER')` ou `isAuthenticated()`.
 
@@ -183,6 +183,7 @@ Données minimales :
 - Valideur M01 1er niveau = **manager ACTIF du nœud d’unité** d’affectation du demandeur (snapshot `valideur_attendu` à la création). Un JWT `RO` d’un autre nœud → **403**.
 - Si aucun manager actif sur le nœud : la demande M01 saute l’étape supérieur et part directement en **validation RRH**.
 - <!-- HIÉRARCHIE / M00 — décision PO vague hiérarchie (D-H01) --> Le manager du **nœud parent** ne valide **pas** automatiquement les demandes des sous-unités : seule l’unité d’affectation compte.
+- <!-- HIÉRARCHIE / M01 — décision PO 27/10/2026 (D-H03, SCRUM-23) --> **Exception — personne ne valide sa propre demande** : si le demandeur est lui-même le manager de son nœud, le valideur 1er niveau est le manager ACTIF du **premier nœud ancêtre** qui en a un (chef de service → chef de département → directeur → DG). Sans ancêtre managé (ex. DG) : passage direct en validation RRH.
 
 ### 5.3 Organigramme
 
@@ -235,6 +236,7 @@ Demandeur peut ANNULER si statut = EN_VALIDATION_SUPERIEUR ou EN_VALIDATION_RRH
 ```
 
 - Validation 1er niveau : **uniquement le manager ACTIF du nœud** d’affectation (droit = nœud, pas le seul JWT `RO`). Autre nœud / manager inactif → **403**.
+- <!-- D-H03 (SCRUM-23 / SCRUM-24) --> **Personne ne valide sa propre demande.** Chacun passe à son responsable : collaborateur → chef de service → RRH ; chef de service → chef de département → RRH ; chef de département → directeur → RRH ; directeur → DG → RRH ; DG → RRH. Un RH / ADMIN ne traite pas l’étape RRH de sa propre demande : un **autre** RH / ADMIN le fait (sinon **403**). L’historique trace l’identité de l’approbateur RRH.
 - **Pas** de validation successive le long de l’arbre (manager du parent, N+2, Direction). `DIRECTION` consulte le BO ; elle **n’est pas** valideur M01.
 - Multi-niveaux configurable (ex. congé long → N+2) = **Cible** hors vague actuelle — gate expert RH (`docs/sirh_hierarchie_vague.md` story H4).
 - Refus manager ou RRH : **motif obligatoire**.
@@ -632,6 +634,7 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 | C-M01-03 | Refus RO/RRH : motif obligatoire |
 | C-M01-04 | Annulation demandeur seulement avant décision finale (statuts RO ou RRH) |
 | C-M01-05 | Validation 1er niveau limitée au **manager ACTIF du nœud** d’unité (snapshot) ; sinon skip vers RRH ; autre nœud / inactif → **403** |
+| C-M01-06 | **Personne ne valide sa propre demande** (D-H03) : demande d’un manager de nœud → manager ACTIF du premier nœud ancêtre (sinon RRH) ; RH / ADMIN demandeur → étape RRH traitée par un **autre** RH / ADMIN ; tentative sur sa propre demande → **403** |
 | C-M02-01 | File documents **FIFO** ; dérogation justifiée et tracée |
 | C-M02-02 | SLA par type, échéance calculée à la soumission |
 | C-M04-01 | Plainte interne ≠ externe (destinataires et auteurs) |

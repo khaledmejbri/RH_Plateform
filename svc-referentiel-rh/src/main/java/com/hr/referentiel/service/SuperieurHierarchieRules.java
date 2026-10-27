@@ -34,6 +34,32 @@ final class SuperieurHierarchieRules {
 		return manager;
 	}
 
+	/**
+	 * D-H03 (SCRUM-23) : valideur M01 1er niveau. Personne ne valide sa propre demande.
+	 * <ul>
+	 *   <li>Membre d'un nœud : manager ACTIF de ce nœud ; nœud sans manager → {@code null} (passage RRH, D-H01).</li>
+	 *   <li>Manager de son propre nœud : manager ACTIF du premier nœud ancêtre qui en a un (chef de service →
+	 *   chef de département → directeur → DG) ; aucun ancêtre → {@code null} (passage RRH).</li>
+	 * </ul>
+	 */
+	static Collaborateur resoudreValideurM01(Collaborateur demandeur) {
+		if (demandeur == null || demandeur.getUnite() == null) {
+			return null;
+		}
+		UniteOrganisation unite = demandeur.getUnite();
+		Collaborateur manager = managerActif(unite);
+		if (manager == null || !manager.getId().equals(demandeur.getId())) {
+			return manager;
+		}
+		for (UniteOrganisation u = unite.getParent(); u != null; u = u.getParent()) {
+			Collaborateur m = managerActif(u);
+			if (m != null && !m.getId().equals(demandeur.getId())) {
+				return m;
+			}
+		}
+		return null;
+	}
+
 	static Collaborateur managerActif(UniteOrganisation unite) {
 		if (unite == null || unite.getManager() == null) {
 			return null;

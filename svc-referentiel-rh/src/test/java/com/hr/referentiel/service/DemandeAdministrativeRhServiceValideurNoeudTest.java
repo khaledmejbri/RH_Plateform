@@ -293,6 +293,118 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 		assertThatThrownBy(() -> service.annuler(demandeId, jwt)).isInstanceOf(AccessDeniedException.class);
 	}
 
+	// ─── D-H03 : personne ne valide sa propre demande (SCRUM-23 / SCRUM-24) ──────────
+
+	private DemandeAdministrativeRh creerPour(Collaborateur auteur) {
+		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(auteur);
+		when(collaborateurRepository.findDetailById(auteur.getId())).thenReturn(Optional.of(auteur));
+		when(demandeRepo.save(any())).thenAnswer(inv -> {
+			DemandeAdministrativeRh d = inv.getArgument(0);
+			d.setId(UUID.randomUUID());
+			return d;
+		});
+		when(workflowHistoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		var req = new com.hr.referentiel.dto.DemandeAdministrativeRhCreationRequest();
+		req.setTypeDemande(TypeDemandeAdministrativeRh.CONGE);
+		req.setContenu(Map.of("date_debut", "2026-09-01", "date_fin", "2026-09-05", "type_conge", "ANNUEL"));
+		service.creer(req, jwt);
+		var captor = org.mockito.ArgumentCaptor.forClass(DemandeAdministrativeRh.class);
+		verify(demandeRepo).save(captor.capture());
+		return captor.getValue();
+	}
+
+	@Test
+	@DisplayName("SCRUM-23 : la demande du manager du nœud part au manager du nœud parent")
+	void creer_demandeurManagerDuNoeud_remonteAuParent() {
+		UniteOrganisation departement = new UniteOrganisation();
+		departement.setId(UUID.randomUUID());
+		Collaborateur chefDepartement = collab(UUID.randomUUID(), "M-CD", "Chef", "Departement", "ACTIF", "RESPONSABLE");
+		departement.setManager(chefDepartement);
+		noeud.setParent(departement);
+		managerActif.setUnite(noeud);
+
+		DemandeAdministrativeRh d = creerPour(managerActif);
+
+		assertThat(d.getValideurAttendu().getId()).isEqualTo(chefDepartement.getId());
+		assertThat(d.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR);
+	}
+
+	@Test
+	@DisplayName("SCRUM-23 : parent sans manager → remontée au premier ancêtre managé")
+	void creer_demandeurManager_parentSansManager_remonteAuGrandParent() {
+		UniteOrganisation departement = new UniteOrganisation();
+		departement.setId(UUID.randomUUID());
+		UniteOrganisation direction = new UniteOrganisation();
+		direction.setId(UUID.randomUUID());
+		Collaborateur directeur = collab(UUID.randomUUID(), "M-DIR", "Dir", "Ecteur", "ACTIF", "RO");
+		direction.setManager(directeur);
+		departement.setParent(direction);
+		noeud.setParent(departement);
+		managerActif.setUnite(noeud);
+
+		DemandeAdministrativeRh d = creerPour(managerActif);
+
+		assertThat(d.getValideurAttendu().getId()).isEqualTo(directeur.getId());
+	}
+
+	@Test
+	@DisplayName("SCRUM-23 : manager d'un nœud racine (DG) → directement en validation RRH")
+	void creer_demandeurManagerRacine_passageRrh() {
+		managerActif.setUnite(noeud);
+
+		DemandeAdministrativeRh d = creerPour(managerActif);
+
+		assertThat(d.getValideurAttendu()).isNull();
+		assertThat(d.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
+	}
+
+	@Test
+	@DisplayName("SCRUM-23 : valider sa propre demande (snapshot ancien = soi-même) → 403")
+	void validerSuperieur_propreDemande_403() {
+		demande.setDemandeur(managerActif);
+		demande.setValideurAttendu(managerActif);
+		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
+		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(managerActif);
+
+		assertThatThrownBy(() -> service.validerSuperieur(demandeId, jwt))
+				.isInstanceOf(AccessDeniedException.class)
+				.hasMessageContaining("propre demande");
+	}
+
+	@Test
+	@DisplayName("SCRUM-24 : un RH n'approuve ni ne refuse sa propre demande à l'étape RRH")
+	void rrh_propreDemande_403() {
+		demande.setStatut(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
+		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
+		when(collaborateurConnecteService.resoudre(jwt)).thenReturn(Optional.of(demandeur));
+		var refus = new com.hr.referentiel.dto.DemandeRefusRequest();
+		refus.setMotifRefus("motif");
+
+		assertThatThrownBy(() -> service.validerRrh(demandeId, jwt)).isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.refuserRrh(demandeId, jwt, refus)).isInstanceOf(AccessDeniedException.class);
+		assertThat(demande.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
+	}
+
+	@Test
+	@DisplayName("SCRUM-24 : un autre RH approuve et l'historique trace son identité")
+	void rrh_autreRh_approuveEtTrace() {
+		Collaborateur autreRh = collab(UUID.randomUUID(), "M-RH", "Rita", "Hache", "ACTIF", "RH");
+		demande.setStatut(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
+		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
+		when(collaborateurConnecteService.resoudre(jwt)).thenReturn(Optional.of(autreRh));
+		when(collaborateurRepository.findDetailById(demandeur.getId())).thenReturn(Optional.of(demandeur));
+		when(demandeRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		when(workflowHistoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+		DemandeAdministrativeRhResponse r = service.validerRrh(demandeId, jwt);
+
+		assertThat(r.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.APPROUVEE);
+		var captor = org.mockito.ArgumentCaptor.forClass(com.hr.referentiel.entity.DemandeAdminWorkflowHistory.class);
+		verify(workflowHistoryRepository).save(captor.capture());
+		assertThat(captor.getValue().getActeurIdentifiant()).isEqualTo(autreRh.getId());
+		assertThat(captor.getValue().getActeurNom()).contains("Rita Hache");
+	}
+
 	private static Collaborateur collab(UUID id, String matricule, String prenom, String nom,
 			String statut, String profil) {
 		Collaborateur c = new Collaborateur();

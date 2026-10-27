@@ -168,7 +168,7 @@ public class DemandeAdministrativeRhService {
 		DemandeAdministrativeSuiviResponse response = new DemandeAdministrativeSuiviResponse(
 				d.getId(), d.getTypeDemande(), d.getStatut(), avecRo,
 				etapesAdministratif(d.getStatut(), avecRo, snapshot));
-		enrichirValideurSuivi(response, snapshot, d.getStatut());
+		enrichirValideurSuivi(response, snapshot, d.getStatut(), d.getDemandeur());
 		return response;
 	}
 
@@ -222,18 +222,19 @@ public class DemandeAdministrativeRhService {
 	// ─── Validation RRH ───────────────────────────────────────────────────────
 
 	@Transactional
-	public DemandeAdministrativeRhResponse validerRrh(UUID id) {
+	public DemandeAdministrativeRhResponse validerRrh(UUID id, Jwt jwt) {
 		DemandeAdministrativeRh d = charger(id);
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_RRH,
 				"Cette demande n'est pas en attente de validation RRH.");
+		Collaborateur rh = verifierPasPropreDemandeRrh(jwt, d);
 		Collaborateur demandeur = chargerDemandeurDetail(d);
 
 		d.setStatut(StatutDemandeAdministrativeRh.APPROUVEE);
 		demandeRepo.save(d);
 
-		// Enregistrer l'historique
+		// Enregistrer l'historique (approbateur tracé, SCRUM-24)
 		enregistrerWorkflow(d, ActionWorkflowAdministratif.APPROBATION_RRH,
-			null, "RH", "Approuvée par le RH");
+			rh != null ? rh.getId() : null, nomActeurRh(rh, jwt), "Approuvée par le RH");
 
 		// Notification : RRH a approuvé → demandeur
 		notificationPublisher.notifierApprobationRrh(demandeur, d.getTypeDemande().name());
@@ -242,10 +243,11 @@ public class DemandeAdministrativeRhService {
 	}
 
 	@Transactional
-	public DemandeAdministrativeRhResponse refuserRrh(UUID id, DemandeRefusRequest req) {
+	public DemandeAdministrativeRhResponse refuserRrh(UUID id, Jwt jwt, DemandeRefusRequest req) {
 		DemandeAdministrativeRh d = charger(id);
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_RRH,
 				"Cette demande n'est pas en attente de validation RRH.");
+		Collaborateur rh = verifierPasPropreDemandeRrh(jwt, d);
 		Collaborateur demandeur = chargerDemandeurDetail(d);
 
 		d.setStatut(StatutDemandeAdministrativeRh.REFUSEE);
@@ -254,7 +256,7 @@ public class DemandeAdministrativeRhService {
 
 		// Enregistrer l'historique
 		enregistrerWorkflow(d, ActionWorkflowAdministratif.REFUS_RRH,
-			null, "RH", "Refusée par le RH: " + req.getMotifRefus());
+			rh != null ? rh.getId() : null, nomActeurRh(rh, jwt), "Refusée par le RH: " + req.getMotifRefus());
 
 		// Notification : RRH a refusé → demandeur avec motif
 		notificationPublisher.notifierRefusRrh(demandeur, d.getTypeDemande().name(), req.getMotifRefus());
@@ -324,6 +326,10 @@ public class DemandeAdministrativeRhService {
 	private Collaborateur verifierEstRoDuDemandeurEtRetourner(Jwt jwt, DemandeAdministrativeRh d) {
 		Collaborateur connecte = collaborateurConnecteService.exigerCollaborateur(jwt);
 		Collaborateur attendu = resoudreValideurAttendu(d);
+		// D-H03 : jamais sa propre demande, même avec un snapshot antérieur à la règle
+		if (connecte.getId().equals(d.getDemandeur().getId())) {
+			throw new AccessDeniedException("Vous ne pouvez pas valider votre propre demande.");
+		}
 		if (attendu == null || !attendu.getId().equals(connecte.getId())) {
 			throw new AccessDeniedException(
 					"Seul le manager actif du nœud d'unité du demandeur peut valider cette étape.");
@@ -345,16 +351,26 @@ public class DemandeAdministrativeRhService {
 		return managerNoeudActif(chargerDemandeurDetail(d));
 	}
 
-	/** Manager ACTIF du nœud d'unité d'affectation — source de vérité M01 (pas le champ fiche superieur). */
+	/**
+	 * Manager ACTIF du nœud d'affectation — source de vérité M01 (pas le champ fiche superieur).
+	 * Si le demandeur est lui-même ce manager, remontée au premier ancêtre managé (D-H03, SCRUM-23).
+	 */
 	private Collaborateur managerNoeudActif(Collaborateur demandeur) {
-		if (demandeur == null || demandeur.getUnite() == null || demandeur.getUnite().getManager() == null) {
-			return null;
+		return SuperieurHierarchieRules.resoudreValideurM01(demandeur);
+	}
+
+	/** D-H03 (SCRUM-24) : un RH / ADMIN ne traite pas l'étape RRH de sa propre demande. */
+	private Collaborateur verifierPasPropreDemandeRrh(Jwt jwt, DemandeAdministrativeRh d) {
+		Collaborateur connecte = collaborateurConnecteService.resoudre(jwt).orElse(null);
+		if (connecte != null && connecte.getId().equals(d.getDemandeur().getId())) {
+			throw new AccessDeniedException(
+					"Vous ne pouvez pas traiter votre propre demande : un autre RH ou un administrateur doit la traiter.");
 		}
-		Collaborateur manager = demandeur.getUnite().getManager();
-		if (!"ACTIF".equalsIgnoreCase(manager.getStatut())) {
-			return null;
-		}
-		return manager;
+		return connecte;
+	}
+
+	private static String nomActeurRh(Collaborateur connecte, Jwt jwt) {
+		return connecte != null ? connecte.getPrenom() + " " + connecte.getNom() + " (RH)" : jwt.getSubject() + " (RH)";
 	}
 
 	private static List<DemandeAdministrativeRh> filtrerStatut(
@@ -367,19 +383,28 @@ public class DemandeAdministrativeRhService {
 	private static final String MSG_SKIP_RRH =
 			"Aucun responsable actif sur votre unité : votre demande est directement en validation RRH.";
 	private static final String MSG_ATTENTE_RO = "En attente du responsable de votre service.";
+	// D-H03 : le demandeur est le responsable de son unité → validation par le niveau au-dessus
+	private static final String LIBELLE_ROLE_VALIDEUR_REMONTEE = "Responsable hiérarchique";
+	private static final String MSG_ATTENTE_REMONTEE =
+			"Vous êtes responsable de votre unité : votre demande est validée par votre responsable hiérarchique.";
+	private static final String MSG_SKIP_RRH_REMONTEE =
+			"Aucun responsable au-dessus de vous : votre demande est directement en validation RRH.";
 
 	private static void enrichirValideurSuivi(DemandeAdministrativeSuiviResponse response,
-			Collaborateur snapshot, StatutDemandeAdministrativeRh statut) {
-		response.setValideurAttenduLibelleRole(LIBELLE_ROLE_VALIDEUR);
+			Collaborateur snapshot, StatutDemandeAdministrativeRh statut, Collaborateur demandeur) {
+		boolean demandeurEstManager = demandeur.getUnite() != null && demandeur.getUnite().getManager() != null
+				&& demandeur.getUnite().getManager().getId().equals(demandeur.getId());
+		response.setValideurAttenduLibelleRole(
+				demandeurEstManager ? LIBELLE_ROLE_VALIDEUR_REMONTEE : LIBELLE_ROLE_VALIDEUR);
 		if (snapshot != null) {
 			response.setValideurAttenduIdentifiant(snapshot.getId());
 			response.setValideurAttenduMatricule(snapshot.getMatricule());
 			response.setValideurAttenduNomComplet(nomComplet(snapshot));
 			if (statut == StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR) {
-				response.setMessageExplication(MSG_ATTENTE_RO);
+				response.setMessageExplication(demandeurEstManager ? MSG_ATTENTE_REMONTEE : MSG_ATTENTE_RO);
 			}
 		} else {
-			response.setMessageExplication(MSG_SKIP_RRH);
+			response.setMessageExplication(demandeurEstManager ? MSG_SKIP_RRH_REMONTEE : MSG_SKIP_RRH);
 		}
 	}
 

@@ -127,6 +127,19 @@ class EvaluationAdminControllerSecurityTest {
 	}
 
 	@Test
+	void roleNonAutoriseAvecCorpsIncompletRetourne403AvantValidation() throws Exception {
+		for (String role : List.of("ROLE_DIRECTION", "ROLE_RO")) {
+			mockMvc.perform(post("/api/rh/v1/admin/evaluations/campaigns")
+							.contentType("application/json")
+							.content("""
+									{"nom":"C","type":"ANNUELLE","annee":2027}
+									""")
+							.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority(role))))
+					.andExpect(status().isForbidden());
+		}
+	}
+
+	@Test
 	void userSansBackofficeRefuseLectureAdmin() throws Exception {
 		mockMvc.perform(get("/api/rh/v1/admin/evaluations/campaigns")
 						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))

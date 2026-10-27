@@ -12,7 +12,9 @@ import com.hr.evaluation.service.EvaluationScoringService;
 import com.hr.evaluation.service.EvaluationTemplateService;
 import com.hr.evaluation.service.EvaluationWorkflowService;
 import com.hr.evaluation.service.TechnicalTemplateService;
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Valid;
+import jakarta.validation.Validator;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -45,6 +48,7 @@ public class EvaluationAdminController {
     private final EvaluationRepository evaluationRepository;
     private final EvaluationCampaignRepository campaignRepository;
     private final EvaluationAccessService evaluationAccess;
+    private final Validator validator;
 
     public EvaluationAdminController(
             EvaluationCampaignService campaignService,
@@ -55,7 +59,8 @@ public class EvaluationAdminController {
             EvaluationScoringService scoringService,
             EvaluationRepository evaluationRepository,
             EvaluationCampaignRepository campaignRepository,
-            EvaluationAccessService evaluationAccess) {
+            EvaluationAccessService evaluationAccess,
+            Validator validator) {
         this.campaignService = campaignService;
         this.templateService = templateService;
         this.technicalTemplateService = technicalTemplateService;
@@ -65,6 +70,18 @@ public class EvaluationAdminController {
         this.evaluationRepository = evaluationRepository;
         this.campaignRepository = campaignRepository;
         this.evaluationAccess = evaluationAccess;
+        this.validator = validator;
+    }
+
+    private void valider(Object requete) {
+        Set<ConstraintViolation<Object>> violations = validator.validate(requete);
+        if (!violations.isEmpty()) {
+            StringBuilder details = new StringBuilder("Champs invalides: ");
+            violations.stream()
+                    .sorted(java.util.Comparator.comparing(v -> v.getPropertyPath().toString()))
+                    .forEach(v -> details.append(v.getPropertyPath()).append(" - ").append(v.getMessage()).append("; "));
+            throw EvaluationMetierException.badRequest("VALIDATION_ERROR", details.toString());
+        }
     }
 
     // ========== CAMPAIGN MANAGEMENT ==========
@@ -121,8 +138,10 @@ public class EvaluationAdminController {
     @PostMapping("/campaigns")
     @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Map<String, Object>> createCampaign(
-            @Valid @RequestBody CampagneCreationRequest request) {
+            @RequestBody CampagneCreationRequest request) {
         // SCRUM-26 : corps validé (400 au lieu de 500) ; créateur lu dans le JWT, plus dans le corps.
+        // Validation dans la méthode (pas @Valid) : le contrôle de rôle passe d'abord → 403 avant 400.
+        valider(request);
         UUID creePar = evaluationAccess.requireJwtActorId();
         EvaluationCampaignType type = EvaluationCampaignService.parseTypeStrict(request.type());
 
