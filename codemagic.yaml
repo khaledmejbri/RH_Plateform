@@ -8,6 +8,10 @@
 # Avec un compte Apple Developer : certificat + profil dans Codemagic, puis
 # lancer manuellement « RH Connect iOS (signé) ».
 # API : modifiable dans l'app (écran de connexion → « Serveur »), ex. URL de tunnel.
+#
+# Artefacts : chemins absolus via $CM_BUILD_DIR (racine du clone). Avec
+# working_directory, un chemin relatif « rh_mobile_app/... » n'est pas trouvé
+# (« No artifacts were found » à l'étape Publishing).
 
 workflows:
   rh-connect-ios:
@@ -65,8 +69,8 @@ workflows:
           cp -R Runner.app Payload/
           zip -qry RHConnect-unsigned.ipa Payload
     artifacts:
-      - rh_mobile_app/build/ios/iphoneos/*.ipa
-      - rh_mobile_app/build/ios/iphoneos/*.app
+      - $CM_BUILD_DIR/rh_mobile_app/build/ios/iphoneos/*.ipa
+      - $CM_BUILD_DIR/rh_mobile_app/build/ios/iphoneos/*.app
       - /tmp/xcodebuild_logs/*.log
 
   rh-connect-ios-signed:
@@ -102,7 +106,7 @@ workflows:
             --export-options-plist=/Users/builder/export_options.plist \
             --dart-define="API_BASE_URL=$API_BASE_URL"
     artifacts:
-      - rh_mobile_app/build/ios/ipa/*.ipa
+      - $CM_BUILD_DIR/rh_mobile_app/build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
 
   rh-connect-android:
@@ -124,4 +128,4 @@ workflows:
       - name: Build APK
         script: flutter build apk --release
     artifacts:
-      - rh_mobile_app/build/**/outputs/**/*.apk
+      - $CM_BUILD_DIR/rh_mobile_app/build/**/outputs/**/*.apk
