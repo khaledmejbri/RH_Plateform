@@ -6,6 +6,7 @@ import '../../auth/providers/collaborateur_notifier.dart';
 import '../data/evaluation_models.dart';
 import '../data/evaluation_repository.dart';
 import 'evaluations_list_screen.dart';
+import 'skill_star_rating.dart';
 import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final evaluationDetailProvider =
@@ -610,19 +611,11 @@ class _TechnicalSection extends ConsumerWidget {
                         style: const TextStyle(color: AppTheme.textSecondary),
                       ),
                     ),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: SkillLevel.values.map((level) {
-                      final active = selected == level;
-                      return ChoiceChip(
-                        label: Text('${level.score} ${level.label}'),
-                        selected: active,
-                        onSelected: readOnly
-                            ? null
-                            : (_) => onChanged(question.id, level),
-                      );
-                    }).toList(),
+                  SkillStarRating(
+                    value: selected,
+                    onChanged: readOnly
+                        ? null
+                        : (level) => onChanged(question.id, level),
                   ),
                 ],
               ),
@@ -753,26 +746,39 @@ class _ManagerTechnicalSection extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      q.niveauAutoEvaluation != null
-                          ? 'Réponse collab. : ${SkillLevelExtension.fromString(q.niveauAutoEvaluation!).label}'
-                          : 'Le collaborateur n’a pas encore répondu à cette question.',
-                      style: const TextStyle(color: AppTheme.textSecondary),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: SkillLevel.values.map((level) {
-                        return ChoiceChip(
-                          label: Text('${level.score} ${level.label}'),
-                          selected: selected == level,
-                          onSelected: (q.niveauAutoEvaluation == null)
-                              ? null
-                              : (_) => onChanged(q.id, level),
-                        );
-                      }).toList(),
-                    ),
+                    if (q.niveauAutoEvaluation != null) ...[
+                      const Text(
+                        'Auto-évaluation du collaborateur',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      SkillStarRating(
+                        value: SkillLevelExtension.fromString(
+                          q.niveauAutoEvaluation!,
+                        ),
+                        size: 18,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Votre note',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      SkillStarRating(
+                        value: selected,
+                        onChanged: (level) => onChanged(q.id, level),
+                      ),
+                    ] else
+                      const Text(
+                        'Le collaborateur n’a pas encore répondu à cette question.',
+                        style: TextStyle(color: AppTheme.textSecondary),
+                      ),
                   ],
                 ),
               );
