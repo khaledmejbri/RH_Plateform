@@ -135,10 +135,12 @@ class _DemandeCard extends ConsumerWidget {
                               fontFamily: 'monospace',
                             ),
                           ),
+                          // SCRUM-30 : statut sous le titre, pour ne plus couper le libellé en plein mot.
+                          const SizedBox(height: 6),
+                          _StatusPill(statut: item.statut),
                         ],
                       ),
                     ),
-                    _StatusPill(statut: item.statut),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -284,7 +286,7 @@ class _DemandeCard extends ConsumerWidget {
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Confirmer la validation'),
         content: Text(
-          'Valider la demande ${_typeInfo(item.typeDemande).label.toLowerCase()} ? '
+          '${_questionValidation(item.typeDemande)} '
           'Elle sera transmise au RRH pour approbation finale.',
         ),
         actions: [
@@ -542,6 +544,16 @@ _TypeInfo _typeInfo(String type) {
         'Ordre de mission', Icons.business_center_rounded, Color(0xFF7C3AED)),
     _ => const _TypeInfo(
         'Demande', Icons.assignment_rounded, AppTheme.primary),
+  };
+}
+
+/// SCRUM-30 : question de confirmation avec le bon article (plus de « la demande demande de congé »).
+String _questionValidation(String type) {
+  return switch (type) {
+    'CONGE' => 'Valider la demande de congé ?',
+    'AUTORISATION_SORTIE' => 'Valider l’autorisation de sortie ?',
+    'ORDRE_MISSION' => 'Valider l’ordre de mission ?',
+    _ => 'Valider la demande ?',
   };
 }
 

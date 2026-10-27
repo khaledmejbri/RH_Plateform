@@ -89,9 +89,9 @@ public class DemandeAdministrativeRhService {
 			demandeur.getId(), demandeur.getPrenom() + " " + demandeur.getNom(),
 			"Demande soumise pour validation");
 
-		// Notification : demandeur → RO (ou RH si pas de RO)
+		// Notification : demandeur → valideur retenu (D-H03), ou RH / ADMIN sans valideur (SCRUM-28)
 		notificationPublisher.notifierDemandeRecue(demandeur,
-				req.getTypeDemande().name(), saved.getId().toString());
+				req.getTypeDemande().name(), saved.getId().toString(), valideurAttendu);
 
 		return toResponse(saved);
 	}
@@ -289,7 +289,7 @@ public class DemandeAdministrativeRhService {
 			"Annulée par le demandeur");
 
 		// Notification : annulation → RO pour info
-		notificationPublisher.notifierAnnulationDemandeur(demandeur, d.getTypeDemande().name());
+		notificationPublisher.notifierAnnulationDemandeur(demandeur, d.getTypeDemande().name(), d.getValideurAttendu());
 
 		return toResponse(d);
 	}

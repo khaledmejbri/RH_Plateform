@@ -65,6 +65,10 @@ public interface CollaborateurRepository extends JpaRepository<Collaborateur, UU
 	@Query("select c from Collaborateur c where c.profilAcces = 'RH' and c.statut = 'ACTIF'")
 	java.util.List<Collaborateur> findAllRhActifs();
 
+	/** Back-office qui traite l'étape RRH (§ 4.2 BACKOFFICE_ECRITURE) : profils RH et ADMIN actifs. */
+	@Query("select c from Collaborateur c where c.profilAcces in ('RH', 'ADMIN') and c.statut = 'ACTIF'")
+	java.util.List<Collaborateur> findAllBackofficeEcritureActifs();
+
 	@EntityGraph(attributePaths = {"unite", "superieur"})
 	@Query("select c from Collaborateur c where c.statut = 'ACTIF'")
 	java.util.List<Collaborateur> findAllActifsWithUnite();

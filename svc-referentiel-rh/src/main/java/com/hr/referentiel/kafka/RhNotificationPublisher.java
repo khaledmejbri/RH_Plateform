@@ -51,23 +51,24 @@ public class RhNotificationPublisher {
     // ─── Demande Administrative ─────────────────────────────────────────────
 
     /**
-     * Étape 1 : demande soumise → notifie le manager ACTIF du nœud d'unité.
-     * Si aucun manager actif → notifie directement les RH.
+     * Étape 1 : demande soumise → notifie le valideur retenu (snapshot {@code valideur_attendu}, règle D-H03 :
+     * manager du nœud, ou premier ancêtre managé si le demandeur est ce manager). Sans valideur → RH / ADMIN.
      */
-    public void notifierDemandeRecue(Collaborateur demandeur, String typeDemande, String identifiantDemande) {
+    public void notifierDemandeRecue(Collaborateur demandeur, String typeDemande, String identifiantDemande,
+            Collaborateur valideur) {
         UniteOrganisation unite = demandeur.getUnite();
         if (unite == null) {
             notifierTousLesRh(
                     "Nouvelle demande sans unité assignée",
                     "Le collaborateur " + nomComplet(demandeur)
                             + " a soumis une demande " + typeDemande
-                            + " (ref. " + identifiantDemande + ") mais n'est rattaché à aucune unité.");
+                            + " (ref. " + identifiantDemande + ") mais n'est rattaché à aucune unité.",
+                    demandeur);
             return;
         }
 
-        Optional<Collaborateur> manager = managerNoeudActif(unite);
-        if (manager.isPresent()) {
-            envoyer(manager.get().getId().toString(),
+        if (valideur != null) {
+            envoyer(valideur,
                     "Demande à valider — " + libelleDemande(typeDemande),
                     nomComplet(demandeur) + " a soumis une demande " + libelleDemande(typeDemande)
                             + ". Votre validation est requise.");
@@ -75,7 +76,8 @@ public class RhNotificationPublisher {
             notifierTousLesRh(
                     "Demande à valider — " + libelleDemande(typeDemande),
                     nomComplet(demandeur) + " a soumis une demande " + libelleDemande(typeDemande)
-                            + " (aucun manager actif sur le nœud " + unite.getLibelle() + ").");
+                            + " (aucun responsable pour la valider : approbation RRH directe).",
+                    demandeur);
         }
     }
 
@@ -87,14 +89,15 @@ public class RhNotificationPublisher {
                 "Demande validée par le RO — " + libelleDemande(typeDemande),
                 "La demande " + libelleDemande(typeDemande) + " de " + nomComplet(demandeur)
                         + " a été validée par " + nomComplet(ro)
-                        + ". Votre approbation finale est requise.");
+                        + ". Votre approbation finale est requise.",
+                demandeur);
     }
 
     /**
      * Étape 2b : RO a refusé → notifie le demandeur avec le motif.
      */
     public void notifierRefusRo(Collaborateur demandeur, String typeDemande, String motif) {
-        envoyer(demandeur.getId().toString(),
+        envoyer(demandeur,
                 "Demande refusée par votre responsable",
                 "Votre demande " + libelleDemande(typeDemande)
                         + " a été refusée. Motif : " + (motif != null ? motif : "Non précisé"));
@@ -104,7 +107,7 @@ public class RhNotificationPublisher {
      * Étape 3a : RRH a approuvé → notifie le demandeur.
      */
     public void notifierApprobationRrh(Collaborateur demandeur, String typeDemande) {
-        envoyer(demandeur.getId().toString(),
+        envoyer(demandeur,
                 "Demande approuvée ✓",
                 "Bonne nouvelle ! Votre demande " + libelleDemande(typeDemande)
                         + " a été approuvée par les Ressources Humaines.");
@@ -114,7 +117,7 @@ public class RhNotificationPublisher {
      * Étape 3b : RRH a refusé → notifie le demandeur avec le motif.
      */
     public void notifierRefusRrh(Collaborateur demandeur, String typeDemande, String motif) {
-        envoyer(demandeur.getId().toString(),
+        envoyer(demandeur,
                 "Demande refusée par le RH",
                 "Votre demande " + libelleDemande(typeDemande)
                         + " a été refusée par les Ressources Humaines."
@@ -124,14 +127,12 @@ public class RhNotificationPublisher {
     /**
      * Annulation par le demandeur → notifie le manager du nœud pour information.
      */
-    public void notifierAnnulationDemandeur(Collaborateur demandeur, String typeDemande) {
-        UniteOrganisation unite = demandeur.getUnite();
-        if (unite == null) return;
-        managerNoeudActif(unite).ifPresent(manager ->
-                envoyer(manager.getId().toString(),
-                        "Demande annulée par le collaborateur",
-                        nomComplet(demandeur) + " a annulé sa demande " + libelleDemande(typeDemande) + ".")
-        );
+    public void notifierAnnulationDemandeur(Collaborateur demandeur, String typeDemande, Collaborateur valideur) {
+        // SCRUM-28 : prévient le valideur retenu (snapshot), pas le manager recalculé du nœud
+        if (valideur == null || valideur.getId().equals(demandeur.getId())) return;
+        envoyer(valideur,
+                "Demande annulée par le collaborateur",
+                nomComplet(demandeur) + " a annulé sa demande " + libelleDemande(typeDemande) + ".");
     }
 
     // ─── Documents Administratifs ───────────────────────────────────────────
@@ -150,7 +151,7 @@ public class RhNotificationPublisher {
      * Document disponible → notifie le demandeur.
      */
     public void notifierDocumentDisponible(Collaborateur demandeur, String typeDocument, String urlDocument) {
-        envoyer(demandeur.getId().toString(),
+        envoyer(demandeur,
                 "Votre document est prêt",
                 "Votre " + libelleDocument(typeDocument)
                         + " est disponible et prêt à être téléchargé.");
@@ -160,7 +161,7 @@ public class RhNotificationPublisher {
      * Document rejeté → notifie le demandeur avec motif.
      */
     public void notifierDocumentRejete(Collaborateur demandeur, String typeDocument, String motif) {
-        envoyer(demandeur.getId().toString(),
+        envoyer(demandeur,
                 "Demande de document refusée",
                 "Votre demande de " + libelleDocument(typeDocument)
                         + " n'a pas pu être traitée. Motif : " + (motif != null ? motif : "Non précisé"));
@@ -180,7 +181,7 @@ public class RhNotificationPublisher {
                 + " hors de l'ordre FIFO. Justification : " + justification;
 
         if (superieur != null && "ACTIF".equalsIgnoreCase(superieur.getStatut())) {
-            envoyer(superieur.getId().toString(), sujet, corps);
+            envoyer(superieur, sujet, corps);
         } else {
             log.warn("Aucun supérieur actif pour le RH {} — notification dérogation FIFO envoyée à tous les RH",
                     rhActeur.getId());
@@ -211,7 +212,7 @@ public class RhNotificationPublisher {
 
         Collaborateur superieur = auteur.getSuperieur();
         if (superieur != null && "ACTIF".equalsIgnoreCase(superieur.getStatut())) {
-            envoyer(superieur.getId().toString(), sujet, corps);
+            envoyer(superieur, sujet, corps);
             return;
         }
 
@@ -236,7 +237,7 @@ public class RhNotificationPublisher {
         if (commentaire != null && !commentaire.isBlank()) {
             msg += " Message RH : " + commentaire;
         }
-        envoyer(auteur.getId().toString(), "Mise à jour de votre plainte [" + numeroTicket + "]", msg);
+        envoyer(auteur, "Mise à jour de votre plainte [" + numeroTicket + "]", msg);
     }
 
     public void notifierDemandeFormationSoumise(Collaborateur demandeur, String typeFormation) {
@@ -247,14 +248,14 @@ public class RhNotificationPublisher {
     }
 
     public void notifierDemandeFormationIntegree(Collaborateur demandeur, String typeFormation) {
-        envoyer(demandeur.getId().toString(),
+        envoyer(demandeur,
                 "Formation integree au plan",
                 "Votre demande de formation " + typeFormation
                         + " a ete integree au plan annuel de formation.");
     }
 
     public void notifierDemandeFormationRefusee(Collaborateur demandeur, String typeFormation, String motif) {
-        envoyer(demandeur.getId().toString(),
+        envoyer(demandeur,
                 "Demande de formation refusee",
                 "Votre demande de formation " + typeFormation
                         + " a ete refusee. Motif : " + (motif != null ? motif : "Non precise"));
@@ -279,23 +280,30 @@ public class RhNotificationPublisher {
                 periode += " au " + dateFin.toString();
             }
         }
-        envoyer(collaborateur.getId().toString(),
+        envoyer(collaborateur,
                 "Invitation à une formation",
                 "Vous êtes invité(e) à participer à la formation : " + typeFormation
                         + " organisée par " + organisme + periode
                         + ". Votre responsable vous a sélectionné pour cette formation.");
     }
 
-    /** Notifie tous les collaborateurs avec profil_acces = RH. */
+    /** Notifie le back-office qui traite l'étape RRH : profils RH et ADMIN actifs (§ 4.2, SCRUM-29). */
     private void notifierTousLesRh(String sujet, String corps) {
-        List<Collaborateur> rhActifs = collaborateurRepository.findAllRhActifs();
+        notifierTousLesRh(sujet, corps, null);
+    }
+
+    /** Idem, sans le collaborateur {@code exclu} : personne n'est notifié pour traiter sa propre demande (D-H03). */
+    private void notifierTousLesRh(String sujet, String corps, Collaborateur exclu) {
+        List<Collaborateur> rhActifs = collaborateurRepository.findAllBackofficeEcritureActifs().stream()
+                .filter(c -> exclu == null || !c.getId().equals(exclu.getId()))
+                .toList();
         if (rhActifs.isEmpty()) {
-            log.warn("Aucun collaborateur RH actif trouvé pour notification : {}", sujet);
+            log.warn("Aucun collaborateur RH / ADMIN actif trouvé pour notification : {}", sujet);
             // Fallback : envoyer au groupe générique "RH" que svc-notification résoudra
             envoyer("RH", sujet, corps);
         } else {
             for (Collaborateur rh : rhActifs) {
-                envoyer(rh.getId().toString(), sujet, corps);
+                envoyer(rh, sujet, corps);
             }
         }
     }
@@ -307,16 +315,16 @@ public class RhNotificationPublisher {
         envoyer("GROUP:" + profil, sujet, corps);
     }
 
-    /** Manager ACTIF du nœud d'unité (source de vérité M01). */
-    private static Optional<Collaborateur> managerNoeudActif(UniteOrganisation unite) {
-        if (unite == null || unite.getManager() == null) {
-            return Optional.empty();
-        }
-        Collaborateur manager = unite.getManager();
-        if (!"ACTIF".equalsIgnoreCase(manager.getStatut())) {
-            return Optional.empty();
-        }
-        return Optional.of(manager);
+    /**
+     * SCRUM-27 : svc-notification route la session STOMP sur le claim JWT {@code identifiant_utilisateur}
+     * (= compte). On adresse donc le compte lié à la fiche ; repli sur l'identifiant de fiche sans compte.
+     */
+    private void envoyer(Collaborateur destinataire, String sujet, String corps) {
+        envoyer(adresse(destinataire), sujet, corps);
+    }
+
+    static String adresse(Collaborateur c) {
+        return c.getCompteUtilisateurId() != null ? c.getCompteUtilisateurId().toString() : c.getId().toString();
     }
 
     private void envoyer(String recipientId, String sujet, String corps) {
