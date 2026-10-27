@@ -9,6 +9,7 @@ import '../../features/demandes_admin/presentation/demandes_admin_list_screen.da
 import '../../features/demandes_admin/presentation/autorisations_list_screen.dart';
 import '../../features/demandes_admin/presentation/demande_conge_create_screen.dart';
 import '../../features/demandes_admin/presentation/demande_autorisation_sortie_create_screen.dart';
+import '../../features/demandes_admin/presentation/demande_ordre_mission_create_screen.dart';
 import '../../features/demandes_admin/presentation/ro_validation_screen.dart';
 import '../../features/documents/presentation/document_create_screen.dart';
 import '../../features/documents/presentation/document_detail_screen.dart';
@@ -82,6 +83,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/demandes-admin/ro/validation', builder: (_, __) => const RoValidationScreen()),
       GoRoute(path: '/demandes-admin/conge/nouveau', builder: (_, __) => const DemandeCongeCreateScreen()),
       GoRoute(path: '/demandes-admin/autorisation/nouveau', builder: (_, __) => const DemandeAutorisationSortieCreateScreen()),
+      GoRoute(path: '/demandes-admin/mission/nouveau', builder: (_, __) => const DemandeOrdreMissionCreateScreen()),
       GoRoute(path: '/demandes-admin/ro/validation', builder: (_, __) => const RoValidationScreen()),
       GoRoute(
         path: '/demandes-admin/:id',

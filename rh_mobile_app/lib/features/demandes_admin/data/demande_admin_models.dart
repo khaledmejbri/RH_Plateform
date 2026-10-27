@@ -7,6 +7,9 @@ class DemandeAdminItem {
     this.periodeFin,
     this.motifRefus,
     this.contenu,
+    this.demandeurNom,
+    this.demandeurMatricule,
+    this.demandeurUnite,
   });
 
   final String id;
@@ -16,6 +19,14 @@ class DemandeAdminItem {
   final String? periodeFin;
   final String? motifRefus;
   final Map<String, dynamic>? contenu;
+
+  /// SCRUM-18 : identité du demandeur (renvoyée par l'API depuis SCRUM-15) pour la file du RO.
+  final String? demandeurNom;
+  final String? demandeurMatricule;
+  final String? demandeurUnite;
+
+  /// Pièce jointe déclarée (certificat MALADIE / MATERNITE) — référence, pas de fichier (upload = cible CDC).
+  String? get certificat => contenu?['certificat'] as String?;
 
   bool get isAutorisationSortie => typeDemande == 'AUTORISATION_SORTIE';
   String? get heureDebut => contenu?['heure_debut'] as String?;
@@ -31,6 +42,9 @@ class DemandeAdminItem {
       periodeFin: j['periode_fin'] as String?,
       motifRefus: j['motif_refus'] as String?,
       contenu: contenuRaw is Map<String, dynamic> ? contenuRaw : null,
+      demandeurNom: j['demandeur_nom'] as String?,
+      demandeurMatricule: j['demandeur_matricule'] as String?,
+      demandeurUnite: j['demandeur_unite'] as String?,
     );
   }
 }

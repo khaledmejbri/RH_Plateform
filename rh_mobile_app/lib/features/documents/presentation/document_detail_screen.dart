@@ -32,6 +32,23 @@ class DocumentDetailScreen extends ConsumerWidget {
     }).join(' ');
   }
 
+  /// « Échéance : 28/10/2026 à 14:00 (SLA 24 h) — reste 5 h », ou « en retard » si l'échéance est passée.
+  static String _libelleDelai(DateTime? echeance, int? slaHeures, bool enRetard) {
+    if (echeance == null) return '';
+    final sla = slaHeures != null ? ' (SLA $slaHeures h)' : '';
+    final date = DateFormat("dd/MM/yyyy 'à' HH:mm", 'fr_FR').format(echeance);
+    if (enRetard || echeance.isBefore(DateTime.now())) {
+      return 'Échéance dépassée depuis le $date$sla.';
+    }
+    final reste = echeance.difference(DateTime.now());
+    final resteTexte = reste.inHours >= 24
+        ? '${reste.inDays} j ${reste.inHours % 24} h'
+        : reste.inHours >= 1
+            ? '${reste.inHours} h'
+            : '${reste.inMinutes} min';
+    return 'Échéance : $date$sla — reste $resteTexte.';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(documentDetailProvider(id));
@@ -63,25 +80,24 @@ class DocumentDetailScreen extends ConsumerWidget {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text(rhErrorMessage(e))),
               data: (j) {
+                // SCRUM-19 : délai issu du SLA du type et de l'échéance calculée à la soumission
+                // (§ 7.1, C-M02-02) — plus de durée figée côté application.
+                final echeance = DateTime.tryParse(j['date_echeance_traitement']?.toString() ?? '')?.toLocal();
+                final slaHeures = (j['delai_sla_heures'] as num?)?.toInt();
+                final enRetard = j['en_retard'] == true;
+                final delai = _libelleDelai(echeance, slaHeures, enRetard);
+
                 String statusLabel = 'Envoyé';
                 String statusDescription = 'Votre demande a été envoyée et sera traitée prochainement.';
                 if (j['statut'] == 'EN_ATTENTE_FILE') {
                   final rang = j['rang_dans_file'];
-                  final nombreDevant = j['nombre_en_attente_devant'];
-                  if (rang != null && rang <= 10) {
-                    statusLabel = 'En cours de validation';
-                    statusDescription = 'Votre demande est en position $rang dans la file d\'attente.';
-                    if (nombreDevant != null && nombreDevant > 0) {
-                      statusDescription += ' Il y a $nombreDevant demande(s) avant la vôtre.';
-                    }
-                    statusDescription += ' Délai estimé : 2-3 jours ouvrables.';
-                  } else {
-                    statusLabel = 'En attente';
-                    statusDescription = 'Votre demande est dans la file d\'attente. Délai estimé : 5-7 jours ouvrables.';
-                  }
+                  statusLabel = 'En attente dans la file';
+                  statusDescription = rang != null
+                      ? 'Votre demande est en position $rang dans la file d\'attente (premier arrivé, premier servi). $delai'
+                      : 'Votre demande est dans la file d\'attente. $delai';
                 } else if (j['statut'] == 'EN_TRAITEMENT_RH') {
                   statusLabel = 'En cours de traitement';
-                  statusDescription = 'Les RH traitent actuellement votre demande. Délai restant : 1-2 jours.';
+                  statusDescription = 'Les RH traitent actuellement votre demande. $delai';
                 } else if (j['statut'] == 'DISPONIBLE') {
                   statusLabel = 'Validée';
                   statusDescription = 'Votre document est prêt ! Vous pouvez le télécharger.';
@@ -89,9 +105,11 @@ class DocumentDetailScreen extends ConsumerWidget {
                   statusLabel = 'Refusée';
                   statusDescription = 'Votre demande a été refusée. Veuillez consulter le motif ci-dessous.';
                 }
-                
+
                 Color statusColor = AppTheme.textTertiary;
-                if (statusLabel.contains('validation') || statusLabel.contains('traitement')) {
+                if (enRetard && (j['statut'] == 'EN_ATTENTE_FILE' || j['statut'] == 'EN_TRAITEMENT_RH')) {
+                  statusColor = AppTheme.error;
+                } else if (statusLabel.contains('attente') || statusLabel.contains('traitement')) {
                   statusColor = AppTheme.warning;
                 } else if (statusLabel == 'Validée') {
                   statusColor = AppTheme.success;

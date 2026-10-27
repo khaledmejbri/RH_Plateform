@@ -171,6 +171,24 @@ class _DemandesAdminListScreenState
                   context.push('/demandes-admin/autorisation/nouveau');
                 },
               ),
+              const Divider(height: 8),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.business_center_rounded, color: Color(0xFF7C3AED)),
+                ),
+                title: const Text('Ordre de mission', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Déplacement professionnel'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/demandes-admin/mission/nouveau');
+                },
+              ),
               const SizedBox(height: 8),
             ],
           ),

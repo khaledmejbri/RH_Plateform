@@ -141,9 +141,59 @@ class _DemandeCard extends ConsumerWidget {
                     _StatusPill(statut: item.statut),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
+                // SCRUM-18 : le RO doit savoir qui demande (§ 20 RO, § 6.5).
+                Row(
+                  children: [
+                    const Icon(Icons.person_outline_rounded,
+                        size: 16, color: AppTheme.textTertiary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        [
+                          item.demandeurNom ?? 'Demandeur inconnu',
+                          if (item.demandeurMatricule != null) item.demandeurMatricule!,
+                        ].join(' · '),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (item.demandeurUnite != null) ...[
+                  const SizedBox(height: 2),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 22),
+                    child: Text(
+                      item.demandeurUnite!,
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 10),
                 // Period / heure info
                 _PeriodRow(item: item),
+                if (item.certificat != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(Icons.attach_file_rounded,
+                          size: 14, color: AppTheme.textTertiary),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Justificatif joint : ${item.certificat}',
+                          style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 // Motif for autorisation
                 if (item.isAutorisationSortie &&
                     item.contenu?['motif'] != null) ...[

@@ -25,6 +25,16 @@ final evaluationsBadgeCountProvider = FutureProvider.autoDispose<int>((ref) asyn
   }
 });
 
+/// § 12.2 (vague) : la rubrique Évaluations n'est visible que tant qu'une évaluation non archivée existe,
+/// pour le collaborateur (auto-évaluation) ou pour le manager (évaluations à noter) — SCRUM-20.
+final evaluationsVisiblesProvider = FutureProvider.autoDispose<bool>((ref) async {
+  final repo = ref.watch(evaluationRepositoryProvider);
+  final mine = await repo.mesEvaluations();
+  if (mine.any((e) => !e.isArchived)) return true;
+  final pending = await repo.managerPending();
+  return pending.any((e) => !e.isArchived);
+});
+
 class EvaluationRepository {
   final Dio dio;
 

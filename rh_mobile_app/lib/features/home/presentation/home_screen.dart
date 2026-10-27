@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../auth/presentation/profile_screen.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/notification_action.dart';
+import '../../demandes_admin/data/demande_admin_models.dart';
+import '../../demandes_admin/presentation/demandes_admin_list_screen.dart';
 import '../../demandes_admin/presentation/ro_validation_screen.dart';
 import '../../../features/auth/providers/collaborateur_notifier.dart';
 import '../../../features/auth/providers/auth_notifier.dart';
@@ -403,7 +405,14 @@ class _DashboardPage extends ConsumerWidget {
 
             // ── Hero Banner ──
             SliverToBoxAdapter(
-              child: Padding(
+              child: Builder(builder: (context) {
+              // SCRUM-21 : chiffres réels du collaborateur (demandes M01), plus de valeurs figées
+              // ni de mention de paie (§ 1 / § 19.6 : la paie est hors périmètre du SIRH).
+              final resume = ref.watch(demandesAdminListProvider).maybeWhen(
+                    data: _ResumeMois.depuis,
+                    orElse: () => const _ResumeMois('—', 'Chargement de vos demandes…'),
+                  );
+              return Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                 child: Container(
                   constraints: const BoxConstraints(minHeight: 100),
@@ -433,7 +442,7 @@ class _DashboardPage extends ConsumerWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '0 absence',
+                              resume.titre,
                               style: Theme.of(
                                 context,
                               ).textTheme.titleMedium?.copyWith(
@@ -443,7 +452,7 @@ class _DashboardPage extends ConsumerWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Prochaine paie: fin du mois',
+                              resume.detail,
                               style: Theme.of(
                                 context,
                               ).textTheme.bodySmall?.copyWith(
@@ -470,7 +479,8 @@ class _DashboardPage extends ConsumerWidget {
                     ],
                   ),
                 ),
-              ),
+              );
+              }),
             ),
 
             // ── Section title ──
@@ -583,6 +593,13 @@ class _DashboardPage extends ConsumerWidget {
                     iconColor: AppTheme.error,
                     onTap: () => context.push('/plaintes'),
                   ),
+                  // SCRUM-20 : carte masquée sans évaluation non archivée ; affichée en cas d'erreur
+                  // réseau pour ne pas cacher une évaluation en cours.
+                  if (ref.watch(evaluationsVisiblesProvider).maybeWhen(
+                        data: (visible) => visible,
+                        error: (_, __) => true,
+                        orElse: () => false,
+                      ))
                   _ServiceCard(
                     title: 'Évaluations',
                     subtitle: 'Performance',
@@ -1086,6 +1103,36 @@ class _DemandeChoiceCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Encart « Ce mois-ci » de l'accueil, calculé depuis les demandes M01 du collaborateur (SCRUM-21).
+class _ResumeMois {
+  const _ResumeMois(this.titre, this.detail);
+
+  final String titre;
+  final String detail;
+
+  static _ResumeMois depuis(List<DemandeAdminItem> demandes) {
+    final now = DateTime.now();
+    final debutMois = DateTime(now.year, now.month, 1);
+    final finMois = DateTime(now.year, now.month + 1, 0);
+    bool couvreLeMois(DemandeAdminItem d) {
+      final debut = DateTime.tryParse(d.periodeDebut ?? '');
+      final fin = DateTime.tryParse(d.periodeFin ?? d.periodeDebut ?? '');
+      return debut != null && fin != null && !debut.isAfter(finMois) && !fin.isBefore(debutMois);
+    }
+
+    final absences = demandes
+        .where((d) => d.statut == 'APPROUVEE' && d.typeDemande != 'ORDRE_MISSION' && couvreLeMois(d))
+        .length;
+    final enCours = demandes
+        .where((d) => d.statut == 'EN_VALIDATION_SUPERIEUR' || d.statut == 'EN_VALIDATION_RRH' || d.statut == 'SOUMISE')
+        .length;
+    return _ResumeMois(
+      absences == 0 ? 'Aucune absence approuvée' : '$absences absence${absences > 1 ? 's' : ''} approuvée${absences > 1 ? 's' : ''}',
+      enCours == 0 ? 'Aucune demande en attente' : '$enCours demande${enCours > 1 ? 's' : ''} en cours de validation',
     );
   }
 }

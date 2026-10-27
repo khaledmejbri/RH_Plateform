@@ -315,14 +315,14 @@ class _HorsCampagneView extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Aucune campagne d’évaluation n’est en cours',
+              'Aucune évaluation ne vous est attribuée pour le moment',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             const Text(
-              'Revenez lorsque RH aura ouvert une campagne. '
-              'Vous serez notifié dès qu’une auto-évaluation vous sera confiée.',
+              'Vous serez notifié dès qu’une auto-évaluation vous sera confiée '
+              'lors d’une campagne (semestrielle ou annuelle).',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
             ),
