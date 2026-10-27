@@ -59,7 +59,7 @@ export interface CreateCampaignRequest {
   /** Must ∈ {6, 12} (E1-R02). */
   moisDebut: number;
   moisFin: number;
-  creePar: string;
+  /* Créateur lu par le serveur dans le JWT (SCRUM-26) : pas de creePar dans le corps. */
 }
 
 export interface ActivateCampaignResult {

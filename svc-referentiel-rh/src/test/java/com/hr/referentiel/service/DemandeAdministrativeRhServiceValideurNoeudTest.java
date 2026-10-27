@@ -280,6 +280,19 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 		assertThat(demande.getValideurAttendu().getId()).isEqualTo(managerActif.getId());
 	}
 
+	@Test
+	@DisplayName("SCRUM-25 : un autre collaborateur lit / suit / annule la demande → 403 (pas 400)")
+	void demandeDunAutre_403() {
+		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
+		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(roAutreNoeud);
+
+		assertThatThrownBy(() -> service.obtenir(demandeId, jwt, false)).isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.suivi(demandeId, jwt, false)).isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.obtenirHistorique(demandeId, jwt, false))
+				.isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.annuler(demandeId, jwt)).isInstanceOf(AccessDeniedException.class);
+	}
+
 	private static Collaborateur collab(UUID id, String matricule, String prenom, String nom,
 			String statut, String profil) {
 		Collaborateur c = new Collaborateur();

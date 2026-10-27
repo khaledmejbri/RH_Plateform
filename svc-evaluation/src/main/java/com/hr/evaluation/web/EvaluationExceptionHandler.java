@@ -4,6 +4,7 @@ import com.hr.evaluation.dto.ErrorResponse;
 import org.hibernate.LazyInitializationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.validation.FieldError;
@@ -138,6 +139,22 @@ public class EvaluationExceptionHandler {
 								"Vérifiez le format des champs indiqués",
 								"Assurez-vous que tous les champs obligatoires sont remplis",
 								"Consultez les messages d'erreur pour chaque champ"
+						),
+						HttpStatus.BAD_REQUEST.value()
+				)
+		);
+	}
+
+	@ExceptionHandler(HttpMessageNotReadableException.class)
+	public ResponseEntity<ErrorResponse> corpsIllisible(HttpMessageNotReadableException ex) {
+		return ResponseEntity.badRequest().body(
+				ErrorResponse.of(
+						"CORPS_INVALIDE",
+						"Corps de requête illisible",
+						"Le JSON envoyé est mal formé ou un champ n'a pas le bon type.",
+						List.of(
+								"Vérifiez la syntaxe JSON",
+								"Vérifiez le type des champs (nombre, texte, date)"
 						),
 						HttpStatus.BAD_REQUEST.value()
 				)

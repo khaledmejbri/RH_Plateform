@@ -145,7 +145,8 @@ public class DemandeAdministrativeRhService {
 		if (!rh) {
 			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
 			if (!d.getDemandeur().getId().equals(c.getId())) {
-				throw new IllegalArgumentException("Accès refusé.");
+				// SCRUM-25 : demande d'un autre collaborateur = refus de droits (403), pas une donnée invalide
+				throw new AccessDeniedException("Accès refusé.");
 			}
 		}
 		return toResponse(d);
@@ -157,7 +158,8 @@ public class DemandeAdministrativeRhService {
 		if (!rh) {
 			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
 			if (!d.getDemandeur().getId().equals(c.getId())) {
-				throw new IllegalArgumentException("Accès refusé.");
+				// SCRUM-25 : demande d'un autre collaborateur = refus de droits (403), pas une donnée invalide
+				throw new AccessDeniedException("Accès refusé.");
 			}
 		}
 		// H2-R06 : étape supérieur = snapshot uniquement (pas de recalcul live → pas d'étape fantôme)
@@ -267,7 +269,7 @@ public class DemandeAdministrativeRhService {
 		DemandeAdministrativeRh d = charger(id);
 		Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
 		if (!d.getDemandeur().getId().equals(c.getId())) {
-			throw new IllegalArgumentException("Seul le demandeur peut annuler sa demande.");
+			throw new AccessDeniedException("Seul le demandeur peut annuler sa demande.");
 		}
 		if (d.getStatut() != StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR
 				&& d.getStatut() != StatutDemandeAdministrativeRh.EN_VALIDATION_RRH) {
@@ -442,7 +444,8 @@ public class DemandeAdministrativeRhService {
 		if (!rh) {
 			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
 			if (!d.getDemandeur().getId().equals(c.getId())) {
-				throw new IllegalArgumentException("Accès refusé.");
+				// SCRUM-25 : demande d'un autre collaborateur = refus de droits (403), pas une donnée invalide
+				throw new AccessDeniedException("Accès refusé.");
 			}
 		}
 		return workflowHistoryRepository.findByDemandeAdministrativeIdOrderByDateActionAsc(id).stream()

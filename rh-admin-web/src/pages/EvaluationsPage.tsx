@@ -14,7 +14,6 @@ import { DiscrepancyLabel, EvalAlertBadge } from '../components/EvalAlertBadge';
 import EnhancedTemplatesTab from './EnhancedTemplatesTab';
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
-import { currentUserId } from '../auth/jwtRoles';
 import { useDialogA11y } from '../components/useDialogA11y';
 import { EmptyState, Icon, LoadingState, StatusBadge as Status, formatDate } from '../components/ui';
 
@@ -176,7 +175,6 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
         annee: formData.annee,
         moisDebut: formData.moisDebut,
         moisFin: formData.moisFin,
-        creePar: currentUserId(),
       });
       if (formData.templateGeneralId || formData.templateTechniqueId) {
         await campaignApi.assignTemplates(

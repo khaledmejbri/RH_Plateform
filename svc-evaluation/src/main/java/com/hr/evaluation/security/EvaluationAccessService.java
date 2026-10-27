@@ -148,6 +148,18 @@ public class EvaluationAccessService {
 				.orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable: " + evaluationId));
 	}
 
+	/**
+	 * Compte de l'appelant lu uniquement dans le JWT (claim {@code identifiant_utilisateur}, sinon {@code sub}),
+	 * sans l'en-tête {@code X-Collaborateur-Id} fourni par le client. Pour tracer l'auteur d'une écriture.
+	 */
+	public UUID requireJwtActorId() {
+		Set<UUID> fromJwt = jwtIdentityCandidates();
+		if (fromJwt.isEmpty()) {
+			throw new SecurityException("Impossible d'identifier l'acteur courant");
+		}
+		return fromJwt.iterator().next();
+	}
+
 	private UUID readCollaborateurHeader() {
 		var attrs = RequestContextHolder.getRequestAttributes();
 		if (!(attrs instanceof ServletRequestAttributes servletAttrs)) {

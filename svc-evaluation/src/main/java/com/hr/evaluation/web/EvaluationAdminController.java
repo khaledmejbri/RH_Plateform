@@ -6,6 +6,7 @@ import com.hr.evaluation.domain.QuestionType;
 import com.hr.evaluation.dto.*;
 import com.hr.evaluation.entity.*;
 import com.hr.evaluation.repository.*;
+import com.hr.evaluation.security.EvaluationAccessService;
 import com.hr.evaluation.service.EvaluationCampaignService;
 import com.hr.evaluation.service.EvaluationScoringService;
 import com.hr.evaluation.service.EvaluationTemplateService;
@@ -43,6 +44,7 @@ public class EvaluationAdminController {
     private final EvaluationScoringService scoringService;
     private final EvaluationRepository evaluationRepository;
     private final EvaluationCampaignRepository campaignRepository;
+    private final EvaluationAccessService evaluationAccess;
 
     public EvaluationAdminController(
             EvaluationCampaignService campaignService,
@@ -52,7 +54,8 @@ public class EvaluationAdminController {
             com.hr.evaluation.service.TemplateService enhancedTemplateService,
             EvaluationScoringService scoringService,
             EvaluationRepository evaluationRepository,
-            EvaluationCampaignRepository campaignRepository) {
+            EvaluationCampaignRepository campaignRepository,
+            EvaluationAccessService evaluationAccess) {
         this.campaignService = campaignService;
         this.templateService = templateService;
         this.technicalTemplateService = technicalTemplateService;
@@ -61,6 +64,7 @@ public class EvaluationAdminController {
         this.scoringService = scoringService;
         this.evaluationRepository = evaluationRepository;
         this.campaignRepository = campaignRepository;
+        this.evaluationAccess = evaluationAccess;
     }
 
     // ========== CAMPAIGN MANAGEMENT ==========
@@ -117,20 +121,14 @@ public class EvaluationAdminController {
     @PostMapping("/campaigns")
     @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Map<String, Object>> createCampaign(
-            @Valid @RequestBody Map<String, Object> request) {
-        
-        String nom = (String) request.get("nom");
-        String description = (String) request.get("description");
-        String typeStr = (String) request.get("type");
-        Integer annee = (Integer) request.get("annee");
-        Integer moisDebut = (Integer) request.get("moisDebut");
-        Integer moisFin = (Integer) request.get("moisFin");
-        UUID creePar = UUID.fromString((String) request.get("creePar"));
-        
-        EvaluationCampaignType type = EvaluationCampaignService.parseTypeStrict(typeStr);
-        
+            @Valid @RequestBody CampagneCreationRequest request) {
+        // SCRUM-26 : corps validé (400 au lieu de 500) ; créateur lu dans le JWT, plus dans le corps.
+        UUID creePar = evaluationAccess.requireJwtActorId();
+        EvaluationCampaignType type = EvaluationCampaignService.parseTypeStrict(request.type());
+
         EvaluationCampaign campaign = campaignService.creerCampagne(
-            nom, description, type, annee, moisDebut, moisFin, creePar
+            request.nom(), request.description(), type, request.annee(),
+            request.moisDebut(), request.moisFin(), creePar
         );
         
         Map<String, Object> response = new HashMap<>();
