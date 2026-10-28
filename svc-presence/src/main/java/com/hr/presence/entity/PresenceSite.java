@@ -1,7 +1,11 @@
 package com.hr.presence.entity;
 
+import com.hr.presence.domain.ModeQr;
+import com.hr.presence.domain.TypeLieu;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.PrePersist;
@@ -41,6 +45,34 @@ public class PresenceSite {
 	@Column(name = "rayon_metres", nullable = false)
 	private int rayonMetres = 50;
 
+	/** NULL pour les sites antérieurs à D-P01 : lu comme {@link TypeLieu#EXTERIEUR}. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "type_lieu", length = 16)
+	private TypeLieu typeLieu;
+
+	/** Précision (m) de la pose de l'emplacement, moyenne de plusieurs mesures (D-P03). */
+	@Column(name = "precision_ancrage_metres")
+	private Double precisionAncrageMetres;
+
+	@Column(name = "nb_mesures_ancrage")
+	private Integer nbMesuresAncrage;
+
+	/** NULL pour les sites antérieurs à D-P05 : lu comme {@link ModeQr#PAPIER}. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "mode_qr", length = 16)
+	private ModeQr modeQr;
+
+	/** SHA-256 du jeton de la borne écran ; NULL = pas de borne active (D-P05). */
+	@Column(name = "borne_jeton_hash", length = 64)
+	private String borneJetonHash;
+
+	/** Incrémentée à chaque génération / révocation : invalide les QR de l'ancienne borne. */
+	@Column(name = "borne_version")
+	private Integer borneVersion;
+
+	@Column(name = "borne_cree_le")
+	private Instant borneCreeLe;
+
 	@Column(nullable = false)
 	private boolean actif = true;
 
@@ -76,6 +108,62 @@ public class PresenceSite {
 
 	public UUID getId() {
 		return id;
+	}
+
+	public ModeQr getModeQr() {
+		return modeQr != null ? modeQr : ModeQr.PAPIER;
+	}
+
+	public void setModeQr(ModeQr modeQr) {
+		this.modeQr = modeQr;
+	}
+
+	public String getBorneJetonHash() {
+		return borneJetonHash;
+	}
+
+	public void setBorneJetonHash(String borneJetonHash) {
+		this.borneJetonHash = borneJetonHash;
+	}
+
+	public int getBorneVersion() {
+		return borneVersion != null ? borneVersion : 0;
+	}
+
+	public void setBorneVersion(int borneVersion) {
+		this.borneVersion = borneVersion;
+	}
+
+	public Instant getBorneCreeLe() {
+		return borneCreeLe;
+	}
+
+	public void setBorneCreeLe(Instant borneCreeLe) {
+		this.borneCreeLe = borneCreeLe;
+	}
+
+	public TypeLieu getTypeLieu() {
+		return typeLieu != null ? typeLieu : TypeLieu.EXTERIEUR;
+	}
+
+	public void setTypeLieu(TypeLieu typeLieu) {
+		this.typeLieu = typeLieu;
+	}
+
+	public Double getPrecisionAncrageMetres() {
+		return precisionAncrageMetres;
+	}
+
+	public void setPrecisionAncrageMetres(Double precisionAncrageMetres) {
+		this.precisionAncrageMetres = precisionAncrageMetres;
+	}
+
+	public Integer getNbMesuresAncrage() {
+		return nbMesuresAncrage;
+	}
+
+	public void setNbMesuresAncrage(Integer nbMesuresAncrage) {
+		this.nbMesuresAncrage = nbMesuresAncrage;
 	}
 
 	public void setId(UUID id) {

@@ -30,7 +30,8 @@ class MainActivity : FlutterActivity() {
                                 lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER),
                         )
                     }
-                    "getCurrentPosition" -> obtainPosition(result)
+                    // fresh = true : ignore la dernière position connue (pose du site par moyenne, D-P03)
+                    "getCurrentPosition" -> obtainPosition(result, call.argument<Boolean>("fresh") == true)
                     else -> result.notImplemented()
                 }
             }
@@ -61,7 +62,7 @@ class MainActivity : FlutterActivity() {
             product.contains("vbox")
     }
 
-    private fun obtainPosition(result: MethodChannel.Result) {
+    private fun obtainPosition(result: MethodChannel.Result, fresh: Boolean = false) {
         val fine = ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -95,7 +96,7 @@ class MainActivity : FlutterActivity() {
         }.maxByOrNull { it.time }
 
         // Dernière position récente (< 2 min) : réponse immédiate.
-        if (last != null && System.currentTimeMillis() - last.time < 120_000) {
+        if (!fresh && last != null && System.currentTimeMillis() - last.time < 120_000) {
             result.success(locationMap(last))
             return
         }
@@ -133,7 +134,7 @@ class MainActivity : FlutterActivity() {
                     lm.removeUpdates(listener)
                 } catch (_: Exception) {
                 }
-                if (last != null) {
+                if (last != null && !fresh) {
                     result.success(locationMap(last))
                 } else {
                     result.error(
@@ -155,5 +156,11 @@ class MainActivity : FlutterActivity() {
             "latitude" to location.latitude,
             "longitude" to location.longitude,
             "accuracyMeters" to if (location.hasAccuracy()) location.accuracy.toDouble() else null,
+            "isMock" to isMock(location),
         )
+
+    /** Position fournie par une appli de faux GPS (D-P01 / D-P02). */
+    @Suppress("DEPRECATION")
+    private fun isMock(location: Location): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) location.isMock else location.isFromMockProvider
 }

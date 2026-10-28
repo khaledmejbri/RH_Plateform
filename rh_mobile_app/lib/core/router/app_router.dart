@@ -24,8 +24,10 @@ import '../../features/evaluations/presentation/evaluation_detail_screen.dart';
 import '../../features/plaintes/presentation/plainte_create_screen.dart';
 import '../../features/plaintes/presentation/plainte_detail_screen.dart';
 import '../../features/plaintes/presentation/plaintes_list_screen.dart';
+import '../../features/pointage/presentation/pointage_manuel_screen.dart';
 import '../../features/pointage/presentation/pointage_screen.dart';
 import '../../features/pointage/presentation/presence_sites_admin_screen.dart';
+import '../../features/pointage/presentation/presence_test_terrain_screen.dart';
 import '../../features/splash/presentation/splash_screen.dart';
 import '../../features/organigramme/presentation/organigramme_screen.dart';
 
@@ -65,9 +67,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
       GoRoute(path: '/pointage', builder: (_, __) => const PointageScreen()),
+      GoRoute(path: '/pointage/manuel', builder: (_, __) => const PointageManuelScreen()),
       GoRoute(
         path: '/presence/sites',
         builder: (_, __) => const PresenceSitesAdminScreen(),
+      ),
+      GoRoute(
+        path: '/presence/test-terrain',
+        builder: (_, __) => const PresenceTestTerrainScreen(),
       ),
       GoRoute(path: '/feed', builder: (_, __) => const FeedScreen()),
       GoRoute(path: '/formations', builder: (_, __) => const FormationsListScreen()),

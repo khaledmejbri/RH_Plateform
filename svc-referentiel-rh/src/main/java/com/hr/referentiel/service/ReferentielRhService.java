@@ -161,6 +161,22 @@ public class ReferentielRhService {
 		return toCollaborateurResponse(collaborateurConnecteService.exigerCollaborateur(jwt));
 	}
 
+	/**
+	 * D-P04 : valideur d'un pointage manuel = même règle que les demandes M01 (D-H03).
+	 */
+	@Transactional(readOnly = true)
+	public ValideurPointageResponse obtenirMonValideurPointage(org.springframework.security.oauth2.jwt.Jwt jwt) {
+		Collaborateur moi = collaborateurConnecteService.exigerCollaborateur(jwt);
+		Collaborateur valideur = SuperieurHierarchieRules.resoudreValideurM01(moi);
+		return new ValideurPointageResponse(
+				moi.getId(),
+				moi.getCompteUtilisateurId(),
+				nomComplet(moi),
+				valideur != null ? valideur.getId() : null,
+				valideur != null ? valideur.getCompteUtilisateurId() : null,
+				valideur != null ? nomComplet(valideur) : null);
+	}
+
 	@Cacheable(value = CacheConfig.CACHE_COLLABORATEUR_MATRICULE, key = "#matricule.toLowerCase()", unless = "#result == null")
 	@Transactional(readOnly = true)
 	public Optional<CollaborateurResponse> obtenirCollaborateurParMatricule(String matricule) {

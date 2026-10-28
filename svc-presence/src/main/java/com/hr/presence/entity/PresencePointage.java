@@ -69,6 +69,14 @@ public class PresencePointage {
 	@Column(name = "distance_metres")
 	private Double distanceMetres;
 
+	/** Demande manuelle à l'origine d'un pointage VALIDE_MANUEL (D-P04). */
+	@Column(name = "demande_manuelle_id")
+	private UUID demandeManuelleId;
+
+	/** Indicateur OS « position simulée » envoyé par le mobile (D-P01). */
+	@Column(name = "position_simulee")
+	private Boolean positionSimulee;
+
 	@Column(name = "device_id", length = 128)
 	private String deviceId;
 
@@ -206,5 +214,21 @@ public class PresencePointage {
 
 	public void setMotifRejet(String motifRejet) {
 		this.motifRejet = motifRejet;
+	}
+
+	public Boolean getPositionSimulee() {
+		return positionSimulee;
+	}
+
+	public void setPositionSimulee(Boolean positionSimulee) {
+		this.positionSimulee = positionSimulee;
+	}
+
+	public UUID getDemandeManuelleId() {
+		return demandeManuelleId;
+	}
+
+	public void setDemandeManuelleId(UUID demandeManuelleId) {
+		this.demandeManuelleId = demandeManuelleId;
 	}
 }

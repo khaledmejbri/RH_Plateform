@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -28,6 +29,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
   TypePointage? _type;
   TypePointage? _suggestion;
   PointageResult? _result;
+  bool _demandeEnvoyee = false;
   String? _error;
   bool _busy = false;
 
@@ -67,7 +69,14 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
       appBar: AppBar(
         backgroundColor: AppTheme.surface,
         title: const Text('Pointage'),
-        actions: const [NotificationActionBadge()],
+        actions: [
+          IconButton(
+            tooltip: 'Pointages manuels',
+            onPressed: () => context.push('/pointage/manuel'),
+            icon: const Icon(Icons.edit_calendar_rounded),
+          ),
+          const NotificationActionBadge(),
+        ],
       ),
       body: SafeArea(
         child: Padding(
@@ -253,11 +262,59 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
       iconColor: ok ? AppTheme.success : AppTheme.error,
       title: title,
       subtitle: subtitle.isEmpty ? (ok ? 'Enregistré.' : 'Refusé.') : subtitle,
-      action: OutlinedButton(
-        onPressed: _reset,
-        child: const Text('Nouveau pointage'),
+      action: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // D-P04 : un rejet de bonne foi est rattrapé par le responsable
+          if (!ok && result?.id != null) ...[
+            FilledButton.icon(
+              onPressed: _demandeEnvoyee || _busy ? null : _demanderPointageManuel,
+              icon: const Icon(Icons.edit_calendar_rounded),
+              label: Text(
+                _demandeEnvoyee ? 'Demande envoyée' : 'Demander un pointage manuel',
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          OutlinedButton(
+            onPressed: _reset,
+            child: const Text('Nouveau pointage'),
+          ),
+        ],
       ),
     );
+  }
+
+  Future<void> _demanderPointageManuel() async {
+    final rejetId = _result?.id;
+    if (rejetId == null) return;
+    final justification = await showDialog<String>(
+      context: context,
+      builder: (_) => const _JustificationDialog(),
+    );
+    if (justification == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final demande = await ref.read(presenceRepositoryProvider).demanderPointageManuel(
+            pointageRejeteId: rejetId,
+            justification: justification,
+          );
+      if (!mounted) return;
+      setState(() => _demandeEnvoyee = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Demande envoyée à ${demande.valideurLibelle} pour validation.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(messageErreurPresence(e, fallback: 'Envoi de la demande impossible.')),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   void _reset() {
@@ -268,6 +325,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
       _result = null;
       _error = null;
       _busy = false;
+      _demandeEnvoyee = false;
     });
     _loadSuggestion();
   }
@@ -353,6 +411,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
       accuracyMeters: pos.accuracyMeters,
       clientTimestamp: DateTime.now().toUtc(),
       idempotencyKey: _newIdempotencyKey(),
+      positionSimulee: pos.isMock,
     );
 
     try {
@@ -560,6 +619,65 @@ class _StepCard extends StatelessWidget {
           SizedBox(width: double.infinity, child: action),
         ],
       ),
+    );
+  }
+}
+
+/// Justification obligatoire d'une demande de pointage manuel (D-P04).
+class _JustificationDialog extends StatefulWidget {
+  const _JustificationDialog();
+
+  @override
+  State<_JustificationDialog> createState() => _JustificationDialogState();
+}
+
+class _JustificationDialogState extends State<_JustificationDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final texte = _controller.text.trim();
+    return AlertDialog(
+      title: const Text('Demander un pointage manuel'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Votre responsable validera ce pointage à l’heure du refus. '
+            'Expliquez pourquoi le pointage automatique a échoué.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            maxLines: 3,
+            maxLength: 500,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Justification *',
+              hintText: 'Ex. : signal GPS trop faible dans le bâtiment',
+              helperText: '10 caractères minimum',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(
+          onPressed: texte.length < 10 ? null : () => Navigator.pop(context, texte),
+          child: const Text('Envoyer'),
+        ),
+      ],
     );
   }
 }

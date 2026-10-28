@@ -15,6 +15,12 @@ public record CreateSiteRequest(
 
 		@JsonProperty("latitude") Double latitude,
 
-		@JsonProperty("longitude") Double longitude
+		@JsonProperty("longitude") Double longitude,
+
+		/** EXTERIEUR (défaut) ou INTERIEUR — D-P01. */
+		@JsonProperty("type_lieu") String typeLieu,
+
+		/** Optionnel : défaut selon le type de lieu ; 10 à 100 m. */
+		@JsonProperty("rayon_metres") Integer rayonMetres
 ) {
 }

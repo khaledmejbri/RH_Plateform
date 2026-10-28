@@ -16,6 +16,7 @@ public record PointageResponse(
 		@JsonProperty("server_ts") Instant serverTs,
 		@JsonProperty("site_id") UUID siteId,
 		@JsonProperty("distance_metres") Double distanceMetres,
+		@JsonProperty("accuracy_metres") Double accuracyMetres,
 		@JsonProperty("motif_rejet") String motifRejet,
 		@JsonProperty("collaborateur_id") String collaborateurId
 ) {

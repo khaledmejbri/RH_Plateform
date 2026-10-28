@@ -9,7 +9,7 @@ void main() {
     test('REJETE_HORS_ZONE message clair', () {
       expect(
         messageMotifPointage(PointageStatut.rejeteHorsZone),
-        contains('50 m'),
+        contains('hors de la zone'),
       );
     });
 
@@ -30,7 +30,7 @@ void main() {
     test('REJETE_PRECISION_GPS', () {
       expect(
         messageMotifPointage(PointageStatut.rejetePrecisionGps),
-        contains('Précision GPS'),
+        contains('Signal GPS trop faible'),
       );
     });
 

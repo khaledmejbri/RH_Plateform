@@ -8,6 +8,7 @@ import UIKit
   private let locationManager = CLLocationManager()
   private var pendingResult: FlutterResult?
   private var timeoutWork: DispatchWorkItem?
+  private var freshRequested = false
 
   override func application(
     _ application: UIApplication,
@@ -36,6 +37,9 @@ import UIKit
       case "isLocationEnabled":
         result(CLLocationManager.locationServicesEnabled())
       case "getCurrentPosition":
+        // fresh = true : ignore la dernière position en cache (pose du site par moyenne, D-P03)
+        let args = call.arguments as? [String: Any]
+        self.freshRequested = (args?["fresh"] as? Bool) == true
         self.requestPosition(result)
       default:
         result(FlutterMethodNotImplemented)
@@ -72,7 +76,7 @@ import UIKit
     timeoutWork?.cancel()
     let work = DispatchWorkItem { [weak self] in
       guard let self = self else { return }
-      if let last = self.locationManager.location {
+      if !self.freshRequested, let last = self.locationManager.location {
         self.finish(location: last)
       } else {
         self.finish(
@@ -128,8 +132,17 @@ import UIKit
       "latitude": location.coordinate.latitude,
       "longitude": location.coordinate.longitude,
       "accuracyMeters": accuracy,
+      "isMock": isSimulated(location),
     ])
     pendingResult = nil
+  }
+
+  /// Position fournie par un simulateur ou une appli de faux GPS (iOS 15+, D-P01 / D-P02).
+  private func isSimulated(_ location: CLLocation) -> Bool {
+    if #available(iOS 15.0, *) {
+      return location.sourceInformation?.isSimulatedBySoftware ?? false
+    }
+    return false
   }
 
   private func finish(error: FlutterError) {

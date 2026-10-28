@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../data/gps_moyenne.dart';
 import '../data/presence_errors.dart';
 import '../data/presence_gps.dart';
 import '../data/presence_models.dart';
@@ -34,6 +36,11 @@ class _PresenceSitesAdminScreenState
       appBar: AppBar(
         title: const Text('Sites de pointage'),
         actions: [
+          IconButton(
+            tooltip: 'Test terrain',
+            onPressed: () => context.push('/presence/test-terrain'),
+            icon: const Icon(Icons.radar_rounded),
+          ),
           IconButton(
             tooltip: 'Actualiser',
             onPressed: () => ref.invalidate(_presenceSitesProvider),
@@ -99,7 +106,10 @@ class _PresenceSitesAdminScreenState
       builder: (ctx) => AlertDialog(
         title: const Text('Enregistrer emplacement GPS'),
         content: Text(
-          'Utiliser la position actuelle de cet appareil comme emplacement du site « ${site.libelle} » ?',
+          'Placez-vous à l’endroit où le QR du site « ${site.libelle} » est affiché. '
+          'L’appareil va mesurer sa position pendant environ 15 secondes : restez immobile.\n\n'
+          'Précision exigée : ${site.precisionAncrageRequise.toStringAsFixed(0)} m '
+          '(${site.typeLieuLibelle.toLowerCase()}).',
         ),
         actions: [
           TextButton(
@@ -108,7 +118,7 @@ class _PresenceSitesAdminScreenState
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Confirmer'),
+            child: const Text('Mesurer'),
           ),
         ],
       ),
@@ -116,23 +126,55 @@ class _PresenceSitesAdminScreenState
     if (confirm != true || !mounted) return;
 
     setState(() => _savingSiteId = site.id);
-    final gps = await PresenceGps.obtain();
+    final progression = ValueNotifier<List<GpsFix>>(const []);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _MesureDialog(progression: progression),
+    );
+    final gps = await PresenceGps.echantillonner(
+      onMesure: (m) => progression.value = [...progression.value, m],
+    );
     if (!mounted) return;
-    if (gps.position == null) {
+    Navigator.of(context, rootNavigator: true).pop();
+    progression.dispose();
+
+    final moyenne = GpsCalcul.moyenne(gps.mesures);
+    if (moyenne == null) {
       setState(() => _savingSiteId = null);
-      _snack(gps.error ?? 'GPS requis.', error: true);
+      _snack(gps.error ?? 'Précision GPS indisponible sur cet appareil.', error: true);
+      return;
+    }
+    if (moyenne.positionSimulee) {
+      setState(() => _savingSiteId = null);
+      _snack('Position GPS simulée détectée : désactivez toute application de localisation fictive.', error: true);
+      return;
+    }
+    if (moyenne.precisionMetres > site.precisionAncrageRequise) {
+      setState(() => _savingSiteId = null);
+      _snack(
+        'Signal GPS trop faible (±${moyenne.precisionMetres.toStringAsFixed(0)} m, '
+        '${site.precisionAncrageRequise.toStringAsFixed(0)} m maximum) : '
+        'placez-vous à découvert et réessayez.',
+        error: true,
+      );
       return;
     }
 
     try {
       await ref.read(presenceRepositoryProvider).enregistrerEmplacement(
             siteId: site.id,
-            latitude: gps.position!.latitude,
-            longitude: gps.position!.longitude,
+            latitude: moyenne.latitude,
+            longitude: moyenne.longitude,
+            precisionMetres: moyenne.precisionMetres,
+            nbMesures: moyenne.nbMesures,
           );
       if (!mounted) return;
       ref.invalidate(_presenceSitesProvider);
-      _snack('Emplacement GPS enregistré pour « ${site.libelle} ».');
+      _snack(
+        'Emplacement enregistré pour « ${site.libelle} » '
+        '(±${moyenne.precisionMetres.toStringAsFixed(1)} m, ${moyenne.nbMesures} mesures).',
+      );
     } catch (e) {
       if (!mounted) return;
       _snack(messageErreurPresence(e), error: true);
@@ -167,6 +209,9 @@ class _SiteTile extends StatelessWidget {
     final gpsLabel = site.hasEmplacement
         ? '${site.latitude!.toStringAsFixed(5)}, ${site.longitude!.toStringAsFixed(5)}'
         : 'Emplacement non posé';
+    final precisionLabel = site.precisionAncrageMetres != null
+        ? 'Précision de la pose : ±${site.precisionAncrageMetres!.toStringAsFixed(1)} m'
+        : (site.hasEmplacement ? 'Précision de la pose inconnue (à reposer)' : null);
 
     return Material(
       color: AppTheme.surface,
@@ -214,7 +259,7 @@ class _SiteTile extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Code : ${site.code}',
+              'Code : ${site.code} · ${site.typeLieuLibelle} · rayon ${site.rayonMetres} m',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 4),
@@ -226,6 +271,17 @@ class _SiteTile extends StatelessWidget {
                         : AppTheme.warning,
                   ),
             ),
+            if (precisionLabel != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                precisionLabel,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: site.precisionAncrageMetres != null
+                          ? AppTheme.textSecondary
+                          : AppTheme.warning,
+                    ),
+              ),
+            ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
@@ -240,13 +296,51 @@ class _SiteTile extends StatelessWidget {
                     : const Icon(Icons.my_location_rounded),
                 label: Text(
                   saving
-                      ? 'Enregistrement…'
-                      : 'Enregistrer emplacement GPS ici',
+                      ? 'Mesure en cours…'
+                      : (site.hasEmplacement
+                          ? 'Reposer l’emplacement ici'
+                          : 'Enregistrer l’emplacement ici'),
                 ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Progression de la mesure de 15 s (D-P03).
+class _MesureDialog extends StatelessWidget {
+  const _MesureDialog({required this.progression});
+
+  final ValueNotifier<List<GpsFix>> progression;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Mesure de la position'),
+      content: ValueListenableBuilder<List<GpsFix>>(
+        valueListenable: progression,
+        builder: (context, mesures, _) {
+          final moyenne = GpsCalcul.moyenne(mesures);
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const LinearProgressIndicator(),
+              const SizedBox(height: 16),
+              Text('Restez immobile. ${mesures.length} mesure(s)…'),
+              if (moyenne != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Précision actuelle : ±${moyenne.precisionMetres.toStringAsFixed(1)} m',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }

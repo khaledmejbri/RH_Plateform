@@ -31,6 +31,8 @@ public class SecurityConfig {
 				.csrf(csrf -> csrf.disable())
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+						// Borne écran sans compte (D-P05) : accès par jeton long révocable dans l'URL
+						.requestMatchers("/api/rh/v1/borne/presence/**").permitAll()
 						.requestMatchers("/api/rh/v1/presence/**").authenticated()
 						.requestMatchers("/api/rh/v1/admin/presence/**").authenticated()
 						.requestMatchers("/api/rh/v1/mobile/presence/**").authenticated()

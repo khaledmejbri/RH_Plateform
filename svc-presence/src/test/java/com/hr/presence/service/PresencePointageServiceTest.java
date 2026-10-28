@@ -42,6 +42,7 @@ class PresencePointageServiceTest {
 	private PresenceQrService qrService;
 
 	private QrTokenService qrTokenService;
+	private QrDynamiqueService qrDynamique;
 	private PresencePointageService pointageService;
 
 	private PresenceSite site;
@@ -56,6 +57,7 @@ class PresencePointageServiceTest {
 		props.getGeofence().setDefaultRadiusMetres(50);
 		props.getGeofence().setMaxAccuracyMetres(100);
 		qrTokenService = new QrTokenService(props, new ObjectMapper());
+		qrDynamique = new QrDynamiqueService(props);
 
 		pointageService = new PresencePointageService(
 				pointageRepository,
@@ -64,7 +66,8 @@ class PresencePointageServiceTest {
 				qrTokenService,
 				new HaversineService(),
 				props,
-				qrService);
+				qrService,
+				qrDynamique);
 
 		now = Instant.now();
 		UUID siteId = UUID.randomUUID();
@@ -104,7 +107,7 @@ class PresencePointageServiceTest {
 		when(siteRepository.findById(site.getId())).thenReturn(Optional.of(site));
 
 		CreatePointageRequest req = new CreatePointageRequest(
-				validToken, "ENTREE", 36.8065, 10.1815, 10.0, now, "device-1", null);
+				validToken, "ENTREE", 36.8065, 10.1815, 10.0, now, "device-1", null, null);
 
 		PointageResponse resp = pointageService.pointer("collab-1", req);
 
@@ -120,7 +123,7 @@ class PresencePointageServiceTest {
 
 		double latFar = 36.8065 + (55.0 / 111_320.0);
 		CreatePointageRequest req = new CreatePointageRequest(
-				validToken, "ENTREE", latFar, 10.1815, 10.0, now, null, null);
+				validToken, "ENTREE", latFar, 10.1815, 10.0, now, null, null, null);
 
 		PointageResponse resp = pointageService.pointer("collab-1", req);
 
@@ -131,7 +134,7 @@ class PresencePointageServiceTest {
 	@Test
 	void qrInvalide_signature() {
 		CreatePointageRequest req = new CreatePointageRequest(
-				"p1.abc.def", "ENTREE", 36.8065, 10.1815, 10.0, now, null, null);
+				"p1.abc.def", "ENTREE", 36.8065, 10.1815, 10.0, now, null, null, null);
 
 		PointageResponse resp = pointageService.pointer("collab-1", req);
 
@@ -152,7 +155,7 @@ class PresencePointageServiceTest {
 		when(qrRepository.findByJti(credential.getJti())).thenReturn(Optional.of(credential));
 
 		CreatePointageRequest req = new CreatePointageRequest(
-				expiredToken, "SORTIE", 36.8065, 10.1815, 5.0, now, null, null);
+				expiredToken, "SORTIE", 36.8065, 10.1815, 5.0, now, null, null, null);
 
 		PointageResponse resp = pointageService.pointer("collab-1", req);
 
@@ -176,11 +179,141 @@ class PresencePointageServiceTest {
 				.thenReturn(Optional.of(existing));
 
 		CreatePointageRequest req = new CreatePointageRequest(
-				validToken, "ENTREE", 36.8065, 10.1815, 10.0, now, null, "idem-1");
+				validToken, "ENTREE", 36.8065, 10.1815, 10.0, now, null, "idem-1", null);
 
 		PointageResponse resp = pointageService.pointer("collab-1", req);
 
 		assertThat(resp.id()).isEqualTo(existing.getId());
 		assertThat(resp.statut()).isEqualTo(PointageStatut.VALIDE);
+	}
+
+	// --- D-P01 (SCRUM-35) ---
+
+	private CreatePointageRequest requete(double lat, Double precision, Boolean simulee) {
+		return new CreatePointageRequest(validToken, "ENTREE", lat, 10.1815, precision, now, "device-1", null, simulee);
+	}
+
+	private void qrEtSiteValides() {
+		when(qrRepository.findByJti(credential.getJti())).thenReturn(Optional.of(credential));
+		when(siteRepository.findById(site.getId())).thenReturn(Optional.of(site));
+	}
+
+	@Test
+	void precisionAbsente_rejetee() {
+		qrEtSiteValides();
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, null, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_PRECISION_GPS);
+		assertThat(resp.motifRejet()).contains("précision non fournie");
+	}
+
+	@Test
+	void precisionSuperieureAuRayon_rejetee() {
+		site.setTypeLieu(com.hr.presence.domain.TypeLieu.EXTERIEUR);
+		site.setRayonMetres(20);
+		qrEtSiteValides();
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, 35.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_PRECISION_GPS);
+		assertThat(resp.accuracyMetres()).isEqualTo(35.0);
+	}
+
+	@Test
+	void precisionEgaleAuRayon_acceptee() {
+		site.setRayonMetres(20);
+		qrEtSiteValides();
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, 20.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.VALIDE);
+	}
+
+	@Test
+	void horsZone_rayonExterieur20m() {
+		site.setRayonMetres(20);
+		qrEtSiteValides();
+		double lat25m = 36.8065 + (25.0 / 111_320.0);
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(lat25m, 8.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_HORS_ZONE);
+	}
+
+	@Test
+	void positionSimulee_rejeteeEtTracee() {
+		qrEtSiteValides();
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, 5.0, true));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_POSITION_SIMULEE);
+		ArgumentCaptor<PresencePointage> captor = ArgumentCaptor.forClass(PresencePointage.class);
+		verify(pointageRepository).save(captor.capture());
+		assertThat(captor.getValue().getPositionSimulee()).isTrue();
+	}
+
+	// --- D-P05 (SCRUM-39) : borne écran ---
+
+	private void siteEnModeEcran(int version) {
+		site.setModeQr(com.hr.presence.domain.ModeQr.ECRAN);
+		site.setBorneJetonHash("hash");
+		site.setBorneVersion(version);
+		when(siteRepository.findById(site.getId())).thenReturn(Optional.of(site));
+	}
+
+	private CreatePointageRequest requeteQr(String qr) {
+		return new CreatePointageRequest(qr, "ENTREE", 36.8065, 10.1815, 8.0, now, "device-1", null, false);
+	}
+
+	@Test
+	void borneEcran_qrCourant_valide() {
+		siteEnModeEcran(2);
+		String qr = qrDynamique.construire(site.getId(), 2, QrDynamiqueService.fenetre(Instant.now()));
+
+		PointageResponse resp = pointageService.pointer("collab-1", requeteQr(qr));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.VALIDE);
+	}
+
+	@Test
+	void borneEcran_photoDeDeuxMinutes_expire() {
+		siteEnModeEcran(2);
+		String qr = qrDynamique.construire(site.getId(), 2, QrDynamiqueService.fenetre(Instant.now().minusSeconds(120)));
+
+		PointageResponse resp = pointageService.pointer("collab-1", requeteQr(qr));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_QR_EXPIRE);
+	}
+
+	@Test
+	void borneRemplacee_qrDeLAncienneBorne_revoque() {
+		siteEnModeEcran(3);
+		String qr = qrDynamique.construire(site.getId(), 2, QrDynamiqueService.fenetre(Instant.now()));
+
+		PointageResponse resp = pointageService.pointer("collab-1", requeteQr(qr));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_QR_REVOQUE);
+	}
+
+	@Test
+	void qrPapier_surSiteEnModeEcran_refuse() {
+		when(qrRepository.findByJti(credential.getJti())).thenReturn(Optional.of(credential));
+		siteEnModeEcran(1);
+
+		PointageResponse resp = pointageService.pointer("collab-1", requeteQr(validToken));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_QR_INVALIDE);
+		assertThat(resp.motifRejet()).contains("borne écran");
+	}
+
+	@Test
+	void qrDynamique_surSitePapier_refuse() {
+		when(siteRepository.findById(site.getId())).thenReturn(Optional.of(site));
+		String qr = qrDynamique.construire(site.getId(), 0, QrDynamiqueService.fenetre(Instant.now()));
+
+		PointageResponse resp = pointageService.pointer("collab-1", requeteQr(qr));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_QR_REVOQUE);
 	}
 }

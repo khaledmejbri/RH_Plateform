@@ -1,5 +1,6 @@
 package com.hr.presence.config;
 
+import com.hr.presence.domain.TypeLieu;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "presence")
@@ -8,6 +9,52 @@ public class PresenceProperties {
 	private final Qr qr = new Qr();
 	private final Geofence geofence = new Geofence();
 	private final Alert alert = new Alert();
+	private final Manuel manuel = new Manuel();
+	private final Referentiel referentiel = new Referentiel();
+
+	public Manuel getManuel() {
+		return manuel;
+	}
+
+	public Referentiel getReferentiel() {
+		return referentiel;
+	}
+
+	/** Pointage manuel validé par le responsable (D-P04). */
+	public static class Manuel {
+		/** Alerte RH quand un collaborateur dépasse ce nombre de pointages manuels dans le mois. */
+		private int seuilAlerteMois = 3;
+		/** Heure déclarée au plus N jours dans le passé. */
+		private int ancienneteMaxJours = 7;
+
+		public int getSeuilAlerteMois() {
+			return seuilAlerteMois;
+		}
+
+		public void setSeuilAlerteMois(int seuilAlerteMois) {
+			this.seuilAlerteMois = seuilAlerteMois;
+		}
+
+		public int getAncienneteMaxJours() {
+			return ancienneteMaxJours;
+		}
+
+		public void setAncienneteMaxJours(int ancienneteMaxJours) {
+			this.ancienneteMaxJours = ancienneteMaxJours;
+		}
+	}
+
+	public static class Referentiel {
+		private String baseUrl = "http://localhost:8083";
+
+		public String getBaseUrl() {
+			return baseUrl;
+		}
+
+		public void setBaseUrl(String baseUrl) {
+			this.baseUrl = baseUrl;
+		}
+	}
 
 	public Qr getQr() {
 		return qr;
@@ -45,7 +92,76 @@ public class PresenceProperties {
 
 	public static class Geofence {
 		private int defaultRadiusMetres = 50;
+		/** Plafond absolu de précision acceptée ; la règle D-P01 exige en plus précision ≤ rayon du site. */
 		private double maxAccuracyMetres = 100;
+		/** Rayons par défaut et bornes (D-P01). */
+		private int defaultRadiusExterieurMetres = 20;
+		private int defaultRadiusInterieurMetres = 50;
+		private int minRadiusMetres = 10;
+		private int maxRadiusMetres = 100;
+		/** Précision exigée à la pose de l'emplacement du site (D-P03). */
+		private double anchorAccuracyExterieurMetres = 10;
+		private double anchorAccuracyInterieurMetres = 25;
+
+		public int defaultRadius(TypeLieu typeLieu) {
+			return typeLieu == TypeLieu.INTERIEUR
+					? defaultRadiusInterieurMetres
+					: defaultRadiusExterieurMetres;
+		}
+
+		public double anchorAccuracy(TypeLieu typeLieu) {
+			return typeLieu == TypeLieu.INTERIEUR
+					? anchorAccuracyInterieurMetres
+					: anchorAccuracyExterieurMetres;
+		}
+
+		public int getDefaultRadiusExterieurMetres() {
+			return defaultRadiusExterieurMetres;
+		}
+
+		public void setDefaultRadiusExterieurMetres(int defaultRadiusExterieurMetres) {
+			this.defaultRadiusExterieurMetres = defaultRadiusExterieurMetres;
+		}
+
+		public int getDefaultRadiusInterieurMetres() {
+			return defaultRadiusInterieurMetres;
+		}
+
+		public void setDefaultRadiusInterieurMetres(int defaultRadiusInterieurMetres) {
+			this.defaultRadiusInterieurMetres = defaultRadiusInterieurMetres;
+		}
+
+		public int getMinRadiusMetres() {
+			return minRadiusMetres;
+		}
+
+		public void setMinRadiusMetres(int minRadiusMetres) {
+			this.minRadiusMetres = minRadiusMetres;
+		}
+
+		public int getMaxRadiusMetres() {
+			return maxRadiusMetres;
+		}
+
+		public void setMaxRadiusMetres(int maxRadiusMetres) {
+			this.maxRadiusMetres = maxRadiusMetres;
+		}
+
+		public double getAnchorAccuracyExterieurMetres() {
+			return anchorAccuracyExterieurMetres;
+		}
+
+		public void setAnchorAccuracyExterieurMetres(double anchorAccuracyExterieurMetres) {
+			this.anchorAccuracyExterieurMetres = anchorAccuracyExterieurMetres;
+		}
+
+		public double getAnchorAccuracyInterieurMetres() {
+			return anchorAccuracyInterieurMetres;
+		}
+
+		public void setAnchorAccuracyInterieurMetres(double anchorAccuracyInterieurMetres) {
+			this.anchorAccuracyInterieurMetres = anchorAccuracyInterieurMetres;
+		}
 
 		public int getDefaultRadiusMetres() {
 			return defaultRadiusMetres;

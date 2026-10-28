@@ -52,15 +52,62 @@ class PresenceRepository {
     required String siteId,
     required double latitude,
     required double longitude,
+    required double precisionMetres,
+    required int nbMesures,
+    bool positionSimulee = false,
   }) async {
     final res = await _dio.put<Map<String, dynamic>>(
       '$_adminBase/sites/$siteId/emplacement',
       data: {
         'latitude': latitude,
         'longitude': longitude,
+        'precision_metres': precisionMetres,
+        'nb_mesures': nbMesures,
+        'position_simulee': positionSimulee,
       },
     );
     return PresenceSite.fromJson(res.data ?? const {});
+  }
+
+  // --- Pointage manuel (D-P04) ---
+
+  Future<DemandeManuelle> demanderPointageManuel({
+    required String pointageRejeteId,
+    required String justification,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '$_mobileBase/demandes-manuelles',
+      data: {
+        'pointage_rejete_id': pointageRejeteId,
+        'justification': justification,
+      },
+    );
+    return DemandeManuelle.fromJson(res.data ?? const {});
+  }
+
+  Future<List<DemandeManuelle>> mesDemandesManuelles() async {
+    final res = await _dio.get<dynamic>('$_mobileBase/demandes-manuelles/moi');
+    return _parseList(res.data, DemandeManuelle.fromJson);
+  }
+
+  Future<List<DemandeManuelle>> demandesManuellesAValider() async {
+    final res = await _dio.get<dynamic>('$_mobileBase/demandes-manuelles/a-valider');
+    return _parseList(res.data, DemandeManuelle.fromJson);
+  }
+
+  Future<DemandeManuelle> validerDemandeManuelle(String id) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '$_mobileBase/demandes-manuelles/$id/valider',
+    );
+    return DemandeManuelle.fromJson(res.data ?? const {});
+  }
+
+  Future<DemandeManuelle> refuserDemandeManuelle(String id, String motif) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '$_mobileBase/demandes-manuelles/$id/refuser',
+      data: {'motif': motif},
+    );
+    return DemandeManuelle.fromJson(res.data ?? const {});
   }
 
   List<T> _parseList<T>(

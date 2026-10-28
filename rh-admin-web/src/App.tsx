@@ -15,11 +15,14 @@ import StructureOrganisationPage from './pages/StructureOrganisationPage';
 import OrganigrammePage from './pages/OrganigrammePage';
 import EvaluationsPage from './pages/EvaluationsPage';
 import PointageSitesPage from './pages/PointageSitesPage';
+import BornePage from './pages/BornePage';
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Borne écran de pointage, sans compte (D-P05) */}
+      <Route path="/borne/:jeton" element={<BornePage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/app/accueil" element={<HomePage />} />

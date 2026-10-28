@@ -34,6 +34,8 @@ public record CreatePointageRequest(
 		@JsonProperty("device_id") String deviceId,
 
 		@Size(max = 64)
-		@JsonProperty("idempotency_key") String idempotencyKey
+		@JsonProperty("idempotency_key") String idempotencyKey,
+		/** Indicateur OS « position simulée » (Android isMock, iOS isSimulatedBySoftware) — D-P01. */
+		@JsonProperty("position_simulee") Boolean positionSimulee
 ) {
 }

@@ -551,6 +551,18 @@ Pointage **QR + GPS** (pas de face en Must) :
 
 Service : **`svc-presence`** (`presence_db`), routes gateway `/api/rh/v1/.../presence/**`.
 
+### 14.1 bis Décisions client du 27/10/2026 (D-P01 à D-P05 — SCRUM-35 à SCRUM-39)
+
+QR **papier et écran**, sites **intérieurs et extérieurs** ; la distance de 10 m n'est pas une exigence ; un rejet de bonne foi est rattrapé par un **pointage manuel validé par le responsable**.
+
+| ID | Décision |
+|---|---|
+| **D-P01** (SCRUM-35) | Chaque site a un **type de lieu** : `EXTERIEUR` (rayon par défaut **20 m**) ou `INTERIEUR` (**50 m**) ; rayon modifiable par le RH entre **10 et 100 m**. Au pointage, la **précision GPS est obligatoire** et doit être **≤ rayon** (`REJETE_PRECISION_GPS`) ; une **position simulée** (appli de faux GPS détectée par l'OS) est refusée (`REJETE_POSITION_SIMULEE`). |
+| **D-P02** (SCRUM-36) | Le mobile remonte l'indicateur « position simulée » (Android `isMock`, iOS `isSimulatedBySoftware`). Écran **test terrain** RH/ADMIN : distance, précision, rayon et verdict en direct. |
+| **D-P03** (SCRUM-37) | La pose de l'emplacement du site fait une **moyenne de mesures (~15 s)** pondérée par la précision ; précision exigée **≤ 10 m extérieur / ≤ 25 m intérieur** ; la précision d'ancrage est enregistrée. |
+| **D-P04** (SCRUM-38) | Après un rejet, le collaborateur peut **demander un pointage manuel** (justification obligatoire). Valideur = règle **D-H03** ; personne ne valide sa propre demande. Validé → statut **`VALIDE_MANUEL`**. Alerte RH au-delà de **3 pointages manuels par mois** (configurable). |
+| **D-P05** (SCRUM-39) | Mode QR par site : **`PAPIER`** (statique 90 j) ou **`ECRAN`** (borne web plein écran, QR **renouvelé toutes les 30 s**, signé HMAC, tolérance ± 1 fenêtre). Un QR d'un mode n'est pas accepté sur un site de l'autre mode. |
+
 ### 14.2 Principe cible CDC (anti-fraude complète)
 
 Vision longue : deux étapes séquentielles **QR dynamique (TOTP ~ 5 min) + GPS** puis **reconnaissance faciale on-device** (liveness, seuil similarité défaut **92 %**, mini **80 %**). Seul le score part au serveur, **pas la photo**. Si une étape échoue → **REJET**.
@@ -559,13 +571,15 @@ Vision longue : deux étapes séquentielles **QR dynamique (TOTP ~ 5 min) + GPS*
 
 **Must** : collaborateur (JWT), type `ENTREE`/`SORTIE`, `server_ts`, GPS réel, site, distance, `device_id`, statut `VALIDE` / `REJETE_*`.
 
-**Cible** : + score facial, HMAC d’intégrité payload, statut `MANUEL`.
+**Livré (D-P01 à D-P04)** : + précision GPS, indicateur position simulée, statut `VALIDE_MANUEL`.
+
+**Cible** : + score facial, HMAC d’intégrité payload.
 
 ### 14.4 Exceptions
 
 - GPS hors zone → `REJETE_HORS_ZONE` (Must) ; alerte RO = Should.
 - QR expiré / révoqué / invalide → message clair + log (Must).
-- GPS indisponible → rejet (Must) ; fallback Wi-Fi / pointage manuel RO = Cible.
+- GPS indisponible ou imprécis → rejet (Must) ; **pointage manuel validé par le responsable (D-P04)** ; fallback Wi-Fi = Cible.
 - 3 échecs faciaux → alerte RO + blocage 15 min (**Cible**, vague face).
 
 ### 14.5 RGPD biométrie (vague face — Cible)
@@ -651,7 +665,7 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 | C-M07-02 | Le manager ne note qu’après l’auto-évaluation de la question |
 | C-M07-03 | Passage étape technique : questions générales obligatoires complètes |
 | C-M07-04 | Rouge (≥ 3 critères insuffisants) → plan d’action + escalade DG |
-| C-M09-01 | **Vague Must** : pointage `VALIDE` = QR actif valide **et** GPS ≤ 50 m (serveur) ; pas de partiel QR-sans-GPS. **Cible CDC (C-M09-01b)** : QR+GPS **puis** face on-device |
+| C-M09-01 | **Vague Must** : pointage `VALIDE` = QR actif valide **et** GPS ≤ rayon du site (serveur, D-P01 : 20 m extérieur / 50 m intérieur par défaut, précision ≤ rayon, position non simulée) ; pas de partiel QR-sans-GPS. **Cible CDC (C-M09-01b)** : QR+GPS **puis** face on-device |
 | C-ORG-01 | Collaborateur toujours rattaché à une unité ; matricule unique |
 
 ### 19.2 Légales / conformité

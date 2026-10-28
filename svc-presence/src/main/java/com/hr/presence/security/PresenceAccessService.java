@@ -42,6 +42,17 @@ public class PresenceAccessService {
 		return fromJwt.iterator().next();
 	}
 
+	/** Compte de l'appelant lu uniquement dans le JWT (claim {@code identifiant_utilisateur}) ; null sinon. */
+	public String currentCompteId() {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
+			Set<String> out = new LinkedHashSet<>();
+			addUuid(out, jwt.getClaimAsString("identifiant_utilisateur"));
+			return out.isEmpty() ? null : out.iterator().next();
+		}
+		return null;
+	}
+
 	public String currentActorLabel() {
 		try {
 			return requireCurrentCollaborateurId();

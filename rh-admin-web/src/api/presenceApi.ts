@@ -15,6 +15,19 @@ export class PresenceApiError extends Error {
 
 export type QrCredentialStatut = 'ACTIF' | 'REVOQUE' | 'EXPIRE';
 
+/** D-P01 : fixe le rayon par défaut (20 m extérieur, 50 m intérieur) et la précision de pose. */
+export type TypeLieu = 'EXTERIEUR' | 'INTERIEUR';
+
+export const TYPES_LIEU: { value: TypeLieu; label: string; rayonDefaut: number; precisionPose: number }[] = [
+  { value: 'EXTERIEUR', label: 'Extérieur (chantier)', rayonDefaut: 20, precisionPose: 10 },
+  { value: 'INTERIEUR', label: 'Intérieur (siège, bureaux)', rayonDefaut: 50, precisionPose: 25 },
+];
+
+export type ModeQr = 'PAPIER' | 'ECRAN';
+
+export const RAYON_MIN = 10;
+export const RAYON_MAX = 100;
+
 export type PresenceSite = {
   id: string;
   code: string;
@@ -22,6 +35,15 @@ export type PresenceSite = {
   latitude: number | null;
   longitude: number | null;
   rayonMetres: number;
+  typeLieu: TypeLieu;
+  /** D-P05 : QR papier statique ou borne écran renouvelée toutes les 30 s. */
+  modeQr: ModeQr;
+  borneActive: boolean;
+  borneCreeLe: string | null;
+  precisionAncrageMetres: number | null;
+  nbMesuresAncrage: number | null;
+  emplacementUpdatedAt: string | null;
+  emplacementUpdatedBy: string | null;
   actif: boolean;
   qrVersion: number | null;
   validFrom: string | null;
@@ -50,6 +72,7 @@ export type PointageStatut =
   | 'REJETE_SITE_INACTIF'
   | 'REJETE_EMPLACEMENT_ABSENT'
   | 'REJETE_PRECISION_GPS'
+  | 'REJETE_POSITION_SIMULEE'
   | string;
 
 export type PresencePointage = {
@@ -61,6 +84,7 @@ export type PresencePointage = {
   statut: PointageStatut;
   serverTs: string;
   distanceMetres: number | null;
+  accuracyMetres: number | null;
   motifRejet: string | null;
 };
 
@@ -75,6 +99,7 @@ export type PagePresence<T> = {
 export const POINTAGE_STATUTS_FILTRE: { value: string; label: string }[] = [
   { value: '', label: 'Tous les statuts' },
   { value: 'VALIDE', label: 'Validé' },
+  { value: 'VALIDE_MANUEL', label: 'Validé (manuel)' },
   { value: 'REJETE_HORS_ZONE', label: 'Hors zone' },
   { value: 'REJETE_QR_INVALIDE', label: 'QR non reconnu' },
   { value: 'REJETE_QR_EXPIRE', label: 'QR expiré' },
@@ -82,10 +107,12 @@ export const POINTAGE_STATUTS_FILTRE: { value: string; label: string }[] = [
   { value: 'REJETE_SITE_INACTIF', label: 'Site indisponible' },
   { value: 'REJETE_EMPLACEMENT_ABSENT', label: 'Emplacement absent' },
   { value: 'REJETE_PRECISION_GPS', label: 'GPS imprécis' },
+  { value: 'REJETE_POSITION_SIMULEE', label: 'Position simulée' },
 ];
 
 export const LIBELLES_POINTAGE_STATUT: Record<string, string> = {
   VALIDE: 'Validé',
+  VALIDE_MANUEL: 'Validé (manuel)',
   REJETE_HORS_ZONE: 'Hors zone',
   REJETE_QR_INVALIDE: 'QR non reconnu',
   REJETE_QR_EXPIRE: 'QR expiré',
@@ -93,6 +120,7 @@ export const LIBELLES_POINTAGE_STATUT: Record<string, string> = {
   REJETE_SITE_INACTIF: 'Site indisponible',
   REJETE_EMPLACEMENT_ABSENT: 'Emplacement absent',
   REJETE_PRECISION_GPS: 'GPS imprécis',
+  REJETE_POSITION_SIMULEE: 'Position simulée',
 };
 
 async function handlePresenceResponse<T>(res: Response): Promise<T> {
@@ -178,6 +206,14 @@ export function normalizeSite(raw: Record<string, unknown>): PresenceSite {
     latitude: asNum(raw.latitude),
     longitude: asNum(raw.longitude),
     rayonMetres: asNum(raw.rayonMetres ?? raw.rayon_metres) ?? 50,
+    typeLieu: asStr(raw.typeLieu ?? raw.type_lieu) === 'INTERIEUR' ? 'INTERIEUR' : 'EXTERIEUR',
+    modeQr: asStr(raw.modeQr ?? raw.mode_qr) === 'ECRAN' ? 'ECRAN' : 'PAPIER',
+    borneActive: asBool(raw.borneActive ?? raw.borne_active, false),
+    borneCreeLe: asStr(raw.borneCreeLe ?? raw.borne_cree_le),
+    precisionAncrageMetres: asNum(raw.precisionAncrageMetres ?? raw.precision_ancrage_metres),
+    nbMesuresAncrage: asNum(raw.nbMesuresAncrage ?? raw.nb_mesures_ancrage),
+    emplacementUpdatedAt: asStr(raw.emplacementUpdatedAt ?? raw.emplacement_updated_at),
+    emplacementUpdatedBy: asStr(raw.emplacementUpdatedBy ?? raw.emplacement_updated_by),
     actif: asBool(raw.actif, true),
     qrVersion: asNum(raw.qrVersion ?? raw.qr_version),
     validFrom: asStr(raw.validFrom ?? raw.valid_from),
@@ -200,6 +236,7 @@ function normalizePointage(raw: Record<string, unknown>): PresencePointage {
     statut: String(raw.statut ?? ''),
     serverTs: String(raw.serverTs ?? raw.server_ts ?? raw.creeLe ?? raw.cree_le ?? ''),
     distanceMetres: asNum(raw.distanceMetres ?? raw.distance_metres),
+    accuracyMetres: asNum(raw.accuracyMetres ?? raw.accuracy_metres),
     motifRejet: asStr(raw.motifRejet ?? raw.motif_rejet),
   };
 }
@@ -314,6 +351,8 @@ export function postPresenceSite(body: {
   libelle: string;
   latitude?: number | null;
   longitude?: number | null;
+  type_lieu?: TypeLieu;
+  rayon_metres?: number;
 }) {
   return apiFetch(`${BASE}/sites`, {
     method: 'POST',
@@ -326,7 +365,7 @@ export function postPresenceSite(body: {
 
 export function patchPresenceSite(
   siteId: string,
-  body: { libelle?: string; actif?: boolean },
+  body: { libelle?: string; actif?: boolean; type_lieu?: TypeLieu; rayon_metres?: number; mode_qr?: ModeQr },
 ) {
   return apiFetch(`${BASE}/sites/${encodeURIComponent(siteId)}`, {
     method: 'PATCH',
@@ -434,4 +473,92 @@ export function getPresencePointages(params: PointagesListParams = {}) {
       }
       return normalizePage(raw ?? {}, normalizePointage);
     });
+}
+
+// --- Pointage manuel validé par le responsable (D-P04 — SCRUM-38) ---
+
+export type StatutDemandeManuelle = 'EN_ATTENTE' | 'VALIDEE' | 'REFUSEE';
+
+export type DemandeManuelle = {
+  id: string;
+  statut: StatutDemandeManuelle;
+  type: PointageType | string;
+  heureDeclaree: string | null;
+  justification: string;
+  collaborateurId: string;
+  collaborateurNom: string | null;
+  motifRejetInitial: string | null;
+  valideurNom: string | null;
+  validationParRh: boolean;
+  decidePar: string | null;
+  decideLe: string | null;
+  motifRefus: string | null;
+  creeLe: string | null;
+  manuelsDuMois: number | null;
+  alerteSeuil: boolean;
+};
+
+export const LIBELLES_DEMANDE_MANUELLE: Record<StatutDemandeManuelle, string> = {
+  EN_ATTENTE: 'En attente',
+  VALIDEE: 'Validée',
+  REFUSEE: 'Refusée',
+};
+
+function normalizeDemandeManuelle(raw: Record<string, unknown>): DemandeManuelle {
+  return {
+    id: String(raw.id ?? ''),
+    statut: String(raw.statut ?? 'EN_ATTENTE') as StatutDemandeManuelle,
+    type: String(raw.type ?? ''),
+    heureDeclaree: asStr(raw.heure_declaree),
+    justification: String(raw.justification ?? ''),
+    collaborateurId: String(raw.collaborateur_id ?? ''),
+    collaborateurNom: asStr(raw.collaborateur_nom),
+    motifRejetInitial: asStr(raw.motif_rejet_initial),
+    valideurNom: asStr(raw.valideur_nom),
+    validationParRh: asBool(raw.validation_par_rh, false),
+    decidePar: asStr(raw.decide_par),
+    decideLe: asStr(raw.decide_le),
+    motifRefus: asStr(raw.motif_refus),
+    creeLe: asStr(raw.cree_le),
+    manuelsDuMois: asNum(raw.manuels_du_mois),
+    alerteSeuil: asBool(raw.alerte_seuil, false),
+  };
+}
+
+export function getDemandesManuelles(statut?: StatutDemandeManuelle | '') {
+  const q = statut ? `?statut=${encodeURIComponent(statut)}` : '';
+  return apiFetch(`${BASE}/demandes-manuelles${q}`)
+    .then((r) => handlePresenceResponse<unknown[]>(r))
+    .then((raw) => (Array.isArray(raw) ? raw : []).map((x) => normalizeDemandeManuelle((x ?? {}) as Record<string, unknown>)));
+}
+
+export function postValiderDemandeManuelle(id: string) {
+  return apiFetch(`${BASE}/demandes-manuelles/${encodeURIComponent(id)}/valider`, { method: 'POST' })
+    .then((r) => handlePresenceResponse<Record<string, unknown>>(r))
+    .then((raw) => normalizeDemandeManuelle(raw ?? {}));
+}
+
+export function postRefuserDemandeManuelle(id: string, motif: string) {
+  return apiFetch(`${BASE}/demandes-manuelles/${encodeURIComponent(id)}/refuser`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ motif }),
+  })
+    .then((r) => handlePresenceResponse<Record<string, unknown>>(r))
+    .then((raw) => normalizeDemandeManuelle(raw ?? {}));
+}
+
+// --- Borne écran QR dynamique (D-P05 — SCRUM-39) ---
+
+/** Le jeton n'est renvoyé qu'une fois : l'URL complète doit être copiée tout de suite. */
+export function postGenererBorne(siteId: string) {
+  return apiFetch(`${BASE}/sites/${encodeURIComponent(siteId)}/borne`, { method: 'POST' })
+    .then((r) => handlePresenceResponse<Record<string, unknown>>(r))
+    .then((raw) => ({ chemin: String(raw?.chemin ?? '') }));
+}
+
+export function postRevoquerBorne(siteId: string) {
+  return apiFetch(`${BASE}/sites/${encodeURIComponent(siteId)}/borne/revoke`, { method: 'POST' }).then((r) =>
+    handlePresenceResponse<unknown>(r),
+  );
 }

@@ -16,13 +16,15 @@ String messageMotifPointage(String? statut, {String? motifServeur}) {
     case PointageStatut.rejeteQrRevoque:
       return 'Ce code QR a été révoqué. Utilisez le QR actuellement affiché sur le site.';
     case PointageStatut.rejeteHorsZone:
-      return 'Vous êtes hors de la zone de pointage (plus de 50 m du site).';
+      return 'Vous êtes hors de la zone de pointage du site.';
     case PointageStatut.rejeteSiteInactif:
       return 'Ce site de pointage est inactif.';
     case PointageStatut.rejeteEmplacementAbsent:
       return 'L’emplacement GPS du site n’est pas encore configuré. Contactez les RH.';
     case PointageStatut.rejetePrecisionGps:
-      return 'Précision GPS insuffisante. Attendez un meilleur signal et réessayez.';
+      return 'Signal GPS trop faible. Placez-vous à découvert et réessayez.';
+    case PointageStatut.rejetePositionSimulee:
+      return 'Position GPS simulée détectée. Désactivez toute application de localisation fictive.';
     case PointageStatut.valide:
       return 'Pointage enregistré.';
     default:

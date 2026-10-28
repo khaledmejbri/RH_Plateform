@@ -11,4 +11,6 @@ public interface PresenceSiteRepository extends JpaRepository<PresenceSite, UUID
 	boolean existsByCodeIgnoreCase(String code);
 
 	Optional<PresenceSite> findByCodeIgnoreCase(String code);
+
+	Optional<PresenceSite> findByBorneJetonHash(String borneJetonHash);
 }

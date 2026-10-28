@@ -13,15 +13,22 @@ import {
   patchPresenceSite,
   POINTAGE_STATUTS_FILTRE,
   postGenerateQr,
+  postGenererBorne,
   postPresenceSite,
+  postRevoquerBorne,
   postRevokeQr,
+  RAYON_MAX,
+  RAYON_MIN,
+  TYPES_LIEU,
   type PresencePointage,
   type PresenceSite,
+  type TypeLieu,
 } from '../api/presenceApi';
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { Icon } from '../components/ui';
+import PointagesManuelsPanel from './PointagesManuelsPanel';
 
-type Tab = 'sites' | 'pointages';
+type Tab = 'sites' | 'pointages' | 'manuels';
 type ModalKind = 'creer' | 'regenerer' | 'revoquer' | null;
 
 const PAGE_SIZE = 20;
@@ -99,14 +106,14 @@ function QrExpiryBadge({ site }: { site: PresenceSite }) {
 function PointageStatutBadge({ statut }: { statut: string }) {
   const label = LIBELLES_POINTAGE_STATUT[statut] ?? statut.replaceAll('_', ' ');
   const cls =
-    statut === 'VALIDE'
+    statut === 'VALIDE' || statut === 'VALIDE_MANUEL'
       ? 'badge badge--success'
       : statut.startsWith('REJETE_')
         ? 'badge badge--warning'
         : 'badge badge--default';
   return (
     <span className={cls} aria-label={label}>
-      {statut === 'VALIDE' ? <Icon name="check" size={12} /> : null}
+      {statut === 'VALIDE' || statut === 'VALIDE_MANUEL' ? <Icon name="check" size={12} /> : null}
       {statut.startsWith('REJETE_') ? <Icon name="x" size={12} /> : null}
       {label}
     </span>
@@ -141,6 +148,11 @@ export default function PointageSitesPage() {
   const [modal, setModal] = useState<ModalKind>(null);
   const [createCode, setCreateCode] = useState('');
   const [createLibelle, setCreateLibelle] = useState('');
+  const [createTypeLieu, setCreateTypeLieu] = useState<TypeLieu>('EXTERIEUR');
+  const [createRayon, setCreateRayon] = useState('');
+  const [editTypeLieu, setEditTypeLieu] = useState<TypeLieu>('EXTERIEUR');
+  const [editRayon, setEditRayon] = useState('');
+  const [lienBorne, setLienBorne] = useState<string | null>(null);
 
   const [pointages, setPointages] = useState<PresencePointage[]>([]);
   const [ptPage, setPtPage] = useState(0);
@@ -208,6 +220,12 @@ export default function PointageSitesPage() {
     else setDetail(null);
   }, [selectedId, loadDetail]);
 
+  useEffect(() => {
+    if (!detail) return;
+    setEditTypeLieu(detail.typeLieu);
+    setEditRayon(String(detail.rayonMetres));
+  }, [detail]);
+
   const loadPointages = useCallback(async () => {
     setPtLoading(true);
     setPtErr(null);
@@ -267,16 +285,87 @@ export default function PointageSitesPage() {
       const created = await postPresenceSite({
         code: createCode.trim(),
         libelle: createLibelle.trim(),
+        type_lieu: createTypeLieu,
+        ...(createRayon.trim() ? { rayon_metres: Number(createRayon) } : {}),
       });
       setModal(null);
       setCreateCode('');
       setCreateLibelle('');
+      setCreateTypeLieu('EXTERIEUR');
+      setCreateRayon('');
       setMsg(`Site « ${created.libelle} » créé.`);
       setSitesPage(0);
       await loadSites();
       openSite(created.id);
     } catch (err) {
       setActionErr(messagePresenceErreur(err, 'Création impossible'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function enregistrerZone(e: FormEvent) {
+    e.preventDefault();
+    if (!detail || lectureSeule) return;
+    setBusy(true);
+    setActionErr(null);
+    try {
+      const updated = await patchPresenceSite(detail.id, {
+        type_lieu: editTypeLieu,
+        rayon_metres: Number(editRayon),
+      });
+      setDetail(updated);
+      setMsg(`Zone de pointage mise à jour : ${updated.rayonMetres} m.`);
+      void loadSites();
+    } catch (err) {
+      setActionErr(messagePresenceErreur(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function genererBorne() {
+    if (!detail || lectureSeule) return;
+    setBusy(true);
+    setActionErr(null);
+    try {
+      const { chemin } = await postGenererBorne(detail.id);
+      setLienBorne(`${window.location.origin}${chemin}`);
+      setMsg('Borne écran créée. Ouvrez le lien sur l’écran du site ; l’ancien lien éventuel ne fonctionne plus.');
+      await loadDetail(detail.id);
+    } catch (err) {
+      setActionErr(messagePresenceErreur(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoquerBorne() {
+    if (!detail || lectureSeule) return;
+    setBusy(true);
+    setActionErr(null);
+    try {
+      await postRevoquerBorne(detail.id);
+      setLienBorne(null);
+      setMsg('Borne désactivée : son lien et ses QR ne fonctionnent plus.');
+      await loadDetail(detail.id);
+    } catch (err) {
+      setActionErr(messagePresenceErreur(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function passerEnModePapier() {
+    if (!detail || lectureSeule) return;
+    setBusy(true);
+    setActionErr(null);
+    try {
+      const updated = await patchPresenceSite(detail.id, { mode_qr: 'PAPIER' });
+      setDetail(updated);
+      setMsg('Site repassé en QR papier.');
+    } catch (err) {
+      setActionErr(messagePresenceErreur(err));
     } finally {
       setBusy(false);
     }
@@ -359,14 +448,22 @@ export default function PointageSitesPage() {
       <div className="page__head">
         <div>
           <h2 className="page__title">
-            {showDetail ? detail?.libelle ?? 'Fiche site' : tab === 'pointages' ? 'Pointages' : 'Sites de pointage'}
+            {showDetail
+              ? detail?.libelle ?? 'Fiche site'
+              : tab === 'pointages'
+                ? 'Pointages'
+                : tab === 'manuels'
+                  ? 'Pointages manuels'
+                  : 'Sites de pointage'}
           </h2>
           <p className="page__lead">
             {showDetail
-              ? `Code ${detail?.code ?? '…'} · géofence 50 m`
+              ? `Code ${detail?.code ?? '…'} · zone de ${detail?.rayonMetres ?? '…'} m`
               : tab === 'pointages'
                 ? 'Consultation des essais VALIDÉ / REJETÉ (support et anti-fraude).'
-                : 'Emplacements QR et géofence 50 m'}
+                : tab === 'manuels'
+                  ? 'Pointages demandés après un refus, validés par le responsable ou les RH.'
+                  : 'Emplacements QR et zone de pointage par site'}
           </p>
         </div>
         <div className="tabs">
@@ -389,6 +486,16 @@ export default function PointageSitesPage() {
             }}
           >
             Pointages
+          </button>
+          <button
+            type="button"
+            className={'tab' + (tab === 'manuels' ? ' tab--on' : '')}
+            onClick={() => {
+              setTab('manuels');
+              setSelectedId(null);
+            }}
+          >
+            Pointages manuels
           </button>
           {showList && !lectureSeule ? (
             <button type="button" className="btn btn--primary" onClick={() => setModal('creer')}>
@@ -614,10 +721,62 @@ export default function PointageSitesPage() {
                     <dd>{detail.libelle}</dd>
                   </div>
                   <div>
-                    <dt>Rayon</dt>
-                    <dd>{detail.rayonMetres} m (fixe Must)</dd>
+                    <dt>Type de lieu</dt>
+                    <dd>{TYPES_LIEU.find((t) => t.value === detail.typeLieu)?.label ?? detail.typeLieu}</dd>
+                  </div>
+                  <div>
+                    <dt>Rayon de pointage</dt>
+                    <dd>{detail.rayonMetres} m</dd>
                   </div>
                 </dl>
+                {!lectureSeule ? (
+                  <form className="form-grid mb-md" onSubmit={enregistrerZone}>
+                    <label>
+                      Type de lieu
+                      <select
+                        value={editTypeLieu}
+                        onChange={(e) => {
+                          const t = e.target.value as TypeLieu;
+                          setEditTypeLieu(t);
+                          setEditRayon(String(TYPES_LIEU.find((x) => x.value === t)?.rayonDefaut ?? editRayon));
+                        }}
+                      >
+                        {TYPES_LIEU.map((t) => (
+                          <option key={t.value} value={t.value}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Rayon (m)
+                      <input
+                        type="number"
+                        required
+                        min={RAYON_MIN}
+                        max={RAYON_MAX}
+                        value={editRayon}
+                        onChange={(e) => setEditRayon(e.target.value)}
+                      />
+                    </label>
+                    <div>
+                      <button
+                        type="submit"
+                        className="btn btn--secondary btn--sm"
+                        disabled={
+                          busy ||
+                          (editTypeLieu === detail.typeLieu && Number(editRayon) === detail.rayonMetres)
+                        }
+                      >
+                        Enregistrer la zone
+                      </button>
+                    </div>
+                    <p className="muted small">
+                      Un collaborateur est accepté s’il est à moins de {editRayon || '—'} m du QR et si son GPS est
+                      au moins aussi précis. Validez le rayon sur place avec l’écran « Test terrain » de RH Connect.
+                    </p>
+                  </form>
+                ) : null}
                 {!lectureSeule ? (
                   <button
                     type="button"
@@ -635,15 +794,90 @@ export default function PointageSitesPage() {
               <section className="mb-lg">
                 <h3 className="section-title">Emplacement GPS</h3>
                 {detail.latitude != null && detail.longitude != null ? (
-                  <p className="mono small">
-                    {detail.latitude.toFixed(6)}, {detail.longitude.toFixed(6)}
-                  </p>
+                  <>
+                    <p className="mono small">
+                      {detail.latitude.toFixed(6)}, {detail.longitude.toFixed(6)}
+                    </p>
+                    <p className="small">
+                      {detail.precisionAncrageMetres != null
+                        ? `Précision de la pose : ±${detail.precisionAncrageMetres.toFixed(1)} m` +
+                          (detail.nbMesuresAncrage ? ` (${detail.nbMesuresAncrage} mesures)` : '')
+                        : 'Précision de la pose inconnue : reposez l’emplacement depuis RH Connect.'}
+                      {detail.emplacementUpdatedAt
+                        ? ` · posé le ${formatDateTunis(detail.emplacementUpdatedAt)}` +
+                          // L'auteur est stocké sous forme d'identifiant technique : on ne l'affiche que s'il est lisible
+                          (detail.emplacementUpdatedBy && !/^[0-9a-f-]{36}$/i.test(detail.emplacementUpdatedBy)
+                            ? ` par ${detail.emplacementUpdatedBy}`
+                            : '')
+                        : ''}
+                    </p>
+                  </>
                 ) : (
                   <p className="muted">Non posé</p>
                 )}
                 <p className="muted small">
-                  Posez l’emplacement depuis RH Connect (mobile) sur le lieu d’affichage du QR.
+                  Posez l’emplacement depuis RH Connect (mobile) sur le lieu d’affichage du QR : l’appareil mesure
+                  pendant 15 s et exige une précision de{' '}
+                  {TYPES_LIEU.find((t) => t.value === detail.typeLieu)?.precisionPose ?? 10} m.
                 </p>
+              </section>
+
+              <section className="mb-lg">
+                <h3 className="section-title">Mode d’affichage du QR</h3>
+                <p className="small">
+                  {detail.modeQr === 'ECRAN'
+                    ? `Borne écran — le QR change toutes les 30 s${
+                        detail.borneActive && detail.borneCreeLe
+                          ? ` (borne créée le ${formatDateTunis(detail.borneCreeLe)})`
+                          : ''
+                      }.`
+                    : 'QR papier — imprimé, valable 90 jours.'}
+                </p>
+                {detail.modeQr === 'ECRAN' && !detail.borneActive ? (
+                  <div className="alert alert--warning" role="status">
+                    Aucune borne active : les collaborateurs ne peuvent pas pointer sur ce site.
+                  </div>
+                ) : null}
+                {lienBorne ? (
+                  <div className="alert alert--info" role="status">
+                    Lien de la borne (affiché une seule fois) :{' '}
+                    <a href={lienBorne} target="_blank" rel="noreferrer" className="mono small">
+                      {lienBorne}
+                    </a>
+                  </div>
+                ) : null}
+                {!lectureSeule ? (
+                  <div className="page__head-actions mt-sm">
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--sm"
+                      disabled={busy}
+                      onClick={() => void genererBorne()}
+                    >
+                      {detail.borneActive ? 'Remplacer la borne écran' : 'Créer une borne écran'}
+                    </button>
+                    {detail.borneActive ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={busy}
+                        onClick={() => void revoquerBorne()}
+                      >
+                        Désactiver la borne
+                      </button>
+                    ) : null}
+                    {detail.modeQr === 'ECRAN' ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={busy}
+                        onClick={() => void passerEnModePapier()}
+                      >
+                        Revenir au QR papier
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </section>
 
               <section>
@@ -714,6 +948,8 @@ export default function PointageSitesPage() {
           ) : null}
         </div>
       ) : null}
+
+      {tab === 'manuels' ? <PointagesManuelsPanel lectureSeule={lectureSeule} /> : null}
 
       {tab === 'pointages' ? (
         <div className="panel">
@@ -820,6 +1056,7 @@ export default function PointageSitesPage() {
                       <th>Type</th>
                       <th>Statut</th>
                       <th>Distance</th>
+                      <th>Précision GPS</th>
                       <th>Motif</th>
                     </tr>
                   </thead>
@@ -835,6 +1072,9 @@ export default function PointageSitesPage() {
                         </td>
                         <td className="muted">
                           {p.distanceMetres != null ? `${Math.round(p.distanceMetres)} m` : '—'}
+                        </td>
+                        <td className="muted">
+                          {p.accuracyMetres != null ? `±${Math.round(p.accuracyMetres)} m` : '—'}
                         </td>
                         <td className="muted small">{p.motifRejet ?? '—'}</td>
                       </tr>
@@ -893,7 +1133,32 @@ export default function PointageSitesPage() {
                 />
               </label>
             </div>
-            <p className="muted small">Rayon fixé à 50 m. L’emplacement GPS se pose ensuite via mobile RH.</p>
+            <div className="form-grid">
+              <label>
+                Type de lieu *
+                <select value={createTypeLieu} onChange={(e) => setCreateTypeLieu(e.target.value as TypeLieu)}>
+                  {TYPES_LIEU.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label} — {t.rayonDefaut} m
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Rayon (m)
+                <input
+                  type="number"
+                  min={RAYON_MIN}
+                  max={RAYON_MAX}
+                  value={createRayon}
+                  onChange={(e) => setCreateRayon(e.target.value)}
+                  placeholder={`Par défaut ${TYPES_LIEU.find((t) => t.value === createTypeLieu)?.rayonDefaut} m`}
+                />
+              </label>
+            </div>
+            <p className="muted small">
+              Rayon de {RAYON_MIN} à {RAYON_MAX} m. L’emplacement GPS se pose ensuite via RH Connect, sur place.
+            </p>
             <div className="page__head-actions mt-md">
               <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setModal(null)}>
                 Annuler

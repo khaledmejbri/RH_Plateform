@@ -1,7 +1,9 @@
 package com.hr.presence.service;
 
 import com.hr.presence.config.PresenceProperties;
+import com.hr.presence.domain.ModeQr;
 import com.hr.presence.domain.QrCredentialStatut;
+import com.hr.presence.domain.TypeLieu;
 import com.hr.presence.dto.CreateSiteRequest;
 import com.hr.presence.dto.EmplacementRequest;
 import com.hr.presence.dto.PageResponse;
@@ -22,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -72,7 +75,11 @@ public class PresenceSiteService {
 		site.setLibelle(request.libelle().trim());
 		site.setLatitude(request.latitude());
 		site.setLongitude(request.longitude());
-		site.setRayonMetres(properties.getGeofence().getDefaultRadiusMetres());
+		TypeLieu typeLieu = request.typeLieu() == null ? TypeLieu.EXTERIEUR : exigerTypeLieu(request.typeLieu());
+		site.setTypeLieu(typeLieu);
+		site.setRayonMetres(request.rayonMetres() != null
+				? exigerRayon(request.rayonMetres())
+				: properties.getGeofence().defaultRadius(typeLieu));
 		site.setActif(true);
 		site.setUpdatedBy(accessService.currentActorLabel());
 		if (request.latitude() != null && request.longitude() != null) {
@@ -95,6 +102,20 @@ public class PresenceSiteService {
 		if (request.actif() != null) {
 			site.setActif(request.actif());
 		}
+		if (request.typeLieu() != null) {
+			TypeLieu typeLieu = exigerTypeLieu(request.typeLieu());
+			if (typeLieu != site.getTypeLieu() && request.rayonMetres() == null) {
+				site.setRayonMetres(properties.getGeofence().defaultRadius(typeLieu));
+			}
+			site.setTypeLieu(typeLieu);
+		}
+		if (request.rayonMetres() != null) {
+			site.setRayonMetres(exigerRayon(request.rayonMetres()));
+		}
+		if (request.modeQr() != null) {
+			site.setModeQr(ModeQr.parse(request.modeQr()).orElseThrow(() -> PresenceMetierException.unprocessable(
+					"MODE_QR_INVALIDE", "mode_qr doit être PAPIER ou ECRAN")));
+		}
 		site.setUpdatedBy(accessService.currentActorLabel());
 		return toResponse(siteRepository.save(site));
 	}
@@ -102,8 +123,20 @@ public class PresenceSiteService {
 	@Transactional
 	public SiteResponse updateEmplacement(UUID siteId, EmplacementRequest request) {
 		PresenceSite site = requireSite(siteId);
+		if (Boolean.TRUE.equals(request.positionSimulee())) {
+			throw PresenceMetierException.unprocessable("POSITION_SIMULEE",
+					"Position GPS simulée détectée : désactivez toute application de localisation fictive");
+		}
+		double precisionRequise = properties.getGeofence().anchorAccuracy(site.getTypeLieu());
+		if (request.precisionMetres() > precisionRequise) {
+			throw PresenceMetierException.unprocessable("PRECISION_ANCRAGE_INSUFFISANTE", String.format(Locale.ROOT,
+					"Signal GPS trop faible (±%.0f m, %.0f m maximum) : placez-vous à découvert et réessayez",
+					request.precisionMetres(), precisionRequise));
+		}
 		site.setLatitude(request.latitude());
 		site.setLongitude(request.longitude());
+		site.setPrecisionAncrageMetres(request.precisionMetres());
+		site.setNbMesuresAncrage(request.nbMesures());
 		site.setEmplacementUpdatedAt(Instant.now());
 		site.setEmplacementUpdatedBy(accessService.currentActorLabel());
 		site.setUpdatedBy(accessService.currentActorLabel());
@@ -134,6 +167,14 @@ public class PresenceSiteService {
 				site.getLatitude(),
 				site.getLongitude(),
 				site.getRayonMetres(),
+				site.getTypeLieu(),
+				site.getModeQr(),
+				site.getBorneJetonHash() != null,
+				site.getBorneCreeLe(),
+				site.getPrecisionAncrageMetres(),
+				site.getNbMesuresAncrage(),
+				site.getEmplacementUpdatedAt(),
+				site.getEmplacementUpdatedBy(),
 				site.isActif(),
 				qrActif,
 				qrVersion,
@@ -143,6 +184,21 @@ public class PresenceSiteService {
 				site.getCreatedAt(),
 				site.getUpdatedAt()
 		);
+	}
+
+	private static TypeLieu exigerTypeLieu(String raw) {
+		return TypeLieu.parse(raw).orElseThrow(() -> PresenceMetierException.unprocessable(
+				"TYPE_LIEU_INVALIDE", "type_lieu doit être EXTERIEUR ou INTERIEUR"));
+	}
+
+	private int exigerRayon(int rayon) {
+		int min = properties.getGeofence().getMinRadiusMetres();
+		int max = properties.getGeofence().getMaxRadiusMetres();
+		if (rayon < min || rayon > max) {
+			throw PresenceMetierException.unprocessable(
+					"RAYON_INVALIDE", "Le rayon doit être compris entre " + min + " et " + max + " m");
+		}
+		return rayon;
 	}
 
 	private static void validateOptionalCoords(Double lat, Double lon) {

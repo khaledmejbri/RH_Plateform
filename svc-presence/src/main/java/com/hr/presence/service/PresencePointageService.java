@@ -1,6 +1,7 @@
 package com.hr.presence.service;
 
 import com.hr.presence.config.PresenceProperties;
+import com.hr.presence.domain.ModeQr;
 import com.hr.presence.domain.PointageStatut;
 import com.hr.presence.domain.PointageType;
 import com.hr.presence.domain.QrCredentialStatut;
@@ -40,6 +41,14 @@ public class PresencePointageService {
 	private final HaversineService haversineService;
 	private final PresenceProperties properties;
 	private final PresenceQrService qrService;
+	private final QrDynamiqueService qrDynamiqueService;
+
+	/** QR résolu : site et credential statique (null pour une borne écran), ou rejet déjà enregistré. */
+	private record QrResolu(PresenceSite site, UUID credentialId, PointageResponse rejet) {
+		static QrResolu rejete(PointageResponse rejet) {
+			return new QrResolu(null, null, rejet);
+		}
+	}
 
 	public PresencePointageService(
 			PresencePointageRepository pointageRepository,
@@ -48,7 +57,8 @@ public class PresencePointageService {
 			QrTokenService qrTokenService,
 			HaversineService haversineService,
 			PresenceProperties properties,
-			PresenceQrService qrService) {
+			PresenceQrService qrService,
+			QrDynamiqueService qrDynamiqueService) {
 		this.pointageRepository = pointageRepository;
 		this.siteRepository = siteRepository;
 		this.qrRepository = qrRepository;
@@ -56,6 +66,7 @@ public class PresencePointageService {
 		this.haversineService = haversineService;
 		this.properties = properties;
 		this.qrService = qrService;
+		this.qrDynamiqueService = qrDynamiqueService;
 	}
 
 	@Transactional
@@ -71,28 +82,76 @@ public class PresencePointageService {
 		PointageType type = parseType(request.type());
 		Instant serverTs = Instant.now();
 
+		QrResolu qr = QrDynamiqueService.estDynamique(request.qrToken())
+				? resoudreQrDynamique(collaborateurId, type, request, serverTs)
+				: resoudreQrStatique(collaborateurId, type, request, serverTs);
+		if (qr.rejet() != null) {
+			return qr.rejet();
+		}
+		PresenceSite site = qr.site();
+		UUID credentialId = qr.credentialId();
+
+		if (!site.hasEmplacement()) {
+			return persistRejet(collaborateurId, type, request, serverTs,
+					PointageStatut.REJETE_EMPLACEMENT_ABSENT, "Emplacement GPS du site non configuré",
+					site.getId(), credentialId, null);
+		}
+		return verifierPosition(collaborateurId, type, request, serverTs, site, credentialId);
+	}
+
+	/** Borne écran (D-P05) : signature, borne non remplacée, fenêtre de 30 s ± 1. */
+	private QrResolu resoudreQrDynamique(
+			String collaborateurId, PointageType type, CreatePointageRequest request, Instant serverTs) {
+		QrDynamiqueService.Resultat r = qrDynamiqueService.verifier(request.qrToken(), serverTs);
+		if (r.verdict() == QrDynamiqueService.Verdict.INVALIDE) {
+			return QrResolu.rejete(persistRejet(collaborateurId, type, request, serverTs,
+					PointageStatut.REJETE_QR_INVALIDE, "Jeton QR invalide ou signature incorrecte", null, null, null));
+		}
+		PresenceSite site = siteRepository.findById(r.siteId()).orElse(null);
+		if (site == null || !site.isActif()) {
+			return QrResolu.rejete(persistRejet(collaborateurId, type, request, serverTs,
+					PointageStatut.REJETE_SITE_INACTIF, "Site de pointage inactif ou introuvable", r.siteId(), null, null));
+		}
+		if (site.getModeQr() != ModeQr.ECRAN || site.getBorneJetonHash() == null
+				|| site.getBorneVersion() != r.borneVersion()) {
+			return QrResolu.rejete(persistRejet(collaborateurId, type, request, serverTs,
+					PointageStatut.REJETE_QR_REVOQUE, "Cette borne a été remplacée ou désactivée par les RH",
+					site.getId(), null, null));
+		}
+		if (r.verdict() == QrDynamiqueService.Verdict.EXPIRE) {
+			return QrResolu.rejete(persistRejet(collaborateurId, type, request, serverTs,
+					PointageStatut.REJETE_QR_EXPIRE,
+					"QR de la borne expiré : scannez le QR actuellement affiché à l'écran",
+					site.getId(), null, null));
+		}
+		return new QrResolu(site, null, null);
+	}
+
+	/** QR papier statique 90 j (vague Must) ; refusé sur un site équipé d'une borne écran (D-P05). */
+	private QrResolu resoudreQrStatique(
+			String collaborateurId, PointageType type, CreatePointageRequest request, Instant serverTs) {
 		Optional<QrTokenService.QrClaims> claimsOpt = qrTokenService.parseAndVerify(request.qrToken());
 		if (claimsOpt.isEmpty()) {
-			return persistRejet(collaborateurId, type, request, serverTs,
+			return QrResolu.rejete(persistRejet(collaborateurId, type, request, serverTs,
 					PointageStatut.REJETE_QR_INVALIDE, "Jeton QR invalide ou signature incorrecte",
-					null, null, null);
+					null, null, null));
 		}
 
 		QrTokenService.QrClaims claims = claimsOpt.get();
 		Optional<PresenceQrCredential> credOpt = qrRepository.findByJti(claims.jti());
 		if (credOpt.isEmpty()) {
-			return persistRejet(collaborateurId, type, request, serverTs,
+			return QrResolu.rejete(persistRejet(collaborateurId, type, request, serverTs,
 					PointageStatut.REJETE_QR_INVALIDE, "Credential QR inconnu",
-					claims.siteId(), null, null);
+					claims.siteId(), null, null));
 		}
 
 		PresenceQrCredential credential = credOpt.get();
 		qrService.expireIfNeeded(credential);
 
 		if (credential.getStatut() == QrCredentialStatut.REVOQUE) {
-			return persistRejet(collaborateurId, type, request, serverTs,
+			return QrResolu.rejete(persistRejet(collaborateurId, type, request, serverTs,
 					PointageStatut.REJETE_QR_REVOQUE, "Ce code QR a été révoqué",
-					claims.siteId(), credential.getId(), null);
+					claims.siteId(), credential.getId(), null));
 		}
 		if (credential.getStatut() == QrCredentialStatut.EXPIRE
 				|| claims.exp().isBefore(serverTs)
@@ -101,55 +160,77 @@ public class PresencePointageService {
 				credential.setStatut(QrCredentialStatut.EXPIRE);
 				qrRepository.save(credential);
 			}
-			return persistRejet(collaborateurId, type, request, serverTs,
+			return QrResolu.rejete(persistRejet(collaborateurId, type, request, serverTs,
 					PointageStatut.REJETE_QR_EXPIRE, "Ce code QR a expiré",
-					claims.siteId(), credential.getId(), null);
+					claims.siteId(), credential.getId(), null));
 		}
 		if (credential.getStatut() != QrCredentialStatut.ACTIF
 				|| credential.getQrVersion() != claims.qrVersion()
 				|| !credential.getSite().getId().equals(claims.siteId())) {
-			return persistRejet(collaborateurId, type, request, serverTs,
+			return QrResolu.rejete(persistRejet(collaborateurId, type, request, serverTs,
 					PointageStatut.REJETE_QR_INVALIDE, "Credential QR non actif pour ce site",
-					claims.siteId(), credential.getId(), null);
+					claims.siteId(), credential.getId(), null));
 		}
 
 		PresenceSite site = siteRepository.findById(claims.siteId())
 				.orElse(null);
 		if (site == null || !site.isActif()) {
-			return persistRejet(collaborateurId, type, request, serverTs,
+			return QrResolu.rejete(persistRejet(collaborateurId, type, request, serverTs,
 					PointageStatut.REJETE_SITE_INACTIF, "Site de pointage inactif ou introuvable",
-					claims.siteId(), credential.getId(), null);
+					claims.siteId(), credential.getId(), null));
 		}
-		if (!site.hasEmplacement()) {
+		if (site.getModeQr() == ModeQr.ECRAN) {
+			return QrResolu.rejete(persistRejet(collaborateurId, type, request, serverTs,
+					PointageStatut.REJETE_QR_INVALIDE,
+					"Ce site utilise une borne écran : scannez le QR affiché à l'écran",
+					site.getId(), credential.getId(), null));
+		}
+		return new QrResolu(site, credential.getId(), null);
+	}
+
+	/** Règles GPS D-P01, communes au QR papier et à la borne écran. */
+	private PointageResponse verifierPosition(String collaborateurId, PointageType type, CreatePointageRequest request,
+			Instant serverTs, PresenceSite site, UUID credentialId) {
+
+		if (Boolean.TRUE.equals(request.positionSimulee())) {
+			log.warn("Position simulée détectée collab={} siteId={} device={}",
+					collaborateurId, site.getId(), request.deviceId());
 			return persistRejet(collaborateurId, type, request, serverTs,
-					PointageStatut.REJETE_EMPLACEMENT_ABSENT, "Emplacement GPS du site non configuré",
-					site.getId(), credential.getId(), null);
+					PointageStatut.REJETE_POSITION_SIMULEE,
+					"Position GPS simulée détectée : désactivez toute application de localisation fictive",
+					site.getId(), credentialId, null);
 		}
 
-		if (request.accuracyMetres() != null
-				&& request.accuracyMetres() > properties.getGeofence().getMaxAccuracyMetres()) {
+		int rayon = site.getRayonMetres() > 0
+				? site.getRayonMetres()
+				: properties.getGeofence().defaultRadius(site.getTypeLieu());
+
+		// D-P01 : précision obligatoire et au plus égale au rayon (sinon la position ne prouve rien)
+		double precisionMax = Math.min(rayon, properties.getGeofence().getMaxAccuracyMetres());
+		if (request.accuracyMetres() == null || request.accuracyMetres() > precisionMax) {
+			String detail = request.accuracyMetres() == null
+					? "précision non fournie"
+					: String.format(Locale.ROOT, "±%.0f m > %.0f m", request.accuracyMetres(), precisionMax);
 			return persistRejet(collaborateurId, type, request, serverTs,
-					PointageStatut.REJETE_PRECISION_GPS, "Précision GPS insuffisante",
-					site.getId(), credential.getId(), null);
+					PointageStatut.REJETE_PRECISION_GPS,
+					"Signal GPS trop faible (" + detail + "), placez-vous à découvert et réessayez",
+					site.getId(), credentialId, null);
 		}
 
 		double distance = haversineService.distanceMetres(
 				site.getLatitude(), site.getLongitude(),
 				request.latitude(), request.longitude());
-		int rayon = site.getRayonMetres() > 0
-				? site.getRayonMetres()
-				: properties.getGeofence().getDefaultRadiusMetres();
 
 		if (!haversineService.withinRadius(distance, rayon)) {
 			return persistRejet(collaborateurId, type, request, serverTs,
 					PointageStatut.REJETE_HORS_ZONE,
 					"Hors zone de pointage (" + String.format(Locale.ROOT, "%.1f", distance) + " m > " + rayon + " m)",
-					site.getId(), credential.getId(), distance);
+					site.getId(), credentialId, distance);
 		}
 
 		PresencePointage pointage = basePointage(collaborateurId, type, request, serverTs);
 		pointage.setSiteId(site.getId());
-		pointage.setQrCredentialId(credential.getId());
+		pointage.setQrCredentialId(credentialId);
 		pointage.setStatut(PointageStatut.VALIDE);
 		pointage.setDistanceMetres(distance);
 		PresencePointage saved = pointageRepository.save(pointage);
@@ -209,6 +290,7 @@ public class PresencePointageService {
 		p.setLatitude(request.latitude());
 		p.setLongitude(request.longitude());
 		p.setAccuracyMetres(request.accuracyMetres());
+		p.setPositionSimulee(request.positionSimulee());
 		p.setDeviceId(request.deviceId());
 		if (request.idempotencyKey() != null && !request.idempotencyKey().isBlank()) {
 			p.setIdempotencyKey(request.idempotencyKey().trim());
@@ -241,6 +323,7 @@ public class PresencePointageService {
 				p.getServerTs(),
 				p.getSiteId(),
 				p.getDistanceMetres(),
+				p.getAccuracyMetres(),
 				p.getMotifRejet(),
 				p.getCollaborateurId()
 		);

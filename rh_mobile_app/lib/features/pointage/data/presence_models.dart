@@ -27,6 +27,8 @@ abstract final class PointageStatut {
   static const rejeteSiteInactif = 'REJETE_SITE_INACTIF';
   static const rejeteEmplacementAbsent = 'REJETE_EMPLACEMENT_ABSENT';
   static const rejetePrecisionGps = 'REJETE_PRECISION_GPS';
+  static const rejetePositionSimulee = 'REJETE_POSITION_SIMULEE';
+  static const valideManuel = 'VALIDE_MANUEL';
 
   static bool estValide(String? s) => s == valide;
 
@@ -44,6 +46,9 @@ class PointageRequest {
   final String? deviceId;
   final String idempotencyKey;
 
+  /// Indicateur OS « position simulée » (D-P01).
+  final bool positionSimulee;
+
   const PointageRequest({
     required this.qrToken,
     required this.type,
@@ -53,6 +58,7 @@ class PointageRequest {
     this.clientTimestamp,
     this.deviceId,
     required this.idempotencyKey,
+    this.positionSimulee = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -65,10 +71,13 @@ class PointageRequest {
           'client_timestamp': clientTimestamp!.toUtc().toIso8601String(),
         if (deviceId != null && deviceId!.isNotEmpty) 'device_id': deviceId,
         'idempotency_key': idempotencyKey,
+        'position_simulee': positionSimulee,
       };
 }
 
 class PointageResult {
+  /// Identifiant du pointage (y compris rejeté : base d'une demande manuelle, D-P04).
+  final String? id;
   final String statut;
   final DateTime? serverTs;
   final String? siteId;
@@ -77,6 +86,7 @@ class PointageResult {
   final String? motifRejet;
 
   const PointageResult({
+    this.id,
     required this.statut,
     this.serverTs,
     this.siteId,
@@ -90,6 +100,7 @@ class PointageResult {
 
   factory PointageResult.fromJson(Map<String, dynamic> json) {
     return PointageResult(
+      id: json['id'] as String? ?? json['identifiant'] as String?,
       statut: (json['statut'] as String?)?.trim() ?? '',
       serverTs: _parseDate(json['serverTs'] ?? json['server_ts']),
       siteId: json['siteId'] as String? ?? json['site_id'] as String?,
@@ -154,6 +165,11 @@ class PresenceSite {
   final int rayonMetres;
   final bool actif;
 
+  /// `EXTERIEUR` (défaut) ou `INTERIEUR` — D-P01.
+  final String typeLieu;
+  final double? precisionAncrageMetres;
+  final DateTime? emplacementUpdatedAt;
+
   const PresenceSite({
     required this.id,
     required this.code,
@@ -162,9 +178,19 @@ class PresenceSite {
     this.longitude,
     this.rayonMetres = 50,
     this.actif = true,
+    this.typeLieu = 'EXTERIEUR',
+    this.precisionAncrageMetres,
+    this.emplacementUpdatedAt,
   });
 
   bool get hasEmplacement => latitude != null && longitude != null;
+
+  bool get interieur => typeLieu == 'INTERIEUR';
+
+  String get typeLieuLibelle => interieur ? 'Intérieur' : 'Extérieur';
+
+  /// Précision exigée pour poser l'emplacement (D-P03).
+  double get precisionAncrageRequise => interieur ? 25 : 10;
 
   factory PresenceSite.fromJson(Map<String, dynamic> json) {
     return PresenceSite(
@@ -178,6 +204,80 @@ class PresenceSite {
       longitude: _parseDouble(json['longitude']),
       rayonMetres: _parseInt(json['rayonMetres'] ?? json['rayon_metres']) ?? 50,
       actif: json['actif'] as bool? ?? true,
+      typeLieu: (json['type_lieu'] ?? json['typeLieu'] ?? 'EXTERIEUR').toString(),
+      precisionAncrageMetres: _parseDouble(
+        json['precision_ancrage_metres'] ?? json['precisionAncrageMetres'],
+      ),
+      emplacementUpdatedAt: _parseDate(
+        json['emplacement_updated_at'] ?? json['emplacementUpdatedAt'],
+      ),
+    );
+  }
+}
+
+/// Demande de pointage manuel après un rejet (D-P04).
+class DemandeManuelle {
+  final String id;
+  final String statut;
+  final String type;
+  final DateTime? heureDeclaree;
+  final String justification;
+  final String? collaborateurNom;
+  final String? motifRejetInitial;
+  final String? valideurNom;
+  final bool validationParRh;
+  final String? decidePar;
+  final DateTime? decideLe;
+  final String? motifRefus;
+  final DateTime? creeLe;
+
+  const DemandeManuelle({
+    required this.id,
+    required this.statut,
+    required this.type,
+    this.heureDeclaree,
+    this.justification = '',
+    this.collaborateurNom,
+    this.motifRejetInitial,
+    this.valideurNom,
+    this.validationParRh = false,
+    this.decidePar,
+    this.decideLe,
+    this.motifRefus,
+    this.creeLe,
+  });
+
+  bool get enAttente => statut == 'EN_ATTENTE';
+  bool get validee => statut == 'VALIDEE';
+
+  String get statutLibelle => switch (statut) {
+        'EN_ATTENTE' => 'En attente',
+        'VALIDEE' => 'Validée',
+        'REFUSEE' => 'Refusée',
+        _ => statut,
+      };
+
+  String get typeLibelle => type == 'SORTIE' ? 'Sortie' : 'Entrée';
+
+  /// « Omar Belhadj » ou « les RH » quand aucun responsable n'est trouvé (D-H03).
+  String get valideurLibelle =>
+      validationParRh || valideurNom == null ? 'les RH' : valideurNom!;
+
+  factory DemandeManuelle.fromJson(Map<String, dynamic> json) {
+    return DemandeManuelle(
+      id: json['id'] as String? ?? '',
+      statut: (json['statut'] as String?) ?? '',
+      type: (json['type'] as String?) ?? 'ENTREE',
+      heureDeclaree: _parseDate(json['heure_declaree']),
+      justification: (json['justification'] as String?) ?? '',
+      collaborateurNom: json['collaborateur_nom'] as String?,
+      motifRejetInitial: json['motif_rejet_initial'] as String?,
+      valideurNom: json['valideur_nom'] as String?,
+      validationParRh: json['validation_par_rh'] == true,
+      decidePar: json['decide_par'] as String?,
+      decideLe: _parseDate(json['decide_le']),
+      motifRefus: json['motif_refus'] as String?,
+      creeLe: _parseDate(json['cree_le']),
     );
   }
 }

@@ -75,6 +75,14 @@ public class ReferentielController {
 		return ResponseEntity.ok(referentielRhService.obtenirMonCollaborateur(principal.getToken()));
 	}
 
+	/** D-P04 : appelant et valideur de ses pointages manuels (svc-presence). */
+	@GetMapping("/collaborateurs/moi/valideur-pointage")
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<com.hr.referentiel.dto.ValideurPointageResponse> obtenirMonValideurPointage(
+			org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(referentielRhService.obtenirMonValideurPointage(principal.getToken()));
+	}
+
 	@GetMapping("/collaborateurs/{identifiant}")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<Object> obtenirCollaborateur(@PathVariable UUID identifiant) {
