@@ -107,6 +107,11 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01).
 
 ## 8. Reste à faire / points ouverts
 
+- **Démo en cours sur le PC de Khaled (28/10/2026)** : kit `deploy/` lancé avec `DOMAINE=:80`, `HTTP_PORT=8090`, tunnel Cloudflare rapide
+  (adresse dans `recette/outils/adresse_publique.txt`, change à chaque relance). Relancer : `.\deploy\scripts\demarrer-demo-pc.ps1`.
+  APK de démo : `recette/RH-Connect-demo.apk` (construit en local, Flutter 3.41). Message client : `recette/message_client.md`.
+- Codemagic utilise Flutter 3.29.2 : ne pas employer d'API Flutter plus récente (ex. `initialValue` de `DropdownButtonFormField`, 3.33+).
+
 - Tester sur un vrai téléphone (build Codemagic) : faux GPS, Test terrain, pose 15 s, écrans de pointage manuel.
 - Onglet « Pointages » web : colonnes Collaborateur et Site affichent des identifiants au lieu des noms (antérieur).
 - Sécurité : l'API mobile fait confiance à l'en-tête `X-Collaborateur-Id` fourni par le client (risque d'accès aux données d'un autre collaborateur) — pas encore de ticket.

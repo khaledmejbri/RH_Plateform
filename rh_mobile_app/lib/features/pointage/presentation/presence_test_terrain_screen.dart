@@ -103,7 +103,9 @@ class _PresenceTestTerrainScreenState
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                initialValue: site.id,
+                // `value` reste compatible avec Flutter 3.29 (Codemagic) ; `initialValue` n'existe qu'à partir de 3.33
+                // ignore: deprecated_member_use
+                value: site.id,
                 decoration: const InputDecoration(labelText: 'Site'),
                 items: posables
                     .map((s) => DropdownMenuItem(value: s.id, child: Text(s.libelle)))
