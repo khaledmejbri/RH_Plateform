@@ -1,0 +1,52 @@
+# Images des services Spring Boot du SIRH.
+# Un seul build Maven (étape « build », mise en cache), puis une petite image JRE par service :
+#   docker build -f deploy/Dockerfile.services --target svc-presence -t sirh/svc-presence .
+# Compatible x86_64 et ARM64 (Oracle Cloud Ampere).
+
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /src
+# Dépendances d'abord : la couche est réutilisée tant que les pom.xml ne changent pas
+COPY pom.xml .
+COPY eureka-server/pom.xml eureka-server/
+COPY gateway/pom.xml gateway/
+COPY svc-identite-acces/pom.xml svc-identite-acces/
+COPY svc-referentiel-rh/pom.xml svc-referentiel-rh/
+COPY svc-evaluation/pom.xml svc-evaluation/
+COPY svc-presence/pom.xml svc-presence/
+COPY svc-notification/pom.xml svc-notification/
+RUN --mount=type=cache,target=/root/.m2 mvn -B -q dependency:go-offline || true
+COPY . .
+RUN --mount=type=cache,target=/root/.m2 mvn -B -q package -DskipTests \
+ && mkdir /jars \
+ && for m in eureka-server gateway svc-identite-acces svc-referentiel-rh svc-evaluation svc-presence svc-notification; do \
+      cp "$m/target/$m-0.0.1-SNAPSHOT.jar" "/jars/$m.jar"; \
+    done
+
+FROM eclipse-temurin:21-jre AS runtime
+RUN useradd --system --uid 10001 sirh && mkdir -p /data && chown sirh /data
+USER sirh
+WORKDIR /app
+# Mémoire par défaut adaptée à 7 services sur une même machine ; surchargeable par JAVA_OPTS
+ENV JAVA_OPTS="-Xms128m -Xmx512m -XX:+UseSerialGC"
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
+
+FROM runtime AS eureka-server
+COPY --from=build /jars/eureka-server.jar app.jar
+
+FROM runtime AS gateway
+COPY --from=build /jars/gateway.jar app.jar
+
+FROM runtime AS svc-identite-acces
+COPY --from=build /jars/svc-identite-acces.jar app.jar
+
+FROM runtime AS svc-referentiel-rh
+COPY --from=build /jars/svc-referentiel-rh.jar app.jar
+
+FROM runtime AS svc-evaluation
+COPY --from=build /jars/svc-evaluation.jar app.jar
+
+FROM runtime AS svc-presence
+COPY --from=build /jars/svc-presence.jar app.jar
+
+FROM runtime AS svc-notification
+COPY --from=build /jars/svc-notification.jar app.jar

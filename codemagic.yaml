@@ -117,6 +117,10 @@ workflows:
     environment:
       flutter: 3.29.2
       java: 17
+      vars:
+        # Adresse du serveur de démonstration (deploy/GUIDE_DEPLOIEMENT.md) ; modifiable au lancement du build
+        # et depuis l'écran de connexion de l'appli.
+        API_BASE_URL: https://sirh-demo.duckdns.org
     scripts:
       - name: Set up local.properties
         script: |
@@ -126,6 +130,8 @@ workflows:
       - name: Unit tests
         script: flutter test
       - name: Build APK
-        script: flutter build apk --release
+        script: |
+          flutter build apk --release \
+            --dart-define="API_BASE_URL=$API_BASE_URL"
     artifacts:
       - $CM_BUILD_DIR/rh_mobile_app/build/**/outputs/**/*.apk

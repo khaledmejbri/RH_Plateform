@@ -1,0 +1,20 @@
+# Contexte de build Docker = racine du dépôt (deploy/Dockerfile.services et deploy/Dockerfile.web)
+**/target
+**/node_modules
+**/dist
+**/.dart_tool
+**/build
+rh_mobile_app
+rh_mobile_app_temp
+android
+authenctication
+recette
+docs
+design-system
+deploy/donnees
+.git
+.idea
+.vscode
+*.log
+gittoken.txt
+*.docx

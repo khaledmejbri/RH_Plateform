@@ -1,0 +1,12 @@
+# Plateforme RH (React / Vite) servie par nginx, qui relaie aussi l'API et le WebSocket vers la gateway :
+# le navigateur et RH Connect n'utilisent qu'un seul domaine HTTPS.
+FROM node:20-alpine AS build
+WORKDIR /web
+COPY rh-admin-web/package.json rh-admin-web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY rh-admin-web/ ./
+RUN npx vite build
+
+FROM nginx:1.27-alpine
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /web/dist /usr/share/nginx/html

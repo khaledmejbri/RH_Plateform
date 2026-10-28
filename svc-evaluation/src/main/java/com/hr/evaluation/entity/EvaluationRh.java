@@ -28,7 +28,8 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "rh_evaluation", indexes = {
-		@Index(name = "idx_evaluation_collaborateur", columnList = "collaborateur_identifiant"),
+		// Nom distinct de celui d'Evaluation : sur une base neuve, le doublon empêchait la création de l'index
+		@Index(name = "idx_rh_evaluation_collaborateur", columnList = "collaborateur_identifiant"),
 		@Index(name = "idx_evaluation_superieur", columnList = "superieur_identifiant"),
 		@Index(name = "idx_evaluation_type_statut", columnList = "type,statut"),
 		@Index(name = "idx_evaluation_annee", columnList = "annee")

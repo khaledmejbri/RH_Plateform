@@ -1,0 +1,190 @@
+# SIRH RH-Évènement — déploiement complet sur une seule machine (Oracle Cloud Always Free ou serveur du client).
+#   cd deploy && cp .env.example .env && nano .env && docker compose up -d --build
+# Seul Caddy est exposé (80 / 443, HTTPS automatique) ; tout le reste communique sur le réseau interne.
+
+name: sirh
+
+x-service-java: &service-java
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    kafka:
+      condition: service_healthy
+    eureka-server:
+      condition: service_started
+  networks: [interne]
+
+x-env-commun: &env-commun
+  # Annuaire : la clé defaultZone doit garder sa casse, d'où -D plutôt qu'une variable d'environnement
+  JAVA_OPTS: "-Xms128m -Xmx${JAVA_XMX:-512m} -XX:+UseSerialGC -Deureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/"
+  EUREKA_INSTANCE_PREFERIPADDRESS: "true"
+  SPRING_KAFKA_BOOTSTRAPSERVERS: kafka:9092
+  SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-sirh}
+  SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
+  # Jetons émis et vérifiés sur l'adresse interne de la gateway
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI: http://gateway:8080
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://gateway:8080/oauth2/jwks
+  SPRING_JPA_SHOWSQL: "false"
+  LOGGING_LEVEL_ORG_HIBERNATE_SQL: WARN
+  LOGGING_LEVEL_ORG_HIBERNATE_TOOL_HBM2DDL: WARN
+  SPRING_MAIL_HOST: ${SMTP_HOST:-mailpit}
+  SPRING_MAIL_PORT: ${SMTP_PORT:-1025}
+  TZ: Africa/Tunis
+
+services:
+  # ---------- Infrastructure ----------
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sirh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
+      POSTGRES_DB: postgres
+      TZ: Africa/Tunis
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [interne]
+
+  kafka:
+    image: apache/kafka:3.9.0
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+    networks: [interne]
+
+  # Boîte mail de test : capture les e-mails (bienvenue, notifications) sans les envoyer.
+  # En production, renseigner SMTP_HOST / SMTP_PORT vers un vrai serveur et supprimer ce service.
+  mailpit:
+    image: axllent/mailpit:v1.21
+    restart: unless-stopped
+    networks: [interne]
+
+  # ---------- Services Spring Boot ----------
+  eureka-server:
+    build: { context: .., dockerfile: deploy/Dockerfile.services, target: eureka-server }
+    image: sirh/eureka-server
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: "-Xms64m -Xmx256m -XX:+UseSerialGC"
+      EUREKA_INSTANCE_HOSTNAME: eureka-server
+      TZ: Africa/Tunis
+    networks: [interne]
+
+  gateway:
+    <<: *service-java
+    build: { context: .., dockerfile: deploy/Dockerfile.services, target: gateway }
+    image: sirh/gateway
+    depends_on:
+      eureka-server: { condition: service_started }
+    environment:
+      <<: *env-commun
+
+  svc-identite-acces:
+    <<: *service-java
+    build: { context: .., dockerfile: deploy/Dockerfile.services, target: svc-identite-acces }
+    image: sirh/svc-identite-acces
+    environment:
+      <<: *env-commun
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/authentication_db
+      SPRING_SECURITY_OAUTH2_AUTHORIZATIONSERVER_ISSUER: http://gateway:8080
+      APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
+      APP_MAIL_FROM: ${MAIL_FROM:-no-reply@sirh.local}
+
+  svc-referentiel-rh:
+    <<: *service-java
+    build: { context: .., dockerfile: deploy/Dockerfile.services, target: svc-referentiel-rh }
+    image: sirh/svc-referentiel-rh
+    environment:
+      <<: *env-commun
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/referentiel_rh_db
+
+  svc-evaluation:
+    <<: *service-java
+    build: { context: .., dockerfile: deploy/Dockerfile.services, target: svc-evaluation }
+    image: sirh/svc-evaluation
+    environment:
+      <<: *env-commun
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/evaluation_rh_db
+      EVALUATION_REFERENTIEL_BASEURL: http://svc-referentiel-rh:8083
+      EVALUATION_ARCHIVE_LOCALROOT: /data/archives
+    volumes:
+      - archives:/data/archives
+
+  svc-presence:
+    <<: *service-java
+    build: { context: .., dockerfile: deploy/Dockerfile.services, target: svc-presence }
+    image: sirh/svc-presence
+    environment:
+      <<: *env-commun
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/presence_db
+      PRESENCE_QR_HMAC_SECRET: ${PRESENCE_QR_HMAC_SECRET:?PRESENCE_QR_HMAC_SECRET manquant dans .env}
+      PRESENCE_REFERENTIEL_BASEURL: http://svc-referentiel-rh:8083
+
+  svc-notification:
+    <<: *service-java
+    build: { context: .., dockerfile: deploy/Dockerfile.services, target: svc-notification }
+    image: sirh/svc-notification
+    environment:
+      <<: *env-commun
+      APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
+      APP_MAIL_FROM: ${MAIL_FROM:-no-reply@sirh.local}
+
+  # ---------- Front et HTTPS ----------
+  web:
+    build: { context: .., dockerfile: deploy/Dockerfile.web }
+    image: sirh/web
+    restart: unless-stopped
+    depends_on: [gateway]
+    networks: [interne]
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on: [web]
+    environment:
+      DOMAINE: ${DOMAINE:?DOMAINE manquant dans .env}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    networks: [interne]
+
+networks:
+  interne:
+
+volumes:
+  pgdata:
+  kafkadata:
+  archives:
+  caddydata:
+  caddyconfig:

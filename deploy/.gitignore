@@ -1,0 +1,3 @@
+# Secrets et données de démonstration : ne jamais committer
+.env
+donnees/

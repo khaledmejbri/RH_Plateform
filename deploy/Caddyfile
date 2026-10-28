@@ -1,0 +1,7 @@
+# HTTPS automatique (Let's Encrypt) pour DOMAINE, défini dans .env.
+# DOMAINE=sirh-demo.duckdns.org  → certificat obtenu et renouvelé tout seul (ports 80 et 443 ouverts)
+# DOMAINE=:80                    → HTTP simple (test local, ou derrière un Cloudflare Tunnel qui fournit le HTTPS)
+{$DOMAINE} {
+	encode gzip
+	reverse_proxy web:80
+}

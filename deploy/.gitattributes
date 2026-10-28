@@ -1,0 +1,7 @@
+# Fichiers exécutés sous Linux : fins de ligne Unix quel que soit le poste de développement
+*.sh text eol=lf
+Caddyfile text eol=lf
+nginx.conf text eol=lf
+*.yml text eol=lf
+*.sql text eol=lf
+.env.example text eol=lf
