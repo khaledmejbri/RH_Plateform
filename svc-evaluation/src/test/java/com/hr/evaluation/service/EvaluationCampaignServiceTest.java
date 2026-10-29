@@ -49,6 +49,8 @@ class EvaluationCampaignServiceTest {
     private ReferentielCollaborateurClient referentielClient;
     @Mock
     private EvaluationEventPublisher eventPublisher;
+    @Mock
+    private EvaluationParametresService parametresService;
 
     private EvaluationCampaignService campaignService;
 
@@ -61,52 +63,97 @@ class EvaluationCampaignServiceTest {
                 evaluationRepository,
                 workflowService,
                 referentielClient,
-                eventPublisher);
+                eventPublisher,
+                parametresService);
     }
 
-    @Test
-    void creerCampagneAnnuelleJuinReussit() {
-        UUID adminId = UUID.randomUUID();
+    // --- SCRUM-41 : calendrier libre, jour par défaut le 20, durée société ---
+
+    private void sauvegardeRenvoieLaCampagne() {
         when(campaignRepository.save(any(EvaluationCampaign.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-
-        EvaluationCampaign campaign = campaignService.creerCampagne(
-                "Évaluation Annuelle 2026",
-                "Campagne annuelle",
-                EvaluationCampaignType.ANNUELLE,
-                2026,
-                6,
-                6,
-                adminId);
-
-        assertThat(campaign.getType()).isEqualTo(EvaluationCampaignType.ANNUELLE);
-        assertThat(campaign.getMoisDebut()).isEqualTo(6);
-        assertThat(campaign.getStatut()).isEqualTo(EvaluationCampaignStatus.PLANIFIEE);
     }
 
     @Test
-    void creerCampagneTrimestrielleRefusee() {
-        assertThatThrownBy(() -> EvaluationCampaignService.parseTypeStrict("TRIMESTRIELLE"))
-                .isInstanceOf(EvaluationMetierException.class)
-                .satisfies(ex -> assertThat(((EvaluationMetierException) ex).getCode())
-                        .isEqualTo("TYPE_CAMPAGNE_INVALIDE"));
+    void sansJourNiDuree_debutLe20EtDureeSociete() {
+        sauvegardeRenvoieLaCampagne();
+        when(parametresService.dureeCampagneJours()).thenReturn(20);
+
+        EvaluationCampaign c = campaignService.creerCampagne("Annuelle 2026", "x",
+                EvaluationCampaignType.ANNUELLE, 2026, 12, null, null, UUID.randomUUID());
+
+        assertThat(c.getJourDebut()).isEqualTo(20);
+        assertThat(c.getDureeJours()).isEqualTo(20);
+        assertThat(c.getDateDebut()).isEqualTo(java.time.Instant.parse("2026-12-19T23:00:00Z")); // 20/12 00:00 Tunis
+        assertThat(c.getDateFin()).isEqualTo(java.time.Instant.parse("2027-01-09T22:59:59Z"));   // 09/01 23:59:59 Tunis
+        assertThat(c.getMoisFin()).isEqualTo(1);
+        assertThat(c.getStatut()).isEqualTo(EvaluationCampaignStatus.PLANIFIEE);
     }
 
     @Test
-    void creerCampagneMoisInvalideEchoue() {
-        UUID adminId = UUID.randomUUID();
+    void moisLibreJourEtDureePropresALaCampagne() {
+        sauvegardeRenvoieLaCampagne();
 
-        assertThatThrownBy(() -> campaignService.creerCampagne(
-                "Évaluation Mars",
-                "Test",
-                EvaluationCampaignType.ANNUELLE,
-                2026,
-                3,
-                3,
-                adminId))
+        EvaluationCampaign c = campaignService.creerCampagne("T1 2027", null,
+                EvaluationCampaignType.TRIMESTRIELLE, 2027, 3, 5, 10, UUID.randomUUID());
+
+        assertThat(c.getType()).isEqualTo(EvaluationCampaignType.TRIMESTRIELLE);
+        assertThat(c.getJourDebut()).isEqualTo(5);
+        assertThat(c.getDureeJours()).isEqualTo(10);
+        assertThat(c.getMoisDebut()).isEqualTo(3);
+        verify(parametresService, never()).dureeCampagneJours();
+    }
+
+    @Test
+    void trimestrielleAccepteeParLeType() {
+        assertThat(EvaluationCampaignService.parseTypeStrict("trimestrielle"))
+                .isEqualTo(EvaluationCampaignType.TRIMESTRIELLE);
+    }
+
+    @Test
+    void jourInexistant_422() {
+        assertThatThrownBy(() -> campaignService.creerCampagne("x", null,
+                EvaluationCampaignType.ANNUELLE, 2026, 2, 31, 20, UUID.randomUUID()))
                 .isInstanceOf(EvaluationMetierException.class)
-                .satisfies(ex -> assertThat(((EvaluationMetierException) ex).getCode())
-                        .isEqualTo("CALENDRIER_INVALIDE"));
+                .satisfies(ex -> assertThat(((EvaluationMetierException) ex).getCode()).isEqualTo("CALENDRIER_INVALIDE"));
+    }
+
+    @Test
+    void dureeHorsBornes_422() {
+        assertThatThrownBy(() -> campaignService.creerCampagne("x", null,
+                EvaluationCampaignType.ANNUELLE, 2026, 6, 1, 200, UUID.randomUUID()))
+                .isInstanceOf(EvaluationMetierException.class)
+                .satisfies(ex -> assertThat(((EvaluationMetierException) ex).getCode()).isEqualTo("DUREE_INVALIDE"));
+    }
+
+    @Test
+    void deuxTrimestriellesSurLeMemeTrimestre_409() {
+        EvaluationCampaign existante = new EvaluationCampaign();
+        existante.setMoisDebut(1);
+        when(campaignRepository.findByTypeAndAnneeAndStatutIn(eq(EvaluationCampaignType.TRIMESTRIELLE), eq(2027), any()))
+                .thenReturn(java.util.List.of(existante));
+
+        assertThatThrownBy(() -> campaignService.creerCampagne("T1 bis", null,
+                EvaluationCampaignType.TRIMESTRIELLE, 2027, 3, 1, 10, UUID.randomUUID()))
+                .isInstanceOf(EvaluationMetierException.class)
+                .satisfies(ex -> {
+                    assertThat(((EvaluationMetierException) ex).getHttpStatus()).isEqualTo(409);
+                    assertThat(ex.getMessage()).contains("trimestre T1 2027");
+                });
+    }
+
+    @Test
+    void trimestrielleSurUnAutreTrimestre_acceptee() {
+        sauvegardeRenvoieLaCampagne();
+        EvaluationCampaign existante = new EvaluationCampaign();
+        existante.setMoisDebut(1);
+        when(campaignRepository.findByTypeAndAnneeAndStatutIn(eq(EvaluationCampaignType.TRIMESTRIELLE), eq(2027), any()))
+                .thenReturn(java.util.List.of(existante));
+
+        EvaluationCampaign c = campaignService.creerCampagne("T2", null,
+                EvaluationCampaignType.TRIMESTRIELLE, 2027, 4, 20, 10, UUID.randomUUID());
+
+        assertThat(c.getMoisDebut()).isEqualTo(4);
     }
 
     @Test

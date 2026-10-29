@@ -164,7 +164,7 @@ class _DemandesAdminListScreenState
                   child: const Icon(Icons.access_time_rounded, color: AppTheme.primaryLight),
                 ),
                 title: const Text('Autorisation de sortie', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Sortie courte (max 4h)'),
+                subtitle: const Text('Sortie courte (max 2h)'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () {
                   Navigator.pop(ctx);

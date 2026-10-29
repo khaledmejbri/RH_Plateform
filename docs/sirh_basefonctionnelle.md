@@ -269,7 +269,7 @@ Demandeur peut ANNULER si statut = EN_VALIDATION_SUPERIEUR ou EN_VALIDATION_RRH
 - `date_fin` ≥ `date_debut`.
 - `type_conge` ∈ catalogue ci-dessus (enum `TypeConge` dans `svc-referentiel-rh`).
 - Pour `MALADIE` et `MATERNITE` : présence d’une PJ dans le contenu JSON — champ `certificat` non vide **ou** `pieces_jointes` non vide — sinon **422** (`CERTIFICAT_OBLIGATOIRE`). `AUTRE` n’exige pas de PJ.
-- L’autorisation de sortie (§ 6.3) reste un type de demande **distinct** (≤ 4 h) et n’est pas un congé.
+- L’autorisation de sortie (§ 6.3) reste un type de demande **distinct** (≤ 2 h, SCRUM-40) et n’est pas un congé.
 - **Cible CDC (non toutes implémentées)** :
   - solde automatique (dépend de la paie) ;
   - upload multipart / stockage S3 du certificat (aujourd’hui : référence dans le JSON) ;
@@ -278,7 +278,7 @@ Demandeur peut ANNULER si statut = EN_VALIDATION_SUPERIEUR ou EN_VALIDATION_RRH
 
 ### 6.3 Autorisation de sortie (`AUTORISATION_SORTIE`)
 
-Sortie courte, **maximum 4 heures** (moins d’une demi-journée). **Ne consomme pas le solde de congés.**
+Sortie courte, **maximum 2 heures** (retour testeurs du 29/10/2026, SCRUM-40 ; auparavant 4 h). **Ne consomme pas le solde de congés.**
 
 **Champs obligatoires** : `date_jour`, `heure_debut`, `heure_fin`, `motif` (libre).
 
@@ -443,7 +443,7 @@ Module le plus riche du produit actuel. Deux familles, unifiées par **campagnes
 |---|---|---|
 | `SEMESTRIELLE` | Bilan à mi-parcours (S1 / S2) | **Must / Livré** |
 | `ANNUELLE` | Bilan compétences + objectifs N / N+1 | **Must / Livré** |
-| `TRIMESTRIELLE` | Cycles courts (population ciblée éventuelle) | **Cible / Could** — hors vague Must (décision PO D-E01) |
+| `TRIMESTRIELLE` | Cycles courts, une par trimestre | **Livré** (D-E02, SCRUM-41 — révise D-E01) |
 
 ### 12.2 Campagne (RH)
 
@@ -451,13 +451,21 @@ Statuts : `PLANIFIEE` → `ACTIVE` → `TERMINEE` | `ANNULEE`.
 
 Une campagne porte :
 
-- période (`annee`, `moisDebut` / `moisFin`, dates) ;
+- période : `annee`, **mois de lancement libre** (1 à 12), **jour de commencement** (vide → **le 20**), et
+  **date de fin = date de commencement + durée** (D-E02, SCRUM-41) ;
+- durée en jours : **paramètre société** (défaut **20 jours**, réglable par la RH : 10, 20, 30 = 1 mois…),
+  pré-remplie à la création et **modifiable par campagne** (1 à 120 jours) ;
+- unicité : une seule campagne `PLANIFIEE` / `ACTIVE` du même type par période (année, semestre ou trimestre) ;
 - **template général** (questions périodiques communes) ;
 - **template technique / compétences** (optionnel ; fallback campagne si pas de résolution individuelle).
 
 Une évaluation n’est créée que si la campagne est **ACTIVE**. Une seule évaluation par couple (campagne, collaborateur).
 
-Un **scheduler** crée / notifie les évaluations sur campagne active (période). Déclenchement manuel possible pour tests.  
+**Lancement automatique (D-E03, SCRUM-42)** : une tâche planifiée (cron configurable, défaut toutes les 15 min) active
+chaque campagne `PLANIFIEE` à sa **date de commencement** — évaluations créées pour tous les collaborateurs actifs,
+visibles aussitôt sur le mobile, notification « Votre évaluation est ouverte ». Campagne non prête (template général
+manquant) → reste planifiée, RH notifiés. À la **date de fin**, la campagne passe `TERMINEE`. L'activation manuelle
+par la RH reste possible.  
 **Vague** : à l’activation / création, notification collaborateur (NOTIF) + rubrique Évaluations visible sur mobile tant qu’une évaluation non archivée existe.
 
 ### 12.3 Templates (constructeur RH)
@@ -650,7 +658,7 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 
 | ID | Contrainte |
 |---|---|
-| C-M01-01 | Autorisation de sortie ≤ **4 h**, hors solde de congés |
+| C-M01-01 | Autorisation de sortie ≤ **2 h** (SCRUM-40), hors solde de congés |
 | C-M01-02 | Dates de fin ≥ dates de début (congé, mission) |
 | C-M01-03 | Refus RO/RRH : motif obligatoire |
 | C-M01-04 | Annulation demandeur seulement avant décision finale (statuts RO ou RRH) |

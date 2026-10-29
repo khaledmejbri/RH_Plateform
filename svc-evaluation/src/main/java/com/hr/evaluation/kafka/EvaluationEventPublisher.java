@@ -105,6 +105,19 @@ public class EvaluationEventPublisher {
 		}
 	}
 
+	/** Destinataire spécial : diffusion à tous les comptes RH (svc-notification). */
+	public static final String DESTINATAIRE_RH = "RH";
+
+	/** Notification in-app libre, ex. alerte RH sur un lancement de campagne bloqué (SCRUM-42). */
+	public void notifier(String destinataire, String sujet, String corps) {
+		try {
+			publier(RhEvaluationTopics.RH_NOTIFICATIONS, destinataire,
+					new NotificationMessage("WEBSOCKET", destinataire, sujet, corps));
+		} catch (Exception ex) {
+			log.warn("Échec notification évaluation → {} : {}", destinataire, ex.getMessage());
+		}
+	}
+
 	/**
 	 * svc-notification route sur le claim {@code identifiant_utilisateur} (compte, SCRUM-27) ;
 	 * repli sur l'identifiant de fiche pour les évaluations créées sans snapshot du compte.

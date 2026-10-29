@@ -32,8 +32,14 @@ type QuestionType =
   | 'DATE'
   | 'NUMBER';
 
-/** Fréquences Must — pas de TRIMESTRIELLE (E1-R04). */
-export type CampaignType = 'ANNUELLE' | 'SEMESTRIELLE';
+/** Fréquences (D-E02, SCRUM-41 : TRIMESTRIELLE ajoutée). */
+export type CampaignType = 'ANNUELLE' | 'SEMESTRIELLE' | 'TRIMESTRIELLE';
+
+export const LIBELLES_TYPE_CAMPAGNE: Record<CampaignType, string> = {
+  ANNUELLE: 'Annuelle',
+  SEMESTRIELLE: 'Semestrielle',
+  TRIMESTRIELLE: 'Trimestrielle',
+};
 
 export interface EvaluationCampaign {
   identifiant: string;
@@ -46,6 +52,10 @@ export interface EvaluationCampaign {
   moisFin: number;
   dateDebut: string;
   dateFin: string;
+  /** Jour de commencement (SCRUM-41) ; absent pour les campagnes antérieures. */
+  jourDebut?: number | null;
+  /** Durée en jours (SCRUM-41). */
+  dureeJours?: number | null;
   creeLe: string;
   templateGeneral?: { identifiant: string; nom: string };
   templateTechnique?: { identifiant: string; nom: string };
@@ -56,10 +66,22 @@ export interface CreateCampaignRequest {
   description?: string;
   type: CampaignType;
   annee: number;
-  /** Must ∈ {6, 12} (E1-R02). */
+  /** Mois de lancement, 1 à 12 (SCRUM-41). */
   moisDebut: number;
-  moisFin: number;
+  /** Jour de commencement ; absent → le 20. */
+  jourDebut?: number;
+  /** Durée en jours ; absente → paramètre société. La date de fin est calculée par le serveur. */
+  dureeJours?: number;
   /* Créateur lu par le serveur dans le JWT (SCRUM-26) : pas de creePar dans le corps. */
+}
+
+/** Paramètres société des évaluations (SCRUM-41). */
+export interface EvaluationParametres {
+  dureeCampagneJours: number;
+  jourDebutDefaut: number;
+  dureeMinJours: number;
+  dureeMaxJours: number;
+  modifieLe?: string | null;
 }
 
 export interface ActivateCampaignResult {
@@ -350,6 +372,17 @@ export const campaignApi = {
     const response = await api.get(`/api/rh/v1/admin/evaluations/campaigns/${campaignId}/analytics`);
     return response.data;
   }
+};
+
+export const parametresApi = {
+  async get(): Promise<EvaluationParametres> {
+    const response = await api.get('/api/rh/v1/admin/evaluations/parametres');
+    return response.data;
+  },
+  async update(dureeCampagneJours: number): Promise<EvaluationParametres> {
+    const response = await api.put('/api/rh/v1/admin/evaluations/parametres', { dureeCampagneJours });
+    return response.data;
+  },
 };
 
 export type TemplateListFilters = {

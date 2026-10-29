@@ -17,13 +17,13 @@ import java.util.Map;
  * Corrections v2 :
  *  - CONGE        : date_debut <= date_fin ; catalogue fermé {@link TypeConge} ;
  *                   PJ obligatoire pour MALADIE / MATERNITE
- *  - AUTORISATION : durée max 4h, motif libre (plus de type_sortie)
+ *  - AUTORISATION : durée max 2h (SCRUM-40, auparavant 4h), motif libre (plus de type_sortie)
  *  - ORDRE_MISSION: date_debut <= date_fin, motif + lieu obligatoires
  */
 @Component
 public class DemandeAdministrativeValidationService {
 
-	private static final long DUREE_MAX_SORTIE_MINUTES = 4 * 60;
+	static final long DUREE_MAX_SORTIE_MINUTES = 2 * 60;
 
 	public void validerContenu(TypeDemandeAdministrativeRh type, Map<String, Object> contenu) {
 		if (contenu == null || contenu.isEmpty()) {
@@ -60,8 +60,8 @@ public class DemandeAdministrativeValidationService {
 				long dureeMinutes = ChronoUnit.MINUTES.between(heureDebut, heureFin);
 				if (dureeMinutes > DUREE_MAX_SORTIE_MINUTES) {
 					throw new IllegalArgumentException(
-							"La durée d'une autorisation de sortie ne peut pas dépasser 4 heures"
-							+ " (moitié de journée). Durée demandée : " + dureeMinutes + " minutes.");
+							"La durée d'une autorisation de sortie ne peut pas dépasser 2 heures."
+							+ " Durée demandée : " + dureeMinutes + " minutes.");
 				}
 			}
 			case ORDRE_MISSION -> {

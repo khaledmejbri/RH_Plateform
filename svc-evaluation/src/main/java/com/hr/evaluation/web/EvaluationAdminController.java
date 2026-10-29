@@ -105,6 +105,8 @@ public class EvaluationAdminController {
             campaignMap.put("moisFin", campaign.getMoisFin());
             campaignMap.put("dateDebut", campaign.getDateDebut());
             campaignMap.put("dateFin", campaign.getDateFin());
+            campaignMap.put("jourDebut", campaign.getJourDebut());
+            campaignMap.put("dureeJours", campaign.getDureeJours());
             campaignMap.put("creeLe", campaign.getCreeLe());
             
             // Include template information if available
@@ -147,13 +149,17 @@ public class EvaluationAdminController {
 
         EvaluationCampaign campaign = campaignService.creerCampagne(
             request.nom(), request.description(), type, request.annee(),
-            request.moisDebut(), request.moisFin(), creePar
+            request.moisDebut(), request.jourDebut(), request.dureeJours(), creePar
         );
         
         Map<String, Object> response = new HashMap<>();
         response.put("identifiant", campaign.getId().toString());
         response.put("nom", campaign.getNom());
         response.put("statut", campaign.getStatut().name());
+        response.put("dateDebut", campaign.getDateDebut());
+        response.put("dateFin", campaign.getDateFin());
+        response.put("jourDebut", campaign.getJourDebut());
+        response.put("dureeJours", campaign.getDureeJours());
         
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }

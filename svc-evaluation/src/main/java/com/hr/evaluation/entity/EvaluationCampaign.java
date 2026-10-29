@@ -55,6 +55,18 @@ public class EvaluationCampaign {
     @Column(name = "cree_par")
     private UUID creePar;
 
+    /** Jour de commencement choisi par la RH (défaut 20) — SCRUM-41. NULL pour les campagnes antérieures. */
+    @Column(name = "jour_debut")
+    private Integer jourDebut;
+
+    /** Durée en jours (paramètre société ou valeur propre à la campagne) — SCRUM-41. */
+    @Column(name = "duree_jours")
+    private Integer dureeJours;
+
+    /** Les RH ont déjà été prévenus que le lancement automatique est bloqué (évite une alerte toutes les 15 min). */
+    @Column(name = "alerte_lancement_envoyee")
+    private Boolean alerteLancementEnvoyee;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "template_general_identifiant")
     @JsonIgnore
@@ -127,6 +139,15 @@ public class EvaluationCampaign {
     
     public TechnicalTemplate getTemplateTechnique() { return templateTechnique; }
     public void setTemplateTechnique(TechnicalTemplate templateTechnique) { this.templateTechnique = templateTechnique; }
+
+    public Integer getJourDebut() { return jourDebut; }
+    public void setJourDebut(Integer jourDebut) { this.jourDebut = jourDebut; }
+
+    public Integer getDureeJours() { return dureeJours; }
+    public void setDureeJours(Integer dureeJours) { this.dureeJours = dureeJours; }
+
+    public boolean isAlerteLancementEnvoyee() { return Boolean.TRUE.equals(alerteLancementEnvoyee); }
+    public void setAlerteLancementEnvoyee(boolean alerteLancementEnvoyee) { this.alerteLancementEnvoyee = alerteLancementEnvoyee; }
 
     public EvaluationTemplate getTemplateCompetence() { return templateCompetence; }
     public void setTemplateCompetence(EvaluationTemplate templateCompetence) { this.templateCompetence = templateCompetence; }

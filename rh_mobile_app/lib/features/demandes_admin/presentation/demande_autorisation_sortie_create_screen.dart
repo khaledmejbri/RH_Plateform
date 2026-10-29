@@ -15,6 +15,9 @@ class DemandeAutorisationSortieCreateScreen extends ConsumerStatefulWidget {
       _DemandeAutorisationSortieCreateScreenState();
 }
 
+/// Durée maximale d'une autorisation de sortie (SCRUM-40 ; le serveur applique la même règle).
+const _dureeMaxMinutes = 2 * 60;
+
 class _DemandeAutorisationSortieCreateScreenState
     extends ConsumerState<DemandeAutorisationSortieCreateScreen> {
   static const Color _blue = AppTheme.primary;
@@ -89,7 +92,7 @@ class _DemandeAutorisationSortieCreateScreenState
     if (_heureDebut == null || _heureFin == null) { _snack('Veuillez choisir les heures'); return; }
     final duree = _dureeMinutes();
     if (duree <= 0) { _snack("L'heure de fin doit être après l'heure de début"); return; }
-    if (duree > 4 * 60) { _snack('La durée ne peut pas dépasser 4 heures (moitié de journée)'); return; }
+    if (duree > _dureeMaxMinutes) { _snack('La durée ne peut pas dépasser 2 heures'); return; }
     if (_motifController.text.trim().isEmpty) { _snack('Veuillez indiquer un motif'); return; }
 
     final fmt = DateFormat('yyyy-MM-dd');
@@ -120,8 +123,8 @@ class _DemandeAutorisationSortieCreateScreenState
   Widget build(BuildContext context) {
     final fmtDate = DateFormat.yMMMd('fr_FR');
     final duree = _dureeMinutes();
-    final dureeValide = duree > 0 && duree <= 4 * 60;
-    final dureeDepasse = duree > 4 * 60;
+    final dureeValide = duree > 0 && duree <= _dureeMaxMinutes;
+    final dureeDepasse = duree > _dureeMaxMinutes;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -149,7 +152,7 @@ class _DemandeAutorisationSortieCreateScreenState
                 const SizedBox(width: 10),
                 const Expanded(
                   child: Text(
-                    'Autorisation de sortie courte uniquement — maximum 4h (moins de la moitié de la journée)',
+                    'Autorisation de sortie courte uniquement — maximum 2h',
                     style: TextStyle(fontSize: 13, color: AppTheme.primaryDark),
                   ),
                 ),
@@ -212,8 +215,8 @@ class _DemandeAutorisationSortieCreateScreenState
                   duree <= 0
                       ? 'Heure de retour invalide'
                       : dureeDepasse
-                          ? 'Durée dépassée : ${_formatDuree(duree)} (max 4h)'
-                          : 'Durée : ${_formatDuree(duree)} / 4h max',
+                          ? 'Durée dépassée : ${_formatDuree(duree)} (max 2h)'
+                          : 'Durée : ${_formatDuree(duree)} / 2h max',
                   style: TextStyle(
                     fontSize: 13, fontWeight: FontWeight.w600,
                     color: dureeDepasse ? AppTheme.error : dureeValide ? AppTheme.success : AppTheme.warning,

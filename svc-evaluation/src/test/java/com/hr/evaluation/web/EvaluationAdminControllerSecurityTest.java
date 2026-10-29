@@ -97,7 +97,7 @@ class EvaluationAdminControllerSecurityTest {
 		campagne.setStatut(EvaluationCampaignStatus.PLANIFIEE);
 		when(evaluationAccess.requireJwtActorId()).thenReturn(compte);
 		when(campaignService.creerCampagne(eq("C"), eq("d"), eq(EvaluationCampaignType.ANNUELLE), eq(2027),
-				eq(12), eq(12), eq(compte))).thenReturn(campagne);
+				eq(12), eq(null), eq(null), eq(compte))).thenReturn(campagne);
 
 		// SCRUM-26 : creePar envoyé par le client est ignoré ; seul le JWT fait foi.
 		mockMvc.perform(post("/api/rh/v1/admin/evaluations/campaigns")
@@ -109,7 +109,7 @@ class EvaluationAdminControllerSecurityTest {
 								new SimpleGrantedAuthority("ROLE_USER"),
 								new SimpleGrantedAuthority("ROLE_RH"))))
 				.andExpect(status().isCreated());
-		verify(campaignService).creerCampagne(any(), any(), any(), any(), any(), any(), eq(compte));
+		verify(campaignService).creerCampagne(any(), any(), any(), any(), any(), any(), any(), eq(compte));
 	}
 
 	@Test

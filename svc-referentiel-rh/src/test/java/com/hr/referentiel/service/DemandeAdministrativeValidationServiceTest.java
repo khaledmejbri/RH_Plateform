@@ -91,12 +91,12 @@ class DemandeAdministrativeValidationServiceTest {
 	}
 
 	@Test
-	@DisplayName("autorisation de sortie ≤ 4 h inchangée")
-	void autorisationSortie_dureeMaxInchangee() {
+	@DisplayName("autorisation de sortie ≤ 2 h (SCRUM-40)")
+	void autorisationSortie_dureeMax2h() {
 		Map<String, Object> ok = Map.of(
 				"date_jour", "2026-08-12",
 				"heure_debut", "09:00",
-				"heure_fin", "13:00",
+				"heure_fin", "11:00",
 				"motif", "RDV");
 		assertThatCode(() -> service.validerContenu(
 						TypeDemandeAdministrativeRh.AUTORISATION_SORTIE, ok))
@@ -105,12 +105,12 @@ class DemandeAdministrativeValidationServiceTest {
 		Map<String, Object> tropLong = Map.of(
 				"date_jour", "2026-08-12",
 				"heure_debut", "09:00",
-				"heure_fin", "13:01",
+				"heure_fin", "11:01",
 				"motif", "RDV");
 		assertThatThrownBy(() -> service.validerContenu(
 						TypeDemandeAdministrativeRh.AUTORISATION_SORTIE, tropLong))
 				.isInstanceOf(IllegalArgumentException.class)
-				.hasMessageContaining("4 heures");
+				.hasMessageContaining("2 heures");
 	}
 
 	private static Map<String, Object> baseConge(String typeConge) {

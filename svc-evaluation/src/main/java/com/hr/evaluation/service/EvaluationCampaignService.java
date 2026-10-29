@@ -21,8 +21,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -39,6 +37,7 @@ public class EvaluationCampaignService {
     private final EvaluationWorkflowService workflowService;
     private final ReferentielCollaborateurClient referentielClient;
     private final EvaluationEventPublisher eventPublisher;
+    private final EvaluationParametresService parametresService;
 
     public EvaluationCampaignService(
             EvaluationCampaignRepository campaignRepository,
@@ -47,7 +46,8 @@ public class EvaluationCampaignService {
             EvaluationRepository evaluationRepository,
             EvaluationWorkflowService workflowService,
             ReferentielCollaborateurClient referentielClient,
-            EvaluationEventPublisher eventPublisher) {
+            EvaluationEventPublisher eventPublisher,
+            EvaluationParametresService parametresService) {
         this.campaignRepository = campaignRepository;
         this.templateRepository = templateRepository;
         this.technicalTemplateRepository = technicalTemplateRepository;
@@ -55,8 +55,14 @@ public class EvaluationCampaignService {
         this.workflowService = workflowService;
         this.referentielClient = referentielClient;
         this.eventPublisher = eventPublisher;
+        this.parametresService = parametresService;
     }
 
+    /**
+     * Création d'une campagne (D-E02, SCRUM-41) : mois de lancement libre, jour de commencement (vide → le 20),
+     * date de fin = date de commencement + durée (paramètre société si non précisée).
+     * Une seule campagne planifiée ou active du même type par année, semestre ou trimestre.
+     */
     @Transactional
     public EvaluationCampaign creerCampagne(
             String nom,
@@ -64,37 +70,27 @@ public class EvaluationCampaignService {
             EvaluationCampaignType type,
             Integer annee,
             Integer moisDebut,
-            Integer moisFin,
+            Integer jourDebut,
+            Integer dureeJours,
             UUID creePar) {
 
         if (type == null) {
             throw EvaluationMetierException.unprocessable("TYPE_CAMPAGNE_INVALIDE",
                     "Type de campagne invalide");
         }
+        int duree = dureeJours != null ? dureeJours : parametresService.dureeCampagneJours();
+        CampagneCalendrier.Periode periode = CampagneCalendrier.calculer(annee, moisDebut, jourDebut, duree);
 
-        if (!moisDebut.equals(6) && !moisDebut.equals(12)) {
-            throw EvaluationMetierException.unprocessable("CALENDRIER_INVALIDE",
-                    "Les campagnes d'evaluation ne peuvent commencer qu'en juin (6) ou decembre (12).");
+        int indice = CampagneCalendrier.indicePeriode(type, moisDebut);
+        boolean dejaPrise = campaignRepository.findByTypeAndAnneeAndStatutIn(type, annee,
+                        List.of(EvaluationCampaignStatus.PLANIFIEE, EvaluationCampaignStatus.ACTIVE)).stream()
+                .anyMatch(c -> c.getMoisDebut() != null
+                        && CampagneCalendrier.indicePeriode(type, c.getMoisDebut()) == indice);
+        if (dejaPrise) {
+            throw EvaluationMetierException.conflict("CAMPAGNE_DEJA_EXISTANTE",
+                    "Une campagne " + type.name().toLowerCase(Locale.ROOT) + " existe déjà pour "
+                            + CampagneCalendrier.libellePeriode(type, moisDebut, annee) + ".");
         }
-
-        if (!moisFin.equals(6) && !moisFin.equals(12)) {
-            throw EvaluationMetierException.unprocessable("CALENDRIER_INVALIDE",
-                    "Les campagnes d'evaluation ne peuvent se terminer qu'en juin (6) ou decembre (12).");
-        }
-
-        List<EvaluationCampaignStatus> activeStatuses = List.of(
-                EvaluationCampaignStatus.PLANIFIEE,
-                EvaluationCampaignStatus.ACTIVE);
-
-        campaignRepository.findFirstByTypeAndAnneeAndStatutIn(type, annee, activeStatuses)
-                .ifPresent(existing -> {
-                    throw EvaluationMetierException.conflict("CAMPAGNE_DEJA_EXISTANTE",
-                            "Une campagne " + type + " existe deja pour l'annee " + annee);
-                });
-
-        ZonedDateTime startDate = ZonedDateTime.of(annee, moisDebut, 1, 0, 0, 0, 0, ZoneId.of("UTC"));
-        ZonedDateTime endDate = ZonedDateTime.of(annee, moisFin,
-                moisFin == 6 ? 30 : 31, 23, 59, 59, 0, ZoneId.of("UTC"));
 
         EvaluationCampaign campaign = new EvaluationCampaign();
         campaign.setNom(nom);
@@ -102,13 +98,32 @@ public class EvaluationCampaignService {
         campaign.setType(type);
         campaign.setAnnee(annee);
         campaign.setMoisDebut(moisDebut);
-        campaign.setMoisFin(moisFin);
-        campaign.setDateDebut(startDate.toInstant());
-        campaign.setDateFin(endDate.toInstant());
+        campaign.setMoisFin(periode.dernierJour().getMonthValue());
+        campaign.setJourDebut(periode.jourDebut());
+        campaign.setDureeJours(duree);
+        campaign.setDateDebut(periode.dateDebut());
+        campaign.setDateFin(periode.dateFin());
         campaign.setStatut(EvaluationCampaignStatus.PLANIFIEE);
         campaign.setCreePar(creePar);
 
         return campaignRepository.save(campaign);
+    }
+
+    /** Lancement automatique bloqué : les RH ont été prévenus (SCRUM-42). */
+    @Transactional
+    public void marquerAlerteLancement(UUID campaignId) {
+        EvaluationCampaign campaign = chargerCampagne(campaignId);
+        campaign.setAlerteLancementEnvoyee(true);
+        campaignRepository.save(campaign);
+    }
+
+    /** Une campagne ne peut être lancée qu'avec un template général publié et actif. */
+    public static boolean templateGeneralPret(EvaluationCampaign campaign) {
+        EvaluationTemplate generic = campaign.getTemplateGeneral();
+        return generic != null
+                && generic.getType() == TemplateType.GENERIC
+                && generic.getStatut() == TemplateStatus.PUBLISHED
+                && generic.isActif();
     }
 
     /**
@@ -123,11 +138,7 @@ public class EvaluationCampaignService {
                     "Seule une campagne planifiee peut etre activee. Statut actuel: " + campaign.getStatut());
         }
 
-        EvaluationTemplate generic = campaign.getTemplateGeneral();
-        if (generic == null
-                || generic.getType() != TemplateType.GENERIC
-                || generic.getStatut() != TemplateStatus.PUBLISHED
-                || !generic.isActif()) {
+        if (!templateGeneralPret(campaign)) {
             throw EvaluationMetierException.unprocessable("CAMPAGNE_GENERIC_MANQUANT",
                     "Un template GENERIC publié et actif doit être assigné avant activation");
         }
@@ -285,10 +296,6 @@ public class EvaluationCampaignService {
                     "Type de campagne manquant");
         }
         String normalized = typeStr.trim().toUpperCase(Locale.ROOT);
-        if ("TRIMESTRIELLE".equals(normalized)) {
-            throw EvaluationMetierException.unprocessable("TYPE_CAMPAGNE_INVALIDE",
-                    "Type TRIMESTRIELLE non supporté (Must = ANNUELLE|SEMESTRIELLE)");
-        }
         try {
             return EvaluationCampaignType.valueOf(normalized);
         } catch (IllegalArgumentException ex) {

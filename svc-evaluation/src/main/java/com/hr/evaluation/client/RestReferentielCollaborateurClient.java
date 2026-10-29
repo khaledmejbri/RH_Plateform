@@ -22,20 +22,32 @@ public class RestReferentielCollaborateurClient implements ReferentielCollaborat
 	private static final Logger log = LoggerFactory.getLogger(RestReferentielCollaborateurClient.class);
 
 	private final RestClient restClient;
+	private final String jetonInterne;
 
 	public RestReferentielCollaborateurClient(
-			@Value("${evaluation.referentiel.base-url:http://localhost:8083}") String baseUrl) {
+			@Value("${evaluation.referentiel.base-url:http://localhost:8083}") String baseUrl,
+			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne) {
 		this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+		this.jetonInterne = jetonInterne;
 	}
 
 	@Override
 	public List<CollaborateurEvaluationSnapshot> listerActifsPourEvaluation() {
 		try {
-			Dto[] body = restClient.get()
-					.uri("/api/referentiel/v1/collaborateurs/actifs-evaluation")
-					.header(HttpHeaders.AUTHORIZATION, bearerOrEmpty())
-					.retrieve()
-					.body(Dto[].class);
+			String bearer = bearerOrEmpty();
+			// Activation par la RH : jeton de l'utilisateur. Lancement automatique (SCRUM-42) : aucun utilisateur,
+			// endpoint interne du référentiel protégé par le jeton partagé.
+			Dto[] body = bearer.isEmpty()
+					? restClient.get()
+							.uri("/internal/referentiel/collaborateurs/actifs-evaluation")
+							.header("X-Internal-Token", jetonInterne)
+							.retrieve()
+							.body(Dto[].class)
+					: restClient.get()
+							.uri("/api/referentiel/v1/collaborateurs/actifs-evaluation")
+							.header(HttpHeaders.AUTHORIZATION, bearer)
+							.retrieve()
+							.body(Dto[].class);
 			if (body == null || body.length == 0) {
 				return List.of();
 			}

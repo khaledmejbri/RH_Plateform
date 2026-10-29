@@ -2,8 +2,12 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   campaignApi,
   evaluationApi,
+  LIBELLES_TYPE_CAMPAGNE,
+  parametresApi,
   templateApi,
   type CampaignAnalytics,
+  type CampaignType,
+  type EvaluationParametres,
   type EvaluationAnalytics,
   type EvaluationCampaign,
   type EvaluationItem,
@@ -20,8 +24,24 @@ import { EmptyState, Icon, LoadingState, StatusBadge as Status, formatDate } fro
 type Tab = 'campaigns' | 'templates' | 'evaluations';
 type TemplateSubTab = 'GENERIC' | 'TECHNICAL';
 
-/** Fenêtres Must E1-R02 : juin / décembre uniquement. */
-const CAMPAGNE_MOIS = [6, 12] as const;
+/** Mois de lancement libre (D-E02, SCRUM-41). */
+const CAMPAGNE_MOIS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+const JOUR_DEBUT_DEFAUT = 20;
+
+const formatJour = (d: Date) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+/**
+ * Aperçu du calendrier, aligné sur le serveur : début = jour (20 par défaut) du mois choisi,
+ * dernier jour = début + durée. Renvoie null si le jour n'existe pas dans le mois.
+ */
+function apercuCalendrier(annee: number, mois: number, jour: number | null, duree: number | null) {
+  const j = jour ?? JOUR_DEBUT_DEFAUT;
+  const debut = new Date(annee, mois - 1, j);
+  if (debut.getMonth() !== mois - 1 || !duree || duree < 1) return null;
+  const fin = new Date(debut);
+  fin.setDate(fin.getDate() + duree);
+  return { debut, fin };
+}
 
 
 export default function EvaluationsPage() {
@@ -123,15 +143,45 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
   const [formData, setFormData] = useState({
     nom: '',
     description: '',
-    type: 'ANNUELLE' as 'ANNUELLE' | 'SEMESTRIELLE',
+    type: 'ANNUELLE' as CampaignType,
     annee: new Date().getFullYear(),
-    moisDebut: 6,
-    moisFin: 12,
+    moisDebut: 12,
+    jourDebut: '',
+    dureeJours: '',
     templateGeneralId: '',
     templateTechniqueId: '',
   });
 
+  const [parametres, setParametres] = useState<EvaluationParametres | null>(null);
+  const [dureeSociete, setDureeSociete] = useState('');
+
   useEffect(() => { void loadData(); }, []);
+  useEffect(() => {
+    parametresApi.get()
+      .then(p => { setParametres(p); setDureeSociete(String(p.dureeCampagneJours)); })
+      .catch(() => setParametres(null));
+  }, []);
+
+  const dureeEffective = formData.dureeJours ? Number(formData.dureeJours) : parametres?.dureeCampagneJours ?? null;
+  const apercu = apercuCalendrier(
+    formData.annee,
+    formData.moisDebut,
+    formData.jourDebut ? Number(formData.jourDebut) : null,
+    dureeEffective,
+  );
+
+  const enregistrerDureeSociete = async () => {
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const p = await parametresApi.update(Number(dureeSociete));
+      setParametres(p);
+      setActionSuccess(`Durée par défaut des campagnes : ${p.dureeCampagneJours} jours.`);
+    } catch (error: unknown) {
+      const ax = error as { response?: { data?: { message?: string } }; message?: string };
+      setActionError(ax?.response?.data?.message || ax.message || 'Enregistrement impossible');
+    }
+  };
 
   const generalTemplates = templates.filter(t => t.type === 'GENERIC' && t.statut === 'PUBLISHED');
   const competencyTemplates = templates.filter(t => t.type === 'TECHNICAL' && t.statut === 'PUBLISHED');
@@ -174,7 +224,8 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
         type: formData.type,
         annee: formData.annee,
         moisDebut: formData.moisDebut,
-        moisFin: formData.moisFin,
+        ...(formData.jourDebut ? { jourDebut: Number(formData.jourDebut) } : {}),
+        ...(formData.dureeJours ? { dureeJours: Number(formData.dureeJours) } : {}),
       });
       if (formData.templateGeneralId || formData.templateTechniqueId) {
         await campaignApi.assignTemplates(
@@ -186,10 +237,13 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
       setShowForm(false);
       setFormData({
         nom: '', description: '', type: 'ANNUELLE',
-        annee: new Date().getFullYear(), moisDebut: 6, moisFin: 12,
+        annee: new Date().getFullYear(), moisDebut: 12, jourDebut: '', dureeJours: '',
         templateGeneralId: '', templateTechniqueId: '',
       });
-      setActionSuccess('Campagne créée.');
+      setActionSuccess(
+        `Campagne créée : du ${formatJour(new Date(campaign.dateDebut))} au ${formatJour(new Date(campaign.dateFin))}. `
+        + 'Elle sera lancée automatiquement à sa date de début (template général requis).',
+      );
       await loadData();
     } catch (error: unknown) {
       const ax = error as { response?: { data?: { message?: string } }; message?: string };
@@ -265,6 +319,40 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
         </div>
       )}
 
+      {parametres && (
+        <div className="card">
+          <h3>Durée des campagnes</h3>
+          <p className="text-muted">
+            Durée par défaut d’une campagne, à partir de son jour de commencement. Elle est pré-remplie à la création
+            et reste modifiable pour une campagne donnée (par ex. 10, 20 ou 30 jours pour 1 mois).
+          </p>
+          {lectureSeule ? (
+            <p><strong>{parametres.dureeCampagneJours} jours</strong></p>
+          ) : (
+            <div className="inline-row">
+              <label htmlFor="duree-societe">Durée par défaut (jours)</label>
+              <input
+                id="duree-societe"
+                type="number"
+                min={parametres.dureeMinJours}
+                max={parametres.dureeMaxJours}
+                value={dureeSociete}
+                onChange={e => setDureeSociete(e.target.value)}
+                style={{ width: '6rem' }}
+              />
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                disabled={!dureeSociete || Number(dureeSociete) === parametres.dureeCampagneJours}
+                onClick={() => void enregistrerDureeSociete()}
+              >
+                Enregistrer
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {!lectureSeule && showForm && (
         <div className="card">
           <h3>Créer une campagne</h3>
@@ -285,14 +373,15 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
                 <select
                   id="camp-type"
                   value={formData.type}
-                  onChange={e => setFormData({ ...formData, type: e.target.value as 'ANNUELLE' | 'SEMESTRIELLE' })}
+                  onChange={e => setFormData({ ...formData, type: e.target.value as CampaignType })}
                   aria-describedby="camp-type-help"
                 >
-                  <option value="ANNUELLE">Annuelle</option>
-                  <option value="SEMESTRIELLE">Semestrielle</option>
+                  {(Object.keys(LIBELLES_TYPE_CAMPAGNE) as CampaignType[]).map(t => (
+                    <option key={t} value={t}>{LIBELLES_TYPE_CAMPAGNE[t]}</option>
+                  ))}
                 </select>
                 <small id="camp-type-help" className="text-muted">
-                  Bilan mi-parcours (semestriel) ou bilan annuel compétences et objectifs.
+                  Une seule campagne du même type par année, semestre ou trimestre.
                 </small>
               </div>
               <div className="form-group">
@@ -305,7 +394,7 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="camp-debut">Mois début</label>
+                <label htmlFor="camp-debut">Mois de lancement *</label>
                 <select
                   id="camp-debut"
                   value={formData.moisDebut}
@@ -318,18 +407,35 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
                 </select>
               </div>
               <div className="form-group">
-                <label htmlFor="camp-fin">Mois fin</label>
-                <select
-                  id="camp-fin"
-                  value={formData.moisFin}
-                  onChange={e => setFormData({ ...formData, moisFin: Number(e.target.value) })}
-                >
-                  {CAMPAGNE_MOIS.map(m => (
-                    <option key={m} value={m}>{getMonthName(m)}</option>
-                  ))}
-                </select>
-                <small id="camp-cal-help" className="text-muted">
-                  Fenêtres habituelles : juin / décembre (S1, S2, annuelle).
+                <label htmlFor="camp-jour">Jour de commencement</label>
+                <input
+                  id="camp-jour"
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={formData.jourDebut}
+                  onChange={e => setFormData({ ...formData, jourDebut: e.target.value })}
+                  placeholder={`Par défaut le ${JOUR_DEBUT_DEFAUT}`}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="camp-duree">Durée (jours)</label>
+                <input
+                  id="camp-duree"
+                  type="number"
+                  min={parametres?.dureeMinJours ?? 1}
+                  max={parametres?.dureeMaxJours ?? 120}
+                  value={formData.dureeJours}
+                  onChange={e => setFormData({ ...formData, dureeJours: e.target.value })}
+                  placeholder={parametres ? `Par défaut ${parametres.dureeCampagneJours} jours` : ''}
+                />
+              </div>
+              <div className="form-group full-width">
+                <small id="camp-cal-help" className={apercu ? 'text-muted' : 'text-danger'}>
+                  {apercu
+                    ? `Du ${formatJour(apercu.debut)} au ${formatJour(apercu.fin)} inclus. `
+                      + `Les évaluations apparaîtront automatiquement sur le mobile des collaborateurs le ${formatJour(apercu.debut)}.`
+                    : `Le jour ${formData.jourDebut || JOUR_DEBUT_DEFAUT} n’existe pas en ${getMonthName(formData.moisDebut).toLowerCase()} ${formData.annee}.`}
                 </small>
               </div>
               <div className="form-group">
@@ -377,7 +483,7 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
               </div>
             </div>
             <div className="form-actions">
-              <button className="btn btn--primary" type="submit" disabled={loading}>
+              <button className="btn btn--primary" type="submit" disabled={loading || !apercu}>
                 {loading ? 'Création...' : 'Créer la campagne'}
               </button>
               <button className="btn btn--ghost" type="button" onClick={() => setShowForm(false)}>Annuler</button>
@@ -394,7 +500,7 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
           <p>
             {lectureSeule
               ? 'Aucune campagne à consulter.'
-              : 'Créez la première campagne annuelle ou semestrielle.'}
+              : 'Créez la première campagne annuelle, semestrielle ou trimestrielle.'}
           </p>
           {!lectureSeule ? (
             <button type="button" className="btn btn--primary" onClick={() => setShowForm(true)}>
@@ -457,8 +563,17 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
       </p>
 
       <div className="template-meta">
-        <div><strong>Fréquence :</strong> {campaign.type === 'ANNUELLE' ? 'Annuelle' : 'Semestrielle'}</div>
-        <div><strong>Période :</strong> {getMonthName(campaign.moisDebut)} – {getMonthName(campaign.moisFin)} {campaign.annee}</div>
+        <div><strong>Fréquence :</strong> {LIBELLES_TYPE_CAMPAGNE[campaign.type] ?? campaign.type}</div>
+        <div>
+          <strong>Période :</strong> du {formatJour(new Date(campaign.dateDebut))} au {formatJour(new Date(campaign.dateFin))}
+          {campaign.dureeJours ? ` (${campaign.dureeJours} jours)` : ''}
+        </div>
+        {campaign.statut === 'PLANIFIEE' && (
+          <div className="cell-meta">
+            Lancement automatique le {formatJour(new Date(campaign.dateDebut))}
+            {campaign.templateGeneral ? '' : ' — associez un template général avant cette date'}
+          </div>
+        )}
         <div className="inline-row">
           <strong>Général :</strong>
           {campaign.templateGeneral

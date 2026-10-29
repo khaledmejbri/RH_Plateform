@@ -1,35 +1,36 @@
 package com.hr.evaluation.web;
 
-import com.hr.evaluation.service.EvaluationSchedulerService;
+import com.hr.evaluation.service.CampagneCycleScheduler;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.Map;
 
 /**
- * Declenchement manuel du cycle d'evaluations (tests / admin RH).
+ * Déclenchement immédiat du cycle de vie des campagnes (recette RH) : même traitement que la tâche planifiée
+ * (lancement à la date de début, clôture à la date de fin — SCRUM-42).
  */
 @RestController
 @RequestMapping("/api/rh/v1/evaluations/admin")
 public class EvaluationSchedulerController {
 
-    private final EvaluationSchedulerService schedulerService;
+    private final CampagneCycleScheduler cycleScheduler;
 
-    public EvaluationSchedulerController(EvaluationSchedulerService schedulerService) {
-        this.schedulerService = schedulerService;
+    public EvaluationSchedulerController(CampagneCycleScheduler cycleScheduler) {
+        this.cycleScheduler = cycleScheduler;
     }
 
     @PostMapping("/trigger-evaluation-cycle")
     @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
-    public ResponseEntity<Map<String, String>> triggerEvaluationCycle() {
-        schedulerService.triggerEvaluationCycle();
-
+    public ResponseEntity<Map<String, Object>> triggerEvaluationCycle() {
+        CampagneCycleScheduler.Bilan bilan = cycleScheduler.executer(Instant.now());
         return ResponseEntity.ok(Map.of(
-            "status", "success",
-            "message", "Evaluation cycle triggered successfully. Check logs for details."
-        ));
+                "campagnesLancees", bilan.lancees(),
+                "campagnesBloquees", bilan.bloquees(),
+                "campagnesCloturees", bilan.cloturees()));
     }
 }

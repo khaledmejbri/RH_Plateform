@@ -199,6 +199,8 @@ cd deploy && docker compose up -d --build
 ```
 
 Seules les images modifiées sont reconstruites ; les données sont conservées (volumes Docker).
+Pour ne mettre à jour **qu'un service** sans redémarrer les autres (Eureka compris, sinon l'API répond « 503 »
+pendant 1 à 2 minutes) : `docker compose up -d --build --no-deps svc-evaluation`.
 Redémarrer `svc-identite-acces` déconnecte les utilisateurs (clé de signature des jetons régénérée) :
 il suffit de se reconnecter.
 

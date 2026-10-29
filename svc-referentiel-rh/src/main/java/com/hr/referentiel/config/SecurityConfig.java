@@ -31,6 +31,8 @@ public class SecurityConfig {
 				.csrf(csrf -> csrf.disable())
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+						// Service à service : jeton partagé vérifié dans InterneReferentielController (non routé par la gateway)
+						.requestMatchers("/internal/referentiel/**").permitAll()
 						.requestMatchers("/api/referentiel/v1/**", "/api/rh/v1/**").authenticated()
 						.anyRequest().denyAll())
 				.oauth2ResourceServer(oauth2 -> oauth2

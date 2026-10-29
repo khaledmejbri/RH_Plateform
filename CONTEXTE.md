@@ -96,6 +96,7 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01).
 
 | Date | Commit | Contenu | Tickets |
 |---|---|---|---|
+| 29/10/2026 | (ce commit) | Retours testeurs : sortie ≤ 2 h ; campagnes à mois libre, jour 20 par défaut, durée société, type trimestriel ; lancement / clôture automatiques (ancien planificateur supprimé), endpoint interne référentiel. Recette 20/20 | SCRUM-40 à 42 → A tester |
 | 28/10/2026 | (ce commit) | Kit de déploiement `deploy/` testé en local (~3,5 Go), CONTEXTE.md / CLAUDE.md, index `idx_rh_evaluation_collaborateur` renommé, APK Android avec `API_BASE_URL` | — |
 | 28/10/2026 | be87fee | Pointage : zone par site, anti-faux GPS, pose par moyenne, pointage manuel, borne écran. Recette 43/43 (`recette/captures_pointage`) | SCRUM-35 à 39 → A tester |
 | 27/10/2026 | def38ac | Compétences techniques notées en étoiles (mobile) | — |
@@ -108,7 +109,8 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01).
 ## 8. Reste à faire / points ouverts
 
 - **Démo en cours sur le PC de Khaled (28/10/2026)** : kit `deploy/` lancé avec `DOMAINE=:80`, `HTTP_PORT=8090`, tunnel Cloudflare rapide
-  (adresse dans `recette/outils/adresse_publique.txt`, change à chaque relance). Relancer : `.\deploy\scripts\demarrer-demo-pc.ps1`.
+  (adresse dans `recette/outils/adresse_publique.txt`, change à chaque relance ; un tunnel rapide peut aussi expirer
+  tout seul, ex. la nuit du 28 au 29/10). Relancer : `.\deploy\scripts\demarrer-demo-pc.ps1`.
   APK de démo : `recette/RH-Connect-demo.apk` (construit en local, Flutter 3.41). Message client : `recette/message_client.md`.
 - Codemagic utilise Flutter 3.29.2 : ne pas employer d'API Flutter plus récente (ex. `initialValue` de `DropdownButtonFormField`, 3.33+).
 
