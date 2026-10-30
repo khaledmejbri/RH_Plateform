@@ -1,7 +1,7 @@
 # Contexte du projet SIRH RH-Évènement
 
 Mémo de reprise : à lire en début de session à la place de l'historique des conversations.
-À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 28/10/2026.
+À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 30/10/2026.
 
 ## 1. Le produit
 
@@ -96,8 +96,9 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01).
 
 | Date | Commit | Contenu | Tickets |
 |---|---|---|---|
-| 29/10/2026 | (ce commit) | Retours testeurs : sortie ≤ 2 h ; campagnes à mois libre, jour 20 par défaut, durée société, type trimestriel ; lancement / clôture automatiques (ancien planificateur supprimé), endpoint interne référentiel. Recette 20/20 | SCRUM-40 à 42 → A tester |
-| 28/10/2026 | (ce commit) | Kit de déploiement `deploy/` testé en local (~3,5 Go), CONTEXTE.md / CLAUDE.md, index `idx_rh_evaluation_collaborateur` renommé, APK Android avec `API_BASE_URL` | — |
+| 30/10/2026 | (ce commit) | Workflow multi-agents Claude Code : 8 agents (Opus fonctionnel / architecte / revue, Sonnet devs / testeur, Haiku Jira), règles `.claude/rules/`, skills `sirh-workflow`, `sirh-redaction-jira`, `sirh-code-review`, hooks (secrets, qualité, rappel CONTEXTE). Voir AGENTS.md | — |
+| 29/10/2026 | 21a69c8 | Retours testeurs : sortie ≤ 2 h ; campagnes à mois libre, jour 20 par défaut, durée société, type trimestriel ; lancement / clôture automatiques (ancien planificateur supprimé), endpoint interne référentiel. Recette 20/20 | SCRUM-40 à 42 → A tester |
+| 28/10/2026 | 545a906 | Kit de déploiement `deploy/` testé en local (~3,5 Go), CONTEXTE.md / CLAUDE.md, index `idx_rh_evaluation_collaborateur` renommé, APK Android avec `API_BASE_URL` | — |
 | 28/10/2026 | be87fee | Pointage : zone par site, anti-faux GPS, pose par moyenne, pointage manuel, borne écran. Recette 43/43 (`recette/captures_pointage`) | SCRUM-35 à 39 → A tester |
 | 27/10/2026 | def38ac | Compétences techniques notées en étoiles (mobile) | — |
 | 27/10/2026 | 462bfce | Évaluations : notification d'ouverture publiée, responsable notifié, noms affichés | SCRUM-31 à 34 → A tester |
@@ -119,3 +120,5 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01).
 - Sécurité : l'API mobile fait confiance à l'en-tête `X-Collaborateur-Id` fourni par le client (risque d'accès aux données d'un autre collaborateur) — pas encore de ticket.
 - Notifications non persistées (perdues si l'utilisateur n'est pas connecté) — pas encore de ticket.
 - Libellé de la famille `DEV_BACKEND` absent côté mobile (affiche le code).
+- `svc-notification` : `NotificationTestController` (`/api/notifications/test/*`) sans `@PreAuthorize` ; non routé par la gateway mais à supprimer ou protéger (signalé par le hook `verifier_code.py`).
+- Agents Claude Code : workflow pas encore éprouvé sur un vrai lot ; ajuster les prompts de `.claude/agents/` après le premier usage.

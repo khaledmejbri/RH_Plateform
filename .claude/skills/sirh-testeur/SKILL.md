@@ -21,8 +21,8 @@ Couvre : cas nominal, refus de droits, données invalides (400), transitions de 
 
 ## Points de recette spécifiques
 
-- **Évaluations** : la campagne semestrielle s'ouvre en juin et l'annuelle en décembre pour **tous** les collaborateurs actifs concernés (pas une liste fixe) ; l'évaluation apparaît sur le mobile du collaborateur ; le responsable reçoit la notification après validation ; étoiles 1–5 ; score 70/30 sur 20 ; couleurs vert/orange/rouge.
-- **Pointage** : QR expiré, GPS à 51 m, GPS désactivé, refus de consentement facial, 3 échecs faciaux.
+- **Évaluations** : la campagne (annuelle, semestrielle ou trimestrielle) s'ouvre automatiquement à sa date de début (mois choisi par le RH, jour 20 par défaut, durée réglage société) pour **tous** les collaborateurs actifs concernés (pas une liste fixe) et se clôture à sa date de fin ; l'évaluation apparaît sur le mobile du collaborateur ; le responsable reçoit la notification après validation ; étoiles 1–5 ; score 70/30 sur 20 ; couleurs vert/orange/rouge.
+- **Pointage** : QR expiré (borne : jeton de plus de 30 s ± 1 fenêtre), GPS juste hors du rayon du site, précision GPS supérieure au rayon, position simulée, GPS désactivé, pointage manuel (valideur D-H03, alerte RH au-delà de 3/mois), refus de consentement facial, 3 échecs faciaux.
 - **M01** : validation par le mauvais RO = 403 ; nœud sans manager = passage direct en RRH ; PJ obligatoire pour maladie / maternité.
 - **M02** : ordre FIFO respecté, dérogation avec justification obligatoire.
 - **Formations** : un chef de département ne cible que son département / ses équipes.

@@ -17,7 +17,7 @@ Application du collaborateur : demandes (congé, sortie, mission, documents, for
 
 ## Règles
 
-1. Évaluations : la rubrique n'apparaît que si une évaluation non archivée existe (campagne de juin ou décembre). Questions générales en formulaire (texte, QCM, échelle…), compétences techniques en **étoiles 1–5**. Le collaborateur valide, puis l'évaluation part au responsable hiérarchique.
+1. Évaluations : la rubrique n'apparaît que si une évaluation non archivée existe (campagne lancée automatiquement à sa date de début). Questions générales en formulaire (texte, QCM, échelle…), compétences techniques en **étoiles 1–5**. Le collaborateur valide, puis l'évaluation part au responsable hiérarchique.
 2. Pointage : scan QR → position GPS → (étape faciale quand la vague face est livrée) → envoi. La reconnaissance faciale tourne **sur l'appareil** ; n'envoie jamais d'image, seulement le score. Demande le consentement avant la première utilisation.
 3. Chaque écran gère chargement, vide, erreur, hors ligne. Messages en français.
 4. Le jeton est dans le stockage sécurisé, jamais en clair ni dans les logs.

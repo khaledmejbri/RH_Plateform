@@ -24,7 +24,7 @@ SIRH complet **sans paie** : il prépare des données exploitables par une paie 
 | M02 Demandes de documents (attestations…) + file FIFO | `svc-referentiel-rh` (DemandeDocumentAdministratif*) |
 | M04 Plaintes internes / externes | `svc-referentiel-rh` (PlainteRh*) |
 | M05 Formations ciblées par département / équipe | `svc-referentiel-rh` (DemandeFormationRh*) |
-| M07 Évaluations semestrielles (juin) et annuelles (décembre) | `svc-evaluation` |
+| M07 Évaluations annuelles, semestrielles, trimestrielles (D-E02 / D-E03) | `svc-evaluation` |
 | M09 Pointage QR + GPS, puis reconnaissance faciale | `svc-presence` + `rh_mobile_app/lib/features/pointage` |
 | NOTIF | `svc-notification` (WebSocket + Kafka `rh.notifications`) |
 
@@ -33,7 +33,7 @@ SIRH complet **sans paie** : il prépare des données exploitables par une paie 
 - Valideur M01 de 1er niveau = **manager ACTIF du nœud** d'affectation du demandeur, puis RRH. Pas de remontée N+2 automatique.
 - Rôles JWT = `profil_acces` de la fiche (`COLLABORATEUR`, `RO`, `RESPONSABLE`, `RH`, `DIRECTION`, `ADMIN`). La Direction lit, elle n'édite pas.
 - Évaluations : le collaborateur répond d'abord, puis le responsable hiérarchique note. Score = 70 % manager + 30 % auto-évaluation, sur 20. Compétences techniques notées en **étoiles 1 à 5** (Débutant → Expert). Rouge (≥ 3 critères insuffisants) ⇒ plan d'action obligatoire.
-- Campagnes : semestrielle ouverte **en juin**, annuelle **en décembre** ; l'évaluation apparaît dans l'app mobile de chaque collaborateur concerné puis part au responsable hiérarchique.
+- Campagnes : le RH choisit le mois de lancement (jour 20 par défaut), la fin = début + durée (réglage société, modifiable par campagne) ; lancement et clôture automatiques ; l'évaluation apparaît dans l'app mobile de chaque collaborateur concerné puis part au responsable hiérarchique.
 - Formations : demandées par le chef de département pour son département ou une équipe de son périmètre ; validées par la RH.
 - Plaintes : externes ⇒ RH + services concernés ; transitions à sens unique.
 - Pointage : valide seulement si QR actif + GPS ≤ 50 m ; la face est une étape supplémentaire, calculée **sur l'appareil**, le serveur ne garde qu'un score (consentement RGPD obligatoire).
