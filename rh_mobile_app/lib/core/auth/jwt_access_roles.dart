@@ -57,6 +57,13 @@ class JwtAccessRoles {
     return JwtAccessRoles._(roles: kept);
   }
 
+  /// Identifiant du compte (claim `identifiant_utilisateur`), `null` si absent (jeton de démo).
+  static String? compteId(String? token) {
+    final v = decodePayload(token)?['identifiant_utilisateur'];
+    final s = v?.toString().trim();
+    return (s == null || s.isEmpty) ? null : s;
+  }
+
   static Map<String, dynamic>? decodePayload(String? token) {
     if (token == null || token.isEmpty) return null;
     final parts = token.split('.');

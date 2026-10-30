@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,12 +9,19 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/notification_action.dart';
+import '../../facial/data/face_math.dart';
+import '../../facial/data/face_proof.dart';
+import '../../facial/data/facial_models.dart';
+import '../../facial/presentation/compte_a_rebours.dart';
+import '../../facial/presentation/face_verification_screen.dart';
+import '../../facial/presentation/facial_pointage_banner.dart';
+import '../../facial/providers/facial_controller.dart';
 import '../data/presence_errors.dart';
 import '../data/presence_gps.dart';
 import '../data/presence_models.dart';
 import '../data/presence_repository.dart';
 
-/// Pointage Must : scan QR → GPS → ENTREE/SORTIE → API (pas de face).
+/// Pointage : scan QR → ENTREE/SORTIE → GPS → (visage si exigé, ADR-M09-FACE) → API.
 class PointageScreen extends ConsumerStatefulWidget {
   const PointageScreen({super.key});
 
@@ -33,10 +41,42 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
   String? _error;
   bool _busy = false;
 
+  /// Fin du blocage après 3 échecs faciaux (D-P10), venue de `GET /moi`, du 3e rejet ou d'un 409.
+  DateTime? _bloqueJusqua;
+
+  /// Dernier pointage rejeté de la session : base d'une demande manuelle pendant le blocage (D-P04).
+  String? _dernierRejetId;
+
   @override
   void initState() {
     super.initState();
     _loadSuggestion();
+    _chargerEtatFacial();
+  }
+
+  bool get _estBloque => _bloqueJusqua != null && _bloqueJusqua!.isAfter(DateTime.now());
+
+  Future<void> _chargerEtatFacial() async {
+    final ctrl = ref.read(facialControllerProvider.notifier);
+    await ctrl.rafraichir();
+    if (!mounted) return;
+    final etat = ref.read(facialControllerProvider).etat;
+    if (etat != null && etat.estBloque(DateTime.now())) {
+      setState(() => _bloqueJusqua = etat.bloqueJusquA);
+      await _retrouverDernierRejet();
+    }
+  }
+
+  /// Redémarrage pendant le blocage : retrouve le dernier rejet du jour pour la demande manuelle (D-P10.3).
+  Future<void> _retrouverDernierRejet() async {
+    if (_dernierRejetId != null) return;
+    try {
+      final liste = await ref.read(presenceRepositoryProvider).mesPointages(size: 20);
+      final rejet = dernierRejetPourBlocage(liste, DateTime.now(), bloqueJusquA: _bloqueJusqua);
+      if (mounted && rejet != null) setState(() => _dernierRejetId = rejet.id);
+    } catch (_) {
+      // Repli : bouton vers la liste des pointages manuels.
+    }
   }
 
   Future<void> _loadSuggestion() async {
@@ -75,6 +115,12 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
             onPressed: () => context.push('/pointage/manuel'),
             icon: const Icon(Icons.edit_calendar_rounded),
           ),
+          if (ref.watch(facialControllerProvider.select((s) => s.afficherEntreeProfil)))
+            IconButton(
+              tooltip: 'Vérification faciale',
+              onPressed: () => context.push('/facial/mon-visage'),
+              icon: const Icon(Icons.face_rounded),
+            ),
           const NotificationActionBadge(),
         ],
       ),
@@ -83,6 +129,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
           padding: const EdgeInsets.all(24),
           child: Column(
             children: [
+              const FacialPointageBanner(),
               _StepIndicator(step: _stepIndex),
               const SizedBox(height: 32),
               Expanded(child: _buildContent()),
@@ -106,6 +153,9 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
   }
 
   Widget _buildContent() {
+    if (_estBloque && (_step == _PointageStep.scan || _step == _PointageStep.type)) {
+      return _buildBlocage();
+    }
     switch (_step) {
       case _PointageStep.scan:
         return _StepCard(
@@ -137,6 +187,45 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
       case _PointageStep.result:
         return _buildResult();
     }
+  }
+
+  Widget _buildBlocage() {
+    return _StepCard(
+      icon: Icons.lock_clock_rounded,
+      iconBg: AppTheme.errorSurface,
+      iconColor: AppTheme.error,
+      title: 'Pointage bloqué',
+      subtitle: 'Trop d’échecs de vérification du visage. Nouvelle tentative possible dans :',
+      extra: CompteARebours(
+        fin: _bloqueJusqua!,
+        onTermine: () {
+          if (mounted) setState(() => _bloqueJusqua = null);
+        },
+      ),
+      action: _boutonsManuel(),
+    );
+  }
+
+  /// D-P04 : demande de pointage manuel (sur le dernier rejet) ou accès à la liste des demandes.
+  Widget _boutonsManuel() {
+    final rejetId = _result?.id ?? _dernierRejetId;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (rejetId != null)
+          FilledButton.icon(
+            onPressed: _demandeEnvoyee || _busy ? null : _demanderPointageManuel,
+            icon: const Icon(Icons.edit_calendar_rounded),
+            label: Text(_demandeEnvoyee ? 'Demande envoyée' : 'Demander un pointage manuel'),
+          )
+        else
+          OutlinedButton.icon(
+            onPressed: () => context.push('/pointage/manuel'),
+            icon: const Icon(Icons.edit_calendar_rounded),
+            label: const Text('Pointages manuels'),
+          ),
+      ],
+    );
   }
 
   Widget _buildTypeChoice() {
@@ -238,6 +327,10 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
         ? 'Type : Entrée'
         : (_type == TypePointage.sortie ? 'Type : Sortie' : null);
 
+    final blocage = result?.bloqueJusquA;
+    final echecs = result?.echecsConsecutifs;
+    final echecFacial = result?.statut == PointageStatut.rejeteVisageNonReconnu ||
+        result?.statut == PointageStatut.rejeteVivacite;
     final title = ok ? 'Pointage validé' : 'Pointage refusé';
     final subtitle = ok
         ? [
@@ -246,6 +339,8 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
             if (result?.siteLibelle != null) 'Site : ${result!.siteLibelle}',
             if (result?.distanceMetres != null)
               'Distance : ${result!.distanceMetres!.toStringAsFixed(1)} m',
+            if (result?.sansVerificationFaciale == true)
+              'Pointage enregistré sans vérification faciale.',
           ].whereType<String>().join('\n')
         : [
             messageMotifPointage(
@@ -254,6 +349,8 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
             ),
             if (result?.distanceMetres != null)
               'Distance mesurée : ${result!.distanceMetres!.toStringAsFixed(1)} m',
+            if (echecFacial && echecs != null && blocage == null) 'Échec facial $echecs sur 3.',
+            if (blocage != null) 'Pointage bloqué après 3 échecs faciaux.',
           ].join('\n');
 
     return _StepCard(
@@ -262,6 +359,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
       iconColor: ok ? AppTheme.success : AppTheme.error,
       title: title,
       subtitle: subtitle.isEmpty ? (ok ? 'Enregistré.' : 'Refusé.') : subtitle,
+      extra: blocage != null && blocage.isAfter(DateTime.now()) ? CompteARebours(fin: blocage) : null,
       action: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -286,7 +384,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
   }
 
   Future<void> _demanderPointageManuel() async {
-    final rejetId = _result?.id;
+    final rejetId = _result?.id ?? _dernierRejetId;
     if (rejetId == null) return;
     final justification = await showDialog<String>(
       context: context,
@@ -328,6 +426,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
       _demandeEnvoyee = false;
     });
     _loadSuggestion();
+    _chargerEtatFacial();
   }
 
   Future<void> _startQrScan(BuildContext context) async {
@@ -403,6 +502,47 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
     }
 
     final pos = gps.position!;
+    final facial = ref.read(facialControllerProvider);
+    final ctrl = ref.read(facialControllerProvider.notifier);
+
+    // Un retrait de consentement en attente part avant toute autre requête (D-P07.d).
+    await ctrl.vider();
+    if (!mounted) return;
+
+    // Étape visage après le GPS, puis envoi immédiat (QR de borne valable 30 s +/- 1 fenêtre).
+    FaceProof? preuve;
+    if (controleFacialRequis(
+      facial.etat,
+      gabaritLocal: facial.gabaritLocal,
+      plateformeNative: ctrl.plateformeNative,
+    )) {
+      if (facial.etat!.estBloque(DateTime.now())) {
+        setState(() {
+          _busy = false;
+          _step = _PointageStep.type;
+          _bloqueJusqua = facial.etat!.bloqueJusquA;
+        });
+        return;
+      }
+      preuve = await Navigator.of(context).push<FaceProof>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => const FaceVerificationScreen(),
+        ),
+      );
+      if (!mounted) return;
+      if (preuve == null) {
+        // Annulé par l'utilisateur : aucun pointage envoyé.
+        setState(() {
+          _busy = false;
+          _step = _PointageStep.type;
+        });
+        return;
+      }
+    }
+
+    final deviceId = await ctrl.deviceIdPourPointage();
+    if (!mounted) return;
     final request = PointageRequest(
       qrToken: token,
       type: type,
@@ -410,8 +550,16 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
       longitude: pos.longitude,
       accuracyMeters: pos.accuracyMeters,
       clientTimestamp: DateTime.now().toUtc(),
+      deviceId: deviceId,
       idempotencyKey: _newIdempotencyKey(),
       positionSimulee: pos.isMock,
+      plateforme: plateformeApi(
+        web: kIsWeb,
+        ios: defaultTargetPlatform == TargetPlatform.iOS,
+      ),
+      scoreFacial: preuve?.score,
+      vivaciteReussie: preuve?.vivacite,
+      modeleFacialVersion: (preuve?.aPreuve ?? false) ? FaceModelInfo.version : null,
     );
 
     try {
@@ -422,14 +570,23 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
         _busy = false;
         _result = result;
         _step = _PointageStep.result;
+        if (result.isRejet && result.id != null) _dernierRejetId = result.id;
+        if (result.bloqueJusquA != null) _bloqueJusqua = result.bloqueJusquA;
       });
+      if (preuve != null) ctrl.rafraichir();
     } catch (e) {
       if (!mounted) return;
+      final blocage = blocageVisageJusqua(e);
       setState(() {
         _busy = false;
         _step = _PointageStep.type;
-        _error = messageErreurPresence(e);
+        if (blocage != null) {
+          _bloqueJusqua = blocage;
+        } else {
+          _error = messageErreurPresence(e);
+        }
       });
+      if (blocage != null) _retrouverDernierRejet();
     }
   }
 
@@ -577,6 +734,7 @@ class _StepCard extends StatelessWidget {
   final Color iconColor;
   final String title;
   final String subtitle;
+  final Widget? extra;
   final Widget action;
 
   const _StepCard({
@@ -585,6 +743,7 @@ class _StepCard extends StatelessWidget {
     required this.iconColor,
     required this.title,
     required this.subtitle,
+    this.extra,
     required this.action,
   });
 
@@ -615,6 +774,7 @@ class _StepCard extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
             textAlign: TextAlign.center,
           ),
+          if (extra != null) ...[const SizedBox(height: 12), extra!],
           const SizedBox(height: 36),
           SizedBox(width: double.infinity, child: action),
         ],

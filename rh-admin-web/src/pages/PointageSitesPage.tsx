@@ -9,6 +9,7 @@ import {
   isQrExpired,
   isServiceUnavailable,
   LIBELLES_POINTAGE_STATUT,
+  LIBELLES_VERIFICATION_FACIALE,
   messagePresenceErreur,
   patchPresenceSite,
   POINTAGE_STATUTS_FILTRE,
@@ -27,8 +28,9 @@ import {
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { Icon } from '../components/ui';
 import PointagesManuelsPanel from './PointagesManuelsPanel';
+import VerificationFacialePanel from './VerificationFacialePanel';
 
-type Tab = 'sites' | 'pointages' | 'manuels';
+type Tab = 'sites' | 'pointages' | 'manuels' | 'facial';
 type ModalKind = 'creer' | 'regenerer' | 'revoquer' | null;
 
 const PAGE_SIZE = 20;
@@ -165,6 +167,7 @@ export default function PointageSitesPage() {
   const [ptType, setPtType] = useState('');
   const [ptDu, setPtDu] = useState('');
   const [ptAu, setPtAu] = useState('');
+  const [ptSansFacial, setPtSansFacial] = useState(false);
 
   const loadSites = useCallback(async () => {
     setSitesLoading(true);
@@ -238,6 +241,7 @@ export default function PointageSitesPage() {
         type: ptType || undefined,
         du: ptDu || undefined,
         au: ptAu || undefined,
+        verificationFaciale: ptSansFacial ? ['NON_CONSENTIE', 'NON_DISPONIBLE'] : undefined,
       });
       setPointages(page.contenu);
       setPtTotal(page.totalElements);
@@ -250,7 +254,7 @@ export default function PointageSitesPage() {
     } finally {
       setPtLoading(false);
     }
-  }, [ptPage, ptSiteId, ptStatut, ptType, ptDu, ptAu]);
+  }, [ptPage, ptSiteId, ptStatut, ptType, ptDu, ptAu, ptSansFacial]);
 
   useEffect(() => {
     if (tab === 'pointages') void loadPointages();
@@ -454,7 +458,9 @@ export default function PointageSitesPage() {
                 ? 'Pointages'
                 : tab === 'manuels'
                   ? 'Pointages manuels'
-                  : 'Sites de pointage'}
+                  : tab === 'facial'
+                    ? 'Vérification faciale'
+                    : 'Sites de pointage'}
           </h2>
           <p className="page__lead">
             {showDetail
@@ -463,7 +469,9 @@ export default function PointageSitesPage() {
                 ? 'Consultation des essais VALIDÉ / REJETÉ (support et anti-fraude).'
                 : tab === 'manuels'
                   ? 'Pointages demandés après un refus, validés par le responsable ou les RH.'
-                  : 'Emplacements QR et zone de pointage par site'}
+                  : tab === 'facial'
+                    ? 'Réglage, consentement et enrôlement des collaborateurs. Aucune image n’est conservée ni affichée.'
+                    : 'Emplacements QR et zone de pointage par site'}
           </p>
         </div>
         <div className="tabs">
@@ -496,6 +504,16 @@ export default function PointageSitesPage() {
             }}
           >
             Pointages manuels
+          </button>
+          <button
+            type="button"
+            className={'tab' + (tab === 'facial' ? ' tab--on' : '')}
+            onClick={() => {
+              setTab('facial');
+              setSelectedId(null);
+            }}
+          >
+            Vérification faciale
           </button>
           {showList && !lectureSeule ? (
             <button type="button" className="btn btn--primary" onClick={() => setModal('creer')}>
@@ -950,6 +968,7 @@ export default function PointageSitesPage() {
       ) : null}
 
       {tab === 'manuels' ? <PointagesManuelsPanel lectureSeule={lectureSeule} /> : null}
+      {tab === 'facial' ? <VerificationFacialePanel lectureSeule={lectureSeule} /> : null}
 
       {tab === 'pointages' ? (
         <div className="panel">
@@ -1023,6 +1042,17 @@ export default function PointageSitesPage() {
                 }}
               />
             </label>
+            <label className="checkbox-row" style={{ alignSelf: 'end' }}>
+              <input
+                type="checkbox"
+                checked={ptSansFacial}
+                onChange={(e) => {
+                  setPtPage(0);
+                  setPtSansFacial(e.target.checked);
+                }}
+              />
+              Sans vérification faciale
+            </label>
           </div>
 
           {ptErr ? (
@@ -1055,6 +1085,7 @@ export default function PointageSitesPage() {
                       <th>Site</th>
                       <th>Type</th>
                       <th>Statut</th>
+                      <th>Vérif. faciale</th>
                       <th>Distance</th>
                       <th>Précision GPS</th>
                       <th>Motif</th>
@@ -1069,6 +1100,12 @@ export default function PointageSitesPage() {
                         <td>{p.type === 'ENTREE' ? 'Entrée' : p.type === 'SORTIE' ? 'Sortie' : p.type}</td>
                         <td>
                           <PointageStatutBadge statut={p.statut} />
+                        </td>
+                        <td className="small">
+                          {p.verificationFaciale
+                            ? (LIBELLES_VERIFICATION_FACIALE[p.verificationFaciale] ?? p.verificationFaciale)
+                            : '—'}
+                          {p.scoreFacial != null ? <span className="muted"> · score {p.scoreFacial}</span> : null}
                         </td>
                         <td className="muted">
                           {p.distanceMetres != null ? `${Math.round(p.distanceMetres)} m` : '—'}

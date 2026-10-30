@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../auth/presentation/profile_screen.dart';
+import '../../facial/data/facial_models.dart';
+import '../../facial/providers/facial_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/notification_action.dart';
 import '../../demandes_admin/data/demande_admin_models.dart';
@@ -20,7 +22,25 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
+  void initState() {
+    super.initState();
+    // Vérification faciale : GET /moi en arrière-plan, jamais bloquant pour l'accueil.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(facialControllerProvider.notifier).demarrer();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Consentement ou reconsentement imposé à la connexion (D-P07) : écran empilé sur l'accueil.
+    ref.listen<FacialRoute>(
+      facialControllerProvider.select((s) => s.decision.route),
+      (prev, next) {
+        if (next != FacialRoute.aucune && prev != next) {
+          context.push('/facial/consentement');
+        }
+      },
+    );
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(

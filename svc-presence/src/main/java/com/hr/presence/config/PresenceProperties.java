@@ -11,6 +11,45 @@ public class PresenceProperties {
 	private final Alert alert = new Alert();
 	private final Manuel manuel = new Manuel();
 	private final Referentiel referentiel = new Referentiel();
+	private final Facial facial = new Facial();
+
+	public Facial getFacial() {
+		return facial;
+	}
+
+	/** Reconnaissance faciale au pointage (D-P06 à D-P10). */
+	public static class Facial {
+		/** Seuil de score par défaut tant que RH / ADMIN n'en a pas réglé un (D-P08). */
+		private int seuilDefaut = 92;
+		/** Échecs faciaux consécutifs qui déclenchent le blocage (D-P10.1). */
+		private int echecsMax = 3;
+		/** Durée du blocage de pointage, en minutes (D-P10.1). */
+		private int blocageMinutes = 15;
+
+		public int getSeuilDefaut() {
+			return seuilDefaut;
+		}
+
+		public void setSeuilDefaut(int seuilDefaut) {
+			this.seuilDefaut = seuilDefaut;
+		}
+
+		public int getEchecsMax() {
+			return echecsMax;
+		}
+
+		public void setEchecsMax(int echecsMax) {
+			this.echecsMax = echecsMax;
+		}
+
+		public int getBlocageMinutes() {
+			return blocageMinutes;
+		}
+
+		public void setBlocageMinutes(int blocageMinutes) {
+			this.blocageMinutes = blocageMinutes;
+		}
+	}
 
 	public Manuel getManuel() {
 		return manuel;

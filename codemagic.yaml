@@ -45,6 +45,29 @@ workflows:
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
+      - name: Verifier le modele facial (garde-fou de livraison)
+        script: |
+          MODELE=assets/models/mobilefacenet.tflite
+          SOMME=assets/models/mobilefacenet.sha256
+          if [ ! -f "$MODELE" ]; then
+            if [ "$MODELE_FACIAL_OBLIGATOIRE" = "true" ]; then
+              echo "ERREUR : $MODELE absent alors que MODELE_FACIAL_OBLIGATOIRE=true (voir assets/models/LISEZMOI.md)."
+              exit 1
+            fi
+            echo "AVERTISSEMENT : $MODELE absent : la verification faciale sera indisponible dans ce build."
+            exit 0
+          fi
+          ATTENDU=$(tr -d '[:space:]' < "$SOMME" 2>/dev/null || true)
+          if [ -z "$ATTENDU" ] || [ "$ATTENDU" = "A_RENSEIGNER" ]; then
+            echo "AVERTISSEMENT : somme SHA-256 attendue non renseignee ($SOMME) : modele non verifie."
+            exit 0
+          fi
+          REEL=$(shasum -a 256 "$MODELE" | cut -d' ' -f1)
+          if [ "$REEL" != "$ATTENDU" ]; then
+            echo "ERREUR : SHA-256 du modele ($REEL) differente de la valeur attendue ($ATTENDU)."
+            exit 1
+          fi
+          echo "Modele facial verifie (SHA-256 conforme)."
       - name: Install CocoaPods
         script: |
           cd ios
@@ -58,6 +81,7 @@ workflows:
       - name: Build iOS (unsigned — no Apple profile required)
         script: |
           flutter build ios --release --no-codesign \
+            --obfuscate --split-debug-info=build/symboles \
             --build-name=1.0.0 \
             --build-number=${BUILD_NUMBER:-$PROJECT_BUILD_NUMBER} \
             --dart-define="API_BASE_URL=$API_BASE_URL"
@@ -71,6 +95,7 @@ workflows:
     artifacts:
       - $CM_BUILD_DIR/rh_mobile_app/build/ios/iphoneos/*.ipa
       - $CM_BUILD_DIR/rh_mobile_app/build/ios/iphoneos/*.app
+      - $CM_BUILD_DIR/rh_mobile_app/build/symboles/*
       - /tmp/xcodebuild_logs/*.log
 
   rh-connect-ios-signed:
@@ -93,6 +118,29 @@ workflows:
         script: xcode-project use-profiles
       - name: Get Flutter packages
         script: flutter pub get
+      - name: Verifier le modele facial (garde-fou de livraison)
+        script: |
+          MODELE=assets/models/mobilefacenet.tflite
+          SOMME=assets/models/mobilefacenet.sha256
+          if [ ! -f "$MODELE" ]; then
+            if [ "$MODELE_FACIAL_OBLIGATOIRE" = "true" ]; then
+              echo "ERREUR : $MODELE absent alors que MODELE_FACIAL_OBLIGATOIRE=true (voir assets/models/LISEZMOI.md)."
+              exit 1
+            fi
+            echo "AVERTISSEMENT : $MODELE absent : la verification faciale sera indisponible dans ce build."
+            exit 0
+          fi
+          ATTENDU=$(tr -d '[:space:]' < "$SOMME" 2>/dev/null || true)
+          if [ -z "$ATTENDU" ] || [ "$ATTENDU" = "A_RENSEIGNER" ]; then
+            echo "AVERTISSEMENT : somme SHA-256 attendue non renseignee ($SOMME) : modele non verifie."
+            exit 0
+          fi
+          REEL=$(shasum -a 256 "$MODELE" | cut -d' ' -f1)
+          if [ "$REEL" != "$ATTENDU" ]; then
+            echo "ERREUR : SHA-256 du modele ($REEL) differente de la valeur attendue ($ATTENDU)."
+            exit 1
+          fi
+          echo "Modele facial verifie (SHA-256 conforme)."
       - name: Install CocoaPods
         script: |
           cd ios
@@ -101,12 +149,14 @@ workflows:
       - name: Build IPA
         script: |
           flutter build ipa --release \
+            --obfuscate --split-debug-info=build/symboles \
             --build-name=1.0.0 \
             --build-number=${BUILD_NUMBER:-$PROJECT_BUILD_NUMBER} \
             --export-options-plist=/Users/builder/export_options.plist \
             --dart-define="API_BASE_URL=$API_BASE_URL"
     artifacts:
       - $CM_BUILD_DIR/rh_mobile_app/build/ios/ipa/*.ipa
+      - $CM_BUILD_DIR/rh_mobile_app/build/symboles/*
       - /tmp/xcodebuild_logs/*.log
 
   rh-connect-android:
@@ -127,11 +177,38 @@ workflows:
           echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/rh_mobile_app/android/local.properties"
       - name: Get Flutter packages
         script: flutter pub get
+      - name: Verifier le modele facial (garde-fou de livraison)
+        script: |
+          MODELE=assets/models/mobilefacenet.tflite
+          SOMME=assets/models/mobilefacenet.sha256
+          if [ ! -f "$MODELE" ]; then
+            if [ "$MODELE_FACIAL_OBLIGATOIRE" = "true" ]; then
+              echo "ERREUR : $MODELE absent alors que MODELE_FACIAL_OBLIGATOIRE=true (voir assets/models/LISEZMOI.md)."
+              exit 1
+            fi
+            echo "AVERTISSEMENT : $MODELE absent : la verification faciale sera indisponible dans ce build."
+            exit 0
+          fi
+          ATTENDU=$(tr -d '[:space:]' < "$SOMME" 2>/dev/null || true)
+          if [ -z "$ATTENDU" ] || [ "$ATTENDU" = "A_RENSEIGNER" ]; then
+            echo "AVERTISSEMENT : somme SHA-256 attendue non renseignee ($SOMME) : modele non verifie."
+            exit 0
+          fi
+          REEL=$(shasum -a 256 "$MODELE" | cut -d' ' -f1)
+          if [ "$REEL" != "$ATTENDU" ]; then
+            echo "ERREUR : SHA-256 du modele ($REEL) differente de la valeur attendue ($ATTENDU)."
+            exit 1
+          fi
+          echo "Modele facial verifie (SHA-256 conforme)."
+      - name: Analyze
+        script: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Unit tests
         script: flutter test
       - name: Build APK
         script: |
           flutter build apk --release \
+            --obfuscate --split-debug-info=build/symboles \
             --dart-define="API_BASE_URL=$API_BASE_URL"
     artifacts:
       - $CM_BUILD_DIR/rh_mobile_app/build/**/outputs/**/*.apk
+      - $CM_BUILD_DIR/rh_mobile_app/build/symboles/*

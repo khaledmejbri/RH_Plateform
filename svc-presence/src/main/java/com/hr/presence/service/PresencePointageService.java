@@ -5,6 +5,7 @@ import com.hr.presence.domain.ModeQr;
 import com.hr.presence.domain.PointageStatut;
 import com.hr.presence.domain.PointageType;
 import com.hr.presence.domain.QrCredentialStatut;
+import com.hr.presence.domain.VerificationFaciale;
 import com.hr.presence.dto.CreatePointageRequest;
 import com.hr.presence.dto.PageResponse;
 import com.hr.presence.dto.PointageResponse;
@@ -23,6 +24,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -42,6 +44,8 @@ public class PresencePointageService {
 	private final PresenceProperties properties;
 	private final PresenceQrService qrService;
 	private final QrDynamiqueService qrDynamiqueService;
+	private final VerificationFacialePointageService verificationFaciale;
+	private final Clock clock;
 
 	/** QR résolu : site et credential statique (null pour une borne écran), ou rejet déjà enregistré. */
 	private record QrResolu(PresenceSite site, UUID credentialId, PointageResponse rejet) {
@@ -58,7 +62,9 @@ public class PresencePointageService {
 			HaversineService haversineService,
 			PresenceProperties properties,
 			PresenceQrService qrService,
-			QrDynamiqueService qrDynamiqueService) {
+			QrDynamiqueService qrDynamiqueService,
+			VerificationFacialePointageService verificationFaciale,
+			Clock clock) {
 		this.pointageRepository = pointageRepository;
 		this.siteRepository = siteRepository;
 		this.qrRepository = qrRepository;
@@ -67,10 +73,19 @@ public class PresencePointageService {
 		this.properties = properties;
 		this.qrService = qrService;
 		this.qrDynamiqueService = qrDynamiqueService;
+		this.verificationFaciale = verificationFaciale;
+		this.clock = clock;
 	}
 
 	@Transactional
-	public PointageResponse pointer(String collaborateurId, CreatePointageRequest request) {
+	public PointageResponse pointer(String collaborateurDemande, CreatePointageRequest request) {
+		Instant serverTs = clock.instant();
+		// Étape visage, premier temps (D-P08.a) : preuve mal formée (400), identité (403) ; puis rejeu d'idempotence, puis blocage (409).
+		// Rien n'est persisté ni compté ; sans contrôle exigé (INACTIVE, ou avant la date), aucun effet.
+		VerificationFacialePointageService.Preparation visage =
+				verificationFaciale.preparer(collaborateurDemande, request, serverTs);
+		String collaborateurId = visage.collaborateurId();
+
 		if (request.idempotencyKey() != null && !request.idempotencyKey().isBlank()) {
 			Optional<PresencePointage> existing = pointageRepository
 					.findByCollaborateurIdAndIdempotencyKey(collaborateurId, request.idempotencyKey().trim());
@@ -78,9 +93,10 @@ public class PresencePointageService {
 				return toResponse(existing.get());
 			}
 		}
+		// Blocage en cours : 409 avant tout QR / GPS, mais après identité et rejeu d'idempotence.
+		verificationFaciale.controlerBlocage(visage, serverTs);
 
 		PointageType type = parseType(request.type());
-		Instant serverTs = Instant.now();
 
 		QrResolu qr = QrDynamiqueService.estDynamique(request.qrToken())
 				? resoudreQrDynamique(collaborateurId, type, request, serverTs)
@@ -96,7 +112,7 @@ public class PresencePointageService {
 					PointageStatut.REJETE_EMPLACEMENT_ABSENT, "Emplacement GPS du site non configuré",
 					site.getId(), credentialId, null);
 		}
-		return verifierPosition(collaborateurId, type, request, serverTs, site, credentialId);
+		return verifierPosition(collaborateurId, type, request, serverTs, site, credentialId, visage);
 	}
 
 	/** Borne écran (D-P05) : signature, borne non remplacée, fenêtre de 30 s ± 1. */
@@ -190,7 +206,8 @@ public class PresencePointageService {
 
 	/** Règles GPS D-P01, communes au QR papier et à la borne écran. */
 	private PointageResponse verifierPosition(String collaborateurId, PointageType type, CreatePointageRequest request,
-			Instant serverTs, PresenceSite site, UUID credentialId) {
+			Instant serverTs, PresenceSite site, UUID credentialId,
+			VerificationFacialePointageService.Preparation visage) {
 
 		if (Boolean.TRUE.equals(request.positionSimulee())) {
 			log.warn("Position simulée détectée collab={} siteId={} device={}",
@@ -228,14 +245,17 @@ public class PresencePointageService {
 					site.getId(), credentialId, distance);
 		}
 
+		// Étape visage, second temps : QR et GPS sont valides, la table de décision tranche (D-P08, D-P10).
+		VerificationFacialePointageService.Decision decision = verificationFaciale.decider(visage, request, serverTs);
 		PresencePointage pointage = basePointage(collaborateurId, type, request, serverTs);
 		pointage.setSiteId(site.getId());
 		pointage.setQrCredentialId(credentialId);
 		pointage.setStatut(PointageStatut.VALIDE);
 		pointage.setDistanceMetres(distance);
+		decision.appliquerA(pointage);
 		PresencePointage saved = pointageRepository.save(pointage);
-		log.info("Pointage VALIDE collab={} siteId={} distance={}", collaborateurId, site.getId(), distance);
-		return toResponse(saved);
+		log.info("Pointage {} collab={} siteId={} distance={}", saved.getStatut(), collaborateurId, site.getId(), distance);
+		return toResponse(saved, decision.echecs(), decision.bloqueJusqua());
 	}
 
 	@Transactional(readOnly = true)
@@ -248,10 +268,11 @@ public class PresencePointageService {
 
 	@Transactional(readOnly = true)
 	public PageResponse<PointageResponse> listerAdmin(
-			UUID siteId, PointageStatut statut, PointageType type, Instant from, Instant to, int page, int size) {
+			UUID siteId, PointageStatut statut, PointageType type, Instant from, Instant to,
+			List<VerificationFaciale> verificationFaciale, int page, int size) {
 		int pageSize = Math.clamp(size, 1, 50);
 		Page<PresencePointage> result = pointageRepository.findAll(
-				PresencePointageRepository.filtreAdmin(siteId, statut, type, from, to),
+				PresencePointageRepository.filtreAdmin(siteId, statut, type, from, to, verificationFaciale),
 				PageRequest.of(Math.max(page, 0), pageSize, Sort.by(Sort.Direction.DESC, "serverTs")));
 		return toPage(result);
 	}
@@ -316,6 +337,11 @@ public class PresencePointageService {
 	}
 
 	static PointageResponse toResponse(PresencePointage p) {
+		return toResponse(p, null, null);
+	}
+
+	/** Réponse d'un pointage ; {@code echecs} et {@code bloqueJusqua} ne sont connus qu'à la création (D-P10). */
+	static PointageResponse toResponse(PresencePointage p, Integer echecs, Instant bloqueJusqua) {
 		return new PointageResponse(
 				p.getId(),
 				p.getStatut(),
@@ -325,7 +351,12 @@ public class PresencePointageService {
 				p.getDistanceMetres(),
 				p.getAccuracyMetres(),
 				p.getMotifRejet(),
-				p.getCollaborateurId()
+				p.getCollaborateurId(),
+				p.getVerificationFaciale(),
+				p.getScoreFacial() != null ? p.getScoreFacial().intValue() : null,
+				p.getVivaciteReussie(),
+				echecs,
+				bloqueJusqua
 		);
 	}
 }

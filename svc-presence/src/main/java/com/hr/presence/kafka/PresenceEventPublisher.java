@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
@@ -64,6 +66,20 @@ public class PresenceEventPublisher {
 		if (destinataire == null || destinataire.isBlank()) {
 			return;
 		}
+		// Dans une transaction, l'envoi attend le commit : pas de notification pour une décision annulée.
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					envoyer(destinataire, sujet, corps);
+				}
+			});
+			return;
+		}
+		envoyer(destinataire, sujet, corps);
+	}
+
+	private void envoyer(String destinataire, String sujet, String corps) {
 		try {
 			publier(RhPresenceTopics.RH_NOTIFICATIONS, destinataire,
 					new NotificationMessage("WEBSOCKET", destinataire, sujet, corps));

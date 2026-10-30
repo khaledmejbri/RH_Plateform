@@ -53,6 +53,21 @@ public class PresenceAccessService {
 		return null;
 	}
 
+	/** En-tête {@code X-Collaborateur-Id} s'il est présent (UUID normalisé), sinon null ; 403 s'il est mal formé. */
+	public String collaborateurHeaderOuNull() {
+		return readCollaborateurHeader();
+	}
+
+	/** Rôle métier de l'appelant pour l'audit : ADMIN, RH, DIRECTION, sinon USER. */
+	public String currentActorRole() {
+		for (String role : new String[] {"ADMIN", "RH", "DIRECTION"}) {
+			if (hasAnyRole(role)) {
+				return role;
+			}
+		}
+		return "USER";
+	}
+
 	public String currentActorLabel() {
 		try {
 			return requireCurrentCollaborateurId();

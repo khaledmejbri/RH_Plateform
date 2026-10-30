@@ -6,10 +6,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.validation.FieldError;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
 
@@ -20,6 +22,32 @@ public class PresenceExceptionHandler {
 	public ResponseEntity<ErrorResponse> metier(PresenceMetierException ex) {
 		return ResponseEntity.status(ex.getHttpStatus()).body(
 				ErrorResponse.of(ex.getCode(), ex.getMessage(), ex.getMessage(), List.of(), ex.getHttpStatus())
+		);
+	}
+
+	/** 409 POINTAGE_BLOQUE_VISAGE : porte la fin du blocage (D-P10.1). */
+	@ExceptionHandler(PointageBloqueException.class)
+	public ResponseEntity<ErrorResponse> pointageBloque(PointageBloqueException ex) {
+		return ResponseEntity.status(ex.getHttpStatus()).body(
+				ErrorResponse.bloque(ex.getCode(), ex.getMessage(), ex.getBloqueJusqua(), ex.getHttpStatus())
+		);
+	}
+
+	/** Corps JSON illisible ou valeur d'énumération inconnue (ex. plateforme, raison) : 400 plutôt que 500. */
+	@ExceptionHandler(HttpMessageNotReadableException.class)
+	public ResponseEntity<ErrorResponse> corpsIllisible(HttpMessageNotReadableException ex) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+				ErrorResponse.of("REQUETE_MAL_FORMEE", "Corps de requête illisible ou valeur non reconnue",
+						"Vérifiez le format JSON et les valeurs autorisées", List.of(), HttpStatus.BAD_REQUEST.value())
+		);
+	}
+
+	/** Paramètre d'URL de mauvais type (ex. statut inconnu) : 400 plutôt que 500. */
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<ErrorResponse> parametreInvalide(MethodArgumentTypeMismatchException ex) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+				ErrorResponse.of("PARAMETRE_INVALIDE", "Paramètre invalide : " + ex.getName(),
+						"Valeur non reconnue pour " + ex.getName(), List.of(), HttpStatus.BAD_REQUEST.value())
 		);
 	}
 

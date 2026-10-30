@@ -40,6 +40,8 @@ class PresencePointageServiceTest {
 	private PresenceQrCredentialRepository qrRepository;
 	@Mock
 	private PresenceQrService qrService;
+	@Mock
+	private VerificationFacialePointageService verificationFaciale;
 
 	private QrTokenService qrTokenService;
 	private QrDynamiqueService qrDynamique;
@@ -67,7 +69,9 @@ class PresencePointageServiceTest {
 				new HaversineService(),
 				props,
 				qrService,
-				qrDynamique);
+				qrDynamique,
+				verificationFaciale,
+				java.time.Clock.systemUTC());
 
 		now = Instant.now();
 		UUID siteId = UUID.randomUUID();
@@ -92,6 +96,11 @@ class PresencePointageServiceTest {
 
 		validToken = qrTokenService.buildToken(siteId, 1, jti, credential.getValidFrom(), credential.getValidUntil());
 
+		// Réglage INACTIVE : l'étape visage n'a aucun effet (comportement antérieur).
+		org.mockito.Mockito.lenient().when(verificationFaciale.preparer(any(), any(), any())).thenAnswer(inv ->
+				VerificationFacialePointageService.Preparation.inactive(inv.getArgument(0)));
+		org.mockito.Mockito.lenient().when(verificationFaciale.decider(any(), any(), any()))
+				.thenReturn(VerificationFacialePointageService.Decision.sansControle());
 		org.mockito.Mockito.lenient().when(pointageRepository.save(any(PresencePointage.class))).thenAnswer(inv -> {
 			PresencePointage p = inv.getArgument(0);
 			if (p.getId() == null) {
@@ -315,5 +324,125 @@ class PresencePointageServiceTest {
 		PointageResponse resp = pointageService.pointer("collab-1", requeteQr(qr));
 
 		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_QR_REVOQUE);
+	}
+
+	// --- D-P08 / D-P10 : intégration de l'étape visage (la table de décision est testée à part) ---
+
+	@Test
+	void blocageFacial_409_aucunPointagePersiste() {
+		Instant fin = now.plusSeconds(600);
+		org.mockito.Mockito.doThrow(new com.hr.presence.web.PointageBloqueException("bloqué", fin))
+				.when(verificationFaciale).controlerBlocage(any(), any());
+
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> pointageService.pointer("collab-1", requete(36.8065, 5.0, false)))
+				.isInstanceOf(com.hr.presence.web.PointageBloqueException.class)
+				.satisfies(e -> assertThat(((com.hr.presence.web.PointageBloqueException) e).getBloqueJusqua()).isEqualTo(fin));
+		org.mockito.Mockito.verify(pointageRepository, org.mockito.Mockito.never()).save(any(PresencePointage.class));
+		org.mockito.Mockito.verifyNoInteractions(qrRepository);
+	}
+
+	@Test
+	void rejeuIdempotent_renvoieLaReponseDOrigine_memePendantLeBlocage() {
+		PresencePointage existing = new PresencePointage();
+		existing.setId(UUID.randomUUID());
+		existing.setCollaborateurId("collab-1");
+		existing.setStatut(PointageStatut.REJETE_VISAGE_NON_RECONNU);
+		existing.setType(com.hr.presence.domain.PointageType.ENTREE);
+		existing.setServerTs(now);
+		existing.setIdempotencyKey("idem-2");
+		when(pointageRepository.findByCollaborateurIdAndIdempotencyKey("collab-1", "idem-2")).thenReturn(Optional.of(existing));
+
+		CreatePointageRequest req = new CreatePointageRequest(
+				validToken, "ENTREE", 36.8065, 10.1815, 10.0, now, "device-1", "idem-2", null);
+		PointageResponse resp = pointageService.pointer("collab-1", req);
+
+		assertThat(resp.id()).isEqualTo(existing.getId());
+		org.mockito.Mockito.verify(verificationFaciale, org.mockito.Mockito.never()).controlerBlocage(any(), any());
+	}
+
+	@Test
+	void identiteIncoherente_avantLeRejeuIdempotent() {
+		when(verificationFaciale.preparer(any(), any(), any()))
+				.thenThrow(new com.hr.presence.web.PresenceMetierException("IDENTITE_INCOHERENTE", "x", 403));
+		CreatePointageRequest req = new CreatePointageRequest(
+				validToken, "ENTREE", 36.8065, 10.1815, 10.0, now, "device-1", "idem-3", null);
+
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> pointageService.pointer("collab-1", req))
+				.isInstanceOf(com.hr.presence.web.PresenceMetierException.class);
+		org.mockito.Mockito.verifyNoInteractions(pointageRepository);
+	}
+
+	@Test
+	void rejetQr_neOuvrePasLEtapeVisage() {
+		CreatePointageRequest req = new CreatePointageRequest(
+				"p1.abc.def", "ENTREE", 36.8065, 10.1815, 10.0, now, "device-1", null, null);
+
+		PointageResponse resp = pointageService.pointer("collab-1", req);
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_QR_INVALIDE);
+		org.mockito.Mockito.verify(verificationFaciale, org.mockito.Mockito.never()).decider(any(), any(), any());
+	}
+
+	@Test
+	void rejetGps_neOuvrePasLEtapeVisage() {
+		site.setRayonMetres(20);
+		qrEtSiteValides();
+		double lat25m = 36.8065 + (25.0 / 111_320.0);
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(lat25m, 8.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_HORS_ZONE);
+		org.mockito.Mockito.verify(verificationFaciale, org.mockito.Mockito.never()).decider(any(), any(), any());
+	}
+
+	@Test
+	void rejetVisage_persisteEtRenvoieLeCompteur() {
+		qrEtSiteValides();
+		Instant fin = now.plusSeconds(900);
+		when(verificationFaciale.decider(any(), any(), any())).thenReturn(new VerificationFacialePointageService.Decision(
+				PointageStatut.REJETE_VISAGE_NON_RECONNU, "Visage non reconnu", null, (short) 60, Boolean.TRUE, "mfn-1",
+				com.hr.presence.domain.PlateformeMobile.ANDROID, 3, fin));
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, 5.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_VISAGE_NON_RECONNU);
+		assertThat(resp.scoreFacial()).isEqualTo(60);
+		assertThat(resp.echecsConsecutifs()).isEqualTo(3);
+		assertThat(resp.bloqueJusqua()).isEqualTo(fin);
+		ArgumentCaptor<PresencePointage> captor = ArgumentCaptor.forClass(PresencePointage.class);
+		verify(pointageRepository).save(captor.capture());
+		assertThat(captor.getValue().getStatut()).isEqualTo(PointageStatut.REJETE_VISAGE_NON_RECONNU);
+		assertThat(captor.getValue().getDistanceMetres()).isNotNull();
+	}
+
+	@Test
+	void pointageVerifie_indicateurEtScoreStockes() {
+		qrEtSiteValides();
+		when(verificationFaciale.decider(any(), any(), any())).thenReturn(new VerificationFacialePointageService.Decision(
+				PointageStatut.VALIDE, null, com.hr.presence.domain.VerificationFaciale.VERIFIEE, (short) 97, Boolean.TRUE,
+				"mfn-1", com.hr.presence.domain.PlateformeMobile.IOS, 0, null));
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, 5.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.VALIDE);
+		assertThat(resp.verificationFaciale()).isEqualTo(com.hr.presence.domain.VerificationFaciale.VERIFIEE);
+		assertThat(resp.scoreFacial()).isEqualTo(97);
+		ArgumentCaptor<PresencePointage> captor = ArgumentCaptor.forClass(PresencePointage.class);
+		verify(pointageRepository).save(captor.capture());
+		assertThat(captor.getValue().getScoreFacial()).isEqualTo((short) 97);
+		assertThat(captor.getValue().getPlateforme()).isEqualTo(com.hr.presence.domain.PlateformeMobile.IOS);
+	}
+
+	@Test
+	void reglageInactif_reponseSansChampFacial() {
+		qrEtSiteValides();
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, 5.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.VALIDE);
+		assertThat(resp.verificationFaciale()).isNull();
+		assertThat(resp.scoreFacial()).isNull();
+		assertThat(resp.echecsConsecutifs()).isNull();
+		assertThat(resp.bloqueJusqua()).isNull();
 	}
 }

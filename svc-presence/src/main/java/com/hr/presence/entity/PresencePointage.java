@@ -1,7 +1,9 @@
 package com.hr.presence.entity;
 
+import com.hr.presence.domain.PlateformeMobile;
 import com.hr.presence.domain.PointageStatut;
 import com.hr.presence.domain.PointageType;
+import com.hr.presence.domain.VerificationFaciale;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -85,6 +87,25 @@ public class PresencePointage {
 
 	@Column(name = "motif_rejet", length = 255)
 	private String motifRejet;
+
+	/** Score facial 0-100 calculé sur l'appareil (D-P08) ; supprimé avec le pointage (C-L-07). Nul si aucun contrôle. */
+	@Column(name = "score_facial", columnDefinition = "smallint")
+	private Short scoreFacial;
+
+	@Column(name = "vivacite_reussie")
+	private Boolean vivaciteReussie;
+
+	/** Indicateur d'un pointage VALIDE (D-P10.4) ; nul si aucun contrôle facial. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "verification_faciale", length = 16)
+	private VerificationFaciale verificationFaciale;
+
+	@Column(name = "modele_facial_version", length = 32)
+	private String modeleFacialVersion;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "plateforme", length = 16)
+	private PlateformeMobile plateforme;
 
 	@PrePersist
 	void onCreate() {
@@ -230,5 +251,45 @@ public class PresencePointage {
 
 	public void setDemandeManuelleId(UUID demandeManuelleId) {
 		this.demandeManuelleId = demandeManuelleId;
+	}
+
+	public Short getScoreFacial() {
+		return scoreFacial;
+	}
+
+	public void setScoreFacial(Short scoreFacial) {
+		this.scoreFacial = scoreFacial;
+	}
+
+	public Boolean getVivaciteReussie() {
+		return vivaciteReussie;
+	}
+
+	public void setVivaciteReussie(Boolean vivaciteReussie) {
+		this.vivaciteReussie = vivaciteReussie;
+	}
+
+	public VerificationFaciale getVerificationFaciale() {
+		return verificationFaciale;
+	}
+
+	public void setVerificationFaciale(VerificationFaciale verificationFaciale) {
+		this.verificationFaciale = verificationFaciale;
+	}
+
+	public String getModeleFacialVersion() {
+		return modeleFacialVersion;
+	}
+
+	public void setModeleFacialVersion(String modeleFacialVersion) {
+		this.modeleFacialVersion = modeleFacialVersion;
+	}
+
+	public PlateformeMobile getPlateforme() {
+		return plateforme;
+	}
+
+	public void setPlateforme(PlateformeMobile plateforme) {
+		this.plateforme = plateforme;
 	}
 }

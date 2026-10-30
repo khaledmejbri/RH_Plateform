@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/notification_action.dart';
+import '../../facial/providers/facial_controller.dart';
 import '../providers/collaborateur_notifier.dart';
 import '../providers/auth_notifier.dart';
 import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
@@ -193,6 +195,11 @@ class ProfileScreen extends ConsumerWidget {
                           icon: Icons.notifications_none_rounded,
                           label: 'Notifications',
                           onTap: () {}),
+                      if (ref.watch(facialControllerProvider).afficherEntreeProfil)
+                        _MenuItem(
+                            icon: Icons.face_rounded,
+                            label: 'Vérification faciale',
+                            onTap: () => context.push('/facial/mon-visage')),
                     ]),
                     const SizedBox(height: 12),
                     _MenuSection(items: [

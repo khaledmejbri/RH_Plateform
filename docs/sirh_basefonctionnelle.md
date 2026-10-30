@@ -76,7 +76,7 @@ Tous les appels clients passent par la gateway (`/api/**`). Les microservices in
 | **M06** | Besoins en personnel | — | **Cible** |
 | **M07** | Évaluations (semestrielles / annuelles, templates, scoring) | Mobile + Web RH | **Livré** (vague améliorations : matching profil métier, notif/rubrique, UX — voir `docs/sirh_evaluations_vague.md`) |
 | **M08** | EPI (catalogue, stock, attributions) | — | **Cible** |
-| **M09** | Pointage digital (QR + GPS ; face = Cible) | Mobile + Web RH | **Livré (Must QR+géofence)** ; face/TOTP = Cible |
+| **M09** | Pointage digital (QR + GPS + vérification faciale) | Mobile + Web RH | **Livré (Must QR+géofence)** ; vérification faciale **Livrée, réglage INACTIVE par défaut** (D-P06 à D-P10, § 14.2 bis) ; TOTP = Cible |
 | **M10** | Recrutement / ATS + matching CV | — | **Cible** |
 | **M11** | Chatbot RH (RAG) | — | **Cible** |
 | **M12** | Tableaux de bord & analytics | Web | **Partiel** (compteurs d’accueil) |
@@ -129,6 +129,13 @@ Reste ouvert : types congés + PJ (story 7) ; refresh token 7 j (story 6 — ADR
 | Campagnes & templates d’évaluation (écriture) | Non | Non | Oui | Non |
 | Campagnes / scores (lecture) | Non | Non | Oui | Oui |
 | Répondre à son évaluation | Oui | Oui | Oui (en tant que USER) | Oui |
+| Consentir / s’enrôler au visage, retirer son consentement (M09, D-P07 — **Livré**) | Oui (mobile) | Oui (mobile) | Oui (mobile, en tant que USER) | Oui (mobile) |
+| Lire l’état du réglage vérification faciale (actif, contrôle exigé à date, version et texte du consentement ; **pas** le seuil) (D-P06.d — **Livré**) | Oui (mobile) | Oui (mobile) | Oui | Oui |
+| Modifier le réglage vérification faciale (activation + confirmation « cadre légal validé », date de mise en service, seuil, version du texte) (D-P06 — **Livré**) | Non | Non | Oui | Non (lecture) |
+| Publier une version du texte de consentement (D-P07.h — **Livré**) | Non | Non | Oui | Non (lecture) |
+| Suivi des enrôlements, pointages « sans vérification faciale », historique des déblocages (D-P07 — **Livré**) | Non | Non | Oui | Oui (lecture, aucune action) |
+| Débloquer un ré-enrôlement (motif obligatoire ; **jamais le sien → 403**) (D-P07.e — **Livré**) | Non | Non | Oui (autre RH / ADMIN que le bénéficiaire) | Non |
+| Recevoir l’alerte « 3 échecs faciaux » (D-P10 — **Livré**) | Si valideur D-H03 | Si valideur D-H03 | Si valideur D-H03 (repli) | Non |
 
 Expressions Spring : `BACKOFFICE_LECTURE` = RH\|DIRECTION\|ADMIN ; `BACKOFFICE_ECRITURE` = RH\|ADMIN.  
 \*RH/ADMIN traitent l’étape RRH, pas l’étape supérieur (sauf s’ils sont aussi le manager ACTIF du nœud). Jamais sur leur propre demande (D-H03 : 403, un autre RH / ADMIN traite).  
@@ -575,26 +582,68 @@ QR **papier et écran**, sites **intérieurs et extérieurs** ; la distance de 1
 
 Vision longue : deux étapes séquentielles **QR dynamique (TOTP ~ 5 min) + GPS** puis **reconnaissance faciale on-device** (liveness, seuil similarité défaut **92 %**, mini **80 %**). Seul le score part au serveur, **pas la photo**. Si une étape échoue → **REJET**.
 
+### 14.2 bis Vague reconnaissance faciale — décisions client du 30/10/2026 (D-P06 à D-P10 — **Livré le 30/10/2026, réglage INACTIVE par défaut**)
+
+Besoin (Khaled, 30/10/2026) : dès la première connexion, enrôler le visage du collaborateur ; au pointage, valider seulement après avoir vérifié que c’est bien lui qui tient le téléphone. La comparaison tourne **sur l’appareil** ; le serveur ne reçoit qu’un **score** et le résultat du contrôle du vivant, jamais d’image ni de vecteur facial (C-L-04). Face ID / empreinte de l’OS (`local_auth`) **ne conviennent pas** (ils prouvent le propriétaire du téléphone, pas le collaborateur, et acceptent le code PIN). Flutter web : étape non disponible (recette web avec le réglage INACTIVE).
+
+| ID | Décision |
+|---|---|
+| **D-P06** | **Activation** : réglage société `verification_faciale` = `ACTIVE` / `INACTIVE` + **date de mise en service**, modifiable par RH / ADMIN ; **INACTIVE par défaut**. S’applique à **tous les collaborateurs et tous les sites**. Tant qu’INACTIVE, le pointage suit C-M09-01 sans changement. Activation subordonnée à C-L-07. |
+| **D-P07** | **Consentement et enrôlement** : (1) réglage ACTIVE et aucune décision enregistrée → à la connexion, écran de consentement (finalité = contrôle de présence uniquement, durée de conservation, aucune photo transmise, droit de retrait, solution sans biométrie, **version du texte**) avant l’accueil. (2) **Accepter** → contrôle du vivant (D-P09) + 3 prises de face → vecteur chiffré dans le stockage sécurisé de l’appareil (Keystore / Keychain) ; le serveur enregistre seulement compte, fiche, `device_id`, statut, version du consentement, horodatage. (3) **Refuser** → statut `REFUSE`, pointage QR + GPS (D-P10.4) ; l’écran ne revient pas. (4) Statuts : `NON_ENROLE`, `ENROLE`, `REFUSE`, `REVOQUE`, `A_REENROLER` ; **un seul appareil enrôlé actif** par collaborateur. (5) Retrait du consentement à tout moment depuis le profil → vecteur effacé, statut `REVOQUE`. (6) **Premier enrôlement libre** ; **tout ré-enrôlement** (changement de `device_id`, réinstallation, réinitialisation RH, nouveau consentement après retrait) passe par `A_REENROLER` (sur **demande explicite** du collaborateur, D-P07.c) et exige un **déblocage RH** sur la Plateforme RH (collaborateur et responsable notifiés, action auditée) ; en attendant, pointage manuel D-P04. L’identité est toujours résolue depuis le JWT. |
+| **D-P08** | **Vérification au pointage** : QR → GPS → contrôle du vivant + comparaison sur l’appareil → envoi du score (0–100), du résultat du vivant et du `device_id`. `VALIDE` seulement si QR / GPS / site valides **et** vivant réussi **et** score ≥ seuil **et** `device_id` = appareil enrôlé. Seuil **92 %** par défaut, réglable par RH / ADMIN entre **80 et 99 %** (hors plage → 400). Nouveaux rejets : `REJETE_VISAGE_NON_RECONNU` (score < seuil), `REJETE_VIVACITE` (vivant échoué), `REJETE_VERIFICATION_FACIALE_ABSENTE` (collaborateur `ENROLE` sans preuve, ou autre appareil). Toute tentative échouée est transmise et persistée. Le score est stocké avec le pointage. |
+| **D-P09** | **Contrôle du vivant** : **2 défis tirés au hasard** parmi « cligner des yeux », « tourner la tête à gauche », « tourner la tête à droite » ; **10 s maximum** au total ; à l’enrôlement et à chaque pointage. |
+| **D-P10** | **Échecs et repli** : (1) **3 échecs faciaux consécutifs** (non reconnu ou vivant échoué) → pointage mobile **bloqué 15 min** (409 `POINTAGE_BLOQUE_VISAGE` + heure de fin) ; un pointage réussi remet le compteur à zéro. (2) Au 3ᵉ échec, alerte au **responsable D-H03** (adressée au compte). (3) La demande de pointage manuel D-P04 reste possible après un rejet facial, même pendant le blocage ; elle compte dans l’alerte RH > 3 / mois. (4) Collaborateur `REFUSE` / `REVOQUE` ou appareil sans caméra frontale compatible → pointage **QR + GPS sans visage**, statut `VALIDE` avec l’indicateur `verification_faciale` = `NON_CONSENTIE` / `NON_DISPONIBLE`, marqué « sans vérification faciale » et visible par le RH. |
+
+**Précisions du 30/10/2026 (relecture testeur SCRUM-43 à 47, réponses Khaled) — Cible** :
+
+| Réf. | Précision |
+|---|---|
+| **D-P06.a** (date de mise en service) | Dès le passage à **ACTIVE** : écran de consentement et enrôlement possibles (**pré-enrôlement**) ; le contrôle facial au pointage n’est **exigé qu’à partir de la date de mise en service**. |
+| **D-P06.b** (INACTIVE) | INACTIVE : ni écran, ni enrôlement, ni contrôle ; statuts, traces et vecteurs sur les appareils **conservés** ; au retour à ACTIVE, tout reprend en l’état. Le retrait du consentement reste possible quand INACTIVE. |
+| **D-P06.c** (garde-fou C-L-07) | Pas de verrou technique lié au juriste (règle de procédure) ; le passage à ACTIVE exige **trois conditions** : une **version de texte de consentement publiée** (D-P07.h), une **date de mise en service** renseignée et la case **« cadre légal validé »** cochée par RH / ADMIN (tracée en audit). À défaut → 422. |
+| **D-P06.d** (lecture) | Tout utilisateur `USER` (mobile) **lit** l’état du réglage : actif, contrôle exigé à date, version et texte du consentement. Il ne le modifie pas. Le **seuil n’est pas exposé** au mobile (décision serveur). |
+| **D-P07.a** (REFUSE qui se ravise) | Depuis son profil (« Activer la vérification faciale »), **sans déblocage RH** (premier enrôlement, libre) → `ENROLE`. |
+| **D-P07.b** (REVOQUE qui reconsent) | Demande depuis le profil → `A_REENROLER` (= demande en attente de déblocage RH) → déblocage RH → `NON_ENROLE` (= enrôlement autorisé) → consentement + enrôlement à la connexion suivante → `ENROLE`. Pas de 6ᵉ statut. |
+| **D-P07.c** (passage `ENROLE` → `A_REENROLER`, révisé ADR M09 face) | **Plus de bascule automatique à la connexion.** Le passage résulte d’une **demande explicite du collaborateur** depuis le nouvel appareil ; l’appli la propose quand l’appareil ne correspond pas à l’appareil enrôlé ou que le gabarit local manque (réinstallation). Raison sécurité : un mot de passe volé ne doit pas suffire à faire basculer et bloquer la victime. **L’ancien appareil enrôlé reste accepté jusqu’au déblocage RH** ; le déblocage invalide l’ancien appareil (`A_REENROLER` → `NON_ENROLE` → enrôlement) et son vecteur est effacé à la synchronisation suivante. Sans demande, un pointage depuis un autre appareil reste `REJETE_VERIFICATION_FACIALE_ABSENTE` (D-P08.c). |
+| **D-P07.h** (texte de consentement) | Le texte est **publié et versionné par RH / ADMIN sur la Plateforme RH** et **servi au mobile par le serveur** (il n’est plus embarqué dans l’appli). Une version publiée devient la version courante ; elle n’est jamais modifiée ni supprimée (preuve du texte accepté). Toute nouvelle version publiée impose le reconsentement (D-P07.f). |
+| **D-P07.d** (réseau) | **Enrôlement** : le serveur fait foi ; `ENROLE` seulement après confirmation serveur ; sans réseau, vecteur en attente et renvoi ; réponse 409 / 403 → vecteur effacé. **Retrait** : appliqué **immédiatement** sur l’appareil (effacement), puis synchronisé ; le retrait en attente est envoyé avant toute autre requête, notamment avant un pointage. |
+| **D-P07.e** (déblocage RH) | **Motif obligatoire** ; tracé (auteur, date, collaborateur, statut avant / après, motif), conservé **5 ans** (C-L-02), visible dans le détail du collaborateur de l’écran « Vérification faciale » (RH / ADMIN, DIRECTION en lecture). **Personne ne débloque son propre ré-enrôlement → 403** (esprit D-H03 / C-M01-06) ; un RH est débloqué par un autre RH ou un ADMIN (pas de dépendance à la hiérarchie : DRH01 sans supérieur est débloqué par un autre RH / ADMIN). |
+| **D-P07.f** (nouvelle version du texte) | Une nouvelle version publiée impose un **reconsentement à la connexion suivante, sans ré-enrôlement** : accepter → reste `ENROLE` (nouvelle version tracée) ; refuser → `REVOQUE` (vecteur effacé). Un `REFUSE` ne voit pas d’écran. |
+| **D-P07.g** (appareil incompatible) | L’incompatibilité (pas de caméra frontale, modèle non chargeable) est **constatée par l’appli** à l’enrôlement, pas déclarée par le collaborateur ; l’appareil est marqué incompatible côté serveur ; il **ne peut pas être enrôlé** ; le collaborateur reste `NON_ENROLE` et pointe en QR + GPS `NON_DISPONIBLE`. Un `ENROLE` ne devient jamais `NON_DISPONIBLE` sur son appareil enrôlé (caméra en panne → `REJETE_VERIFICATION_FACIALE_ABSENTE` puis D-P04). |
+| **D-P08.a** (ordre des contrôles) | (1) blocage en cours → **409** avant tout ; (2) contrôles QR / GPS actuels (un rejet QR / GPS n’ouvre pas l’étape visage) ; (3) `REJETE_VERIFICATION_FACIALE_ABSENTE` puis `REJETE_VIVACITE` puis `REJETE_VISAGE_NON_RECONNU`. |
+| **D-P08.b** (score) | Le seuil « **92 %** » est une **échelle produit** : score entier **0–100 calculé sur l’appareil** à partir de la comparaison faciale, **pas un pourcentage de ressemblance brut** ; la conversion et le seuil sont **à calibrer sur de vrais téléphones** et liés à la version du modèle facial. Accepté si **score ≥ seuil** (seuil entier 80–99). Score hors 0–100 ou résultat du vivant manquant → **400** (requête mal formée : aucun pointage rejeté enregistré, pas compté comme échec). Format technique : ADR. |
+| **D-P08.c** (statut × appareil, réglage ACTIVE et date atteinte) | Contrôle appliqué à l’**ENTREE et à la SORTIE**. `ENROLE` sur appareil enrôlé → contrôle normal ; `ENROLE` sur autre appareil ou Flutter web → `REJETE_VERIFICATION_FACIALE_ABSENTE`. `REFUSE` / `REVOQUE` → `VALIDE` + `NON_CONSENTIE`. `NON_ENROLE` sur appareil marqué incompatible ou Flutter web → `VALIDE` + `NON_DISPONIBLE` ; `NON_ENROLE` sur appareil compatible sans décision → `REJETE_VERIFICATION_FACIALE_ABSENTE` (« Terminez votre enrôlement »). `A_REENROLER` depuis l’ancien appareil enrôlé → contrôle normal ; depuis un autre appareil → `REJETE_VERIFICATION_FACIALE_ABSENTE` puis D-P04. |
+| **D-P09.a** (défis) | Les 2 défis sont **distincts** ; le chrono de 10 s démarre à l’affichage du premier défi et couvre les deux ; à l’enrôlement, les 3 prises suivent les défis et ne comptent pas dans les 10 s. |
+| **D-P10.a** (compteur d’échecs) | Seuls `REJETE_VISAGE_NON_RECONNU` et `REJETE_VIVACITE` comptent ; rejets QR / GPS / ABSENTE et erreurs 400 sont **neutres** (ni comptés, ni remise à zéro). Compteur unique par collaborateur, **commun ENTREE / SORTIE**. Remise à zéro : pointage réussi, fin du blocage de 15 min, changement de jour calendaire (heure de Tunis). Tentative pendant le blocage → 409, aucun pointage créé, non comptée, trace technique conservée. |
+| **D-P10.b** (destinataires) | Repli de l’alerte « 3 échecs » si aucun responsable D-H03 : destinataire spécial **`RH`** (tous les comptes RH), pas d’ADMIN. Le collaborateur n’est pas notifié en plus : la réponse 409 affiche le blocage et son heure de fin dans l’appli. |
+
+Limite connue : le serveur fait confiance au score calculé par l’appareil (même nature que l’en-tête `X-Collaborateur-Id`) ; HMAC d’intégrité du payload de pointage = **Cible** (Could P10).
+
 ### 14.3 Données d’un pointage
 
 **Must** : collaborateur (JWT), type `ENTREE`/`SORTIE`, `server_ts`, GPS réel, site, distance, `device_id`, statut `VALIDE` / `REJETE_*`.
 
 **Livré (D-P01 à D-P04)** : + précision GPS, indicateur position simulée, statut `VALIDE_MANUEL`.
 
-**Cible** : + score facial, HMAC d’intégrité payload.
+**Livré (réglage INACTIVE par défaut)** : + score facial, résultat du contrôle du vivant, indicateur `verification_faciale` (`VERIFIEE` / `NON_CONSENTIE` / `NON_DISPONIBLE`) (D-P08, D-P10), HMAC d’intégrité payload (**Cible**). **Livré** également : statut d’enrôlement par collaborateur (D-P07, sans aucune donnée biométrique côté serveur).
 
 ### 14.4 Exceptions
 
 - GPS hors zone → `REJETE_HORS_ZONE` (Must) ; alerte RO = Should.
 - QR expiré / révoqué / invalide → message clair + log (Must).
 - GPS indisponible ou imprécis → rejet (Must) ; **pointage manuel validé par le responsable (D-P04)** ; fallback Wi-Fi = Cible.
-- 3 échecs faciaux → alerte RO + blocage 15 min (**Cible**, vague face).
+- 3 échecs faciaux consécutifs → alerte au responsable D-H03 + blocage 15 min (409 `POINTAGE_BLOQUE_VISAGE`) ; pointage manuel D-P04 toujours possible (**Livré**, D-P10).
+- Visage non reconnu / vivant échoué / preuve faciale absente → `REJETE_VISAGE_NON_RECONNU` / `REJETE_VIVACITE` / `REJETE_VERIFICATION_FACIALE_ABSENTE` (**Livré**, D-P08).
+- Consentement refusé ou retiré, appareil incompatible → QR + GPS « sans vérification faciale », visible RH (**Livré**, D-P10.4).
+- Nouveau téléphone / réinstallation → `A_REENROLER`, déblocage RH obligatoire (**Livré**, D-P07.6).
 
 ### 14.5 RGPD biométrie (vague face — Cible)
 
-- Consentement signé à l’enrôlement, révocable (C-L-03).
-- Vecteur facial chiffré on-device ; pas de photo au serveur au pointage (C-L-04).
-- Hors Must actuel : aucune biométrie traitée.
+- Consentement recueilli à l’enrôlement (texte versionné, horodaté), révocable à tout moment depuis le profil (C-L-03, D-P07).
+- Vecteur facial chiffré on-device ; ni photo ni vecteur au serveur, seulement score + résultat du vivant (C-L-04, D-P08).
+- Le refus n’est pas pénalisant : pointage QR + GPS sans visage (D-P10.4).
+- Au retrait du consentement ou au départ du collaborateur : vecteur effacé de l’appareil ; traces de consentement conservées comme audit (C-L-02). Formalités INPDP : C-L-07 (à confirmer par un juriste).
+- Hors Must actuel : aucune biométrie traitée tant que le réglage D-P06 est INACTIVE.
 
 ---
 
@@ -674,6 +723,7 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 | C-M07-03 | Passage étape technique : questions générales obligatoires complètes |
 | C-M07-04 | Rouge (≥ 3 critères insuffisants) → plan d’action + escalade DG |
 | C-M09-01 | **Vague Must** : pointage `VALIDE` = QR actif valide **et** GPS ≤ rayon du site (serveur, D-P01 : 20 m extérieur / 50 m intérieur par défaut, précision ≤ rayon, position non simulée) ; pas de partiel QR-sans-GPS. **Cible CDC (C-M09-01b)** : QR+GPS **puis** face on-device |
+| C-M09-02 | **Livré, réglage INACTIVE par défaut (D-P06 à D-P10)** : réglage `verification_faciale` ACTIVE **et** collaborateur `ENROLE` ⇒ pointage `VALIDE` seulement si QR + GPS valides **et** vivant réussi (2 défis, 10 s) **et** score ≥ seuil (92 % défaut, 80–99 %) **et** appareil enrôlé ; 3 échecs consécutifs ⇒ blocage 15 min ; collaborateur `REFUSE` / `REVOQUE` / appareil incompatible ⇒ QR + GPS marqué « sans vérification faciale » |
 | C-ORG-01 | Collaborateur toujours rattaché à une unité ; matricule unique |
 
 ### 19.2 Légales / conformité
@@ -686,6 +736,7 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 | C-L-04 | Données biométriques : **pas de photo** transmise au serveur au pointage ; traitement on-device |
 | C-L-05 | Données IA / ML : **ne quittent pas le SI** (cible) |
 | C-L-06 | Bulletins / attestations salaire : accès restreint, canal sécurisé |
+| C-L-07 | **À confirmer par un juriste** — Biométrie M09 (Tunisie, loi organique 2004-63, INPDP) : formalité préalable auprès de l’INPDP (déclaration ou autorisation) avant activation D-P06 ; texte de consentement validé par le client et versionné (toute nouvelle version ⇒ reconsentement, D-P07.f) ; **conservation par défaut retenue par le client le 30/10/2026, à confirmer par le juriste** : score facial et indicateur `verification_faciale` = même durée que l’enregistrement de pointage (supprimés avec lui) ; traces de consentement (version, horodatage, acceptation / refus / retrait, déblocages RH) = durée d’emploi + **5 ans après le départ** (C-L-02) ; vecteur facial uniquement sur l’appareil, effacé au retrait du consentement, au déblocage d’un ré-enrôlement ou au départ (compte désactivé). **Risque de licence du modèle facial, à faire valider par le juriste avant la mise en production** : modèle V1 = **MobileFaceNet (Qualcomm AI Hub, poids sous Apache-2.0)**, mais entraîné sur **MS-Celeb-1M**, jeu de données retiré par Microsoft en 2019 et réservé à la recherche ; la licence des poids ne règle pas la question des données. Parade : moteur **interchangeable** (version du modèle envoyée et stockée avec chaque enrôlement et pointage, calibrage lié à la version) ; en cible, licence commerciale ou modèle entraîné sur des données sous licence. Réglage D-P06 maintenu INACTIVE tant que non validé (garde-fou de procédure, D-P06.c) |
 
 ### 19.3 Sécurité
 
@@ -801,6 +852,10 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 - [ ] Fermeture auto des plaintes à J+30.
 - [ ] Dashboard Direction (M12) et rapport mensuel.
 - [ ] Consentement biométrique et politique RGPD opérationnelle avant go-live **vague face** M09 (C-M09-01b).
+- [x] Règles de la vague reconnaissance faciale M09 tranchées par le client le 30/10/2026 : D-P06 à D-P10, C-M09-02 (§ 14.2 bis). Livré le 30/10/2026 (SCRUM-43 à SCRUM-47), réglage INACTIVE par défaut.
+- [x] Précisions de règle M09 face après relecture testeur SCRUM-43 à 47 (30/10/2026) : D-P06.a à D-P10.b (§ 14.2 bis), matrice § 4.2, conservation par défaut C-L-07.
+- [ ] C-L-07 : faire confirmer par un juriste la formalité INPDP, valider le texte de consentement versionné et **confirmer** les durées de conservation par défaut (score = durée du pointage ; consentement = emploi + 5 ans), avant d’activer D-P06.
+- [ ] Architecte : choisir le modèle de comparaison faciale embarqué (ML Kit ne compare pas les visages ; ex. MobileFaceNet via TFLite) compatible Flutter 3.29.2, et un `device_id` stable.
 
 ---
 

@@ -2,6 +2,7 @@ package com.hr.presence.web;
 
 import com.hr.presence.domain.PointageStatut;
 import com.hr.presence.domain.PointageType;
+import com.hr.presence.domain.VerificationFaciale;
 import com.hr.presence.dto.CreateSiteRequest;
 import com.hr.presence.dto.EmplacementRequest;
 import com.hr.presence.dto.PageResponse;
@@ -32,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -120,11 +122,13 @@ public class PresenceAdminController {
 			// Filtres jour envoyés par la Plateforme RH (input date) — bornes en heure de Tunis, « au » inclus.
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au,
+			// D-P10.4 : pointages « sans vérification faciale », ex. NON_CONSENTIE,NON_DISPONIBLE
+			@RequestParam(name = "verification_faciale", required = false) List<VerificationFaciale> verificationFaciale,
 			@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "20") int size) {
 		Instant debut = from != null ? from : du != null ? du.atStartOfDay(ZONE_TUNIS).toInstant() : null;
 		Instant fin = to != null ? to : au != null ? au.plusDays(1).atStartOfDay(ZONE_TUNIS).toInstant() : null;
-		return pointageService.listerAdmin(siteId, statut, type, debut, fin, page, size);
+		return pointageService.listerAdmin(siteId, statut, type, debut, fin, verificationFaciale, page, size);
 	}
 
 	private static final ZoneId ZONE_TUNIS = ZoneId.of("Africa/Tunis");

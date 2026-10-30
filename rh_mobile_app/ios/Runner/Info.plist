@@ -32,7 +32,7 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>RH Connect utilise la caméra pour scanner le QR de pointage.</string>
+	<string>RH Connect utilise la caméra pour scanner le QR de pointage et vérifier votre visage au pointage ; aucune photo n’est envoyée.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>RH Connect utilise votre position pour vérifier que vous êtes à moins de 50 m du site de pointage.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

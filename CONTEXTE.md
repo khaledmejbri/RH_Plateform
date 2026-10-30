@@ -1,7 +1,7 @@
 # Contexte du projet SIRH RH-Évènement
 
 Mémo de reprise : à lire en début de session à la place de l'historique des conversations.
-À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 30/10/2026.
+À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 30/10/2026 (reconnaissance faciale).
 
 ## 1. Le produit
 
@@ -96,7 +96,8 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01).
 
 | Date | Commit | Contenu | Tickets |
 |---|---|---|---|
-| 30/10/2026 | (ce commit) | Workflow multi-agents Claude Code : 8 agents (Opus fonctionnel / architecte / revue, Sonnet devs / testeur, Haiku Jira), règles `.claude/rules/`, skills `sirh-workflow`, `sirh-redaction-jira`, `sirh-code-review`, hooks (secrets, qualité, rappel CONTEXTE). Voir AGENTS.md | — |
+| 30/10/2026 | (ce commit) | Reconnaissance faciale M09 (D-P06 à D-P10, ADR `docs/adr/ADR-M09-reconnaissance-faciale.md`) : comparaison sur l'appareil (ML Kit + MobileFaceNet), serveur = score + vivacité + `device_id` seulement ; consentement versionné, enrôlement, blocage 15 min après 3 échecs, déblocage RH, onglet « Vérification faciale » web. Réglage INACTIVE par défaut. Recette API 312/313 puis ciblée 46/46, pointage 43/43. Premier lot passé par le workflow multi-agents | SCRUM-43 à 47 (pas encore A tester) |
+| 30/10/2026 | 8bcac2d | Workflow multi-agents Claude Code : 8 agents (Opus fonctionnel / architecte / revue, Sonnet devs / testeur, Haiku Jira), règles `.claude/rules/`, skills `sirh-workflow`, `sirh-redaction-jira`, `sirh-code-review`, hooks (secrets, qualité, rappel CONTEXTE). Voir AGENTS.md | — |
 | 29/10/2026 | 21a69c8 | Retours testeurs : sortie ≤ 2 h ; campagnes à mois libre, jour 20 par défaut, durée société, type trimestriel ; lancement / clôture automatiques (ancien planificateur supprimé), endpoint interne référentiel. Recette 20/20 | SCRUM-40 à 42 → A tester |
 | 28/10/2026 | 545a906 | Kit de déploiement `deploy/` testé en local (~3,5 Go), CONTEXTE.md / CLAUDE.md, index `idx_rh_evaluation_collaborateur` renommé, APK Android avec `API_BASE_URL` | — |
 | 28/10/2026 | be87fee | Pointage : zone par site, anti-faux GPS, pose par moyenne, pointage manuel, borne écran. Recette 43/43 (`recette/captures_pointage`) | SCRUM-35 à 39 → A tester |
@@ -121,4 +122,11 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01).
 - Notifications non persistées (perdues si l'utilisateur n'est pas connecté) — pas encore de ticket.
 - Libellé de la famille `DEV_BACKEND` absent côté mobile (affiche le code).
 - `svc-notification` : `NotificationTestController` (`/api/notifications/test/*`) sans `@PreAuthorize` ; non routé par la gateway mais à supprimer ou protéger (signalé par le hook `verifier_code.py`).
-- Agents Claude Code : workflow pas encore éprouvé sur un vrai lot ; ajuster les prompts de `.claude/agents/` après le premier usage.
+- Agents Claude Code : éprouvés sur le lot facial ; à ajuster : le testeur ne doit jamais vider une table, et un agent ne peut renvoyer qu'un seul rapport.
+- **Reconnaissance faciale (SCRUM-43 à 47)** :
+  - `flutter analyze` / `flutter test` jamais lancés (SDK Flutter local disparu) : lancer le build Codemagic `rh-connect-android` ; vert = condition de la revue levée, puis Jira 41 « A tester ».
+  - Modèle `rh_mobile_app/assets/models/mobilefacenet.tflite` absent (téléchargement à autoriser, renseigner `mobilefacenet.sha256`, TODO-TERRAIN dans `LISEZMOI.md`) ; sans lui la vérification est indisponible sur téléphone.
+  - Recette [Web] de SCRUM-47 à faire (connexion DRH01 par l'utilisateur).
+  - Risque licence du modèle (poids MS-Celeb-1M, C-L-07) et contournement par retrait du consentement : à présenter au client.
+  - Libellé de la règle 2 de SCRUM-47 (REVOQUE → demande du collaborateur avant déblocage) à clarifier.
+  - Le testeur a vidé puis restauré les tables de démo (export du 28/10) : consigne aux agents de ne supprimer que leurs propres données.

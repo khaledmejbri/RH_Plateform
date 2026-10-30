@@ -25,6 +25,13 @@ String messageMotifPointage(String? statut, {String? motifServeur}) {
       return 'Signal GPS trop faible. Placez-vous à découvert et réessayez.';
     case PointageStatut.rejetePositionSimulee:
       return 'Position GPS simulée détectée. Désactivez toute application de localisation fictive.';
+    case PointageStatut.rejeteVisageNonReconnu:
+      return 'Visage non reconnu. Réessayez face à la caméra, dans un endroit bien éclairé.';
+    case PointageStatut.rejeteVivacite:
+      return 'Contrôle du vivant échoué. Suivez les consignes à l’écran et réessayez.';
+    case PointageStatut.rejeteVerificationFacialeAbsente:
+      return 'Vérification du visage absente. Terminez votre enrôlement, ou demandez le '
+          'ré-enrôlement si vous avez changé de téléphone.';
     case PointageStatut.valide:
       return 'Pointage enregistré.';
     default:
@@ -62,6 +69,16 @@ String messageErreurPresence(
     return 'Serveur injoignable. Vérifiez votre connexion.';
   }
   return server ?? fallback;
+}
+
+/// Fin du blocage si l'erreur est un 409 `POINTAGE_BLOQUE_VISAGE` (3 échecs faciaux, D-P10), sinon `null`.
+DateTime? blocageVisageJusqua(Object error) {
+  if (error is! DioException || error.response?.statusCode != 409) return null;
+  final data = error.response?.data;
+  if (data is! Map || data['code'] != 'POINTAGE_BLOQUE_VISAGE') return null;
+  // Blocage signalé sans heure exploitable : 15 minutes par défaut (durée de la règle).
+  return DateTime.tryParse('${data['bloque_jusqu_a'] ?? ''}') ??
+      DateTime.now().add(const Duration(minutes: 15));
 }
 
 String? _messageServeur(dynamic data) {

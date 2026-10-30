@@ -14,6 +14,10 @@ import '../../features/demandes_admin/presentation/ro_validation_screen.dart';
 import '../../features/documents/presentation/document_create_screen.dart';
 import '../../features/documents/presentation/document_detail_screen.dart';
 import '../../features/documents/presentation/documents_list_screen.dart';
+import '../../features/facial/data/facial_models.dart';
+import '../../features/facial/presentation/facial_consentement_screen.dart';
+import '../../features/facial/presentation/facial_enrolement_screen.dart';
+import '../../features/facial/presentation/facial_mon_visage_screen.dart';
 import '../../features/feed/presentation/feed_screen.dart';
 import '../../features/formations/presentation/formation_create_screen.dart';
 import '../../features/formations/presentation/formations_list_screen.dart';
@@ -76,6 +80,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/presence/test-terrain',
         builder: (_, __) => const PresenceTestTerrainScreen(),
       ),
+      GoRoute(
+        path: '/facial/consentement',
+        builder: (_, s) => FacialConsentementScreen(
+          mode: s.extra is FacialRoute ? s.extra as FacialRoute : null,
+        ),
+      ),
+      GoRoute(
+        path: '/facial/enrolement',
+        builder: (_, s) => FacialEnrolementScreen(
+          versionConsentement: s.extra is String ? s.extra as String : '',
+        ),
+      ),
+      GoRoute(path: '/facial/mon-visage', builder: (_, __) => const FacialMonVisageScreen()),
       GoRoute(path: '/feed', builder: (_, __) => const FeedScreen()),
       GoRoute(path: '/formations', builder: (_, __) => const FormationsListScreen()),
       GoRoute(path: '/formations/nouveau', builder: (_, __) => const FormationCreateScreen()),

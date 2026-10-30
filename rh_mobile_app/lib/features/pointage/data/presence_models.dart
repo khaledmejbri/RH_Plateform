@@ -29,6 +29,9 @@ abstract final class PointageStatut {
   static const rejetePrecisionGps = 'REJETE_PRECISION_GPS';
   static const rejetePositionSimulee = 'REJETE_POSITION_SIMULEE';
   static const valideManuel = 'VALIDE_MANUEL';
+  static const rejeteVisageNonReconnu = 'REJETE_VISAGE_NON_RECONNU';
+  static const rejeteVivacite = 'REJETE_VIVACITE';
+  static const rejeteVerificationFacialeAbsente = 'REJETE_VERIFICATION_FACIALE_ABSENTE';
 
   static bool estValide(String? s) => s == valide;
 
@@ -46,6 +49,15 @@ class PointageRequest {
   final String? deviceId;
   final String idempotencyKey;
 
+  /// Preuve faciale (ADR-M09-FACE) : score 0-100 calculé sur l'appareil et résultat du vivant.
+  /// Jamais d'image ni de vecteur. Absents si aucune étape visage.
+  final int? scoreFacial;
+  final bool? vivaciteReussie;
+  final String? modeleFacialVersion;
+
+  /// `ANDROID`, `IOS` ou `WEB`.
+  final String? plateforme;
+
   /// Indicateur OS « position simulée » (D-P01).
   final bool positionSimulee;
 
@@ -59,6 +71,10 @@ class PointageRequest {
     this.deviceId,
     required this.idempotencyKey,
     this.positionSimulee = false,
+    this.scoreFacial,
+    this.vivaciteReussie,
+    this.modeleFacialVersion,
+    this.plateforme,
   });
 
   Map<String, dynamic> toJson() => {
@@ -72,6 +88,10 @@ class PointageRequest {
         if (deviceId != null && deviceId!.isNotEmpty) 'device_id': deviceId,
         'idempotency_key': idempotencyKey,
         'position_simulee': positionSimulee,
+        if (scoreFacial != null) 'score_facial': scoreFacial,
+        if (vivaciteReussie != null) 'vivacite_reussie': vivaciteReussie,
+        if (modeleFacialVersion != null) 'modele_facial_version': modeleFacialVersion,
+        if (plateforme != null) 'plateforme': plateforme,
       };
 }
 
@@ -85,6 +105,15 @@ class PointageResult {
   final double? distanceMetres;
   final String? motifRejet;
 
+  /// `VERIFIEE`, `NON_CONSENTIE` ou `NON_DISPONIBLE` (nul si aucun contrôle facial).
+  final String? verificationFaciale;
+  final int? scoreFacial;
+  final bool? vivaciteReussie;
+  final int? echecsConsecutifs;
+
+  /// Fin du blocage (3e échec facial).
+  final DateTime? bloqueJusquA;
+
   const PointageResult({
     this.id,
     required this.statut,
@@ -93,6 +122,11 @@ class PointageResult {
     this.siteLibelle,
     this.distanceMetres,
     this.motifRejet,
+    this.verificationFaciale,
+    this.scoreFacial,
+    this.vivaciteReussie,
+    this.echecsConsecutifs,
+    this.bloqueJusquA,
   });
 
   bool get isValide => PointageStatut.estValide(statut);
@@ -111,8 +145,17 @@ class PointageResult {
       ),
       motifRejet:
           json['motifRejet'] as String? ?? json['motif_rejet'] as String?,
+      verificationFaciale: json['verification_faciale'] as String?,
+      scoreFacial: (json['score_facial'] as num?)?.toInt(),
+      vivaciteReussie: json['vivacite_reussie'] as bool?,
+      echecsConsecutifs: (json['echecs_consecutifs'] as num?)?.toInt(),
+      bloqueJusquA: DateTime.tryParse('${json['bloque_jusqu_a'] ?? ''}'),
     );
   }
+
+  /// Pointage valide sans contrôle du visage (consentement refusé / retiré, appareil incompatible).
+  bool get sansVerificationFaciale =>
+      verificationFaciale == 'NON_CONSENTIE' || verificationFaciale == 'NON_DISPONIBLE';
 }
 
 class PointageHistoriqueItem {
@@ -299,4 +342,30 @@ int? _parseInt(dynamic raw) {
   if (raw is int) return raw;
   if (raw is num) return raw.toInt();
   return int.tryParse(raw.toString());
+}
+
+/// Durée du blocage après 3 échecs faciaux (D-P10).
+const dureeBlocageFacial = Duration(minutes: 15);
+
+/// Dernier pointage `REJETE_*` utilisable pour une demande manuelle pendant un blocage facial (D-P10.3) :
+/// rejet du jour (date locale de [maintenant]) ou, si [bloqueJusquA] est connu, rejet de la veille dont l'heure
+/// est à moins de [dureeBlocageFacial] de cette fin (ex. 23 h 55 pour un blocage jusqu'à 00 h 10).
+/// `null` si aucun.
+PointageHistoriqueItem? dernierRejetPourBlocage(
+  List<PointageHistoriqueItem> historique,
+  DateTime maintenant, {
+  DateTime? bloqueJusquA,
+}) {
+  final debutFenetre = bloqueJusquA?.toLocal().subtract(dureeBlocageFacial);
+  PointageHistoriqueItem? best;
+  for (final p in historique) {
+    final ts = p.serverTs?.toLocal();
+    if (!PointageStatut.estRejet(p.statut) || ts == null || p.id.isEmpty) continue;
+    final memeJour =
+        ts.year == maintenant.year && ts.month == maintenant.month && ts.day == maintenant.day;
+    final dansFenetre = debutFenetre != null && !ts.isBefore(debutFenetre) && !ts.isAfter(maintenant);
+    if (!memeJour && !dansFenetre) continue;
+    if (best == null || ts.isAfter(best.serverTs!.toLocal())) best = p;
+  }
+  return best;
 }

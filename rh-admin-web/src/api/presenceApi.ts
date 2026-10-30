@@ -73,7 +73,19 @@ export type PointageStatut =
   | 'REJETE_EMPLACEMENT_ABSENT'
   | 'REJETE_PRECISION_GPS'
   | 'REJETE_POSITION_SIMULEE'
+  | 'REJETE_VISAGE_NON_RECONNU'
+  | 'REJETE_VIVACITE'
+  | 'REJETE_VERIFICATION_FACIALE_ABSENTE'
   | string;
+
+/** D-P06 : issue du contrôle facial d'un pointage (nul = aucun contrôle). */
+export type VerificationFaciale = 'VERIFIEE' | 'NON_CONSENTIE' | 'NON_DISPONIBLE';
+
+export const LIBELLES_VERIFICATION_FACIALE: Record<string, string> = {
+  VERIFIEE: 'Vérifiée',
+  NON_CONSENTIE: 'Sans consentement',
+  NON_DISPONIBLE: 'Non disponible',
+};
 
 export type PresencePointage = {
   id: string;
@@ -86,6 +98,8 @@ export type PresencePointage = {
   distanceMetres: number | null;
   accuracyMetres: number | null;
   motifRejet: string | null;
+  verificationFaciale: VerificationFaciale | string | null;
+  scoreFacial: number | null;
 };
 
 export type PagePresence<T> = {
@@ -108,6 +122,9 @@ export const POINTAGE_STATUTS_FILTRE: { value: string; label: string }[] = [
   { value: 'REJETE_EMPLACEMENT_ABSENT', label: 'Emplacement absent' },
   { value: 'REJETE_PRECISION_GPS', label: 'GPS imprécis' },
   { value: 'REJETE_POSITION_SIMULEE', label: 'Position simulée' },
+  { value: 'REJETE_VISAGE_NON_RECONNU', label: 'Visage non reconnu' },
+  { value: 'REJETE_VIVACITE', label: 'Vivacité non confirmée' },
+  { value: 'REJETE_VERIFICATION_FACIALE_ABSENTE', label: 'Vérification faciale absente' },
 ];
 
 export const LIBELLES_POINTAGE_STATUT: Record<string, string> = {
@@ -121,6 +138,9 @@ export const LIBELLES_POINTAGE_STATUT: Record<string, string> = {
   REJETE_EMPLACEMENT_ABSENT: 'Emplacement absent',
   REJETE_PRECISION_GPS: 'GPS imprécis',
   REJETE_POSITION_SIMULEE: 'Position simulée',
+  REJETE_VISAGE_NON_RECONNU: 'Visage non reconnu',
+  REJETE_VIVACITE: 'Vivacité non confirmée',
+  REJETE_VERIFICATION_FACIALE_ABSENTE: 'Vérification faciale absente',
 };
 
 async function handlePresenceResponse<T>(res: Response): Promise<T> {
@@ -238,6 +258,8 @@ function normalizePointage(raw: Record<string, unknown>): PresencePointage {
     distanceMetres: asNum(raw.distanceMetres ?? raw.distance_metres),
     accuracyMetres: asNum(raw.accuracyMetres ?? raw.accuracy_metres),
     motifRejet: asStr(raw.motifRejet ?? raw.motif_rejet),
+    verificationFaciale: asStr(raw.verificationFaciale ?? raw.verification_faciale),
+    scoreFacial: asNum(raw.scoreFacial ?? raw.score_facial),
   };
 }
 
@@ -447,6 +469,8 @@ export type PointagesListParams = {
   type?: string;
   du?: string;
   au?: string;
+  /** Liste de valeurs, ex. ['NON_CONSENTIE', 'NON_DISPONIBLE']. */
+  verificationFaciale?: string[];
 };
 
 export function getPresencePointages(params: PointagesListParams = {}) {
@@ -458,6 +482,7 @@ export function getPresencePointages(params: PointagesListParams = {}) {
   if (params.type) q.set('type', params.type);
   if (params.du) q.set('du', params.du);
   if (params.au) q.set('au', params.au);
+  if (params.verificationFaciale?.length) q.set('verification_faciale', params.verificationFaciale.join(','));
   return apiFetch(`${BASE}/pointages?${q}`)
     .then((r) => handlePresenceResponse<Record<string, unknown>>(r))
     .then((raw) => {

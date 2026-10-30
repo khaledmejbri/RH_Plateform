@@ -2,6 +2,7 @@ package com.hr.presence.repository;
 
 import com.hr.presence.domain.PointageStatut;
 import com.hr.presence.domain.PointageType;
+import com.hr.presence.domain.VerificationFaciale;
 import com.hr.presence.entity.PresencePointage;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +31,13 @@ public interface PresencePointageRepository extends JpaRepository<PresencePointa
 	 */
 	static Specification<PresencePointage> filtreAdmin(
 			UUID siteId, PointageStatut statut, PointageType type, Instant from, Instant to) {
+		return filtreAdmin(siteId, statut, type, from, to, null);
+	}
+
+	/** + filtre sur l'indicateur de vérification faciale (liste, ex. NON_CONSENTIE, NON_DISPONIBLE). */
+	static Specification<PresencePointage> filtreAdmin(
+			UUID siteId, PointageStatut statut, PointageType type, Instant from, Instant to,
+			List<VerificationFaciale> verificationFaciale) {
 		return (root, query, cb) -> {
 			List<Predicate> predicats = new ArrayList<>();
 			if (siteId != null) predicats.add(cb.equal(root.get("siteId"), siteId));
@@ -37,6 +45,9 @@ public interface PresencePointageRepository extends JpaRepository<PresencePointa
 			if (type != null) predicats.add(cb.equal(root.get("type"), type));
 			if (from != null) predicats.add(cb.greaterThanOrEqualTo(root.get("serverTs"), from));
 			if (to != null) predicats.add(cb.lessThan(root.get("serverTs"), to));
+			if (verificationFaciale != null && !verificationFaciale.isEmpty()) {
+				predicats.add(root.get("verificationFaciale").in(verificationFaciale));
+			}
 			return cb.and(predicats.toArray(Predicate[]::new));
 		};
 	}

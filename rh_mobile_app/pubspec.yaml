@@ -21,12 +21,18 @@ dependencies:
   firebase_core: ^2.27.0
   firebase_messaging: ^14.7.19
   flutter_local_notifications: ^17.2.0
-  mobile_scanner: ^5.2.1
+  # Version figée : la 5.x tire GoogleMLKit ~> 6 (conflit de pods avec la détection de visage, MLKit 7).
+  mobile_scanner: 6.0.11
   camera_android_camerax: ^0.6.7
   camera: ^0.11.0+2
   path_provider: ^2.1.2
   image_picker: ^1.1.2
   permission_handler: ^11.3.0
+  # Reconnaissance faciale (ADR-M09-FACE) : versions FIGEES (pas de ^), compatibles Flutter 3.29.2 / Dart 3.7.
+  google_mlkit_face_detection: 0.13.1
+  google_mlkit_commons: 0.11.0
+  tflite_flutter: 0.12.1
+  image: ^4.5.0
 
 dev_dependencies:
   flutter_test:
@@ -35,3 +41,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/models/
