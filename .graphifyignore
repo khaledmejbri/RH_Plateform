@@ -1,0 +1,14 @@
+# Graphify : fichiers exclus du graphe de connaissance (en plus du .gitignore)
+# Secrets et données de recette : jamais indexés
+recette/
+deploy/.env
+deploy/donnees/
+gittoken.txt
+# Doublon obsolète et sorties de build
+rh_mobile_app_temp/
+**/target/
+**/node_modules/
+**/dist/
+**/build/
+rh_mobile_app/.dart_tool/
+graphify-out/
