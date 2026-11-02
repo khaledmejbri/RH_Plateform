@@ -18,5 +18,7 @@ public enum PointageStatut {
 	/** Contrôle du vivant échoué (D-P08) : compte dans les échecs consécutifs (D-P10.a). */
 	REJETE_VIVACITE,
 	/** Preuve faciale absente, autre appareil, web ou enrôlement à terminer (D-P08.c) : neutre pour le compteur. */
-	REJETE_VERIFICATION_FACIALE_ABSENTE
+	REJETE_VERIFICATION_FACIALE_ABSENTE,
+	/** Hors de la fenêtre horaire du site (D-P12) : neutre pour le compteur d'échecs faciaux (D-P12.b). */
+	REJETE_HORS_HORAIRE
 }

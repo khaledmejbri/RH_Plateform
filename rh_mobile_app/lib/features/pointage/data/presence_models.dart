@@ -33,10 +33,17 @@ abstract final class PointageStatut {
   static const rejeteVivacite = 'REJETE_VIVACITE';
   static const rejeteVerificationFacialeAbsente = 'REJETE_VERIFICATION_FACIALE_ABSENTE';
 
+  /// Pointage hors de la fenêtre horaire du site (D-P12) : rejet définitif du jour,
+  /// pas rattrapable par un pointage manuel (décision 5).
+  static const rejeteHorsHoraire = 'REJETE_HORS_HORAIRE';
+
   static bool estValide(String? s) => s == valide;
 
   static bool estRejet(String? s) =>
       s != null && s.startsWith('REJETE_');
+
+  /// Un rejet hors horaire ne propose pas de pointage manuel (décision 5).
+  static bool manuelPossible(String? s) => estRejet(s) && s != rejeteHorsHoraire;
 }
 
 class PointageRequest {
@@ -360,7 +367,7 @@ PointageHistoriqueItem? dernierRejetPourBlocage(
   PointageHistoriqueItem? best;
   for (final p in historique) {
     final ts = p.serverTs?.toLocal();
-    if (!PointageStatut.estRejet(p.statut) || ts == null || p.id.isEmpty) continue;
+    if (!PointageStatut.manuelPossible(p.statut) || ts == null || p.id.isEmpty) continue;
     final memeJour =
         ts.year == maintenant.year && ts.month == maintenant.month && ts.day == maintenant.day;
     final dansFenetre = debutFenetre != null && !ts.isBefore(debutFenetre) && !ts.isAfter(maintenant);

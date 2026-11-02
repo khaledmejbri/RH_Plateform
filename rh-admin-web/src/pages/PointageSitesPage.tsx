@@ -27,6 +27,7 @@ import {
 } from '../api/presenceApi';
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { Icon } from '../components/ui';
+import HoraireSitePanel from './HoraireSitePanel';
 import PointagesManuelsPanel from './PointagesManuelsPanel';
 import VerificationFacialePanel from './VerificationFacialePanel';
 
@@ -962,6 +963,8 @@ export default function PointageSitesPage() {
                   ) : null}
                 </div>
               </section>
+
+              <HoraireSitePanel siteId={detail.id} lectureSeule={lectureSeule} />
             </>
           ) : null}
         </div>

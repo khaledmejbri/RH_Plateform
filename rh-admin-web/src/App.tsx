@@ -15,6 +15,7 @@ import StructureOrganisationPage from './pages/StructureOrganisationPage';
 import OrganigrammePage from './pages/OrganigrammePage';
 import EvaluationsPage from './pages/EvaluationsPage';
 import PointageSitesPage from './pages/PointageSitesPage';
+import HeuresSupPage from './pages/HeuresSupPage';
 import BornePage from './pages/BornePage';
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/app/organigramme" element={<OrganigrammePage />} />
           <Route path="/app/evaluations" element={<EvaluationsPage />} />
           <Route path="/app/pointage" element={<PointageSitesPage />} />
+          <Route path="/app/heures-sup" element={<HeuresSupPage />} />
           <Route element={<RequireWriteAccess />}>
             <Route path="/app/unites" element={<UnitesOrganisationPage />} />
             <Route path="/app/structure" element={<StructureOrganisationPage />} />

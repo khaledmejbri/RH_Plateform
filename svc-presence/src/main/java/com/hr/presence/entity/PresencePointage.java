@@ -15,6 +15,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -27,7 +28,8 @@ import java.util.UUID;
 		indexes = {
 				@Index(name = "idx_presence_pointage_site_ts", columnList = "site_id,server_ts"),
 				@Index(name = "idx_presence_pointage_collab_ts", columnList = "collaborateur_id,server_ts"),
-				@Index(name = "idx_presence_pointage_statut_ts", columnList = "statut,server_ts")
+				@Index(name = "idx_presence_pointage_statut_ts", columnList = "statut,server_ts"),
+				@Index(name = "idx_presence_pointage_site_journee", columnList = "site_id,journee")
 		}
 )
 public class PresencePointage {
@@ -106,6 +108,16 @@ public class PresencePointage {
 	@Enumerated(EnumType.STRING)
 	@Column(name = "plateforme", length = 16)
 	private PlateformeMobile plateforme;
+
+	/** Journée de rattachement et horaire en vigueur au pointage (D-P11.c) ; NULL pour un site sans horaire. */
+	@Column(name = "journee")
+	private LocalDate journee;
+
+	@Column(name = "horaire_debut_ts")
+	private Instant horaireDebutTs;
+
+	@Column(name = "horaire_fin_ts")
+	private Instant horaireFinTs;
 
 	@PrePersist
 	void onCreate() {
@@ -291,5 +303,29 @@ public class PresencePointage {
 
 	public void setPlateforme(PlateformeMobile plateforme) {
 		this.plateforme = plateforme;
+	}
+
+	public LocalDate getJournee() {
+		return journee;
+	}
+
+	public void setJournee(LocalDate journee) {
+		this.journee = journee;
+	}
+
+	public Instant getHoraireDebutTs() {
+		return horaireDebutTs;
+	}
+
+	public void setHoraireDebutTs(Instant horaireDebutTs) {
+		this.horaireDebutTs = horaireDebutTs;
+	}
+
+	public Instant getHoraireFinTs() {
+		return horaireFinTs;
+	}
+
+	public void setHoraireFinTs(Instant horaireFinTs) {
+		this.horaireFinTs = horaireFinTs;
 	}
 }

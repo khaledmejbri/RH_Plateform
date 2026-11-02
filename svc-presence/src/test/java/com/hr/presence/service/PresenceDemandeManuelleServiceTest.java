@@ -54,6 +54,10 @@ class PresenceDemandeManuelleServiceTest {
 	private PresenceAccessService accessService;
 	@Mock
 	private PresenceEventPublisher eventPublisher;
+	@Mock
+	private com.hr.presence.repository.PresenceSiteRepository siteRepository;
+	@Mock
+	private FenetreHoraireService fenetreHoraire;
 
 	private PresenceDemandeManuelleService service;
 
@@ -66,7 +70,7 @@ class PresenceDemandeManuelleServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new PresenceDemandeManuelleService(demandeRepository, pointageRepository, referentielClient,
-				accessService, eventPublisher, new PresenceProperties());
+				accessService, eventPublisher, new PresenceProperties(), siteRepository, fenetreHoraire);
 		rejet = new PresencePointage();
 		rejet.setId(UUID.randomUUID());
 		rejet.setCollaborateurId(ficheCollab.toString());
@@ -274,5 +278,83 @@ class PresenceDemandeManuelleServiceTest {
 		assertThat(r.motifRefus()).isEqualTo("Absent ce matin-là");
 		verify(eventPublisher).notifier(eq(compteCollab.toString()), eq("Pointage manuel refusé"), anyString());
 		verify(pointageRepository, never()).save(any());
+	}
+
+	// --- D-P12.c : l'heure déclarée doit tomber dans la fenêtre du site ---
+
+	private void rejetSurSiteAHoraire(FenetreHoraireService.Resultat resultat) {
+		UUID siteId = UUID.randomUUID();
+		rejet.setSiteId(siteId);
+		com.hr.presence.entity.PresenceSite site = new com.hr.presence.entity.PresenceSite();
+		site.setId(siteId);
+		when(siteRepository.findById(siteId)).thenReturn(Optional.of(site));
+		when(fenetreHoraire.evaluer(any(), any(), any(), any())).thenReturn(resultat);
+	}
+
+	@Test
+	void creation_heureHorsFenetre_422() {
+		rejetSurSiteAHoraire(new FenetreHoraireService.HorsFenetre("Pointage ouvert de 05:00 à 16:00"));
+		when(referentielClient.monValideurPointage()).thenReturn(collab(ficheRo, compteRo));
+
+		assertThatThrownBy(() -> service.creer(new DemandeManuelleCreationRequest(
+				rejet.getId(), null, null, "Incident réseau")))
+				.isInstanceOfSatisfying(PresenceMetierException.class, e -> {
+					assertThat(e.getCode()).isEqualTo("HEURE_HORS_FENETRE");
+					assertThat(e.getHttpStatus()).isEqualTo(422);
+				});
+		verify(demandeRepository, never()).save(any(PresenceDemandeManuelle.class));
+	}
+
+	@Test
+	void creation_heureDansLaFenetre_201() {
+		rejetSurSiteAHoraire(new FenetreHoraireService.DansFenetre(java.time.LocalDate.now(), Instant.now(), Instant.now()));
+		when(referentielClient.monValideurPointage()).thenReturn(collab(ficheRo, compteRo));
+
+		DemandeManuelleResponse r = service.creer(new DemandeManuelleCreationRequest(
+				rejet.getId(), null, null, "Incident réseau"));
+
+		assertThat(r.statut()).isEqualTo(StatutDemandeManuelle.EN_ATTENTE);
+	}
+
+	@Test
+	void validation_horaireModifieEntreTemps_heureDevenueHorsFenetre_422() {
+		PresenceDemandeManuelle d = demandeEnAttente();
+		d.setSiteId(UUID.randomUUID());
+		com.hr.presence.entity.PresenceSite site = new com.hr.presence.entity.PresenceSite();
+		when(siteRepository.findById(d.getSiteId())).thenReturn(Optional.of(site));
+		when(fenetreHoraire.evaluer(any(), any(), any(), any()))
+				.thenReturn(new FenetreHoraireService.HorsFenetre("Site fermé aujourd'hui"));
+		when(accessService.isBackofficeEcriture()).thenReturn(false);
+		when(referentielClient.monValideurPointage()).thenReturn(ro());
+		// le responsable attendu est la fiche de ro()
+		d.setValideurId(ficheRo.toString());
+
+		assertThatThrownBy(() -> service.valider(d.getId()))
+				.isInstanceOfSatisfying(PresenceMetierException.class,
+						e -> assertThat(e.getCode()).isEqualTo("HEURE_HORS_FENETRE"));
+		verify(pointageRepository, never()).save(any(PresencePointage.class));
+	}
+
+	@Test
+	void validation_dansLaFenetre_poseLInstantaneSurLePointageManuel() {
+		PresenceDemandeManuelle d = demandeEnAttente();
+		d.setSiteId(UUID.randomUUID());
+		com.hr.presence.entity.PresenceSite site = new com.hr.presence.entity.PresenceSite();
+		when(siteRepository.findById(d.getSiteId())).thenReturn(Optional.of(site));
+		java.time.LocalDate journee = java.time.LocalDate.of(2026, 11, 3);
+		Instant debut = Instant.parse("2026-11-03T05:00:00Z");
+		Instant fin = Instant.parse("2026-11-03T14:00:00Z");
+		when(fenetreHoraire.evaluer(any(), any(), any(), any()))
+				.thenReturn(new FenetreHoraireService.DansFenetre(journee, debut, fin));
+		when(accessService.isBackofficeEcriture()).thenReturn(false);
+		when(referentielClient.monValideurPointage()).thenReturn(ro());
+
+		service.valider(d.getId());
+
+		ArgumentCaptor<PresencePointage> captor = ArgumentCaptor.forClass(PresencePointage.class);
+		verify(pointageRepository).save(captor.capture());
+		assertThat(captor.getValue().getStatut()).isEqualTo(PointageStatut.VALIDE_MANUEL);
+		assertThat(captor.getValue().getJournee()).isEqualTo(journee);
+		assertThat(captor.getValue().getHoraireDebutTs()).isEqualTo(debut);
 	}
 }

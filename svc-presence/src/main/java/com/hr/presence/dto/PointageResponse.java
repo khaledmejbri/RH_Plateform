@@ -25,6 +25,8 @@ public record PointageResponse(
 		@JsonProperty("score_facial") Integer scoreFacial,
 		@JsonProperty("vivacite_reussie") Boolean vivaciteReussie,
 		@JsonProperty("echecs_consecutifs") Integer echecsConsecutifs,
-		@JsonProperty("bloque_jusqu_a") Instant bloqueJusqua
+		@JsonProperty("bloque_jusqu_a") Instant bloqueJusqua,
+		/** Journée de rattachement (D-P11.a), nulle pour un site sans horaire. */
+		@JsonProperty("journee") java.time.LocalDate journee
 ) {
 }

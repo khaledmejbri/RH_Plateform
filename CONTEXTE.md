@@ -1,7 +1,7 @@
 # Contexte du projet SIRH RH-Évènement
 
 Mémo de reprise : à lire en début de session à la place de l'historique des conversations.
-À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 31/10/2026 (Graphify).
+À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 02/11/2026 (horaires et heures sup).
 
 ## 1. Le produit
 
@@ -19,7 +19,8 @@ Spring Boot 4.0.3 / Java 21, monorepo Maven (`pom.xml` racine). Tout passe par l
 
 | Service | Port | Base | Rôle |
 |---|---|---|---|
-| 31/10/2026 | (ce commit) | Graphify (graphe de connaissance du code, `uv tool install graphifyy`) : skill `/graphify`, hooks `graphify hook-guard`, section dans `CLAUDE.md`, `.graphifyignore` (secrets, recette, builds exclus). `graphify-out/` non versionné : le reconstruire avec `GRAPHIFY_BACKEND=none graphify extract . --code-only` puis `graphify cluster-only . --no-label`, et `graphify update .` après chaque modification | — |
+| 02/11/2026 | (ce commit) | Horaires par site et heures supplémentaires M09 (D-P11 à D-P16, ADR `docs/adr/ADR-M09-horaires-heures-sup.md`, décisions `docs/jira/decisions_M09_heures_sup.md`) : horaire hebdo + tolérances par site, `REJETE_HORS_HORAIRE`, demande d'heures sup RO → validation RH, comptage par paires, export CSV, écrans web et mobile, 2 endpoints `/internal` référentiel. Recette 129/153 puis ciblée 47/47, 406 tests svc-presence, revue GO après 2 NO-GO | SCRUM-48 à 51 (pas encore A tester) |
+| 31/10/2026 | e300a99 | Graphify (graphe de connaissance du code, `uv tool install graphifyy`) : skill `/graphify`, hooks `graphify hook-guard`, section dans `CLAUDE.md`, `.graphifyignore` (secrets, recette, builds exclus). `graphify-out/` non versionné : le reconstruire avec `GRAPHIFY_BACKEND=none graphify extract . --code-only` puis `graphify cluster-only . --no-label`, et `graphify update .` après chaque modification | — |
 | eureka-server | 8761 | — | Annuaire |
 | gateway | 8080 | — | Routage seul (pas de sécurité), routes dans `gateway/src/main/resources/application.yml` |
 | svc-identite-acces | 8081 | authentication_db | Comptes, JWT (claim `identifiant_utilisateur` = compte), `/api/auth/signin` |
@@ -63,11 +64,12 @@ Outils de recette (`recette/outils/`) : `seed_lib.py` (connexion + appels API), 
 | CS-WEB | Omar Belhadj | Chef de service web (RO) |
 | COL-WEB | Sarra Khemiri | Collaboratrice, backend confirmée |
 | COL-WEB2 | Ahmed Nasri | Collaborateur, backend senior |
-| COL-MOB | Mariem Guesmi | Collaboratrice, backend junior |
-| CD-SW | Youssef Chaabane | Chef de département (responsable d'Omar) |
+| COL-MOB | Mariem Guesmi | Collaboratrice, backend junior — relève de **CS-MOB** (pas de CS-WEB) |
+| CD-SW | Youssef Chaabane | Chef de département (RESPONSABLE, manager de DTECH-SW) ; sa fiche est rattachée à Finance (valideur CD-CPT) |
+| RH02 | (compte de recette) | 2e RH, unité DRH, créé le 02/11/2026 (anti-auto-validation) |
 
 Organigramme : DG → directions RH / Technique / Finance (+ « Direction System ») → 2 départements chacune → services.
-Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01).
+Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01). Valideurs D-H03 utiles : CS-WEB → CD-SW, DRH01 → DG01, ADM01 → DRH01.
 
 ## 5. Règles métier déjà tranchées (résumé — détail dans le doc)
 
@@ -123,6 +125,9 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01).
 - Notifications non persistées (perdues si l'utilisateur n'est pas connecté) — pas encore de ticket.
 - Libellé de la famille `DEV_BACKEND` absent côté mobile (affiche le code).
 - `svc-notification` : `NotificationTestController` (`/api/notifications/test/*`) sans `@PreAuthorize` ; non routé par la gateway mais à supprimer ou protéger (signalé par le hook `verifier_code.py`).
+- **Horaires et heures sup (SCRUM-48 à 51)** : mobile jamais analysé ni testé (Flutter absent) → build Codemagic `rh-connect-android` avant « A tester » ; combinaison horaire + visage testée en unitaire seulement ; bandeau mobile et écrans heures sup à recetter sur téléphone. Décisions par défaut (5 à 20 de `decisions_M09_heures_sup.md`) à faire confirmer par le client ; plafond légal des heures sup à valider par un juriste.
+- Kit Docker : après `docker compose up --build --no-deps <service>`, redémarrer la gateway (ou désinscrire les anciennes instances Eureka), sinon alternance 200 / 500. À ajouter au guide de déploiement.
+- Sécurité `X-Collaborateur-Id` : correction en cours dans une session séparée (« Sécuriser X-Collaborateur-Id au pointage »).
 - Graphify : communautés non nommées (`graphify label .` envoie les noms de classes à Claude, à autoriser) ; SQL non indexé (option `graphifyy[sql]`) ; les hooks exigent `graphify` installé sur le poste.
 - Agents Claude Code : éprouvés sur le lot facial ; à ajuster : le testeur ne doit jamais vider une table, et un agent ne peut renvoyer qu'un seul rapport.
 - **Reconnaissance faciale (SCRUM-43 à 47)** :

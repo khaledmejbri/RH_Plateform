@@ -35,6 +35,10 @@ class JwtAccessRoles {
   /// (manager ACTIF du nœud) — un USER manager de nœud peut aussi valider.
   bool get peutValiderFile => isRo || isChefDept;
 
+  /// Écrans de demande d'heures sup (D-P13) : RO, chef de département, RH, ADMIN.
+  /// Le périmètre D-H03 est contrôlé par le serveur.
+  bool get peutDemanderHeuresSup => isRo || isChefDept || isRh || isAdmin;
+
   String? get libelleHabilitation {
     if (isRo) return 'Responsable opérationnel';
     if (isChefDept) return 'Chef de département';

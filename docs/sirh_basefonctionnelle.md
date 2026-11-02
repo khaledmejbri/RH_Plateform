@@ -76,7 +76,7 @@ Tous les appels clients passent par la gateway (`/api/**`). Les microservices in
 | **M06** | Besoins en personnel | — | **Cible** |
 | **M07** | Évaluations (semestrielles / annuelles, templates, scoring) | Mobile + Web RH | **Livré** (vague améliorations : matching profil métier, notif/rubrique, UX — voir `docs/sirh_evaluations_vague.md`) |
 | **M08** | EPI (catalogue, stock, attributions) | — | **Cible** |
-| **M09** | Pointage digital (QR + GPS + vérification faciale) | Mobile + Web RH | **Livré (Must QR+géofence)** ; vérification faciale **Livrée, réglage INACTIVE par défaut** (D-P06 à D-P10, § 14.2 bis) ; TOTP = Cible |
+| **M09** | Pointage digital (QR + GPS + vérification faciale) | Mobile + Web RH | **Livré (Must QR+géofence)** ; vérification faciale **Livrée, réglage INACTIVE par défaut** (D-P06 à D-P10, § 14.2 bis) ; horaires par site + heures supplémentaires **Livrés le 02/11/2026** (D-P11 à D-P16, § 14.2 ter, décisions du 02/11/2026) ; TOTP = Cible |
 | **M10** | Recrutement / ATS + matching CV | — | **Cible** |
 | **M11** | Chatbot RH (RAG) | — | **Cible** |
 | **M12** | Tableaux de bord & analytics | Web | **Partiel** (compteurs d’accueil) |
@@ -136,6 +136,16 @@ Reste ouvert : types congés + PJ (story 7) ; refresh token 7 j (story 6 — ADR
 | Suivi des enrôlements, pointages « sans vérification faciale », historique des déblocages (D-P07 — **Livré**) | Non | Non | Oui | Oui (lecture, aucune action) |
 | Débloquer un ré-enrôlement (motif obligatoire ; **jamais le sien → 403**) (D-P07.e — **Livré**) | Non | Non | Oui (autre RH / ADMIN que le bénéficiaire) | Non |
 | Recevoir l’alerte « 3 échecs faciaux » (D-P10 — **Livré**) | Si valideur D-H03 | Si valideur D-H03 | Si valideur D-H03 (repli) | Non |
+| Paramétrer l’horaire hebdomadaire et les tolérances d’un site (D-P11 — **Livré**) | Non | Non | Oui | Non (lecture) |
+| Lire l’horaire hebdomadaire complet d’un site (D-P11.e — **Livré**) | Non | Non | Oui | Oui |
+| Voir la fenêtre de pointage du jour du site scanné (D-P16.c — **Livré**) | Oui (mobile) | Oui (mobile) | Oui | Oui |
+| Demander des heures supplémentaires pour des collaborateurs (D-P13 — **Livré** ; colonne RO = `RO` ou `RESPONSABLE`) | Non | Si valideur D-H03 de **tous** les bénéficiaires (sinon 403) | Si valideur D-H03 (même règle) | Non |
+| Créer une demande d’heures sup **déjà validée** (D-P13.c — **Livré**) | Non | Non | Oui (jamais bénéficiaire → 403) | Non |
+| Valider / refuser une demande d’heures sup (D-P13.b — **Livré**) | Non | Non | Oui (**jamais** le demandeur ni un bénéficiaire → 403) | Non |
+| Annuler une demande d’heures sup (D-P13.e — **Livré**) | Non | Sa demande `EN_ATTENTE` | Une demande `VALIDEE` dont la fenêtre n’a pas ouvert (`EN_ATTENTE` → 409 ; bénéficiaire → 403) | Non |
+| Voir ses heures sup validées et comptées (D-P16.b — **Livré**) | Oui (mobile) | Oui (mobile) | Oui (mobile, en tant que USER) | Oui (mobile) |
+| Voir les heures comptées des bénéficiaires de ses propres demandes (D-P16.b — **Livré**) | Non | Oui (mobile, ses demandes seulement ; sinon 403) | Oui (via D-P16.a) | Oui (via D-P16.a, lecture) |
+| Suivi et export CSV des heures sup (D-P16.a — **Livré**) | Non | Non | Oui | Oui (lecture, aucune action) |
 
 Expressions Spring : `BACKOFFICE_LECTURE` = RH\|DIRECTION\|ADMIN ; `BACKOFFICE_ECRITURE` = RH\|ADMIN.  
 \*RH/ADMIN traitent l’étape RRH, pas l’étape supérieur (sauf s’ils sont aussi le manager ACTIF du nœud). Jamais sur leur propre demande (D-H03 : 403, un autre RH / ADMIN traite).  
@@ -619,6 +629,41 @@ Besoin (Khaled, 30/10/2026) : dès la première connexion, enrôler le visage du
 
 Limite connue : le serveur fait confiance au score calculé par l’appareil (même nature que l’en-tête `X-Collaborateur-Id`) ; HMAC d’intégrité du payload de pointage = **Cible** (Could P10).
 
+### 14.2 ter Horaires par site et heures supplémentaires — décisions client du 02/11/2026 (D-P11 à D-P16 — **Livré le 02/11/2026**, SCRUM-48 à SCRUM-51)
+
+Besoin (client, 02/11/2026) : RH / ADMIN paramètrent par emplacement des horaires (ex. chantier 06:00–15:00) ; la pointeuse s’ouvre un peu avant et après (tolérance) ; au-delà, le RO demande à la RH des heures supplémentaires pour des collaborateurs nommés, qui ouvrent la pointeuse plus tôt / plus tard et sont comptées comme heures sup. **Pas de paie** : simple suivi exportable, sans majoration ni montant.
+
+Décisions complémentaires du 02/11/2026 (2ᵉ tour, `docs/jira/decisions_M09_heures_sup.md`, SCRUM-48 à 51) : délai et expiration, jour fermé, appariement, vue du RO **tranchés par le client** ; les autres précisions marquées « choix par défaut » restent modifiables par le client. « RO » dans ce paragraphe = rôle `RO` **ou** `RESPONSABLE` (chef de département), périmètre toujours D-H03.
+
+| ID | Décision |
+|---|---|
+| **D-P11** | **Horaire par site** : RH / ADMIN définissent pour chaque site un horaire **par jour de la semaine** (lundi → dimanche : heure de début, heure de fin, à la minute). Un jour sans horaire = **site fermé** ce jour-là. **Pas de jours fériés** dans cette version (un jour férié suit l’horaire de son jour de semaine). Deux **tolérances distinctes** par site : avant le début et après la fin, chacune de **0 à 90 min par pas de 15 min**, **60 min par défaut**. |
+| **D-P11.a** (nuit) | Une fin **antérieure** au début signifie « le lendemain » (ex. 22:00–06:00) ; la journée de travail est rattachée à la **date du début**. Début = fin → 422. Les fenêtres (tolérances comprises) de deux jours consécutifs ne doivent pas se chevaucher → 422 `HORAIRES_CHEVAUCHANTS` ; deux fenêtres qui **se touchent exactement** sont acceptées : à l’instant commun, une ENTREE est rattachée à la journée **la plus tardive**, une SORTIE à la **plus ancienne** (choix par défaut). |
+| **D-P11.b** (site sans horaire) | Un site sans aucun horaire garde le **comportement actuel** : pointage possible 24 h / 24, aucun contrôle d’heure, aucune heure sup comptée, aucune demande d’heures sup possible (422 `SITE_SANS_HORAIRE`). Déploiement site par site. |
+| **D-P11.c** (modification) | Toute modification d’horaire ou de tolérance est tracée (auteur, date, avant / après, C-L-02) et s’applique aux pointages **postérieurs** à l’enregistrement ; les heures sup déjà comptées ne sont pas recalculées. Un **changement d’heures** sur un jour qui reste ouvert ne touche pas les demandes d’heures sup : la fenêtre élargie suit le nouvel horaire. |
+| **D-P11.d** (jour devenu fermé — client) | Si un jour devient fermé (ou si le site n’a plus d’horaire), les demandes d’heures sup `EN_ATTENTE` ou `VALIDEE` portant sur ce jour sont **annulées automatiquement pour ce jour** ; s’il ne leur reste aucun jour, elles passent `ANNULEE`. Le demandeur est notifié, ainsi que les bénéficiaires si la demande était `VALIDEE`. |
+| **D-P11.e** (lecture — choix par défaut) | L’horaire hebdomadaire complet est lisible par RH, ADMIN et DIRECTION ; collaborateur et RO ne lisent que la **fenêtre du jour du site scanné** (D-P16.c). |
+| **D-P12** | **Fenêtre de pointage** d’un jour = [début − tolérance avant ; fin + tolérance après], élargie par les heures sup validées du collaborateur pour ce site et ce jour (D-P13.f). Elle s’applique à **ENTREE et SORTIE**, à l’heure **serveur** (Africa/Tunis), **bornes incluses**, comparaison **à la seconde** (choix par défaut). Pas de rattachement collaborateur → site : l’horaire du site s’applique à toute personne qui y pointe. |
+| **D-P12.a** (rejet) | Pointage hors fenêtre → enregistré avec le statut **`REJETE_HORS_HORAIRE`** ; le message affiche la fenêtre du jour (ex. « Pointage ouvert de 05:00 à 16:00 ») ou « Site fermé aujourd’hui ». L’appli **ne propose pas** le bouton « pointage manuel » après ce rejet (choix par défaut) ; D-P12.c s’applique aux demandes manuelles issues des autres rejets. |
+| **D-P12.b** (ordre des contrôles) | (1) blocage facial → 409 ; (2) QR ; (3) GPS (D-P01) ; (4) **horaire** ; (5) visage (D-P08). Un rejet horaire n’ouvre pas l’étape visage et est **neutre** pour le compteur D-P10.a. |
+| **D-P12.c** (pointage manuel D-P04) | L’heure déclarée d’une demande de pointage manuel doit être dans la fenêtre du jour (élargie si heures sup validées), sinon 422 `HEURE_HORS_FENETRE` ; vérifié à la création et à la validation. Le valideur voit l’horaire du jour du site. |
+| **D-P13** | **Demande d’heures sup** : le demandeur (identité lue dans le JWT) choisit **1 à 50 collaborateurs** (D-P13.g), **un site**, **une date ou une plage de dates continue de 31 jours maximum**, une ouverture **avant** et / ou **après** de **30 min à 4 h par pas de 30 min** de chaque côté (au moins un côté), et un **motif obligatoire**. Le « 2 h » cité par le client est un exemple, pas un minimum. Les jours de la plage où le site est fermé sont ignorés ; si tous le sont → 422 `AUCUN_JOUR_OUVERT`. Demande possible **jusqu’à l’ouverture de la fenêtre du premier jour ouvert de la plage** (instant précisé en D-P13.d) ; aucune demande après coup : 422 `PLAGE_DEJA_COMMENCEE`. |
+| **D-P13.a** (demandeur) | Le demandeur doit être le **valideur D-H03 de chacun** des bénéficiaires (manager du nœud, ou premier ancêtre managé si le bénéficiaire est lui-même le manager) ; un seul hors périmètre → **403** pour toute la demande. On ne peut donc pas se désigner soi-même. Rôles admis comme demandeur : `RO`, `RESPONSABLE` (chef de département), et RH / ADMIN s’ils sont valideurs D-H03. |
+| **D-P13.b** (validation) | Valideur = **RH ou ADMIN**, **jamais le demandeur ni un bénéficiaire** → 403 (esprit D-H03 / C-M01-06). Décision **globale** (tous les bénéficiaires ou aucun) ; refus avec **motif obligatoire**. Statuts : `EN_ATTENTE` → `VALIDEE` / `REFUSEE` / `ANNULEE` / `EXPIREE` ; décider une demande hors `EN_ATTENTE` → 409. |
+| **D-P13.c** (création directe RH) | RH / ADMIN peuvent créer une demande **directement `VALIDEE`**, pour tout collaborateur sauf eux-mêmes (403), motif obligatoire, tracée (auteur, date, « créée validée »). |
+| **D-P13.d** (délai et expiration — client) | Instant limite = **ouverture de la fenêtre de pointage du premier jour ouvert de la plage**, heures sup comprises : avec ouverture avant = début − ouverture avant − tolérance avant (06:00 − 2 h − 60 min = **03:00**) ; avec ouverture après seulement = début − tolérance avant (**05:00**). À partir de cet instant : création refusée (422 `PLAGE_DEJA_COMMENCEE`) et une demande encore `EN_ATTENTE` passe à **`EXPIREE`** ; le demandeur est notifié. Décider une demande dont la fenêtre a ouvert → passage en `EXPIREE` puis 409 `STATUT_INCOMPATIBLE` (choix par défaut). |
+| **D-P13.e** (annulation) | Le demandeur annule sa demande `EN_ATTENTE` ; RH / ADMIN annulent une demande `VALIDEE` dont la plage **n’a pas commencé** (instant D-P13.d, sinon 409). La RH ne peut pas annuler une demande `EN_ATTENTE` (elle la refuse) → 409 `STATUT_INCOMPATIBLE` ; un RH / ADMIN bénéficiaire ne peut pas annuler une demande qui le concerne → 403 `AUTO_VALIDATION_INTERDITE` (choix par défaut). **Pas de modification** : annuler puis refaire. |
+| **D-P13.g** (bénéficiaires — choix par défaut) | **1 à 50** bénéficiaires par demande ; liste dédoublonnée ; bénéficiaire inactif ou introuvable → 422 `COLLABORATEUR_INVALIDE`. |
+| **D-P13.h** (jour voisin — choix par défaut) | Une demande dont la fenêtre élargie d’un jour chevaucherait la fenêtre du jour voisin → 422 `HEURES_SUP_CHEVAUCHENT_JOUR_VOISIN`. |
+| **D-P13.f** (effet) | Une demande `VALIDEE` élargit, pour chaque bénéficiaire, ce site et chaque jour ouvert de la plage, la fenêtre D-P12 : plage validée avant = [début − ouverture avant ; début[, plage validée après = ]fin ; fin + ouverture après] ; la tolérance reste **en plus** autour : fenêtre = [début − ouverture avant − tolérance avant ; fin + ouverture après + tolérance après]. Pour un même collaborateur, un même site et une même date, une seule demande `EN_ATTENTE` ou `VALIDEE` → 409 `CHEVAUCHEMENT_HEURES_SUP`. |
+| **D-P14** | **Heures sup comptées** = temps **réellement pointé** (paires ENTREE / SORTIE, statuts `VALIDE` ou `VALIDE_MANUEL`, D-P14.a) **à l’intérieur des plages validées** (D-P13.f). Le temps pointé dans la tolérance n’est **jamais** compté ; sans demande validée, rien n’est compté. Total **par collaborateur, par site et par jour**, **arrondi à 15 min vers le bas**. |
+| **D-P14.a** (appariement — client) | Chaque ENTREE est appariée à la **SORTIE suivante** du même collaborateur, même site, même journée de travail ; les paires **s’additionnent** ; toute ENTREE ou SORTIE **orpheline est ignorée**. Le jour est marqué **« incomplet »** s’il reste un pointage orphelin **une fois la fenêtre du jour fermée** (avant : « en cours ») ; les **paires complètes d’un jour incomplet sont comptées**. |
+| **D-P15** | **Notifications** (au compte, repli sur la fiche — SCRUM-27) : demande créée → destinataire spécial **`RH`** (comptes RH uniquement, pas ADMIN — sémantique existante de `svc-notification`) ; validée → demandeur **et** chaque bénéficiaire (date(s), site, fenêtre) ; **créée validée** par RH / ADMIN → **bénéficiaires seulement** (ni l’auteur, ni `RH`) ; refusée → demandeur (motif) ; annulée par RH / ADMIN ou automatiquement (D-P11.d) → demandeur, et bénéficiaires si elle était `VALIDEE` ; **annulée par le demandeur** (`EN_ATTENTE`) → **aucune** notification ; expirée → demandeur. Les bénéficiaires ne sont pas notifiés d’une demande `EN_ATTENTE`, refusée ou expirée. (Précisions création directe / annulation / `RH` : choix par défaut.) |
+| **D-P16** | **Suivi des heures sup** sur la Plateforme RH, le mobile et l’écran de pointage (détail D-P16.a à D-P16.c) ; aucun calcul de paie. |
+| **D-P16.a** (web) | Écran Plateforme RH « Heures supplémentaires » : demandes à valider, historique, heures comptées ; filtres période, site, collaborateur, direction ; **export CSV** (matricule, nom, site, date, horaire du jour, plage validée, ENTREE, SORTIE, heures sup comptées hh:mm, référence de la demande, pointage complet / incomplet). RH / ADMIN ; DIRECTION en lecture. |
+| **D-P16.b** (mobile — client pour la vue RO) | Le collaborateur voit ses heures sup validées à venir et ses heures comptées (les siennes seulement). Le RO (ou chef de département) crée, suit et annule ses demandes et voit les **heures comptées des bénéficiaires de ses propres demandes, et seulement celles-là** (autre collaborateur → 403). |
+| **D-P16.c** (écran de pointage) | L’écran de pointage affiche, pour le site du QR scanné, la fenêtre du jour (pas l’horaire hebdomadaire, D-P11.e) : horaire du jour, la fenêtre ouverte et les heures sup validées du jour ; même information dans le message de rejet D-P12.a. |
+
 ### 14.3 Données d’un pointage
 
 **Must** : collaborateur (JWT), type `ENTREE`/`SORTIE`, `server_ts`, GPS réel, site, distance, `device_id`, statut `VALIDE` / `REJETE_*`.
@@ -626,6 +671,8 @@ Limite connue : le serveur fait confiance au score calculé par l’appareil (m�
 **Livré (D-P01 à D-P04)** : + précision GPS, indicateur position simulée, statut `VALIDE_MANUEL`.
 
 **Livré (réglage INACTIVE par défaut)** : + score facial, résultat du contrôle du vivant, indicateur `verification_faciale` (`VERIFIEE` / `NON_CONSENTIE` / `NON_DISPONIBLE`) (D-P08, D-P10), HMAC d’intégrité payload (**Cible**). **Livré** également : statut d’enrôlement par collaborateur (D-P07, sans aucune donnée biométrique côté serveur).
+
+**Livré (D-P11 à D-P16, 02/11/2026)** : statut `REJETE_HORS_HORAIRE` ; par site : horaire hebdomadaire + tolérances avant / après (historique tracé) ; demande d’heures sup (demandeur, bénéficiaires, site, dates, ouvertures avant / après, motif, statut, valideur, décision, motif de refus, origine « créée validée ») ; heures sup comptées par collaborateur / site / jour (minutes, référence de la demande, indicateur pointage incomplet). Conservation : comme les pointages (C-L-01) ; traces de décision, de création directe et de modification d’horaire : 5 ans (C-L-02).
 
 ### 14.4 Exceptions
 
@@ -636,6 +683,9 @@ Limite connue : le serveur fait confiance au score calculé par l’appareil (m�
 - Visage non reconnu / vivant échoué / preuve faciale absente → `REJETE_VISAGE_NON_RECONNU` / `REJETE_VIVACITE` / `REJETE_VERIFICATION_FACIALE_ABSENTE` (**Livré**, D-P08).
 - Consentement refusé ou retiré, appareil incompatible → QR + GPS « sans vérification faciale », visible RH (**Livré**, D-P10.4).
 - Nouveau téléphone / réinstallation → `A_REENROLER`, déblocage RH obligatoire (**Livré**, D-P07.6).
+- Pointage hors de la fenêtre horaire du site (tolérance et heures sup validées comprises) → `REJETE_HORS_HORAIRE`, fenêtre du jour affichée, pas de bouton « pointage manuel » proposé ; une demande D-P04 issue d’un autre rejet doit déclarer une heure dans la fenêtre (**Livré**, D-P12.a, D-P12.c).
+- Jour devenu fermé ou site sans horaire → demandes d’heures sup annulées automatiquement pour ce jour (**Livré**, D-P11.d).
+- Site sans horaire paramétré → aucun contrôle d’heure, comportement actuel (**Livré**, D-P11.b).
 
 ### 14.5 RGPD biométrie (vague face — Cible)
 
@@ -724,6 +774,7 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 | C-M07-04 | Rouge (≥ 3 critères insuffisants) → plan d’action + escalade DG |
 | C-M09-01 | **Vague Must** : pointage `VALIDE` = QR actif valide **et** GPS ≤ rayon du site (serveur, D-P01 : 20 m extérieur / 50 m intérieur par défaut, précision ≤ rayon, position non simulée) ; pas de partiel QR-sans-GPS. **Cible CDC (C-M09-01b)** : QR+GPS **puis** face on-device |
 | C-M09-02 | **Livré, réglage INACTIVE par défaut (D-P06 à D-P10)** : réglage `verification_faciale` ACTIVE **et** collaborateur `ENROLE` ⇒ pointage `VALIDE` seulement si QR + GPS valides **et** vivant réussi (2 défis, 10 s) **et** score ≥ seuil (92 % défaut, 80–99 %) **et** appareil enrôlé ; 3 échecs consécutifs ⇒ blocage 15 min ; collaborateur `REFUSE` / `REVOQUE` / appareil incompatible ⇒ QR + GPS marqué « sans vérification faciale » |
+| C-M09-03 | **Livré (D-P11 à D-P14, 02/11/2026)** : sur un site doté d’un horaire, un pointage `VALIDE` exige en plus d’être dans la fenêtre du jour [début − tolérance avant (0–90 min, défaut 60) ; fin + tolérance après], élargie par les heures sup validées (30 min à 4 h de chaque côté) ; sinon `REJETE_HORS_HORAIRE`. Heures sup comptées = temps pointé dans les plages validées, tolérance exclue, arrondi 15 min vers le bas ; aucune valeur de paie |
 | C-ORG-01 | Collaborateur toujours rattaché à une unité ; matricule unique |
 
 ### 19.2 Légales / conformité
@@ -855,6 +906,9 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 - [x] Règles de la vague reconnaissance faciale M09 tranchées par le client le 30/10/2026 : D-P06 à D-P10, C-M09-02 (§ 14.2 bis). Livré le 30/10/2026 (SCRUM-43 à SCRUM-47), réglage INACTIVE par défaut.
 - [x] Précisions de règle M09 face après relecture testeur SCRUM-43 à 47 (30/10/2026) : D-P06.a à D-P10.b (§ 14.2 bis), matrice § 4.2, conservation par défaut C-L-07.
 - [ ] C-L-07 : faire confirmer par un juriste la formalité INPDP, valider le texte de consentement versionné et **confirmer** les durées de conservation par défaut (score = durée du pointage ; consentement = emploi + 5 ans), avant d’activer D-P06.
+- [x] Règles horaires par site et heures supplémentaires M09 tranchées par le client le 02/11/2026 : D-P11 à D-P16, C-M09-03 (§ 14.2 ter), matrice § 4.2. Livré le 02/11/2026 (SCRUM-48 à SCRUM-51).
+- [ ] Heures sup : plafond légal journalier / hebdomadaire et éventuelles majorations (Code du travail tunisien) **à confirmer par un juriste** avant d’ajouter un plafond ou une alerte ; aucun plafond appliqué en attendant (hors bornes D-P13 : 4 h max de chaque côté).
+- [ ] Hors périmètre D-P11 à D-P16, à trancher plus tard : jours fériés, ouverture exceptionnelle d’un jour fermé, équipes multiples par site, rattachement collaborateur → site, demande récurrente.
 - [ ] Architecte : choisir le modèle de comparaison faciale embarqué (ML Kit ne compare pas les visages ; ex. MobileFaceNet via TFLite) compatible Flutter 3.29.2, et un `device_id` stable.
 
 ---

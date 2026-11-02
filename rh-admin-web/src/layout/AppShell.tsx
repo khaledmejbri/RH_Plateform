@@ -24,6 +24,7 @@ const navAll: NavItem[] = [
   { to: '/app/collaborateurs',            label: 'Collaborateurs',             icon: IconUsers,    desc: 'Fiches' },
   { to: '/app/organigramme',              label: 'Organigramme',               icon: IconTree,     desc: 'Hiérarchie visuelle' },
   { to: '/app/pointage',                  label: 'Sites de pointage',          icon: IconQr,       desc: 'Pointage QR' },
+  { to: '/app/heures-sup',                label: 'Heures supplémentaires',     icon: IconQr,       desc: 'Demandes & heures comptées' },
   { to: '/app/structure',                 label: 'Structure RH',               icon: IconBuilding, desc: 'Départements & unités', writeOnly: true },
   { to: '/app/unites',                    label: 'Unités (référentiel)',        icon: IconBuilding, desc: 'Référentiel brut', writeOnly: true },
 ];

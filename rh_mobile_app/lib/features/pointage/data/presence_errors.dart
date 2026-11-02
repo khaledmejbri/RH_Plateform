@@ -32,6 +32,8 @@ String messageMotifPointage(String? statut, {String? motifServeur}) {
     case PointageStatut.rejeteVerificationFacialeAbsente:
       return 'Vérification du visage absente. Terminez votre enrôlement, ou demandez le '
           'ré-enrôlement si vous avez changé de téléphone.';
+    case PointageStatut.rejeteHorsHoraire:
+      return 'Pointage refusé : hors des horaires d’ouverture du site.';
     case PointageStatut.valide:
       return 'Pointage enregistré.';
     default:
@@ -48,7 +50,8 @@ String messageErreurPresence(
 }) {
   if (error is! DioException) return fallback;
   final status = error.response?.statusCode;
-  final server = _messageServeur(error.response?.data);
+  final server = _messageServeur(error.response?.data) ??
+      messageParCodeErreur(codeErreurPresence(error));
 
   if (status == 401) {
     return server ?? 'Session expirée. Reconnectez-vous.';
@@ -70,6 +73,69 @@ String messageErreurPresence(
   }
   return server ?? fallback;
 }
+
+/// Code métier (`code` du `ErrorResponse`) d'une erreur HTTP, `null` sinon.
+String? codeErreurPresence(Object error) {
+  if (error is! DioException) return null;
+  final data = error.response?.data;
+  if (data is! Map) return null;
+  final code = data['code']?.toString().trim();
+  return (code == null || code.isEmpty) ? null : code;
+}
+
+/// Libellés de repli quand le serveur ne fournit pas de message (le message serveur reste prioritaire).
+String? messageParCodeErreur(String? code) {
+  switch (code) {
+    case 'VALIDATION_ERROR':
+      return 'Données invalides. Vérifiez les champs saisis '
+          '(1 à 50 collaborateurs, durées et dates).';
+    case 'HEURE_HORS_FENETRE':
+      return 'L’heure déclarée est hors de la fenêtre de pointage du site.';
+    case 'QR_INVALIDE':
+      return 'Code QR invalide ou altéré. Rescanner le QR du site.';
+    case 'SITE_INTROUVABLE':
+      return 'Site introuvable.';
+    case 'SITE_SANS_HORAIRE':
+      return 'Ce site n’a pas d’horaire : aucune heure sup possible.';
+    case 'AUCUN_JOUR_OUVERT':
+      return 'Le site est fermé tous les jours de cette période.';
+    case 'PLAGE_DEJA_COMMENCEE':
+      return 'La période a déjà commencé : la demande n’est plus possible.';
+    case 'PLAGE_TROP_LONGUE':
+      return 'La période ne peut pas dépasser 31 jours.';
+    case 'PERIODE_INVALIDE':
+      return 'La date de fin précède la date de début.';
+    case 'MOTIF_OBLIGATOIRE':
+      return 'Le motif est obligatoire.';
+    case 'DUREE_HEURES_SUP_INVALIDE':
+      return 'Durée d’ouverture invalide (de 30 min à 4 h, par pas de 30 min).';
+    case 'OUVERTURE_ABSENTE':
+      return 'Choisissez une ouverture avant et/ou après l’horaire.';
+    case 'COLLABORATEUR_INVALIDE':
+      return 'Un des collaborateurs choisis est introuvable ou inactif.';
+    case 'HORS_PERIMETRE':
+      return 'Vous n’êtes pas le valideur d’un des collaborateurs choisis.';
+    case 'HORAIRES_CHEVAUCHANTS':
+    case 'HEURES_SUP_CHEVAUCHENT_JOUR_VOISIN':
+      return 'La fenêtre élargie chevauche celle d’un jour voisin.';
+    case 'CHEVAUCHEMENT_HEURES_SUP':
+      return 'Une demande existe déjà pour un collaborateur, ce site et cette date.';
+    case 'STATUT_INCOMPATIBLE':
+      return 'Cette demande n’est plus modifiable (statut changé).';
+    case 'REFERENTIEL_INDISPONIBLE':
+      return 'Service temporairement indisponible. Réessayez dans un instant.';
+    default:
+      return null;
+  }
+}
+
+/// `true` si l'erreur vient d'un manque de réseau (écran « hors ligne »).
+bool estHorsLigne(Object error) =>
+    error is DioException &&
+    (error.type == DioExceptionType.connectionError ||
+        error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.sendTimeout);
 
 /// Fin du blocage si l'erreur est un 409 `POINTAGE_BLOQUE_VISAGE` (3 échecs faciaux, D-P10), sinon `null`.
 DateTime? blocageVisageJusqua(Object error) {

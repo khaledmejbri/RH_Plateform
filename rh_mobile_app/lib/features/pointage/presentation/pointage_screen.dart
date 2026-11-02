@@ -16,10 +16,12 @@ import '../../facial/presentation/compte_a_rebours.dart';
 import '../../facial/presentation/face_verification_screen.dart';
 import '../../facial/presentation/facial_pointage_banner.dart';
 import '../../facial/providers/facial_controller.dart';
+import '../data/fenetre_du_jour.dart';
 import '../data/presence_errors.dart';
 import '../data/presence_gps.dart';
 import '../data/presence_models.dart';
 import '../data/presence_repository.dart';
+import 'fenetre_du_jour_banner.dart';
 
 /// Pointage : scan QR → ENTREE/SORTIE → GPS → (visage si exigé, ADR-M09-FACE) → API.
 class PointageScreen extends ConsumerStatefulWidget {
@@ -46,6 +48,11 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
 
   /// Dernier pointage rejeté de la session : base d'une demande manuelle pendant le blocage (D-P04).
   String? _dernierRejetId;
+
+  /// Horaire du jour du site scanné (D-P16.c) : bandeau et message d'erreur éventuel.
+  FenetreDuJour? _fenetre;
+  bool _fenetreEnChargement = false;
+  String? _fenetreErreur;
 
   @override
   void initState() {
@@ -240,6 +247,8 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
               ?.copyWith(fontWeight: FontWeight.w700),
           textAlign: TextAlign.center,
         ),
+        const SizedBox(height: 12),
+        _buildFenetre(),
         const SizedBox(height: 8),
         Text(
           'Votre position GPS sera envoyée au serveur (contrôle ≤ 50 m).',
@@ -308,11 +317,29 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
                     _qrToken = null;
                     _type = null;
                     _error = null;
+                    _fenetre = null;
+                    _fenetreErreur = null;
+                    _fenetreEnChargement = false;
                   }),
           child: const Text('Rescanner'),
         ),
       ],
     );
+  }
+
+  Widget _buildFenetre() {
+    if (_fenetreEnChargement) return const LinearProgressIndicator();
+    final f = _fenetre;
+    if (f != null) return FenetreDuJourBanner(fenetre: f);
+    final erreur = _fenetreErreur;
+    if (erreur != null) {
+      return Text(
+        erreur,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary),
+        textAlign: TextAlign.center,
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   Widget _buildResult() {
@@ -364,7 +391,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // D-P04 : un rejet de bonne foi est rattrapé par le responsable
-          if (!ok && result?.id != null) ...[
+          if (!ok && result?.id != null && PointageStatut.manuelPossible(result?.statut)) ...[
             FilledButton.icon(
               onPressed: _demandeEnvoyee || _busy ? null : _demanderPointageManuel,
               icon: const Icon(Icons.edit_calendar_rounded),
@@ -419,6 +446,9 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
     setState(() {
       _step = _PointageStep.scan;
       _qrToken = null;
+      _fenetre = null;
+      _fenetreErreur = null;
+      _fenetreEnChargement = false;
       _type = null;
       _result = null;
       _error = null;
@@ -477,6 +507,32 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
       _step = _PointageStep.type;
       _type = _suggestion;
     });
+    _chargerFenetre(result);
+  }
+
+  /// Charge l'horaire du jour du site scanné. Un échec n'empêche pas de pointer (le serveur tranche).
+  Future<void> _chargerFenetre(String token) async {
+    setState(() {
+      _fenetre = null;
+      _fenetreErreur = null;
+      _fenetreEnChargement = true;
+    });
+    try {
+      final f = await ref.read(presenceRepositoryProvider).fenetreDuJour(token);
+      if (!mounted || _qrToken != token) return;
+      setState(() {
+        _fenetre = f;
+        _fenetreEnChargement = false;
+      });
+    } catch (e) {
+      if (!mounted || _qrToken != token) return;
+      setState(() {
+        _fenetreEnChargement = false;
+        _fenetreErreur = estHorsLigne(e)
+            ? 'Hors ligne : horaire du site indisponible.'
+            : messageErreurPresence(e, fallback: 'Horaire du site indisponible.');
+      });
+    }
   }
 
   Future<void> _submitPointage() async {
@@ -570,7 +626,10 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
         _busy = false;
         _result = result;
         _step = _PointageStep.result;
-        if (result.isRejet && result.id != null) _dernierRejetId = result.id;
+        // Un rejet hors horaire n'est pas rattrapable par un pointage manuel (décision 5).
+        if (PointageStatut.manuelPossible(result.statut) && result.id != null) {
+          _dernierRejetId = result.id;
+        }
         if (result.bloqueJusquA != null) _bloqueJusqua = result.bloqueJusquA;
       });
       if (preuve != null) ctrl.rafraichir();

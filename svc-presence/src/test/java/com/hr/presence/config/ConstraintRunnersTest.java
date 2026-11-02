@@ -54,4 +54,31 @@ class ConstraintRunnersTest {
 
 		new FacialConstraintRunner(jdbc).run(null);
 	}
+
+	@Test
+	void contrainteStatutPointage_inclutLeRejetHorsHoraire() {
+		List<String> requetes = executer(j -> new PointageStatutConstraintRunner(j).run(null));
+
+		String ajout = requetes.stream().filter(s -> s.contains("ADD CONSTRAINT")).findFirst().orElseThrow();
+		assertThat(ajout).contains("'REJETE_HORS_HORAIRE'");
+	}
+
+	@Test
+	void contrainteStatutHeuresSup_recreeeDepuisLEnum() {
+		List<String> requetes = executer(j -> new HeuresSupStatutConstraintRunner(j).run(null));
+		String tout = String.join(" ", requetes);
+
+		assertThat(tout).contains("presence_heures_sup_demande_statut_check", "'EN_ATTENTE'", "'VALIDEE'", "'REFUSEE'",
+				"'ANNULEE'", "'EXPIREE'");
+		assertThat(requetes.stream().filter(s -> s.contains("DROP CONSTRAINT IF EXISTS")).count())
+				.isEqualTo(requetes.stream().filter(s -> s.contains("ADD CONSTRAINT")).count());
+	}
+
+	@Test
+	void runnerHeuresSup_toleraTableAbsente_sansEchouer() {
+		JdbcTemplate jdbc = mock(JdbcTemplate.class);
+		org.mockito.Mockito.doThrow(new RuntimeException("table absente")).when(jdbc).execute(anyString());
+
+		new HeuresSupStatutConstraintRunner(jdbc).run(null);
+	}
 }

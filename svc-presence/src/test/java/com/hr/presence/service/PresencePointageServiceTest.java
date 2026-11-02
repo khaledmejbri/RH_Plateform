@@ -42,6 +42,8 @@ class PresencePointageServiceTest {
 	private PresenceQrService qrService;
 	@Mock
 	private VerificationFacialePointageService verificationFaciale;
+	@Mock
+	private FenetreHoraireService fenetreHoraire;
 
 	private QrTokenService qrTokenService;
 	private QrDynamiqueService qrDynamique;
@@ -71,6 +73,7 @@ class PresencePointageServiceTest {
 				qrService,
 				qrDynamique,
 				verificationFaciale,
+				fenetreHoraire,
 				java.time.Clock.systemUTC());
 
 		now = Instant.now();
@@ -96,6 +99,9 @@ class PresencePointageServiceTest {
 
 		validToken = qrTokenService.buildToken(siteId, 1, jti, credential.getValidFrom(), credential.getValidUntil());
 
+		// Site sans horaire par défaut (D-P11.b) : aucun contrôle horaire, comportement antérieur.
+		org.mockito.Mockito.lenient().when(fenetreHoraire.evaluer(any(), any(), any(), any()))
+				.thenReturn(new FenetreHoraireService.SansHoraire());
 		// Réglage INACTIVE : l'étape visage n'a aucun effet (comportement antérieur).
 		org.mockito.Mockito.lenient().when(verificationFaciale.preparer(any(), any(), any())).thenAnswer(inv ->
 				VerificationFacialePointageService.Preparation.inactive(inv.getArgument(0)));
@@ -444,5 +450,95 @@ class PresencePointageServiceTest {
 		assertThat(resp.scoreFacial()).isNull();
 		assertThat(resp.echecsConsecutifs()).isNull();
 		assertThat(resp.bloqueJusqua()).isNull();
+	}
+
+	// --- D-P11 / D-P12 (SCRUM-48, SCRUM-49) : horaire du site ---
+
+	@Test
+	void horsHoraire_rejeteSansEtapeVisage_niCompteur() {
+		qrEtSiteValides();
+		when(fenetreHoraire.evaluer(any(), any(), any(), any()))
+				.thenReturn(new FenetreHoraireService.HorsFenetre("Pointage ouvert de 05:00 à 16:00"));
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, 5.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_HORS_HORAIRE);
+		assertThat(resp.motifRejet()).isEqualTo("Pointage ouvert de 05:00 à 16:00");
+		assertThat(resp.siteId()).isEqualTo(site.getId());
+		org.mockito.Mockito.verify(verificationFaciale, org.mockito.Mockito.never()).decider(any(), any(), any());
+	}
+
+	@Test
+	void horsHoraire_siteFerme_messageDedie() {
+		qrEtSiteValides();
+		when(fenetreHoraire.evaluer(any(), any(), any(), any()))
+				.thenReturn(new FenetreHoraireService.HorsFenetre("Site fermé aujourd'hui"));
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, 5.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_HORS_HORAIRE);
+		assertThat(resp.motifRejet()).isEqualTo("Site fermé aujourd'hui");
+	}
+
+	@Test
+	void dansLaFenetre_poseLInstantaneDeLHoraire() {
+		qrEtSiteValides();
+		java.time.LocalDate journee = java.time.LocalDate.of(2026, 11, 3);
+		Instant debut = Instant.parse("2026-11-03T05:00:00Z");
+		Instant fin = Instant.parse("2026-11-03T14:00:00Z");
+		when(fenetreHoraire.evaluer(any(), any(), any(), any()))
+				.thenReturn(new FenetreHoraireService.DansFenetre(journee, debut, fin));
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, 5.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.VALIDE);
+		assertThat(resp.journee()).isEqualTo(journee);
+		ArgumentCaptor<PresencePointage> captor = ArgumentCaptor.forClass(PresencePointage.class);
+		verify(pointageRepository).save(captor.capture());
+		assertThat(captor.getValue().getHoraireDebutTs()).isEqualTo(debut);
+		assertThat(captor.getValue().getHoraireFinTs()).isEqualTo(fin);
+	}
+
+	@Test
+	void siteSansHoraire_aucunRejetNiInstantane() {
+		qrEtSiteValides();
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, 5.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.VALIDE);
+		assertThat(resp.journee()).isNull();
+	}
+
+	@Test
+	void qrInvalide_passeAvantLHoraire() {
+		CreatePointageRequest req = new CreatePointageRequest(
+				"p1.abc.def", "ENTREE", 36.8065, 10.1815, 10.0, now, null, null, null);
+
+		PointageResponse resp = pointageService.pointer("collab-1", req);
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_QR_INVALIDE);
+		org.mockito.Mockito.verifyNoInteractions(fenetreHoraire);
+	}
+
+	@Test
+	void horsZone_passeAvantLHoraire() {
+		site.setRayonMetres(20);
+		qrEtSiteValides();
+		double lat25m = 36.8065 + (25.0 / 111_320.0);
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(lat25m, 8.0, false));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_HORS_ZONE);
+		org.mockito.Mockito.verifyNoInteractions(fenetreHoraire);
+	}
+
+	@Test
+	void faussePosition_passeAvantLHoraire() {
+		qrEtSiteValides();
+
+		PointageResponse resp = pointageService.pointer("collab-1", requete(36.8065, 5.0, true));
+
+		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_POSITION_SIMULEE);
+		org.mockito.Mockito.verifyNoInteractions(fenetreHoraire);
 	}
 }

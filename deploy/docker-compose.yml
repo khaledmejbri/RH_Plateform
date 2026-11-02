@@ -149,6 +149,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/presence_db
       PRESENCE_QR_HMAC_SECRET: ${PRESENCE_QR_HMAC_SECRET:?PRESENCE_QR_HMAC_SECRET manquant dans .env}
       PRESENCE_REFERENTIEL_BASEURL: http://svc-referentiel-rh:8083
+      # Appels de service à service vers le référentiel (périmètre des heures supplémentaires, SCRUM-50)
+      APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
 
   svc-notification:
     <<: *service-java

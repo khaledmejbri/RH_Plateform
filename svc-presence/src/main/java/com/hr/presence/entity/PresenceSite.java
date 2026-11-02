@@ -26,6 +26,8 @@ import java.util.UUID;
 )
 public class PresenceSite {
 
+	public static final int TOLERANCE_DEFAUT_MINUTES = 60;
+
 	@Id
 	@Column(nullable = false, updatable = false)
 	private UUID id;
@@ -73,6 +75,13 @@ public class PresenceSite {
 	@Column(name = "borne_cree_le")
 	private Instant borneCreeLe;
 
+	/** Tolérance avant / après l'horaire (D-P11) ; NULL pour les sites antérieurs, lu comme {@link #TOLERANCE_DEFAUT_MINUTES}. */
+	@Column(name = "tolerance_avant_minutes")
+	private Integer toleranceAvantMinutes;
+
+	@Column(name = "tolerance_apres_minutes")
+	private Integer toleranceApresMinutes;
+
 	@Column(nullable = false)
 	private boolean actif = true;
 
@@ -108,6 +117,22 @@ public class PresenceSite {
 
 	public UUID getId() {
 		return id;
+	}
+
+	public int getToleranceAvantMinutes() {
+		return toleranceAvantMinutes != null ? toleranceAvantMinutes : TOLERANCE_DEFAUT_MINUTES;
+	}
+
+	public void setToleranceAvantMinutes(Integer toleranceAvantMinutes) {
+		this.toleranceAvantMinutes = toleranceAvantMinutes;
+	}
+
+	public int getToleranceApresMinutes() {
+		return toleranceApresMinutes != null ? toleranceApresMinutes : TOLERANCE_DEFAUT_MINUTES;
+	}
+
+	public void setToleranceApresMinutes(Integer toleranceApresMinutes) {
+		this.toleranceApresMinutes = toleranceApresMinutes;
 	}
 
 	public ModeQr getModeQr() {

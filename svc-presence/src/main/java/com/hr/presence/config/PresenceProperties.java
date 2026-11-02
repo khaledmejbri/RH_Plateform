@@ -12,6 +12,25 @@ public class PresenceProperties {
 	private final Manuel manuel = new Manuel();
 	private final Referentiel referentiel = new Referentiel();
 	private final Facial facial = new Facial();
+	private final HeuresSup heuresSup = new HeuresSup();
+
+	public HeuresSup getHeuresSup() {
+		return heuresSup;
+	}
+
+	/** Heures supplémentaires (D-P13 à D-P16). Le cron d'expiration est lu directement par le planificateur. */
+	public static class HeuresSup {
+		/** Période maximale des heures comptées et de l'export CSV (jours). */
+		private int periodeExportMaxJours = 93;
+
+		public int getPeriodeExportMaxJours() {
+			return periodeExportMaxJours;
+		}
+
+		public void setPeriodeExportMaxJours(int periodeExportMaxJours) {
+			this.periodeExportMaxJours = periodeExportMaxJours;
+		}
+	}
 
 	public Facial getFacial() {
 		return facial;

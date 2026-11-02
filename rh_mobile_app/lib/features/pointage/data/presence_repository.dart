@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
+import 'fenetre_du_jour.dart';
 import 'presence_models.dart';
 
 final presenceRepositoryProvider = Provider<PresenceRepository>((ref) {
@@ -24,6 +25,16 @@ class PresenceRepository {
       data: request.toJson(),
     );
     return PointageResult.fromJson(res.data ?? const {});
+  }
+
+  /// Fenêtre de pointage du jour du site scanné (le QR est dans le corps, jamais dans l'URL).
+  /// 422 `QR_INVALIDE` si la signature est mauvaise (aucun pointage enregistré).
+  Future<FenetreDuJour> fenetreDuJour(String qrToken) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '$_mobileBase/fenetre-du-jour',
+      data: {'qr_token': qrToken},
+    );
+    return FenetreDuJour.fromJson(res.data ?? const {});
   }
 
   /// Historique personnel (soi).

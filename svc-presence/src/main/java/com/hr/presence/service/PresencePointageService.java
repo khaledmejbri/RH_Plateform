@@ -45,6 +45,7 @@ public class PresencePointageService {
 	private final PresenceQrService qrService;
 	private final QrDynamiqueService qrDynamiqueService;
 	private final VerificationFacialePointageService verificationFaciale;
+	private final FenetreHoraireService fenetreHoraire;
 	private final Clock clock;
 
 	/** QR résolu : site et credential statique (null pour une borne écran), ou rejet déjà enregistré. */
@@ -64,6 +65,7 @@ public class PresencePointageService {
 			PresenceQrService qrService,
 			QrDynamiqueService qrDynamiqueService,
 			VerificationFacialePointageService verificationFaciale,
+			FenetreHoraireService fenetreHoraire,
 			Clock clock) {
 		this.pointageRepository = pointageRepository;
 		this.siteRepository = siteRepository;
@@ -74,6 +76,7 @@ public class PresencePointageService {
 		this.qrService = qrService;
 		this.qrDynamiqueService = qrDynamiqueService;
 		this.verificationFaciale = verificationFaciale;
+		this.fenetreHoraire = fenetreHoraire;
 		this.clock = clock;
 	}
 
@@ -245,7 +248,16 @@ public class PresencePointageService {
 					site.getId(), credentialId, distance);
 		}
 
-		// Étape visage, second temps : QR et GPS sont valides, la table de décision tranche (D-P08, D-P10).
+		// Horaire du site (D-P12.b) : après le GPS, avant le visage. Rejet neutre : ni étape visage, ni compteur D-P10.a.
+		// Heure du serveur uniquement ; un site sans horaire garde le comportement antérieur (D-P11.b).
+		FenetreHoraireService.Resultat horaire = fenetreHoraire.evaluer(site, collaborateurId, serverTs, type);
+		if (horaire instanceof FenetreHoraireService.HorsFenetre horsFenetre) {
+			return persistRejet(collaborateurId, type, request, serverTs,
+					PointageStatut.REJETE_HORS_HORAIRE, horsFenetre.message(),
+					site.getId(), credentialId, distance);
+		}
+
+		// Étape visage, second temps : QR, GPS et horaire sont valides, la table de décision tranche (D-P08, D-P10).
 		VerificationFacialePointageService.Decision decision = verificationFaciale.decider(visage, request, serverTs);
 		PresencePointage pointage = basePointage(collaborateurId, type, request, serverTs);
 		pointage.setSiteId(site.getId());
@@ -253,6 +265,11 @@ public class PresencePointageService {
 		pointage.setStatut(PointageStatut.VALIDE);
 		pointage.setDistanceMetres(distance);
 		decision.appliquerA(pointage);
+		if (horaire instanceof FenetreHoraireService.DansFenetre dansFenetre) {
+			pointage.setJournee(dansFenetre.journee());
+			pointage.setHoraireDebutTs(dansFenetre.horaireDebut());
+			pointage.setHoraireFinTs(dansFenetre.horaireFin());
+		}
 		PresencePointage saved = pointageRepository.save(pointage);
 		log.info("Pointage {} collab={} siteId={} distance={}", saved.getStatut(), collaborateurId, site.getId(), distance);
 		return toResponse(saved, decision.echecs(), decision.bloqueJusqua());
@@ -356,7 +373,8 @@ public class PresencePointageService {
 				p.getScoreFacial() != null ? p.getScoreFacial().intValue() : null,
 				p.getVivaciteReussie(),
 				echecs,
-				bloqueJusqua
+				bloqueJusqua,
+				p.getJournee()
 		);
 	}
 }

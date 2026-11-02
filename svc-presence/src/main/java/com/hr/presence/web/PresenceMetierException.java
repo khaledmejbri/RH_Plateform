@@ -1,7 +1,7 @@
 package com.hr.presence.web;
 
 /**
- * Exception métier présence — codes HTTP 409 / 422 / 404.
+ * Exception métier présence — codes HTTP 400 / 403 / 404 / 409 / 422 / 503.
  */
 public class PresenceMetierException extends RuntimeException {
 
@@ -32,5 +32,17 @@ public class PresenceMetierException extends RuntimeException {
 
 	public static PresenceMetierException notFound(String code, String message) {
 		return new PresenceMetierException(code, message, 404);
+	}
+
+	public static PresenceMetierException badRequest(String code, String message) {
+		return new PresenceMetierException(code, message, 400);
+	}
+
+	public static PresenceMetierException forbidden(String code, String message) {
+		return new PresenceMetierException(code, message, 403);
+	}
+
+	public static PresenceMetierException indisponible(String code, String message) {
+		return new PresenceMetierException(code, message, 503);
 	}
 }

@@ -33,6 +33,43 @@ public class PresenceExceptionHandler {
 		);
 	}
 
+	/** Décision simultanée sur une même demande (@Version) : 409 plutôt que 500, l'appelant peut rejouer. */
+	@ExceptionHandler(org.springframework.orm.ObjectOptimisticLockingFailureException.class)
+	public ResponseEntity<ErrorResponse> conflitDeVersion(org.springframework.orm.ObjectOptimisticLockingFailureException ex) {
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(
+				ErrorResponse.of("STATUT_INCOMPATIBLE", "La ressource vient d'être modifiée par quelqu'un d'autre",
+						"Rechargez puis recommencez", List.of(), HttpStatus.CONFLICT.value())
+		);
+	}
+
+	/** Méthode non prévue sur une route (ex. GET sur un POST) : 405 plutôt que 500. */
+	@ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+	public ResponseEntity<ErrorResponse> methodeNonSupportee(org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+		return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(
+				ErrorResponse.of("METHODE_NON_SUPPORTEE", "Méthode non supportée", ex.getMessage(), List.of(),
+						HttpStatus.METHOD_NOT_ALLOWED.value())
+		);
+	}
+
+	/**
+	 * Deux écritures simultanées de l'horaire d'un même site (contrainte unique site x jour) : 409, l'appelant rejoue.
+	 * Les autres violations d'intégrité restent des erreurs serveur.
+	 */
+	@ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+	public ResponseEntity<ErrorResponse> integrite(org.springframework.dao.DataIntegrityViolationException ex) {
+		if (ContraintesUniques.viole(ex, ContraintesUniques.HORAIRE_SITE_JOUR)) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).body(
+					ErrorResponse.of("HORAIRE_MODIFIE_SIMULTANEMENT", "L'horaire du site vient d'être modifié par quelqu'un d'autre",
+							"Rechargez l'horaire puis recommencez", List.of(), HttpStatus.CONFLICT.value()));
+		}
+		if (ContraintesUniques.viole(ex, ContraintesUniques.HEURES_SUP_JOUR)) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).body(
+					ErrorResponse.of("CHEVAUCHEMENT_HEURES_SUP", "Une demande en attente ou validée existe déjà pour ces jours",
+							"Rechargez puis recommencez", List.of(), HttpStatus.CONFLICT.value()));
+		}
+		return generic(ex);
+	}
+
 	/** Corps JSON illisible ou valeur d'énumération inconnue (ex. plateforme, raison) : 400 plutôt que 500. */
 	@ExceptionHandler(HttpMessageNotReadableException.class)
 	public ResponseEntity<ErrorResponse> corpsIllisible(HttpMessageNotReadableException ex) {

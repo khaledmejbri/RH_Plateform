@@ -29,6 +29,7 @@ class CollaborateurInfo {
   bool get isRh => jwtRoles.isRh;
   bool get isAdmin => jwtRoles.isAdmin;
   bool get peutConfigurerPresence => jwtRoles.peutConfigurerPresence;
+  bool get peutDemanderHeuresSup => jwtRoles.peutDemanderHeuresSup;
 
   /// Indice JWT `RO` / `RESPONSABLE`. Afficher aussi la file si `/en-attente-ro` non vide
   /// (USER manager de nœud sans rôle RO).

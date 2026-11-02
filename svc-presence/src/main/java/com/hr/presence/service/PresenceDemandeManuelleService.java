@@ -10,9 +10,11 @@ import com.hr.presence.dto.DemandeManuelleCreationRequest;
 import com.hr.presence.dto.DemandeManuelleResponse;
 import com.hr.presence.entity.PresenceDemandeManuelle;
 import com.hr.presence.entity.PresencePointage;
+import com.hr.presence.entity.PresenceSite;
 import com.hr.presence.kafka.PresenceEventPublisher;
 import com.hr.presence.repository.PresenceDemandeManuelleRepository;
 import com.hr.presence.repository.PresencePointageRepository;
+import com.hr.presence.repository.PresenceSiteRepository;
 import com.hr.presence.security.PresenceAccessService;
 import com.hr.presence.web.PresenceMetierException;
 import org.slf4j.Logger;
@@ -48,6 +50,8 @@ public class PresenceDemandeManuelleService {
 	private final PresenceAccessService accessService;
 	private final PresenceEventPublisher eventPublisher;
 	private final PresenceProperties properties;
+	private final PresenceSiteRepository siteRepository;
+	private final FenetreHoraireService fenetreHoraire;
 
 	public PresenceDemandeManuelleService(
 			PresenceDemandeManuelleRepository demandeRepository,
@@ -55,13 +59,17 @@ public class PresenceDemandeManuelleService {
 			ReferentielClient referentielClient,
 			PresenceAccessService accessService,
 			PresenceEventPublisher eventPublisher,
-			PresenceProperties properties) {
+			PresenceProperties properties,
+			PresenceSiteRepository siteRepository,
+			FenetreHoraireService fenetreHoraire) {
 		this.demandeRepository = demandeRepository;
 		this.pointageRepository = pointageRepository;
 		this.referentielClient = referentielClient;
 		this.accessService = accessService;
 		this.eventPublisher = eventPublisher;
 		this.properties = properties;
+		this.siteRepository = siteRepository;
+		this.fenetreHoraire = fenetreHoraire;
 	}
 
 	@Transactional
@@ -92,13 +100,17 @@ public class PresenceDemandeManuelleService {
 					"L'heure déclarée doit dater de moins de " + maxJours + " jours");
 		}
 
+		PointageType typeDemande = request.type() != null ? parseType(request.type()) : rejet.getType();
+		// D-P12.c : l'heure déclarée doit tomber dans la fenêtre du jour du site (horaire modifié depuis : celle en vigueur).
+		controlerFenetre(rejet.getSiteId(), rejet.getCollaborateurId(), heure, typeDemande);
+
 		PresenceDemandeManuelle d = new PresenceDemandeManuelle();
 		d.setPointageRejeteId(rejet.getId());
 		d.setCollaborateurId(rejet.getCollaborateurId());
 		d.setCollaborateurCompteId(texte(moi.collaborateurCompteId()));
 		d.setCollaborateurNom(moi.collaborateurNom());
 		d.setSiteId(rejet.getSiteId());
-		d.setType(request.type() != null ? parseType(request.type()) : rejet.getType());
+		d.setType(typeDemande);
 		d.setHeureDeclaree(heure);
 		d.setJustification(request.justification().trim());
 		d.setValideurId(texte(moi.valideurId()));
@@ -151,6 +163,10 @@ public class PresenceDemandeManuelleService {
 		PresenceDemandeManuelle d = exigerEnAttente(id);
 		String decideur = autoriserDecision(d);
 
+		// D-P12.c : revérifié à la validation, l'horaire a pu changer depuis la demande.
+		FenetreHoraireService.DansFenetre dansFenetre =
+				controlerFenetre(d.getSiteId(), d.getCollaborateurId(), d.getHeureDeclaree(), d.getType());
+
 		PresencePointage rejet = pointageRepository.findById(d.getPointageRejeteId()).orElse(null);
 		PresencePointage p = new PresencePointage();
 		p.setCollaborateurId(d.getCollaborateurId());
@@ -159,6 +175,11 @@ public class PresenceDemandeManuelleService {
 		p.setServerTs(d.getHeureDeclaree());
 		p.setSiteId(d.getSiteId());
 		p.setDemandeManuelleId(d.getId());
+		if (dansFenetre != null) {
+			p.setJournee(dansFenetre.journee());
+			p.setHoraireDebutTs(dansFenetre.horaireDebut());
+			p.setHoraireFinTs(dansFenetre.horaireFin());
+		}
 		if (rejet != null) {
 			p.setLatitude(rejet.getLatitude());
 			p.setLongitude(rejet.getLongitude());
@@ -202,6 +223,27 @@ public class PresenceDemandeManuelleService {
 				"Votre pointage manuel (" + libelleType(saved.getType()) + " du " + HEURE.format(saved.getHeureDeclaree())
 						+ ") a été refusé par " + decideur + ". Motif : " + saved.getMotifRefus());
 		return toResponse(saved, null, null);
+	}
+
+	/**
+	 * Fenêtre horaire du site à l'heure déclarée (D-P12.c). Sans site connu (ex. QR invalide) ou pour un site sans
+	 * horaire : aucun contrôle ({@code null}). Hors fenêtre : 422 HEURE_HORS_FENETRE.
+	 */
+	private FenetreHoraireService.DansFenetre controlerFenetre(
+			UUID siteId, String collaborateurId, Instant heure, PointageType type) {
+		if (siteId == null) {
+			return null;
+		}
+		PresenceSite site = siteRepository.findById(siteId).orElse(null);
+		if (site == null) {
+			return null;
+		}
+		FenetreHoraireService.Resultat resultat = fenetreHoraire.evaluer(site, collaborateurId, heure, type);
+		if (resultat instanceof FenetreHoraireService.HorsFenetre hors) {
+			throw PresenceMetierException.unprocessable("HEURE_HORS_FENETRE",
+					"L'heure déclarée est hors de la fenêtre de pointage du site : " + hors.message());
+		}
+		return resultat instanceof FenetreHoraireService.DansFenetre dans ? dans : null;
 	}
 
 	/**

@@ -562,6 +562,26 @@ class _DashboardPage extends ConsumerWidget {
                     iconColor: AppTheme.primary,
                     onTap: () => context.push('/pointage'),
                   ),
+                  _ServiceCard(
+                    title: 'Mes heures sup',
+                    subtitle: 'Validées et comptées',
+                    icon: Icons.more_time_rounded,
+                    iconBg: AppTheme.accentSurface,
+                    iconColor: AppTheme.accent,
+                    onTap: () => context.push('/heures-sup/moi'),
+                  ),
+                  if (userAsync.maybeWhen(
+                    data: (u) => u?.peutDemanderHeuresSup == true,
+                    orElse: () => false,
+                  ))
+                    _ServiceCard(
+                      title: 'Demandes heures sup',
+                      subtitle: 'Équipe',
+                      icon: Icons.group_add_rounded,
+                      iconBg: AppTheme.primarySurface,
+                      iconColor: AppTheme.primary,
+                      onTap: () => context.push('/heures-sup/demandes'),
+                    ),
                   ...userAsync.when(
                     data: (user) {
                       if (user?.peutConfigurerPresence != true) {

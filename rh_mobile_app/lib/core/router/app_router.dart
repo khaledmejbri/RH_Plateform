@@ -21,6 +21,9 @@ import '../../features/facial/presentation/facial_mon_visage_screen.dart';
 import '../../features/feed/presentation/feed_screen.dart';
 import '../../features/formations/presentation/formation_create_screen.dart';
 import '../../features/formations/presentation/formations_list_screen.dart';
+import '../../features/heures_sup/presentation/demande_heures_sup_screen.dart';
+import '../../features/heures_sup/presentation/mes_demandes_heures_sup_screen.dart';
+import '../../features/heures_sup/presentation/mes_heures_sup_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
 import '../../features/evaluations/presentation/evaluations_list_screen.dart';
@@ -72,6 +75,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
       GoRoute(path: '/pointage', builder: (_, __) => const PointageScreen()),
       GoRoute(path: '/pointage/manuel', builder: (_, __) => const PointageManuelScreen()),
+      GoRoute(path: '/heures-sup/moi', builder: (_, __) => const MesHeuresSupScreen()),
+      GoRoute(path: '/heures-sup/demandes', builder: (_, __) => const MesDemandesHeuresSupScreen()),
+      GoRoute(path: '/heures-sup/nouveau', builder: (_, __) => const DemandeHeuresSupScreen()),
       GoRoute(
         path: '/presence/sites',
         builder: (_, __) => const PresenceSitesAdminScreen(),

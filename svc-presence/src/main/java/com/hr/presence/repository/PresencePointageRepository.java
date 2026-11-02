@@ -22,6 +22,11 @@ public interface PresencePointageRepository extends JpaRepository<PresencePointa
 
 	Optional<PresencePointage> findByCollaborateurIdAndIdempotencyKey(String collaborateurId, String idempotencyKey);
 
+	/** Pointages acceptés d'un site sur une période de journées de rattachement des collaborateurs demandés (fiche ou compte), pour le comptage des heures sup (D-P14). */
+	List<PresencePointage> findBySiteIdAndJourneeBetweenAndStatutInAndCollaborateurIdInOrderByServerTsAsc(
+			UUID siteId, java.time.LocalDate du, java.time.LocalDate au, java.util.Collection<PointageStatut> statuts,
+			java.util.Collection<String> collaborateurIds);
+
 	Page<PresencePointage> findByCollaborateurIdOrderByServerTsDesc(String collaborateurId, Pageable pageable);
 
 	/**

@@ -7,6 +7,8 @@ export class PresenceApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Code métier renvoyé par le serveur (`ErrorResponse.code`), ex. TOLERANCE_INVALIDE. */
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'PresenceApiError';
@@ -76,6 +78,7 @@ export type PointageStatut =
   | 'REJETE_VISAGE_NON_RECONNU'
   | 'REJETE_VIVACITE'
   | 'REJETE_VERIFICATION_FACIALE_ABSENTE'
+  | 'REJETE_HORS_HORAIRE'
   | string;
 
 /** D-P06 : issue du contrôle facial d'un pointage (nul = aucun contrôle). */
@@ -125,6 +128,7 @@ export const POINTAGE_STATUTS_FILTRE: { value: string; label: string }[] = [
   { value: 'REJETE_VISAGE_NON_RECONNU', label: 'Visage non reconnu' },
   { value: 'REJETE_VIVACITE', label: 'Vivacité non confirmée' },
   { value: 'REJETE_VERIFICATION_FACIALE_ABSENTE', label: 'Vérification faciale absente' },
+  { value: 'REJETE_HORS_HORAIRE', label: 'Hors horaire' },
 ];
 
 export const LIBELLES_POINTAGE_STATUT: Record<string, string> = {
@@ -141,9 +145,10 @@ export const LIBELLES_POINTAGE_STATUT: Record<string, string> = {
   REJETE_VISAGE_NON_RECONNU: 'Visage non reconnu',
   REJETE_VIVACITE: 'Vivacité non confirmée',
   REJETE_VERIFICATION_FACIALE_ABSENTE: 'Vérification faciale absente',
+  REJETE_HORS_HORAIRE: 'Hors horaire',
 };
 
-async function handlePresenceResponse<T>(res: Response): Promise<T> {
+export async function handlePresenceResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
     clearToken();
     window.location.href = '/login';
@@ -153,11 +158,11 @@ async function handlePresenceResponse<T>(res: Response): Promise<T> {
     return undefined as T;
   }
   if (!res.ok) {
-    const body = (await parseJson<{ erreur?: string; message?: string; error?: string }>(res).catch(
-      () => ({}) as { erreur?: string; message?: string; error?: string },
-    )) as { erreur?: string; message?: string; error?: string };
+    const body = (await parseJson<{ erreur?: string; message?: string; error?: string; code?: string }>(res).catch(
+      () => ({}) as { erreur?: string; message?: string; error?: string; code?: string },
+    )) as { erreur?: string; message?: string; error?: string; code?: string };
     const msg = body.erreur ?? body.message ?? body.error ?? res.statusText;
-    throw new PresenceApiError(msg || `Erreur ${res.status}`, res.status);
+    throw new PresenceApiError(msg || `Erreur ${res.status}`, res.status, body.code);
   }
   if (res.status === 201 || res.status === 200) {
     const text = await res.text();
@@ -167,13 +172,13 @@ async function handlePresenceResponse<T>(res: Response): Promise<T> {
   return parseJson<T>(res);
 }
 
-function asNum(v: unknown): number | null {
+export function asNum(v: unknown): number | null {
   if (v == null || v === '') return null;
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : null;
 }
 
-function asStr(v: unknown): string | null {
+export function asStr(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   return s || null;
@@ -263,7 +268,7 @@ function normalizePointage(raw: Record<string, unknown>): PresencePointage {
   };
 }
 
-function normalizePage<T>(
+export function normalizePage<T>(
   raw: Record<string, unknown>,
   mapItem: (item: Record<string, unknown>) => T,
 ): PagePresence<T> {
@@ -586,4 +591,132 @@ export function postRevoquerBorne(siteId: string) {
   return apiFetch(`${BASE}/sites/${encodeURIComponent(siteId)}/borne/revoke`, { method: 'POST' }).then((r) =>
     handlePresenceResponse<unknown>(r),
   );
+}
+
+/* ─── Horaire hebdomadaire d'un site (D-P11, SCRUM-48) ──────────────────── */
+
+export type JourSemaine = 'LUNDI' | 'MARDI' | 'MERCREDI' | 'JEUDI' | 'VENDREDI' | 'SAMEDI' | 'DIMANCHE';
+
+export const JOURS_SEMAINE: { value: JourSemaine; label: string }[] = [
+  { value: 'LUNDI', label: 'Lundi' },
+  { value: 'MARDI', label: 'Mardi' },
+  { value: 'MERCREDI', label: 'Mercredi' },
+  { value: 'JEUDI', label: 'Jeudi' },
+  { value: 'VENDREDI', label: 'Vendredi' },
+  { value: 'SAMEDI', label: 'Samedi' },
+  { value: 'DIMANCHE', label: 'Dimanche' },
+];
+
+/** Tolérances proposées : 0 à 90 minutes par pas de 15 (le serveur valide aussi). */
+export const TOLERANCES_MINUTES = [0, 15, 30, 45, 60, 75, 90];
+
+export type HoraireJour = {
+  jour: JourSemaine;
+  /** `HH:mm` */
+  debut: string;
+  fin: string;
+  /** Fin avant le début : l'horaire se termine le lendemain (calculé par le serveur). */
+  nuit?: boolean;
+};
+
+export type HoraireSite = {
+  site_id: string;
+  tolerance_avant_minutes: number;
+  tolerance_apres_minutes: number;
+  jours: HoraireJour[];
+  avec_horaire: boolean;
+  modifie_par: string | null;
+  modifie_le: string | null;
+};
+
+export type HoraireSiteRequest = {
+  tolerance_avant_minutes: number;
+  tolerance_apres_minutes: number;
+  jours: { jour: JourSemaine; debut: string; fin: string }[];
+};
+
+export type HoraireInstantane = {
+  tolerance_avant_minutes: number;
+  tolerance_apres_minutes: number;
+  jours: HoraireJour[];
+};
+
+export type HoraireHistoriqueEntree = {
+  modifie_par: string | null;
+  modifie_le: string;
+  avant: HoraireInstantane | null;
+  apres: HoraireInstantane | null;
+};
+
+function siteHoraireUrl(siteId: string): string {
+  return `${BASE}/sites/${encodeURIComponent(siteId)}/horaire`;
+}
+
+export function getHoraireSite(siteId: string) {
+  return apiFetch(siteHoraireUrl(siteId)).then((r) => handlePresenceResponse<HoraireSite>(r));
+}
+
+export function putHoraireSite(siteId: string, body: HoraireSiteRequest) {
+  return apiFetch(siteHoraireUrl(siteId), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then((r) => handlePresenceResponse<HoraireSite>(r));
+}
+
+export function deleteHoraireSite(siteId: string) {
+  return apiFetch(siteHoraireUrl(siteId), { method: 'DELETE' }).then((r) => handlePresenceResponse<void>(r));
+}
+
+export function getHoraireHistorique(siteId: string, page = 0, size = 10) {
+  return apiFetch(`${siteHoraireUrl(siteId)}/historique?page=${page}&size=${size}`)
+    .then((r) => handlePresenceResponse<Record<string, unknown>>(r))
+    .then((raw) =>
+      normalizePage<HoraireHistoriqueEntree>(raw ?? {}, (i) => i as unknown as HoraireHistoriqueEntree),
+    );
+}
+
+/* ─── Messages français selon le code d'erreur serveur ──────────────────── */
+
+export const MESSAGES_CODE_ERREUR: Record<string, string> = {
+  SITE_INTROUVABLE: 'Site introuvable.',
+  TOLERANCE_INVALIDE: 'La tolérance doit être comprise entre 0 et 90 minutes, par pas de 15.',
+  HORAIRE_FORMAT_INVALIDE:
+    'Horaire illisible : jour en double ou heure invalide. Pour supprimer l’horaire, utilisez « Retirer l’horaire ».',
+  HORAIRE_INVALIDE: 'L’heure de début et l’heure de fin ne peuvent pas être identiques.',
+  HORAIRES_CHEVAUCHANTS:
+    'Les fenêtres de pointage de deux jours consécutifs se chevauchent : réduisez les tolérances ou décalez les horaires.',
+  PERIODE_INVALIDE: 'La période est invalide : la date de fin précède la date de début.',
+  PERIODE_TROP_LONGUE: 'La période ne peut pas dépasser 93 jours.',
+  DEMANDE_INTROUVABLE: 'Demande introuvable.',
+  MOTIF_OBLIGATOIRE: 'Le motif est obligatoire.',
+  DUREE_HEURES_SUP_INVALIDE: 'L’ouverture doit durer de 30 minutes à 4 h, par pas de 30 minutes.',
+  OUVERTURE_ABSENTE: 'Renseignez une ouverture avant et/ou après l’horaire.',
+  PLAGE_TROP_LONGUE: 'La plage ne peut pas dépasser 31 jours.',
+  SITE_SANS_HORAIRE: 'Ce site n’a pas d’horaire : paramétrez-le avant de demander des heures supplémentaires.',
+  AUCUN_JOUR_OUVERT: 'Tous les jours de la plage sont fermés sur ce site.',
+  PLAGE_DEJA_COMMENCEE: 'La plage a déjà commencé : la fenêtre de pointage est déjà ouverte.',
+  COLLABORATEUR_INVALIDE: 'Un collaborateur est introuvable ou inactif.',
+  HORS_PERIMETRE: 'Un des collaborateurs est hors du périmètre de validation.',
+  AUTO_VALIDATION_INTERDITE: 'Action interdite : vous êtes le demandeur ou un bénéficiaire de cette demande.',
+  CHEVAUCHEMENT_HEURES_SUP:
+    'Une demande en attente ou validée existe déjà pour un collaborateur, ce site et cette date.',
+  HEURES_SUP_CHEVAUCHENT_JOUR_VOISIN: 'La fenêtre élargie chevauche celle du jour voisin.',
+  STATUT_INCOMPATIBLE:
+    'Cette demande n’est plus dans un état permettant cette action (déjà décidée, expirée ou plage commencée).',
+  REFERENTIEL_INDISPONIBLE: 'Le référentiel RH est indisponible, réessayez dans un instant.',
+  ACCESS_DENIED: 'Accès refusé — droits insuffisants pour cette action.',
+  VALIDATION_ERROR: 'Certaines valeurs saisies sont invalides.',
+};
+
+/** Message français pour une erreur du module : le code métier prime, puis le texte serveur. */
+export function messageErreurCode(err: unknown, fallback = 'Erreur'): string {
+  if (err instanceof PresenceApiError && err.code && MESSAGES_CODE_ERREUR[err.code]) {
+    return MESSAGES_CODE_ERREUR[err.code];
+  }
+  return messagePresenceErreur(err, fallback);
+}
+
+export function codeErreur(err: unknown): string | undefined {
+  return err instanceof PresenceApiError ? err.code : undefined;
 }
