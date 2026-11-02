@@ -48,6 +48,7 @@ public class PresenceDemandeManuelleService {
 	private final PresencePointageRepository pointageRepository;
 	private final ReferentielClient referentielClient;
 	private final PresenceAccessService accessService;
+	private final FacialIdentiteService identiteService;
 	private final PresenceEventPublisher eventPublisher;
 	private final PresenceProperties properties;
 	private final PresenceSiteRepository siteRepository;
@@ -58,6 +59,7 @@ public class PresenceDemandeManuelleService {
 			PresencePointageRepository pointageRepository,
 			ReferentielClient referentielClient,
 			PresenceAccessService accessService,
+			FacialIdentiteService identiteService,
 			PresenceEventPublisher eventPublisher,
 			PresenceProperties properties,
 			PresenceSiteRepository siteRepository,
@@ -66,6 +68,7 @@ public class PresenceDemandeManuelleService {
 		this.pointageRepository = pointageRepository;
 		this.referentielClient = referentielClient;
 		this.accessService = accessService;
+		this.identiteService = identiteService;
 		this.eventPublisher = eventPublisher;
 		this.properties = properties;
 		this.siteRepository = siteRepository;
@@ -75,6 +78,7 @@ public class PresenceDemandeManuelleService {
 	@Transactional
 	public DemandeManuelleResponse creer(DemandeManuelleCreationRequest request) {
 		ValideurPointage moi = referentielClient.monValideurPointage();
+		identiteService.verifierEntete(texte(moi.collaborateurId()));
 		PresencePointage rejet = pointageRepository.findById(request.pointageRejeteId())
 				.orElseThrow(() -> PresenceMetierException.notFound("POINTAGE_INTROUVABLE", "Pointage introuvable"));
 		if (!appartientA(rejet.getCollaborateurId(), moi)) {
@@ -132,6 +136,7 @@ public class PresenceDemandeManuelleService {
 	@Transactional(readOnly = true)
 	public List<DemandeManuelleResponse> mesDemandes() {
 		ValideurPointage moi = referentielClient.monValideurPointage();
+		identiteService.verifierEntete(texte(moi.collaborateurId()));
 		return demandeRepository.findByCollaborateurIdOrderByCreeLeDesc(moi.collaborateurId().toString()).stream()
 				.map(d -> toResponse(d, null, null))
 				.toList();
@@ -141,6 +146,7 @@ public class PresenceDemandeManuelleService {
 	@Transactional(readOnly = true)
 	public List<DemandeManuelleResponse> aValider() {
 		ValideurPointage moi = referentielClient.monValideurPointage();
+		identiteService.verifierEntete(texte(moi.collaborateurId()));
 		return demandeRepository.findByValideurIdAndStatutOrderByCreeLeAsc(
 						moi.collaborateurId().toString(), StatutDemandeManuelle.EN_ATTENTE).stream()
 				.map(d -> toResponse(d, null, motifRejet(d)))

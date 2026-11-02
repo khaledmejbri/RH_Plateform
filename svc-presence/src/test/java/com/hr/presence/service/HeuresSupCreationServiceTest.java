@@ -345,7 +345,6 @@ class HeuresSupCreationServiceTest {
 		service.creerParDemandeur(requeteOk());
 
 		verify(referentielClient).monValideurPointage();
-		verify(accessService, never()).requireCurrentCollaborateurId();
 		verify(accessService, never()).collaborateurHeaderOuNull();
 	}
 

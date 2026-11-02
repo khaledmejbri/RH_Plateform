@@ -103,6 +103,7 @@ public class VerificationFacialePointageService {
 	}
 
 	/**
+	 * {@code collaborateurDemande} est la fiche de l'appelant déjà résolue depuis le JWT (jamais l'en-tête brut).
 	 * Avant tout contrôle QR / GPS (D-P08.a) : 400 {@code PREUVE_FACIALE_INVALIDE}, 403 {@code IDENTITE_INCOHERENTE}.
 	 * Le 409 {@code POINTAGE_BLOQUE_VISAGE} suit via {@link #controlerBlocage} (rien n'est persisté, rien n'est compté).
 	 */
@@ -119,10 +120,9 @@ public class VerificationFacialePointageService {
 		}
 		// Verrou pessimiste : sérialise les pointages d'un même compte et protège le compteur d'échecs.
 		PresenceEnrolementFacial ligne = enrolementRepository.findByCompteIdForUpdate(compteId).orElse(null);
-		// La fiche du pointage est celle de l'enrôlement ; sans ligne, elle se lit au référentiel avec le JWT.
-		String fiche = ligne != null
-				? ligne.getCollaborateurId()
-				: texte(referentielClient.monValideurPointage().collaborateurId());
+		// La fiche du pointage est celle de l'enrôlement ; sans ligne, c'est celle déjà résolue par l'appelant
+		// (FacialIdentiteService.resoudreFiche : référentiel + JWT), sans second appel.
+		String fiche = ligne != null ? ligne.getCollaborateurId() : collaborateurDemande;
 		String entete = accessService.collaborateurHeaderOuNull();
 		if (entete != null && !entete.equalsIgnoreCase(fiche)) {
 			throw new PresenceMetierException(FacialIdentiteService.IDENTITE_INCOHERENTE,

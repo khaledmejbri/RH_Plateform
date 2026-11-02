@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -70,7 +71,7 @@ class PresenceDemandeManuelleServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new PresenceDemandeManuelleService(demandeRepository, pointageRepository, referentielClient,
-				accessService, eventPublisher, new PresenceProperties(), siteRepository, fenetreHoraire);
+				accessService, new FacialIdentiteService(accessService, referentielClient), eventPublisher, new PresenceProperties(), siteRepository, fenetreHoraire);
 		rejet = new PresencePointage();
 		rejet.setId(UUID.randomUUID());
 		rejet.setCollaborateurId(ficheCollab.toString());
@@ -135,6 +136,43 @@ class PresenceDemandeManuelleServiceTest {
 		verify(eventPublisher).notifier(eq(compteRo.toString()), startsWith("Pointage manuel à valider"), anyString());
 	}
 
+	@Test
+	void creation_enteteFalsifie_403IdentiteIncoherente_rienNEstSauvegarde() {
+		when(referentielClient.monValideurPointage()).thenReturn(collab(ficheRo, compteRo));
+		when(accessService.collaborateurHeaderOuNull()).thenReturn(UUID.randomUUID().toString());
+
+		assertThatThrownBy(() -> service.creer(new DemandeManuelleCreationRequest(
+				rejet.getId(), null, null, "GPS faible au rez-de-chaussée")))
+				.isInstanceOfSatisfying(PresenceMetierException.class, e -> {
+					assertThat(e.getHttpStatus()).isEqualTo(403);
+					assertThat(e.getCode()).isEqualTo("IDENTITE_INCOHERENTE");
+				});
+		verify(demandeRepository, never()).save(any(PresenceDemandeManuelle.class));
+		verifyNoInteractions(eventPublisher);
+	}
+
+	@Test
+	void creation_enteteEgalALaFiche_ok() {
+		when(referentielClient.monValideurPointage()).thenReturn(collab(ficheRo, compteRo));
+		when(accessService.collaborateurHeaderOuNull()).thenReturn(ficheCollab.toString());
+
+		DemandeManuelleResponse r = service.creer(new DemandeManuelleCreationRequest(
+				rejet.getId(), null, null, "GPS faible au rez-de-chaussée"));
+
+		assertThat(r.statut()).isEqualTo(StatutDemandeManuelle.EN_ATTENTE);
+	}
+
+	@Test
+	void mesDemandesEtAValider_enteteFalsifie_403() {
+		when(referentielClient.monValideurPointage()).thenReturn(collab(ficheRo, compteRo));
+		when(accessService.collaborateurHeaderOuNull()).thenReturn(UUID.randomUUID().toString());
+
+		assertThatThrownBy(() -> service.mesDemandes()).isInstanceOfSatisfying(PresenceMetierException.class,
+				e -> assertThat(e.getCode()).isEqualTo("IDENTITE_INCOHERENTE"));
+		assertThatThrownBy(() -> service.aValider()).isInstanceOfSatisfying(PresenceMetierException.class,
+				e -> assertThat(e.getCode()).isEqualTo("IDENTITE_INCOHERENTE"));
+		verify(demandeRepository, never()).findByCollaborateurIdOrderByCreeLeDesc(anyString());
+	}
 	@Test
 	void creationSansResponsable_notifieLesRh() {
 		when(referentielClient.monValideurPointage()).thenReturn(collab(null, null));

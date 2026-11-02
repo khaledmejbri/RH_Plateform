@@ -218,13 +218,13 @@ class VerificationFacialePointageServiceTest {
 	}
 
 	@Test
-	void sansLigne_ficheLueAuReferentiel_enteteDifferent403() {
+	void sansLigne_ficheDejaResolueParLAppelant_enteteDifferent403_sansSecondAppelReferentiel() {
 		when(enrolementRepository.findByCompteIdForUpdate(compteId)).thenReturn(Optional.empty());
 		when(accessService.collaborateurHeaderOuNull()).thenReturn(UUID.randomUUID().toString());
 
 		assertThatThrownBy(() -> service.preparer(ficheId, requete(APPAREIL, 95, true, PlateformeMobile.ANDROID), MAINTENANT))
 				.isInstanceOfSatisfying(PresenceMetierException.class, e -> assertThat(e.getCode()).isEqualTo("IDENTITE_INCOHERENTE"));
-		verify(referentielClient).monValideurPointage();
+		verify(referentielClient, never()).monValideurPointage();
 	}
 
 	@Test

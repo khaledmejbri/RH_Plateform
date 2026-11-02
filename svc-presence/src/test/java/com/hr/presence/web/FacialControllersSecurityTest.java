@@ -64,6 +64,8 @@ class FacialControllersSecurityTest {
 	@MockitoBean(name = "presenceAccess")
 	private PresenceAccessService presenceAccess;
 	@MockitoBean
+	private com.hr.presence.service.FacialIdentiteService identiteService;
+	@MockitoBean
 	private JwtDecoder jwtDecoder;
 
 	private static org.springframework.test.web.servlet.request.RequestPostProcessor role(String... roles) {
@@ -277,7 +279,7 @@ class FacialControllersSecurityTest {
 	@Test
 	void pointage_blocageFacial_409_avecBloqueJusquA() throws Exception {
 		Instant fin = Instant.parse("2026-11-10T09:15:00Z");
-		when(presenceAccess.requireCurrentCollaborateurId()).thenReturn(UUID_OK);
+		when(identiteService.resoudreFiche()).thenReturn(UUID_OK);
 		when(pointageService.pointer(any(), any(CreatePointageRequest.class)))
 				.thenThrow(new PointageBloqueException("Pointage bloqué", fin));
 
@@ -291,7 +293,7 @@ class FacialControllersSecurityTest {
 
 	@Test
 	void pointage_preuveInvalide_400() throws Exception {
-		when(presenceAccess.requireCurrentCollaborateurId()).thenReturn(UUID_OK);
+		when(identiteService.resoudreFiche()).thenReturn(UUID_OK);
 		when(pointageService.pointer(any(), any(CreatePointageRequest.class)))
 				.thenThrow(new PresenceMetierException("PREUVE_FACIALE_INVALIDE", "x", 400));
 
@@ -303,7 +305,7 @@ class FacialControllersSecurityTest {
 
 	@Test
 	void pointage_plateformeInconnue_400() throws Exception {
-		when(presenceAccess.requireCurrentCollaborateurId()).thenReturn(UUID_OK);
+		when(identiteService.resoudreFiche()).thenReturn(UUID_OK);
 
 		mockMvc.perform(post("/api/rh/v1/mobile/presence/pointages").contentType("application/json")
 						.content(POINTAGE.replace("ANDROID", "WINDOWS")).with(role("USER")))

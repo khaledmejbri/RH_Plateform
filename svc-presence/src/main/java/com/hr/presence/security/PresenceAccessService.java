@@ -14,10 +14,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Identité acteur + anti-IDOR pour le pointage mobile.
+ * Rôles de l'appelant et lecture de son identité dans le JWT.
  * <p>
- * Priorité : header {@code X-Collaborateur-Id}, puis claims JWT
- * {@code identifiant_utilisateur} / {@code sub} (UUID).
+ * L'en-tête {@code X-Collaborateur-Id} n'est <b>pas</b> une preuve d'identité : il n'est lu que par
+ * {@link #collaborateurHeaderOuNull()} pour être comparé à la fiche résolue au référentiel avec le JWT
+ * (voir {@code FacialIdentiteService}). Aucun identifiant de collaborateur ne doit être déduit de lui.
  */
 @Service("presenceAccess")
 public class PresenceAccessService {
@@ -28,18 +29,6 @@ public class PresenceAccessService {
 
 	public boolean isBackofficeEcriture() {
 		return hasAnyRole("RH", "ADMIN");
-	}
-
-	public String requireCurrentCollaborateurId() {
-		String fromHeader = readCollaborateurHeader();
-		if (fromHeader != null) {
-			return fromHeader;
-		}
-		Set<String> fromJwt = jwtIdentityCandidates();
-		if (fromJwt.isEmpty()) {
-			throw new SecurityException("Impossible d'identifier le collaborateur courant");
-		}
-		return fromJwt.iterator().next();
 	}
 
 	/** Compte de l'appelant lu uniquement dans le JWT (claim {@code identifiant_utilisateur}) ; null sinon. */
@@ -68,13 +57,14 @@ public class PresenceAccessService {
 		return "USER";
 	}
 
+	/** Libellé d'audit de l'acteur, lu dans le JWT (jamais dans l'en-tête client) : identifiant du compte, sinon nom. */
 	public String currentActorLabel() {
-		try {
-			return requireCurrentCollaborateurId();
-		} catch (SecurityException ex) {
-			Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-			return auth != null ? auth.getName() : "system";
+		Set<String> fromJwt = jwtIdentityCandidates();
+		if (!fromJwt.isEmpty()) {
+			return fromJwt.iterator().next();
 		}
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		return auth != null ? auth.getName() : "system";
 	}
 
 	private String readCollaborateurHeader() {

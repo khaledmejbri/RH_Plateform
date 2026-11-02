@@ -3,7 +3,7 @@ package com.hr.presence.web;
 import com.hr.presence.dto.CreatePointageRequest;
 import com.hr.presence.dto.PageResponse;
 import com.hr.presence.dto.PointageResponse;
-import com.hr.presence.security.PresenceAccessService;
+import com.hr.presence.service.FacialIdentiteService;
 import com.hr.presence.service.PresencePointageService;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,18 +20,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class PresenceMobileController {
 
 	private final PresencePointageService pointageService;
-	private final PresenceAccessService accessService;
+	private final FacialIdentiteService identiteService;
 
 	public PresenceMobileController(
 			PresencePointageService pointageService,
-			PresenceAccessService accessService) {
+			FacialIdentiteService identiteService) {
 		this.pointageService = pointageService;
-		this.accessService = accessService;
+		this.identiteService = identiteService;
 	}
 
 	@PostMapping("/pointages")
 	public PointageResponse pointer(@Valid @RequestBody CreatePointageRequest request) {
-		String collaborateurId = accessService.requireCurrentCollaborateurId();
+		// Fiche lue au référentiel avec le JWT ; X-Collaborateur-Id présent et différent : 403 avant tout traitement.
+		String collaborateurId = identiteService.resoudreFiche();
 		return pointageService.pointer(collaborateurId, request);
 	}
 
@@ -39,7 +40,7 @@ public class PresenceMobileController {
 	public PageResponse<PointageResponse> historique(
 			@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "20") int size) {
-		String collaborateurId = accessService.requireCurrentCollaborateurId();
+		String collaborateurId = identiteService.resoudreFiche();
 		return pointageService.historiqueMoi(collaborateurId, page, size);
 	}
 }

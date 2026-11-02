@@ -39,6 +39,19 @@ public class FacialIdentiteService {
 		return new Identite(compteId, fiche);
 	}
 
+	/**
+	 * Fiche de l'appelant pour le pointage mobile : lue au référentiel avec le JWT, jamais déduite de l'en-tête.
+	 * 403 {@code IDENTITE_INCOHERENTE} si {@code X-Collaborateur-Id} est présent et diffère ; 403 si pas de fiche.
+	 */
+	public String resoudreFiche() {
+		String ficheId = texte(referentielClient.monValideurPointage().collaborateurId());
+		if (ficheId == null) {
+			throw new SecurityException("Impossible d'identifier la fiche du collaborateur courant");
+		}
+		verifierEntete(ficheId);
+		return ficheId;
+	}
+
 	/** Compte du JWT, sinon refus (403). */
 	public String compteObligatoire() {
 		String compteId = accessService.currentCompteId();
