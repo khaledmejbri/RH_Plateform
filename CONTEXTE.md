@@ -1,7 +1,7 @@
 # Contexte du projet SIRH RH-Évènement
 
 Mémo de reprise : à lire en début de session à la place de l'historique des conversations.
-À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 02/11/2026 (horaires et heures sup).
+À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 03/11/2026 (sécurité X-Collaborateur-Id).
 
 ## 1. Le produit
 
@@ -19,8 +19,6 @@ Spring Boot 4.0.3 / Java 21, monorepo Maven (`pom.xml` racine). Tout passe par l
 
 | Service | Port | Base | Rôle |
 |---|---|---|---|
-| 02/11/2026 | (ce commit) | Horaires par site et heures supplémentaires M09 (D-P11 à D-P16, ADR `docs/adr/ADR-M09-horaires-heures-sup.md`, décisions `docs/jira/decisions_M09_heures_sup.md`) : horaire hebdo + tolérances par site, `REJETE_HORS_HORAIRE`, demande d'heures sup RO → validation RH, comptage par paires, export CSV, écrans web et mobile, 2 endpoints `/internal` référentiel. Recette 129/153 puis ciblée 47/47, 406 tests svc-presence, revue GO après 2 NO-GO | SCRUM-48 à 51 (pas encore A tester) |
-| 31/10/2026 | e300a99 | Graphify (graphe de connaissance du code, `uv tool install graphifyy`) : skill `/graphify`, hooks `graphify hook-guard`, section dans `CLAUDE.md`, `.graphifyignore` (secrets, recette, builds exclus). `graphify-out/` non versionné : le reconstruire avec `GRAPHIFY_BACKEND=none graphify extract . --code-only` puis `graphify cluster-only . --no-label`, et `graphify update .` après chaque modification | — |
 | eureka-server | 8761 | — | Annuaire |
 | gateway | 8080 | — | Routage seul (pas de sécurité), routes dans `gateway/src/main/resources/application.yml` |
 | svc-identite-acces | 8081 | authentication_db | Comptes, JWT (claim `identifiant_utilisateur` = compte), `/api/auth/signin` |
@@ -34,7 +32,7 @@ Spring Boot 4.0.3 / Java 21, monorepo Maven (`pom.xml` racine). Tout passe par l
 - `ddl-auto=update` partout (pas de Flyway). Une valeur ajoutée à un enum stocké en base exige un runner qui recrée la contrainte CHECK (`TypeDocumentConstraintRunner`, `PointageStatutConstraintRunner`).
 - Spring Boot 4 n'auto-configure plus `KafkaTemplate` avec la seule dépendance spring-kafka : chaque service déclare son producteur (`KafkaEvaluationConfig`, `KafkaPresenceConfig`, `KafkaReferentielConfig`) et envoie du JSON texte (`KafkaTemplate<String, String>`).
 - Notifications : toujours adresser au **compte** (`compte_utilisateur_id`), repli sur la fiche (SCRUM-27).
-- Mobile : l'appli envoie l'en-tête `X-Collaborateur-Id` (fiche). Pour une décision sensible, résoudre l'identité depuis le JWT (ex. `GET /api/referentiel/v1/collaborateurs/moi/valideur-pointage`).
+- Mobile : l'appli envoie l'en-tête `X-Collaborateur-Id` (fiche) ; svc-presence le compare à la fiche résolue depuis le JWT (403 `IDENTITE_INCOHERENTE`, SCRUM-52). Pour une décision sensible, résoudre l'identité depuis le JWT (ex. `GET /api/referentiel/v1/collaborateurs/moi/valideur-pointage`).
 
 ## 3. Lancer et tester en local
 
@@ -99,6 +97,9 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01). 
 
 | Date | Commit | Contenu | Tickets |
 |---|---|---|---|
+| 03/11/2026 | f80e8c0 | Sécurité pointage : identité du pointeur lue dans le JWT (fiche résolue au référentiel) pour `POST /pointages`, `GET /pointages/me` et les demandes manuelles ; `X-Collaborateur-Id` différent → 403 `IDENTITE_INCOHERENTE`, rien n'est persisté (visage actif ou non). 415 tests svc-presence | SCRUM-52 |
+| 02/11/2026 | e878667 | Horaires par site et heures supplémentaires M09 (D-P11 à D-P16, ADR `docs/adr/ADR-M09-horaires-heures-sup.md`, décisions `docs/jira/decisions_M09_heures_sup.md`) : horaire hebdo + tolérances par site, `REJETE_HORS_HORAIRE`, demande d'heures sup RO → validation RH, comptage par paires, export CSV, écrans web et mobile, 2 endpoints `/internal` référentiel. Recette 129/153 puis ciblée 47/47, 406 tests svc-presence, revue GO après 2 NO-GO | SCRUM-48 à 51 (pas encore A tester) |
+| 31/10/2026 | e300a99 | Graphify (graphe de connaissance du code, `uv tool install graphifyy`) : skill `/graphify`, hooks `graphify hook-guard`, section dans `CLAUDE.md`, `.graphifyignore` (secrets, recette, builds exclus). `graphify-out/` non versionné : le reconstruire avec `GRAPHIFY_BACKEND=none graphify extract . --code-only` puis `graphify cluster-only . --no-label`, et `graphify update .` après chaque modification | — |
 | 30/10/2026 | f1b47b5 | Reconnaissance faciale M09 (D-P06 à D-P10, ADR `docs/adr/ADR-M09-reconnaissance-faciale.md`) : comparaison sur l'appareil (ML Kit + MobileFaceNet), serveur = score + vivacité + `device_id` seulement ; consentement versionné, enrôlement, blocage 15 min après 3 échecs, déblocage RH, onglet « Vérification faciale » web. Réglage INACTIVE par défaut. Recette API 312/313 puis ciblée 46/46, pointage 43/43. Premier lot passé par le workflow multi-agents | SCRUM-43 à 47 (pas encore A tester) |
 | 30/10/2026 | 8bcac2d | Workflow multi-agents Claude Code : 8 agents (Opus fonctionnel / architecte / revue, Sonnet devs / testeur, Haiku Jira), règles `.claude/rules/`, skills `sirh-workflow`, `sirh-redaction-jira`, `sirh-code-review`, hooks (secrets, qualité, rappel CONTEXTE). Voir AGENTS.md | — |
 | 29/10/2026 | 21a69c8 | Retours testeurs : sortie ≤ 2 h ; campagnes à mois libre, jour 20 par défaut, durée société, type trimestriel ; lancement / clôture automatiques (ancien planificateur supprimé), endpoint interne référentiel. Recette 20/20 | SCRUM-40 à 42 → A tester |
@@ -121,13 +122,11 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01). 
 
 - Tester sur un vrai téléphone (build Codemagic) : faux GPS, Test terrain, pose 15 s, écrans de pointage manuel.
 - Onglet « Pointages » web : colonnes Collaborateur et Site affichent des identifiants au lieu des noms (antérieur).
-- Sécurité : l'API mobile fait confiance à l'en-tête `X-Collaborateur-Id` fourni par le client (risque d'accès aux données d'un autre collaborateur) — pas encore de ticket.
 - Notifications non persistées (perdues si l'utilisateur n'est pas connecté) — pas encore de ticket.
 - Libellé de la famille `DEV_BACKEND` absent côté mobile (affiche le code).
 - `svc-notification` : `NotificationTestController` (`/api/notifications/test/*`) sans `@PreAuthorize` ; non routé par la gateway mais à supprimer ou protéger (signalé par le hook `verifier_code.py`).
 - **Horaires et heures sup (SCRUM-48 à 51)** : mobile jamais analysé ni testé (Flutter absent) → build Codemagic `rh-connect-android` avant « A tester » ; combinaison horaire + visage testée en unitaire seulement ; bandeau mobile et écrans heures sup à recetter sur téléphone. Décisions par défaut (5 à 20 de `decisions_M09_heures_sup.md`) à faire confirmer par le client ; plafond légal des heures sup à valider par un juriste.
 - Kit Docker : après `docker compose up --build --no-deps <service>`, redémarrer la gateway (ou désinscrire les anciennes instances Eureka), sinon alternance 200 / 500. À ajouter au guide de déploiement.
-- Sécurité `X-Collaborateur-Id` : correction en cours dans une session séparée (« Sécuriser X-Collaborateur-Id au pointage »).
 - Graphify : communautés non nommées (`graphify label .` envoie les noms de classes à Claude, à autoriser) ; SQL non indexé (option `graphifyy[sql]`) ; les hooks exigent `graphify` installé sur le poste.
 - Agents Claude Code : éprouvés sur le lot facial ; à ajuster : le testeur ne doit jamais vider une table, et un agent ne peut renvoyer qu'un seul rapport.
 - **Reconnaissance faciale (SCRUM-43 à 47)** :
