@@ -154,7 +154,8 @@ void main() {
       maintenant = maintenant.add(const Duration(milliseconds: 200));
       expect(m.mettreAJour(const FaceObservation.aucunVisage()), LivenessPhase.defis);
       expect(m.mettreAJour(_vis(g: 0.1, d: 0.1)), LivenessPhase.defis);
-      expect(m.mettreAJour(_vis(g: 0.9, d: 0.9)), LivenessPhase.attenteFace);
+      // Angle inconnu : l'image qui termine le défi ne vaut pas prise de face.
+      expect(m.mettreAJour(_vis(g: 0.9, d: 0.9, yaw: null)), LivenessPhase.attenteFace);
     });
 
     test('perte du visage de 400 ms : perte de suivi (image reçue)', () {
