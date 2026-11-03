@@ -1,7 +1,7 @@
 # Contexte du projet SIRH RH-Évènement
 
 Mémo de reprise : à lire en début de session à la place de l'historique des conversations.
-À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 03/11/2026 (sécurité X-Collaborateur-Id).
+À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 03/11/2026 (build Codemagic Android vert).
 
 ## 1. Le produit
 
@@ -97,10 +97,11 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01). 
 
 | Date | Commit | Contenu | Tickets |
 |---|---|---|---|
+| 03/11/2026 | 2ef7a25 | Build Codemagic `rh-connect-android` (Flutter 3.29.2) vert sur `delivery` : Analyze, 174 tests unitaires, APK. Premier passage Flutter des lots facial et heures sup ; seul correctif : test `perte du visage de 200 ms` (dernière image sans angle) | SCRUM-46 |
 | 03/11/2026 | f80e8c0 | Sécurité pointage : identité du pointeur lue dans le JWT (fiche résolue au référentiel) pour `POST /pointages`, `GET /pointages/me` et les demandes manuelles ; `X-Collaborateur-Id` différent → 403 `IDENTITE_INCOHERENTE`, rien n'est persisté (visage actif ou non). 415 tests svc-presence | SCRUM-52 |
-| 02/11/2026 | e878667 | Horaires par site et heures supplémentaires M09 (D-P11 à D-P16, ADR `docs/adr/ADR-M09-horaires-heures-sup.md`, décisions `docs/jira/decisions_M09_heures_sup.md`) : horaire hebdo + tolérances par site, `REJETE_HORS_HORAIRE`, demande d'heures sup RO → validation RH, comptage par paires, export CSV, écrans web et mobile, 2 endpoints `/internal` référentiel. Recette 129/153 puis ciblée 47/47, 406 tests svc-presence, revue GO après 2 NO-GO | SCRUM-48 à 51 (pas encore A tester) |
+| 02/11/2026 | e878667 | Horaires par site et heures supplémentaires M09 (D-P11 à D-P16, ADR `docs/adr/ADR-M09-horaires-heures-sup.md`, décisions `docs/jira/decisions_M09_heures_sup.md`) : horaire hebdo + tolérances par site, `REJETE_HORS_HORAIRE`, demande d'heures sup RO → validation RH, comptage par paires, export CSV, écrans web et mobile, 2 endpoints `/internal` référentiel. Recette 129/153 puis ciblée 47/47, 406 tests svc-presence, revue GO après 2 NO-GO | SCRUM-48 à 51 → A tester (03/11) |
 | 31/10/2026 | e300a99 | Graphify (graphe de connaissance du code, `uv tool install graphifyy`) : skill `/graphify`, hooks `graphify hook-guard`, section dans `CLAUDE.md`, `.graphifyignore` (secrets, recette, builds exclus). `graphify-out/` non versionné : le reconstruire avec `GRAPHIFY_BACKEND=none graphify extract . --code-only` puis `graphify cluster-only . --no-label`, et `graphify update .` après chaque modification | — |
-| 30/10/2026 | f1b47b5 | Reconnaissance faciale M09 (D-P06 à D-P10, ADR `docs/adr/ADR-M09-reconnaissance-faciale.md`) : comparaison sur l'appareil (ML Kit + MobileFaceNet), serveur = score + vivacité + `device_id` seulement ; consentement versionné, enrôlement, blocage 15 min après 3 échecs, déblocage RH, onglet « Vérification faciale » web. Réglage INACTIVE par défaut. Recette API 312/313 puis ciblée 46/46, pointage 43/43. Premier lot passé par le workflow multi-agents | SCRUM-43 à 47 (pas encore A tester) |
+| 30/10/2026 | f1b47b5 | Reconnaissance faciale M09 (D-P06 à D-P10, ADR `docs/adr/ADR-M09-reconnaissance-faciale.md`) : comparaison sur l'appareil (ML Kit + MobileFaceNet), serveur = score + vivacité + `device_id` seulement ; consentement versionné, enrôlement, blocage 15 min après 3 échecs, déblocage RH, onglet « Vérification faciale » web. Réglage INACTIVE par défaut. Recette API 312/313 puis ciblée 46/46, pointage 43/43. Premier lot passé par le workflow multi-agents | SCRUM-44 à 47 → A tester (03/11) ; SCRUM-43 (cadre légal) reste À faire |
 | 30/10/2026 | 8bcac2d | Workflow multi-agents Claude Code : 8 agents (Opus fonctionnel / architecte / revue, Sonnet devs / testeur, Haiku Jira), règles `.claude/rules/`, skills `sirh-workflow`, `sirh-redaction-jira`, `sirh-code-review`, hooks (secrets, qualité, rappel CONTEXTE). Voir AGENTS.md | — |
 | 29/10/2026 | 21a69c8 | Retours testeurs : sortie ≤ 2 h ; campagnes à mois libre, jour 20 par défaut, durée société, type trimestriel ; lancement / clôture automatiques (ancien planificateur supprimé), endpoint interne référentiel. Recette 20/20 | SCRUM-40 à 42 → A tester |
 | 28/10/2026 | 545a906 | Kit de déploiement `deploy/` testé en local (~3,5 Go), CONTEXTE.md / CLAUDE.md, index `idx_rh_evaluation_collaborateur` renommé, APK Android avec `API_BASE_URL` | — |
@@ -125,12 +126,12 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01). 
 - Notifications non persistées (perdues si l'utilisateur n'est pas connecté) — pas encore de ticket.
 - Libellé de la famille `DEV_BACKEND` absent côté mobile (affiche le code).
 - `svc-notification` : `NotificationTestController` (`/api/notifications/test/*`) sans `@PreAuthorize` ; non routé par la gateway mais à supprimer ou protéger (signalé par le hook `verifier_code.py`).
-- **Horaires et heures sup (SCRUM-48 à 51)** : mobile jamais analysé ni testé (Flutter absent) → build Codemagic `rh-connect-android` avant « A tester » ; combinaison horaire + visage testée en unitaire seulement ; bandeau mobile et écrans heures sup à recetter sur téléphone. Décisions par défaut (5 à 20 de `decisions_M09_heures_sup.md`) à faire confirmer par le client ; plafond légal des heures sup à valider par un juriste.
+- **Horaires et heures sup (SCRUM-48 à 51)** : build Codemagic vert et tickets « A tester » le 03/11 ; combinaison horaire + visage testée en unitaire seulement ; bandeau mobile et écrans heures sup à recetter sur téléphone. Décisions par défaut (5 à 20 de `decisions_M09_heures_sup.md`) à faire confirmer par le client ; plafond légal des heures sup à valider par un juriste.
 - Kit Docker : après `docker compose up --build --no-deps <service>`, redémarrer la gateway (ou désinscrire les anciennes instances Eureka), sinon alternance 200 / 500. À ajouter au guide de déploiement.
 - Graphify : communautés non nommées (`graphify label .` envoie les noms de classes à Claude, à autoriser) ; SQL non indexé (option `graphifyy[sql]`) ; les hooks exigent `graphify` installé sur le poste.
 - Agents Claude Code : éprouvés sur le lot facial ; à ajuster : le testeur ne doit jamais vider une table, et un agent ne peut renvoyer qu'un seul rapport.
 - **Reconnaissance faciale (SCRUM-43 à 47)** :
-  - `flutter analyze` / `flutter test` jamais lancés (SDK Flutter local disparu) : lancer le build Codemagic `rh-connect-android` ; vert = condition de la revue levée, puis Jira 41 « A tester ».
+  - Build Codemagic vert le 03/11 : SCRUM-44 à 47 « A tester ». SCRUM-43 (validation du cadre légal de la biométrie) reste « À faire », côté client.
   - Modèle `rh_mobile_app/assets/models/mobilefacenet.tflite` absent (téléchargement à autoriser, renseigner `mobilefacenet.sha256`, TODO-TERRAIN dans `LISEZMOI.md`) ; sans lui la vérification est indisponible sur téléphone.
   - Recette [Web] de SCRUM-47 à faire (connexion DRH01 par l'utilisateur).
   - Risque licence du modèle (poids MS-Celeb-1M, C-L-07) et contournement par retrait du consentement : à présenter au client.
