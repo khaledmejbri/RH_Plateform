@@ -4,6 +4,7 @@ import com.hr.evaluation.entity.Evaluation;
 import com.hr.evaluation.entity.EvaluationRh;
 import com.hr.evaluation.repository.EvaluationRepository;
 import com.hr.evaluation.repository.EvaluationRhRepository;
+import com.hr.evaluation.web.EvaluationMetierException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -20,21 +21,24 @@ import java.util.UUID;
 /**
  * Résolution d'acteur + garde-fous anti-IDOR (M07).
  * <p>
- * L'app mobile envoie {@code X-Collaborateur-Id} (fiche RH). Le JWT porte
- * {@code identifiant_utilisateur} (compte). Les deux sont acceptés comme
- * candidats d'identité pour l'ownership.
+ * L'identité vient uniquement du JWT (compte, fiche résolue au référentiel). L'en-tête mobile
+ * {@code X-Collaborateur-Id} n'est jamais une preuve : différent de l'identité du JWT, il donne 403
+ * {@code IDENTITE_INCOHERENTE}.
  */
 @Service("evaluationAccess")
 public class EvaluationAccessService {
 
 	private final EvaluationRepository evaluationRepository;
 	private final EvaluationRhRepository evaluationRhRepository;
+	private final IdentiteAppelantResolver identiteResolver;
 
 	public EvaluationAccessService(
 			EvaluationRepository evaluationRepository,
-			EvaluationRhRepository evaluationRhRepository) {
+			EvaluationRhRepository evaluationRhRepository,
+			IdentiteAppelantResolver identiteResolver) {
 		this.evaluationRepository = evaluationRepository;
 		this.evaluationRhRepository = evaluationRhRepository;
+		this.identiteResolver = identiteResolver;
 	}
 
 	public boolean isBackofficeLecture() {
@@ -46,18 +50,18 @@ public class EvaluationAccessService {
 	}
 
 	/**
-	 * Identité courante pour ownership (header collaborateur RH, sinon claims JWT).
+	 * Identité courante pour ownership : fiche RH de l'appelant résolue depuis le JWT (référentiel {@code /moi}), repli
+	 * sur le compte du JWT. {@code X-Collaborateur-Id} n'est pas une preuve : absent, on utilise la fiche du JWT ;
+	 * présent et différent, 403 {@code IDENTITE_INCOHERENTE}.
 	 */
 	public UUID requireCurrentActorId() {
-		UUID fromHeader = readCollaborateurHeader();
-		if (fromHeader != null) {
-			return fromHeader;
-		}
-		Set<UUID> fromJwt = jwtIdentityCandidates();
-		if (fromJwt.isEmpty()) {
+		IdentiteAppelant appelant = identiteResolver.courant();
+		UUID acteur = appelant.ficheJwt().orElse(appelant.compteJwt());
+		if (acteur == null) {
 			throw new SecurityException("Impossible d'identifier l'acteur courant");
 		}
-		return fromJwt.iterator().next();
+		verifierEnTete(acteur);
+		return acteur;
 	}
 
 	public void assertCanAccessCollaborateurScope(UUID collaborateurIdentifiant) {
@@ -87,26 +91,49 @@ public class EvaluationAccessService {
 		assertParticipantOf(evaluation.getCollaborateurIdentifiant(), evaluation.getSuperieurIdentifiant());
 	}
 
+	/**
+	 * Participant (collaborateur ou RO) reconnu par le JWT et le snapshot de compte de l'évaluation. L'en-tête
+	 * {@code X-Collaborateur-Id} n'est plus une preuve : s'il est présent et diffère de la fiche de l'acteur reconnu,
+	 * 403 {@code IDENTITE_INCOHERENTE} (SCRUM-56, comme SCRUM-52).
+	 */
 	public Evaluation requireParticipantEvaluation(UUID evaluationId) {
 		Evaluation evaluation = loadEvaluation(evaluationId);
-		assertParticipantOf(evaluation.getCollaborateurIdentifiant(), evaluation.getSuperieurIdentifiant());
+		IdentiteAppelant appelant = identiteResolver.courant();
+		if (appelant.estCollaborateur(evaluation)) {
+			verifierEnTete(evaluation.getCollaborateurIdentifiant());
+		} else if (appelant.estSuperieur(evaluation)) {
+			verifierEnTete(evaluation.getSuperieurIdentifiant());
+		} else {
+			throw new SecurityException("Accès non autorisé à cette évaluation");
+		}
 		return evaluation;
 	}
 
 	public Evaluation requireCollaborateurEvaluation(UUID evaluationId) {
 		Evaluation evaluation = loadEvaluation(evaluationId);
-		if (!actorMatches(evaluation.getCollaborateurIdentifiant())) {
+		if (!identiteResolver.courant().estCollaborateur(evaluation)) {
 			throw new SecurityException("Seul le collaborateur évalué peut effectuer cette action");
 		}
+		verifierEnTete(evaluation.getCollaborateurIdentifiant());
 		return evaluation;
 	}
 
 	public Evaluation requireManagerEvaluation(UUID evaluationId) {
 		Evaluation evaluation = loadEvaluation(evaluationId);
-		if (!actorMatches(evaluation.getSuperieurIdentifiant())) {
+		if (!identiteResolver.courant().estSuperieur(evaluation)) {
 			throw new SecurityException("Seul le supérieur de l'évaluation peut effectuer cette action");
 		}
+		verifierEnTete(evaluation.getSuperieurIdentifiant());
 		return evaluation;
+	}
+
+	/** En-tête mobile présent et différent de la fiche de l'acteur reconnu : usurpation probable, rien n'est fait. */
+	private void verifierEnTete(UUID ficheActeur) {
+		UUID entete = readCollaborateurHeader();
+		if (entete != null && !entete.equals(ficheActeur)) {
+			throw EvaluationMetierException.forbidden("IDENTITE_INCOHERENTE",
+					"L'identité annoncée ne correspond pas à celle du jeton.");
+		}
 	}
 
 	public void assertIsCollaborateurOfRh(UUID evaluationId) {
@@ -133,14 +160,15 @@ public class EvaluationAccessService {
 	}
 
 	private boolean actorMatches(UUID expected) {
+		IdentiteAppelant appelant = identiteResolver.courant();
+		if (readCollaborateurHeader() != null) {
+			UUID acteur = appelant.ficheJwt().orElse(appelant.compteJwt());
+			verifierEnTete(acteur);
+		}
 		if (expected == null) {
 			return false;
 		}
-		UUID header = readCollaborateurHeader();
-		if (header != null && header.equals(expected)) {
-			return true;
-		}
-		return jwtIdentityCandidates().contains(expected);
+		return appelant.correspond(null, expected);
 	}
 
 	private Evaluation loadEvaluation(UUID evaluationId) {

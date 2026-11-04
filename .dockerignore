@@ -18,3 +18,4 @@ deploy/donnees
 *.log
 gittoken.txt
 *.docx
+graphify-out

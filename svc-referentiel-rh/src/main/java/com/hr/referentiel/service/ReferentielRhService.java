@@ -376,6 +376,19 @@ public class ReferentielRhService {
 				.toList();
 	}
 
+	/** Fiche minimale d'un collaborateur pour le snapshot d'une alerte d'écart M07 (appel interne, sans cache). */
+	@Transactional(readOnly = true)
+	public Optional<FicheEvaluationResponse> obtenirFicheEvaluation(UUID ficheId) {
+		return collaborateurRepository.findDetailById(ficheId).map(c -> new FicheEvaluationResponse(
+				c.getId(),
+				c.getCompteUtilisateurId(),
+				c.getMatricule(),
+				nomComplet(c),
+				c.getUnite() != null ? c.getUnite().getId() : null,
+				c.getUnite() != null ? c.getUnite().getLibelle() : null,
+				c.getStatut()));
+	}
+
 	private static String nomComplet(Collaborateur c) {
 		String complet = ((c.getPrenom() != null ? c.getPrenom() : "") + " "
 				+ (c.getNom() != null ? c.getNom() : "")).trim();

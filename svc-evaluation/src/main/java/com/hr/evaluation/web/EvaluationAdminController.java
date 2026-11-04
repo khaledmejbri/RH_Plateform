@@ -49,6 +49,7 @@ public class EvaluationAdminController {
     private final EvaluationCampaignRepository campaignRepository;
     private final EvaluationAccessService evaluationAccess;
     private final Validator validator;
+    private final com.hr.evaluation.service.EvaluationAnalyseAdminService analyseAdminService;
 
     public EvaluationAdminController(
             EvaluationCampaignService campaignService,
@@ -60,7 +61,8 @@ public class EvaluationAdminController {
             EvaluationRepository evaluationRepository,
             EvaluationCampaignRepository campaignRepository,
             EvaluationAccessService evaluationAccess,
-            Validator validator) {
+            Validator validator,
+            com.hr.evaluation.service.EvaluationAnalyseAdminService analyseAdminService) {
         this.campaignService = campaignService;
         this.templateService = templateService;
         this.technicalTemplateService = technicalTemplateService;
@@ -71,6 +73,7 @@ public class EvaluationAdminController {
         this.campaignRepository = campaignRepository;
         this.evaluationAccess = evaluationAccess;
         this.validator = validator;
+        this.analyseAdminService = analyseAdminService;
     }
 
     private void valider(Object requete) {
@@ -504,11 +507,8 @@ public class EvaluationAdminController {
 
     @GetMapping("/{id}/analytics")
     public ResponseEntity<EvaluationAnalyticsResponse> getEvaluationAnalytics(@PathVariable UUID id) {
-        workflowService.obtenirEvaluation(id);
-        return ResponseEntity.ok(scoringService.analyser(
-                workflowService.obtenirReponsesEvaluation(id),
-                workflowService.obtenirReponsesTechniques(id)
-        ));
+        // Niveau d'écart des compétences techniques calculé par le serveur (D-E09.c)
+        return ResponseEntity.ok(analyseAdminService.analyser(id));
     }
 
     @GetMapping("/campaigns/{campaignId}/analytics")

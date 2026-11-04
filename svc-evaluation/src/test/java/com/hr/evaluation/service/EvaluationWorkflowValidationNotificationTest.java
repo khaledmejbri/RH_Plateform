@@ -46,6 +46,8 @@ class EvaluationWorkflowValidationNotificationTest {
     private EvaluationScoringService scoringService;
     @Mock
     private EvaluationEventPublisher eventPublisher;
+    @Mock
+    private AlerteEcartService alerteEcartService;
 
     private EvaluationWorkflowService workflowService;
 
@@ -60,7 +62,8 @@ class EvaluationWorkflowValidationNotificationTest {
                 technicalQuestionRepository,
                 templateRepository,
                 scoringService,
-                eventPublisher);
+                eventPublisher,
+                alerteEcartService);
         when(scoringService.analyser(any(), any())).thenReturn(mock(EvaluationAnalyticsResponse.class));
         when(evaluationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
@@ -94,6 +97,29 @@ class EvaluationWorkflowValidationNotificationTest {
 
         assertThat(saved.getStatut()).isEqualTo(StatutEvaluationRh.VALIDEE);
         verify(eventPublisher, never()).publierValidationCollaborateur(any());
+    }
+
+    @Test
+    void noteCollaborateurEtNoteRo_declenchentLeRecalculDesAlertesApresVerrouDeLEvaluation() {
+        Evaluation evaluation = evaluation();
+        UUID questionId = UUID.randomUUID();
+        com.hr.evaluation.entity.EvaluationQuestion question = new com.hr.evaluation.entity.EvaluationQuestion();
+        question.setId(questionId);
+        when(questionRepository.findById(questionId)).thenReturn(Optional.of(question));
+        com.hr.evaluation.entity.EvaluationAnswer reponse = new com.hr.evaluation.entity.EvaluationAnswer();
+        reponse.setQuestion(question);
+        when(answerRepository.findByEvaluationIdAndQuestionId(evaluation.getId(), questionId))
+                .thenReturn(Optional.of(reponse));
+
+        workflowService.repondreQuestionCollaborateur(evaluation.getId(), questionId, "Avancé", 4);
+        workflowService.repondreQuestionManager(evaluation.getId(), questionId, "Avancé", null, 2);
+
+        org.mockito.InOrder ordre = org.mockito.Mockito.inOrder(evaluationRepository, alerteEcartService);
+        ordre.verify(evaluationRepository).findByIdForUpdate(evaluation.getId());
+        ordre.verify(alerteEcartService).recalculerSiNecessaire(evaluation, question);
+        verify(alerteEcartService, org.mockito.Mockito.times(2)).recalculerSiNecessaire(evaluation, question);
+        assertThat(reponse.getNoteCollaborateur()).isEqualTo(4);
+        assertThat(reponse.getNoteManager()).isEqualTo(2);
     }
 
     private Evaluation evaluation() {

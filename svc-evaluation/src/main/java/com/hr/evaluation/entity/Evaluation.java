@@ -90,6 +90,14 @@ public class Evaluation {
     @Column(name = "validation_superieur_le")
     private Instant validationSuperieurLe;
 
+    /**
+     * Compte (JWT) du RO qui a validé par l'endpoint de validation RO (D-E10). Sert d'éligibilité à la détection et au
+     * recalcul des alertes d'écart : une évaluation validée avant la mise en service n'a pas cette colonne (aucun
+     * calcul rétroactif).
+     */
+    @Column(name = "validation_superieur_par")
+    private UUID validationSuperieurPar;
+
     @Column(name = "cree_le", nullable = false, updatable = false)
     private Instant creeLe;
 
@@ -178,6 +186,9 @@ public class Evaluation {
         this.validationSuperieurLe = validationSuperieurLe; 
     }
     
+    public UUID getValidationSuperieurPar() { return validationSuperieurPar; }
+    public void setValidationSuperieurPar(UUID validationSuperieurPar) { this.validationSuperieurPar = validationSuperieurPar; }
+
     public Instant getCreeLe() { return creeLe; }
     public void setCreeLe(Instant creeLe) { this.creeLe = creeLe; }
     

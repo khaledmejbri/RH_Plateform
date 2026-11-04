@@ -39,6 +39,8 @@ class EvaluationWorkflowMatchingTest {
     private EvaluationScoringService scoringService;
     @Mock
     private EvaluationEventPublisher eventPublisher;
+    @Mock
+    private AlerteEcartService alerteEcartService;
 
     private EvaluationWorkflowService workflowService;
 
@@ -53,7 +55,8 @@ class EvaluationWorkflowMatchingTest {
                 technicalQuestionRepository,
                 templateRepository,
                 scoringService,
-                eventPublisher);
+                eventPublisher,
+                alerteEcartService);
     }
 
     @Test

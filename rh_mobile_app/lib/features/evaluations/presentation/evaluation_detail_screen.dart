@@ -29,6 +29,12 @@ final evaluationAnalyticsProvider =
   return ref.watch(evaluationRepositoryProvider).obtenirAnalytics(id);
 });
 
+/// État de la validation RO (SCRUM-56) ; 403 = l’appelant n’est pas le RO.
+final etatValidationSuperieurProvider = FutureProvider.autoDispose
+    .family<EtatValidationSuperieur, String>((ref, id) {
+  return ref.watch(evaluationRepositoryProvider).etatValidationSuperieur(id);
+});
+
 class EvaluationDetailScreen extends ConsumerStatefulWidget {
   const EvaluationDetailScreen({
     super.key,
@@ -299,6 +305,14 @@ class _EvaluationDetailScreenState
                 _saving ? 'Enregistrement…' : 'Enregistrer les notes',
               ),
             ),
+          if (collabDone && !managerDone) ...[
+            const SizedBox(height: 12),
+            _ValidationSuperieurSection(
+              evaluationId: widget.id,
+              busy: _saving,
+              onValidate: _confirmerValidationSuperieur,
+            ),
+          ],
         ],
       ),
     );
@@ -459,11 +473,64 @@ class _EvaluationDetailScreenState
     }
   }
 
+  Future<void> _confirmerValidationSuperieur() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Valider l’évaluation ?'),
+        content: const Text(
+          'Une fois validée, l’évaluation ne pourra plus être modifiée '
+          'par vous. Confirmez-vous la validation ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Valider'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() {
+      _saving = true;
+      _inlineError = null;
+    });
+    try {
+      await ref.read(evaluationRepositoryProvider).validerParSuperieur(widget.id);
+      ref.invalidate(etatValidationSuperieurProvider(widget.id));
+      await _refresh();
+      ref.invalidate(managerEvaluationsProvider);
+      ref.invalidate(evaluationsListProvider);
+      ref.invalidate(evaluationsBadgeCountProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Évaluation validée.')),
+        );
+      }
+    } catch (e) {
+      // 403 / 409 / 422 : message serveur traduit, puis rechargement de l’état.
+      ref.invalidate(etatValidationSuperieurProvider(widget.id));
+      try {
+        await _refresh();
+      } catch (_) {}
+      if (mounted) {
+        setState(() => _inlineError = '$e'.replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _refresh() async {
     ref.invalidate(evaluationDetailProvider(widget.id));
     ref.invalidate(generalQuestionsProvider(widget.id));
     ref.invalidate(technicalQuestionsProvider(widget.id));
     ref.invalidate(evaluationAnalyticsProvider(widget.id));
+    ref.invalidate(etatValidationSuperieurProvider(widget.id));
     await ref.read(evaluationDetailProvider(widget.id).future);
   }
 }
@@ -1169,6 +1236,67 @@ class _QuestionCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Bouton « Valider l’évaluation » du RO. Masqué si 403 ou déjà validée.
+class _ValidationSuperieurSection extends ConsumerWidget {
+  const _ValidationSuperieurSection({
+    required this.evaluationId,
+    required this.busy,
+    required this.onValidate,
+  });
+
+  final String evaluationId;
+  final bool busy;
+  final VoidCallback onValidate;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(etatValidationSuperieurProvider(evaluationId));
+    return async.when(
+      loading: () => const Center(
+        child: Padding(
+          padding: EdgeInsets.all(8),
+          child: CircularProgressIndicator(),
+        ),
+      ),
+      error: (error, _) {
+        if (error is ValidationSuperieurException && error.accesRefuse) {
+          return const SizedBox.shrink();
+        }
+        return Column(
+          children: [
+            _InlineAlert(message: rhErrorMessage(error)),
+            TextButton(
+              onPressed: () =>
+                  ref.invalidate(etatValidationSuperieurProvider(evaluationId)),
+              child: const Text('Réessayer'),
+            ),
+          ],
+        );
+      },
+      data: (etat) {
+        if (etat.dejaValidee) return const SizedBox.shrink();
+        final raison = etat.raisonInactif;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (raison != null) ...[
+              _InlineAlert(message: raison),
+              const SizedBox(height: 8),
+            ],
+            FilledButton(
+              onPressed: (busy || !etat.peutValider) ? null : onValidate,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
+              child: const Text('Valider l’évaluation'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

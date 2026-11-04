@@ -231,6 +231,9 @@ export interface EvaluationAnalytics {
     managerScore?: number;
     gap: number;
     severity: 'ALIGNED' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+    /** D-E09.c : calculé par le serveur ; absent ou false = question générale. */
+    competenceTechnique?: boolean;
+    niveauEcart?: 'ALIGNE' | 'ORANGE' | 'ROUGE' | 'URGENTE' | null;
   }>;
   sections: Array<{
     section: string;

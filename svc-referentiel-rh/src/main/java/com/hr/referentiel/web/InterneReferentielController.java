@@ -2,6 +2,7 @@ package com.hr.referentiel.web;
 
 import com.hr.referentiel.dto.CollaborateurEvaluationSnapshotResponse;
 import com.hr.referentiel.dto.CollaborateurPointageResponse;
+import com.hr.referentiel.dto.FicheEvaluationResponse;
 import com.hr.referentiel.service.PerimetreValidationService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hr.referentiel.service.ReferentielRhService;
@@ -83,6 +84,19 @@ public class InterneReferentielController {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
 		return ResponseEntity.ok(perimetreValidationService.perimetreDe(ficheId));
+	}
+
+	/** Fiche d'un collaborateur pour le snapshot d'une alerte d'écart d'évaluation (SCRUM-53). 404 si inconnue. */
+	@GetMapping("/collaborateurs/{ficheId}/fiche-evaluation")
+	public ResponseEntity<FicheEvaluationResponse> ficheEvaluation(
+			@RequestHeader(value = "X-Internal-Token", required = false) String jeton,
+			@PathVariable UUID ficheId) {
+		if (!jetonValide(jeton)) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+		}
+		return referentielRhService.obtenirFicheEvaluation(ficheId)
+				.map(ResponseEntity::ok)
+				.orElseGet(() -> ResponseEntity.notFound().build());
 	}
 
 	private boolean jetonValide(String jeton) {

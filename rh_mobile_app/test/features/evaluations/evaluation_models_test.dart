@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:rh_mobile_app/features/evaluations/data/evaluation_models.dart';
+import 'package:rh_mobile_app/features/evaluations/data/evaluation_repository.dart';
 
 void main() {
   group('EvaluationNotificationLink', () {
@@ -80,6 +81,82 @@ void main() {
       });
       expect(item.superieurNom, isNull);
       expect(item.collaborateurLibelle, isNull);
+    });
+  });
+
+  group('EtatValidationSuperieur', () {
+    test('désérialise un état prêt à valider', () {
+      final etat = EtatValidationSuperieur.fromJson({
+        'evaluationId': 'e1',
+        'dejaValidee': false,
+        'collaborateurAValide': true,
+        'avecCompetencesTechniques': true,
+        'competencesManquantes': [],
+        'nbCompetencesManquantes': 0,
+        'peutValider': true,
+      });
+      expect(etat.peutValider, isTrue);
+      expect(etat.raisonInactif, isNull);
+    });
+
+    test('raison : collaborateur non validé', () {
+      final etat = EtatValidationSuperieur.fromJson({
+        'evaluationId': 'e1',
+        'collaborateurAValide': false,
+        'peutValider': false,
+      });
+      expect(etat.raisonInactif, contains('n’a pas encore validé'));
+    });
+
+    test('raison : compétences manquantes listées', () {
+      final etat = EtatValidationSuperieur.fromJson({
+        'evaluationId': 'e1',
+        'collaborateurAValide': true,
+        'avecCompetencesTechniques': true,
+        'competencesManquantes': [
+          {'questionId': 'q1', 'libelle': 'Java'},
+          {'questionId': 'q2', 'libelle': 'SQL'},
+        ],
+        'nbCompetencesManquantes': 2,
+        'peutValider': false,
+      });
+      expect(etat.competencesManquantes.length, 2);
+      expect(etat.raisonInactif, contains('2 compétences'));
+      expect(etat.raisonInactif, contains('Java, SQL'));
+    });
+
+    test('déjà validée : pas de raison', () {
+      final etat = EtatValidationSuperieur.fromJson({
+        'evaluationId': 'e1',
+        'dejaValidee': true,
+        'peutValider': false,
+      });
+      expect(etat.raisonInactif, isNull);
+    });
+  });
+
+  group('messageValidationSuperieur', () {
+    test('403 PAS_RO_EVALUATION', () {
+      final m = messageValidationSuperieur(statut: 403, code: 'PAS_RO_EVALUATION');
+      expect(m, contains('pas le responsable'));
+    });
+
+    test('409 collaborateur non validé', () {
+      expect(
+        messageValidationSuperieur(statut: 409, code: 'COLLABORATEUR_NON_VALIDE'),
+        contains('n’a pas encore validé'),
+      );
+    });
+
+    test('422 avec compétences manquantes', () {
+      final m = messageValidationSuperieur(
+        statut: 422,
+        code: 'COMPETENCES_NON_NOTEES',
+        competencesManquantes: const [
+          CompetenceManquante(questionId: 'q1', libelle: 'Java'),
+        ],
+      );
+      expect(m, contains('Java'));
     });
   });
 }

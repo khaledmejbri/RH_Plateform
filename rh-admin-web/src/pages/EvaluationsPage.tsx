@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   campaignApi,
   evaluationApi,
@@ -16,12 +17,14 @@ import {
 import { libelleNiveauSeniorite, profilMetierLabel } from '../api/evaluationCatalog';
 import { DiscrepancyLabel, EvalAlertBadge } from '../components/EvalAlertBadge';
 import EnhancedTemplatesTab from './EnhancedTemplatesTab';
+import AlertesEcartTab from './AlertesEcartTab';
+import { AlerteEcartBadge } from '../components/AlerteEcartBadge';
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useDialogA11y } from '../components/useDialogA11y';
 import { EmptyState, Icon, LoadingState, StatusBadge as Status, formatDate } from '../components/ui';
 
-type Tab = 'campaigns' | 'templates' | 'evaluations';
+type Tab = 'campaigns' | 'templates' | 'evaluations' | 'alertes';
 type TemplateSubTab = 'GENERIC' | 'TECHNICAL';
 
 /** Mois de lancement libre (D-E02, SCRUM-41). */
@@ -46,7 +49,8 @@ function apercuCalendrier(annee: number, mois: number, jour: number | null, dure
 
 export default function EvaluationsPage() {
   const lectureSeule = useLectureSeule();
-  const [activeTab, setActiveTab] = useState<Tab>('campaigns');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<Tab>(searchParams.get('onglet') === 'alertes' ? 'alertes' : 'campaigns');
   const [templateSub, setTemplateSub] = useState<TemplateSubTab>('GENERIC');
 
   return (
@@ -94,6 +98,15 @@ export default function EvaluationsPage() {
         >
           Suivi & scores
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'alertes'}
+          className={`tab ${activeTab === 'alertes' ? 'tab--active' : ''}`}
+          onClick={() => setActiveTab('alertes')}
+        >
+          Alertes d'écart
+        </button>
       </div>
 
       <div className="tab-content">
@@ -120,6 +133,7 @@ export default function EvaluationsPage() {
           </div>
         )}
         {activeTab === 'evaluations' && <EvaluationsTab />}
+        {activeTab === 'alertes' && <AlertesEcartTab />}
       </div>
     </div>
   );
@@ -1004,12 +1018,27 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
               </ul>
             </>
           )}
-          {analytics.gaps.filter(g => g.severity === 'HIGH' || g.severity === 'CRITICAL').length > 0 && (
+          {analytics.gaps.some(g => g.competenceTechnique) && (
+            <>
+              <h4 className="section-title">Compétences techniques</h4>
+              <ul className="insight-list">
+                {analytics.gaps
+                  .filter(g => g.competenceTechnique)
+                  .map(g => (
+                    <li key={g.questionId}>
+                      {g.label} : {g.selfScore ?? '—'} vs {g.managerScore ?? '—'}{' '}
+                      <AlerteEcartBadge niveau={g.niveauEcart} />
+                    </li>
+                  ))}
+              </ul>
+            </>
+          )}
+          {analytics.gaps.filter(g => !g.competenceTechnique && (g.severity === 'HIGH' || g.severity === 'CRITICAL')).length > 0 && (
             <>
               <h4 className="section-title">Écarts élevés</h4>
               <ul className="insight-list">
                 {analytics.gaps
-                  .filter(g => g.severity === 'HIGH' || g.severity === 'CRITICAL')
+                  .filter(g => !g.competenceTechnique && (g.severity === 'HIGH' || g.severity === 'CRITICAL'))
                   .map(g => (
                     <li key={g.questionId}>
                       {g.label}: {g.selfScore} vs {g.managerScore}{' '}

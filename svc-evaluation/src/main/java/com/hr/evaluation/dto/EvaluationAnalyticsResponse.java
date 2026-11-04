@@ -1,5 +1,7 @@
 package com.hr.evaluation.dto;
 
+import com.hr.evaluation.domain.NiveauEcart;
+
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -24,7 +26,11 @@ public record EvaluationAnalyticsResponse(
             Integer selfScore,
             Integer managerScore,
             Integer gap,
-            String severity
+            String severity,
+            /** Vrai pour une compétence du template technique (D-E09.c). */
+            boolean competenceTechnique,
+            /** ALIGNE / ORANGE / ROUGE / URGENTE pour une compétence technique, null pour une question générale. */
+            NiveauEcart niveauEcart
     ) {}
 
     public record SectionScore(

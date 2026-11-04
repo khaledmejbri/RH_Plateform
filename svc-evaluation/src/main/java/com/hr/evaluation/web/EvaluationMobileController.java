@@ -17,7 +17,10 @@ import com.hr.evaluation.repository.EvaluationQuestionRepository;
 import com.hr.evaluation.repository.SkillAnswerRepository;
 import com.hr.evaluation.repository.TechnicalQuestionRepository;
 import com.hr.evaluation.security.EvaluationAccessService;
-import com.hr.evaluation.service.EvaluationScoringService;
+import com.hr.evaluation.security.IdentiteAppelantResolver;
+import com.hr.evaluation.service.EvaluationValidationSuperieurService;
+import com.hr.evaluation.service.TemplateTechniqueEvaluation;
+import com.hr.evaluation.service.EvaluationAnalyseAdminService;
 import com.hr.evaluation.service.EvaluationWorkflowService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -44,22 +47,31 @@ public class EvaluationMobileController {
     private final EvaluationQuestionRepository questionRepository;
     private final TechnicalQuestionRepository technicalQuestionRepository;
     private final SkillAnswerRepository skillAnswerRepository;
-    private final EvaluationScoringService scoringService;
+    private final EvaluationAnalyseAdminService analyseService;
     private final EvaluationAccessService evaluationAccess;
+    private final TemplateTechniqueEvaluation templateTechnique;
+    private final EvaluationValidationSuperieurService validationSuperieurService;
+    private final IdentiteAppelantResolver identiteResolver;
 
     public EvaluationMobileController(
             EvaluationWorkflowService workflowService,
             EvaluationQuestionRepository questionRepository,
             TechnicalQuestionRepository technicalQuestionRepository,
             SkillAnswerRepository skillAnswerRepository,
-            EvaluationScoringService scoringService,
-            EvaluationAccessService evaluationAccess) {
+            EvaluationAnalyseAdminService analyseService,
+            EvaluationAccessService evaluationAccess,
+            TemplateTechniqueEvaluation templateTechnique,
+            EvaluationValidationSuperieurService validationSuperieurService,
+            IdentiteAppelantResolver identiteResolver) {
         this.workflowService = workflowService;
         this.questionRepository = questionRepository;
         this.technicalQuestionRepository = technicalQuestionRepository;
         this.skillAnswerRepository = skillAnswerRepository;
-        this.scoringService = scoringService;
+        this.analyseService = analyseService;
         this.evaluationAccess = evaluationAccess;
+        this.templateTechnique = templateTechnique;
+        this.validationSuperieurService = validationSuperieurService;
+        this.identiteResolver = identiteResolver;
     }
 
     /**
@@ -203,16 +215,8 @@ public class EvaluationMobileController {
             throw new IllegalStateException("L'évaluation n'est pas encore à l'étape technique");
         }
 
-        var templateCompetence = evaluation.getTemplateCompetenceAssigne() != null
-                ? evaluation.getTemplateCompetenceAssigne()
-                : evaluation.getCampaign().getTemplateCompetence();
-
-        if (templateCompetence == null && evaluation.getNiveauSeniorite() != null) {
-            templateCompetence = workflowService.resoudreTemplateCompetence(
-                    evaluation.getNiveauSeniorite(),
-                    evaluation.getRoleMetier(),
-                    evaluation.getCampaign());
-        }
+        // Une seule résolution pour le mobile, la validation RO et la détection d'écart (TemplateTechniqueEvaluation)
+        var templateCompetence = templateTechnique.resoudre(evaluation).orElse(null);
 
         if (templateCompetence != null) {
             List<EvaluationQuestion> questions = questionRepository
@@ -318,11 +322,7 @@ public class EvaluationMobileController {
     @GetMapping("/{id}/analytics")
     public ResponseEntity<EvaluationAnalyticsResponse> getAnalytics(@PathVariable UUID id) {
         evaluationAccess.requireParticipantEvaluation(id);
-        EvaluationAnalyticsResponse analytics = scoringService.analyser(
-                workflowService.obtenirReponsesEvaluation(id),
-                workflowService.obtenirReponsesTechniques(id)
-        );
-        return ResponseEntity.ok(analytics);
+        return ResponseEntity.ok(analyseService.analyserPourMobile(id));
     }
 
     @GetMapping("/manager/pending")
@@ -395,6 +395,27 @@ public class EvaluationMobileController {
         evaluationAccess.requireCollaborateurEvaluation(id);
         workflowService.validerParCollaborateur(id);
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * État de validation par le RO (D-E10) : sert au bouton « Valider l'évaluation » de RH Connect.
+     * Identité du RO lue dans le JWT (404 puis 403 {@code PAS_RO_EVALUATION}).
+     */
+    @GetMapping("/{id}/validate/manager/etat")
+    public ResponseEntity<EvaluationValidationSuperieurService.EtatValidation> etatValidationManager(
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(
+                validationSuperieurService.etatValidationSuperieur(id, identiteResolver.courant()));
+    }
+
+    /**
+     * Validation de l'évaluation par le RO (D-E10) : 200, ou 404 / 403 / 409 / 422 (dans cet ordre de précédence).
+     * La détection des alertes d'écart se fait dans la même transaction ; aucun champ d'alerte n'est renvoyé.
+     */
+    @PostMapping("/{id}/validate/manager")
+    public ResponseEntity<EvaluationItemResponse> validateAsManager(@PathVariable UUID id) {
+        Evaluation evaluation = validationSuperieurService.validerParSuperieur(id, identiteResolver.courant());
+        return ResponseEntity.ok(toItem(evaluation));
     }
 
     /**

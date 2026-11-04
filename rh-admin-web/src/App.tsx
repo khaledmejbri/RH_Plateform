@@ -14,6 +14,7 @@ import UnitesOrganisationPage from './pages/UnitesOrganisationPage';
 import StructureOrganisationPage from './pages/StructureOrganisationPage';
 import OrganigrammePage from './pages/OrganigrammePage';
 import EvaluationsPage from './pages/EvaluationsPage';
+import AlerteEcartDetailPage from './pages/AlerteEcartDetailPage';
 import PointageSitesPage from './pages/PointageSitesPage';
 import HeuresSupPage from './pages/HeuresSupPage';
 import BornePage from './pages/BornePage';
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/app/collaborateurs" element={<CollaborateursPage />} />
           <Route path="/app/organigramme" element={<OrganigrammePage />} />
           <Route path="/app/evaluations" element={<EvaluationsPage />} />
+          <Route path="/app/evaluations/alertes-ecart/:id" element={<AlerteEcartDetailPage />} />
           <Route path="/app/pointage" element={<PointageSitesPage />} />
           <Route path="/app/heures-sup" element={<HeuresSupPage />} />
           <Route element={<RequireWriteAccess />}>

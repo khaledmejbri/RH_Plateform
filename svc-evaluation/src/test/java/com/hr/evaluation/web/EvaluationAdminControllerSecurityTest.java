@@ -62,6 +62,8 @@ class EvaluationAdminControllerSecurityTest {
 	@MockitoBean
 	private EvaluationAccessService evaluationAccess;
 	@MockitoBean
+	private com.hr.evaluation.service.EvaluationAnalyseAdminService analyseAdminService;
+	@MockitoBean
 	private JwtDecoder jwtDecoder;
 
 	@Test

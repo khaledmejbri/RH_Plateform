@@ -43,21 +43,19 @@ class AppNotification {
   bool get isFormationInvitation => type == 'FORMATION_INVITATION';
   String? get formationId => metadata?['formation_id'] as String?;
 
-  /// Contenu affiché (masque le préfixe technique E5 si présent).
-  String get displayContent {
+  /// Préfixe technique `TYPE|cle=valeur|...|` (ex. `EVALUATION_CAMPAGNE_OUVERTE|evaluation=…|`).
+  static final RegExp _prefixeTechnique =
+      RegExp(r'^[A-Z][A-Z0-9_]+(?:\|[A-Za-z_]+=[^|]*)*\|');
+
+  /// Contenu affiché : masque le préfixe technique `TYPE|cle=valeur|` s’il est présent.
+  String get displayContent => masquerPrefixeTechnique(content, subject);
+
+  /// Retire le préfixe technique ; renvoie [subject] si le texte est vide ensuite.
+  static String masquerPrefixeTechnique(String content, [String subject = '']) {
     final raw = content.trim();
-    if (!raw.startsWith('EVALUATION_CAMPAGNE_OUVERTE')) return content;
-    final parts = raw.split('|');
-    for (var i = parts.length - 1; i >= 0; i--) {
-      final p = parts[i].trim();
-      if (p.isEmpty ||
-          p == 'EVALUATION_CAMPAGNE_OUVERTE' ||
-          p.startsWith('evaluation=') ||
-          p.startsWith('campagne=')) {
-        continue;
-      }
-      return p;
-    }
-    return subject;
+    final match = _prefixeTechnique.firstMatch(raw);
+    if (match == null) return content;
+    final texte = raw.substring(match.end).trim();
+    return texte.isEmpty ? subject : texte;
   }
 }

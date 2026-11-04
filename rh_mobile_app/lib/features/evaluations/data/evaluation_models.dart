@@ -540,3 +540,103 @@ class EvaluationNotificationLink {
     );
   }
 }
+
+/// Compétence technique sans note du RO (réponse 422 ou état de validation).
+class CompetenceManquante {
+  final String questionId;
+  final String libelle;
+
+  const CompetenceManquante({required this.questionId, required this.libelle});
+
+  factory CompetenceManquante.fromJson(Map<String, dynamic> json) {
+    return CompetenceManquante(
+      questionId: (json['questionId'] ?? '').toString(),
+      libelle: (json['libelle'] ?? '').toString(),
+    );
+  }
+
+  static List<CompetenceManquante> listFromJson(Object? raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => CompetenceManquante.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+}
+
+/// État de la validation de l’évaluation par le RO
+/// (`GET .../validate/manager/etat`, SCRUM-56, D-E10).
+/// Ne porte aucune information d’alerte d’écart.
+class EtatValidationSuperieur {
+  final String evaluationId;
+  final bool dejaValidee;
+  final bool collaborateurAValide;
+  final bool avecCompetencesTechniques;
+  final List<CompetenceManquante> competencesManquantes;
+  final int nbCompetencesManquantes;
+  final bool peutValider;
+
+  const EtatValidationSuperieur({
+    required this.evaluationId,
+    required this.dejaValidee,
+    required this.collaborateurAValide,
+    required this.avecCompetencesTechniques,
+    required this.competencesManquantes,
+    required this.nbCompetencesManquantes,
+    required this.peutValider,
+  });
+
+  factory EtatValidationSuperieur.fromJson(Map<String, dynamic> json) {
+    final manquantes =
+        CompetenceManquante.listFromJson(json['competencesManquantes']);
+    return EtatValidationSuperieur(
+      evaluationId: (json['evaluationId'] ?? '').toString(),
+      dejaValidee: json['dejaValidee'] == true,
+      collaborateurAValide: json['collaborateurAValide'] == true,
+      avecCompetencesTechniques: json['avecCompetencesTechniques'] == true,
+      competencesManquantes: manquantes,
+      nbCompetencesManquantes:
+          (json['nbCompetencesManquantes'] as num?)?.toInt() ??
+              manquantes.length,
+      peutValider: json['peutValider'] == true,
+    );
+  }
+
+  /// Raison affichée quand le bouton est inactif ; null si la validation est possible.
+  String? get raisonInactif {
+    if (peutValider || dejaValidee) return null;
+    if (!collaborateurAValide) {
+      return 'Le collaborateur n’a pas encore validé son auto-évaluation.';
+    }
+    if (nbCompetencesManquantes > 0) {
+      final noms =
+          competencesManquantes.map((c) => c.libelle).where((l) => l.isNotEmpty);
+      final suffixe = noms.isEmpty ? '' : ' : ${noms.join(', ')}';
+      final n = nbCompetencesManquantes;
+      return n == 1
+          ? '1 compétence technique reste à noter$suffixe.'
+          : '$n compétences techniques restent à noter$suffixe.';
+    }
+    return 'La validation n’est pas possible pour le moment.';
+  }
+}
+
+/// Échec d’une action de validation RO, avec le code d’erreur du serveur.
+class ValidationSuperieurException implements Exception {
+  final int? statut;
+  final String? code;
+  final List<CompetenceManquante> competencesManquantes;
+  final String message;
+
+  const ValidationSuperieurException({
+    required this.message,
+    this.statut,
+    this.code,
+    this.competencesManquantes = const [],
+  });
+
+  bool get accesRefuse => statut == 403 || code == 'PAS_RO_EVALUATION';
+
+  @override
+  String toString() => message;
+}

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Client } from '@stomp/stompjs';
+import { useNavigate } from 'react-router-dom';
 import { getToken } from '../api/auth';
+import { alerteEcartDeNotification, routeAlerteEcart } from '../api/notificationContenu';
 
 /** Même origine que la page (ws/wss), surchargeable par VITE_WS_URL. */
 function resolveBrokerUrl(): string {
@@ -11,6 +13,7 @@ function resolveBrokerUrl(): string {
 }
 
 export default function NotificationBell() {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'disconnected'>('connecting');
@@ -228,6 +231,11 @@ export default function NotificationBell() {
                         idx === i ? { ...notif, read: true } : notif
                       )
                     );
+                    const alerte = alerteEcartDeNotification(n.content);
+                    if (alerte) {
+                      setOpen(false);
+                      navigate(routeAlerteEcart(alerte.alerteId));
+                    }
                   }}
                 >
                   <div style={{ 
@@ -259,7 +267,7 @@ export default function NotificationBell() {
                         color: '#6b7280',
                         lineHeight: '1.5'
                       }}>
-                        {n.content || JSON.stringify(n)}
+                        {alerteEcartDeNotification(n.content)?.texte ?? n.content ?? JSON.stringify(n)}
                       </div>
                     </div>
                   </div>

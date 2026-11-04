@@ -2,6 +2,8 @@ package com.hr.evaluation.web;
 
 import com.hr.evaluation.dto.ErrorResponse;
 import org.hibernate.LazyInitializationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -11,6 +13,8 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -24,6 +28,8 @@ import java.util.List;
 @RestControllerAdvice
 public class EvaluationExceptionHandler {
 
+	private static final Logger log = LoggerFactory.getLogger(EvaluationExceptionHandler.class);
+
 	@ExceptionHandler(EvaluationMetierException.class)
 	public ResponseEntity<ErrorResponse> metier(EvaluationMetierException ex) {
 		return ResponseEntity.status(ex.getHttpStatus()).body(
@@ -32,7 +38,36 @@ public class EvaluationExceptionHandler {
 						ex.getMessage(),
 						ex.getMessage(),
 						List.of(),
-						ex.getHttpStatus()
+						ex.getHttpStatus(),
+						ex.getDonnees()
+				)
+		);
+	}
+
+	/** Identifiant ou valeur d'énumération de requête invalide : 400 au lieu de 500 (ADR M07 alertes d'écart § 9). */
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<ErrorResponse> parametreInvalide(MethodArgumentTypeMismatchException ex) {
+		return ResponseEntity.badRequest().body(
+				ErrorResponse.of(
+						"PARAMETRE_INVALIDE",
+						"Paramètre invalide: " + ex.getName(),
+						"La valeur du paramètre '" + ex.getName() + "' n'a pas le format attendu.",
+						List.of("Vérifiez le format du paramètre (UUID, valeur autorisée, nombre)"),
+						HttpStatus.BAD_REQUEST.value()
+				)
+		);
+	}
+
+	/** Filet de concurrence : deux écritures simultanées sur une même entité versionnée. */
+	@ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+	public ResponseEntity<ErrorResponse> conflitConcurrence(ObjectOptimisticLockingFailureException ex) {
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(
+				ErrorResponse.of(
+						"CONFLIT_CONCURRENCE",
+						"Modification simultanée",
+						"La ressource a été modifiée par un autre utilisateur.",
+						List.of("Actualisez la page puis recommencez"),
+						HttpStatus.CONFLICT.value()
 				)
 		);
 	}
@@ -212,6 +247,7 @@ public class EvaluationExceptionHandler {
 
 	@ExceptionHandler(LazyInitializationException.class)
 	public ResponseEntity<ErrorResponse> lazyInitialization(LazyInitializationException ex) {
+		log.warn("LazyInitializationException : chargement paresseux hors transaction ({})", ex.getMessage());
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
 				ErrorResponse.of(
 						"INTERNAL_ERROR",

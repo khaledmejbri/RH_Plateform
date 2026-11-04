@@ -224,6 +224,71 @@ class EvaluationRepository {
     }
   }
 
+  /// État de la validation par le RO ; 403 PAS_RO_EVALUATION si l’appelant n’est pas le RO.
+  Future<EtatValidationSuperieur> etatValidationSuperieur(
+    String evaluationId,
+  ) async {
+    try {
+      final response = await dio.get(
+        '/api/rh/v1/mobile/evaluations/$evaluationId/validate/manager/etat',
+      );
+      return EtatValidationSuperieur.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+    } on DioException catch (e) {
+      throw _erreurValidationSuperieur(
+        e,
+        'Impossible de vérifier l’état de la validation',
+      );
+    }
+  }
+
+  /// Valide l’évaluation en tant que RO (D-E10). Lève [ValidationSuperieurException].
+  Future<EvaluationItem> validerParSuperieur(String evaluationId) async {
+    try {
+      final response = await dio.post(
+        '/api/rh/v1/mobile/evaluations/$evaluationId/validate/manager',
+      );
+      return EvaluationItem.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+    } on DioException catch (e) {
+      throw _erreurValidationSuperieur(e, 'Impossible de valider l’évaluation');
+    }
+  }
+
+  ValidationSuperieurException _erreurValidationSuperieur(
+    DioException e,
+    String contexte,
+  ) {
+    final statut = e.response?.statusCode;
+    final data = e.response?.data;
+    String? code;
+    var manquantes = const <CompetenceManquante>[];
+    if (data is Map) {
+      code = data['code']?.toString();
+      final donnees = data['donnees'];
+      if (donnees is Map) {
+        manquantes =
+            CompetenceManquante.listFromJson(donnees['competencesManquantes']);
+      }
+    }
+    return ValidationSuperieurException(
+      statut: statut,
+      code: code,
+      competencesManquantes: manquantes,
+      message: messageValidationSuperieur(
+        statut: statut,
+        code: code,
+        competencesManquantes: manquantes,
+        connexion: e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.connectionError,
+        contexte: contexte,
+      ),
+    );
+  }
+
   Future<List<EvaluationAnswer>> obtenirReponses(String evaluationId) async {
     try {
       final response =
@@ -286,4 +351,34 @@ class EvaluationRepository {
         return Exception(userMessage);
     }
   }
+}
+
+/// Message en français pour un échec de validation RO (testable sans réseau).
+String messageValidationSuperieur({
+  required int? statut,
+  String? code,
+  List<CompetenceManquante> competencesManquantes = const [],
+  bool connexion = false,
+  String contexte = 'Impossible de valider l’évaluation',
+}) {
+  if (connexion) return 'Connexion indisponible. Vérifiez le réseau.';
+  if (statut == 401) return 'Session expirée. Veuillez vous reconnecter.';
+  if (statut == 403 || code == 'PAS_RO_EVALUATION') {
+    return 'Vous n’êtes pas le responsable de cette évaluation.';
+  }
+  if (statut == 404) return 'Évaluation introuvable.';
+  if (statut == 409 || code == 'COLLABORATEUR_NON_VALIDE') {
+    return 'Le collaborateur n’a pas encore validé son auto-évaluation.';
+  }
+  if (statut == 422 || code == 'COMPETENCES_NON_NOTEES') {
+    if (competencesManquantes.isEmpty) {
+      return 'Des compétences techniques restent à noter.';
+    }
+    final noms = competencesManquantes.map((c) => c.libelle).join(', ');
+    return 'Compétences techniques à noter avant de valider : $noms.';
+  }
+  if (statut != null && statut >= 500) {
+    return 'Erreur serveur. Veuillez réessayer plus tard.';
+  }
+  return contexte;
 }

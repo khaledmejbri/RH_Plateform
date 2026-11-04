@@ -135,6 +135,7 @@ services:
       <<: *env-commun
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/evaluation_rh_db
       EVALUATION_REFERENTIEL_BASEURL: http://svc-referentiel-rh:8083
+      EVALUATION_IDENTITE_BASEURL: http://svc-identite-acces:8081
       EVALUATION_ARCHIVE_LOCALROOT: /data/archives
       APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
     volumes:

@@ -30,6 +30,7 @@ public class EvaluationWorkflowService {
     private final EvaluationTemplateRepository templateRepository;
     private final EvaluationScoringService scoringService;
     private final EvaluationEventPublisher eventPublisher;
+    private final AlerteEcartService alerteEcartService;
 
     public EvaluationWorkflowService(
             EvaluationRepository evaluationRepository,
@@ -40,7 +41,8 @@ public class EvaluationWorkflowService {
             TechnicalQuestionRepository technicalQuestionRepository,
             EvaluationTemplateRepository templateRepository,
             EvaluationScoringService scoringService,
-            EvaluationEventPublisher eventPublisher) {
+            EvaluationEventPublisher eventPublisher,
+            AlerteEcartService alerteEcartService) {
         this.evaluationRepository = evaluationRepository;
         this.campaignRepository = campaignRepository;
         this.answerRepository = answerRepository;
@@ -50,6 +52,7 @@ public class EvaluationWorkflowService {
         this.templateRepository = templateRepository;
         this.scoringService = scoringService;
         this.eventPublisher = eventPublisher;
+        this.alerteEcartService = alerteEcartService;
     }
 
     @Transactional
@@ -195,7 +198,7 @@ public class EvaluationWorkflowService {
             String reponse,
             Integer note) {
 
-        Evaluation evaluation = chargerEvaluation(evaluationId);
+        Evaluation evaluation = chargerEvaluationPourEcriture(evaluationId);
         verifyCollaboratorCanAnswer(evaluation);
 
         EvaluationQuestion question = questionRepository.findById(questionId)
@@ -217,6 +220,7 @@ public class EvaluationWorkflowService {
 
         answerRepository.save(answer);
         recalculerScore(evaluation);
+        alerteEcartService.recalculerSiNecessaire(evaluation, question);
     }
 
     @Transactional
@@ -227,7 +231,7 @@ public class EvaluationWorkflowService {
             String commentaireManager,
             Integer note) {
 
-        Evaluation evaluation = chargerEvaluation(evaluationId);
+        Evaluation evaluation = chargerEvaluationPourEcriture(evaluationId);
         verifyManagerCanAnswer(evaluation);
 
         EvaluationQuestion question = questionRepository.findById(questionId)
@@ -244,6 +248,7 @@ public class EvaluationWorkflowService {
 
         answerRepository.save(answer);
         recalculerScore(evaluation);
+        alerteEcartService.recalculerSiNecessaire(evaluation, question);
     }
 
     @Transactional
@@ -339,15 +344,6 @@ public class EvaluationWorkflowService {
         return saved;
     }
 
-    @Transactional
-    public Evaluation validerParManager(UUID evaluationId) {
-        Evaluation evaluation = chargerEvaluation(evaluationId);
-        evaluation.setValidationSuperieurLe(Instant.now());
-        recalculerScore(evaluation);
-        actualiserStatut(evaluation);
-        return evaluationRepository.save(evaluation);
-    }
-
     @Transactional(readOnly = true)
     public List<Evaluation> listerEvaluationsCollaborateur(UUID collaborateurId) {
         return evaluationRepository.findByCollaborateurIdentifiantOrderByCreeLeDescWithCampaign(collaborateurId);
@@ -405,6 +401,15 @@ public class EvaluationWorkflowService {
     private Evaluation chargerEvaluation(UUID id) {
         return evaluationRepository.findByIdWithCampaign(id)
                 .orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable: " + id));
+    }
+
+    /**
+     * Charge l'évaluation en verrouillant sa ligne : un enregistrement de note ne peut pas croiser la validation du RO
+     * (D-E06) ; l'état lu (validation du RO) est celui d'après le verrou. Ordre des verrous : évaluation puis alerte.
+     */
+    private Evaluation chargerEvaluationPourEcriture(UUID id) {
+        evaluationRepository.findByIdForUpdate(id);
+        return chargerEvaluation(id);
     }
 
     private EvaluationCampaign chargerCampaign(UUID id) {

@@ -16,6 +16,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class EvaluationScoringService {
@@ -41,6 +43,15 @@ public class EvaluationScoringService {
 	}
 
 	public EvaluationAnalyticsResponse analyser(List<EvaluationAnswer> generalAnswers, List<SkillAnswer> skillAnswers) {
+		return analyser(generalAnswers, skillAnswers, Set.of());
+	}
+
+	/**
+	 * @param questionsTechniques identifiants des questions du template TECHNICAL : leur écart reçoit un niveau
+	 *                            (Aligné / Orange / Rouge / Urgente, D-E09.c) ; ensemble vide = aucun niveau (mobile).
+	 */
+	public EvaluationAnalyticsResponse analyser(List<EvaluationAnswer> generalAnswers, List<SkillAnswer> skillAnswers,
+			Set<UUID> questionsTechniques) {
 		List<ScoreLine> lines = new ArrayList<>();
 
 		for (EvaluationAnswer answer : generalAnswers) {
@@ -88,6 +99,7 @@ public class EvaluationScoringService {
 				.filter(line -> line.selfScore != null && line.managerScore != null)
 				.map(line -> {
 					int gap = Math.abs(line.selfScore - line.managerScore);
+					boolean technique = estTechnique(line.questionId, questionsTechniques);
 					return new EvaluationAnalyticsResponse.GapItem(
 							line.questionId,
 							line.label,
@@ -95,7 +107,9 @@ public class EvaluationScoringService {
 							line.selfScore,
 							line.managerScore,
 							gap,
-							gapSeverity(gap)
+							gapSeverity(gap),
+							technique,
+							technique ? EcartEtoiles.niveau(gap) : null
 					);
 				})
 				.toList();
@@ -241,6 +255,17 @@ public class EvaluationScoringService {
 					);
 				})
 				.toList();
+	}
+
+	private static boolean estTechnique(String questionId, Set<UUID> questionsTechniques) {
+		if (questionsTechniques == null || questionsTechniques.isEmpty() || questionId == null) {
+			return false;
+		}
+		try {
+			return questionsTechniques.contains(UUID.fromString(questionId));
+		} catch (IllegalArgumentException e) {
+			return false;
+		}
 	}
 
 	private String gapSeverity(int gap) {

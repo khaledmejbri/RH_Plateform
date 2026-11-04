@@ -98,4 +98,38 @@ class InterneReferentielControllerTest {
 		assertThat(controller.perimetreValidation("autre", fiche).getStatusCode().value()).isEqualTo(401);
 		assertThat(controller.perimetreValidation("secret-partage", fiche).getStatusCode().value()).isEqualTo(200);
 	}
+
+	// --- Snapshot d'une alerte d'écart M07 (SCRUM-53) ---
+
+	@Test
+	void ficheEvaluation_sansJetonOuMauvaisJeton_401_serviceNonAppele() {
+		UUID fiche = UUID.randomUUID();
+
+		assertThat(controller.ficheEvaluation(null, fiche).getStatusCode().value()).isEqualTo(401);
+		assertThat(controller.ficheEvaluation("autre", fiche).getStatusCode().value()).isEqualTo(401);
+		verifyNoInteractions(service);
+	}
+
+	@Test
+	void ficheEvaluation_inconnue_404() {
+		UUID fiche = UUID.randomUUID();
+		when(service.obtenirFicheEvaluation(fiche)).thenReturn(java.util.Optional.empty());
+
+		assertThat(controller.ficheEvaluation("secret-partage", fiche).getStatusCode().value()).isEqualTo(404);
+	}
+
+	@Test
+	void ficheEvaluation_connue_200_avecLesChampsDuContrat() {
+		UUID fiche = UUID.randomUUID();
+		UUID compte = UUID.randomUUID();
+		UUID unite = UUID.randomUUID();
+		var reponse = new com.hr.referentiel.dto.FicheEvaluationResponse(
+				fiche, compte, "M-001", "Sarra Khemiri", unite, "Service web", "ACTIF");
+		when(service.obtenirFicheEvaluation(fiche)).thenReturn(java.util.Optional.of(reponse));
+
+		var res = controller.ficheEvaluation("secret-partage", fiche);
+
+		assertThat(res.getStatusCode().value()).isEqualTo(200);
+		assertThat(res.getBody()).isEqualTo(reponse);
+	}
 }
