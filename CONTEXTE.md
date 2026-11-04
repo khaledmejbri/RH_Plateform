@@ -1,7 +1,7 @@
 # Contexte du projet SIRH RH-Évènement
 
 Mémo de reprise : à lire en début de session à la place de l'historique des conversations.
-À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 03/11/2026 (build Codemagic Android vert).
+À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 04/11/2026 (alertes d'écart d'étoiles M07).
 
 ## 1. Le produit
 
@@ -97,6 +97,7 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01). 
 
 | Date | Commit | Contenu | Tickets |
 |---|---|---|---|
+| 04/11/2026 | 8485e0d | Alertes d'écart d'étoiles M07 (D-E04 à D-E10, ADR `docs/adr/ADR-M07-alertes-ecart.md`) : à la validation du RO, écart sur les compétences techniques collaborateur / RO → alerte ORANGE (2), ROUGE (≥ 3), URGENTE (5 contre 1, en tête de liste) ; sens RO inférieur / supérieur ; une alerte par évaluation, prise en charge et clôture RH, historique ; visible RH et DIRECTION ; notification temps réel aux RH ; bouton « Valider l'évaluation » RO sur mobile ; endpoint interne référentiel `fiche-evaluation`. Recette 69/76 puis ciblée 28/28, 173 tests svc-evaluation, revue GO après 1 NO-GO. Build Codemagic `rh-connect-android` vert le 04/11 (Analyze, tests unitaires, APK) | SCRUM-53 à 56 → A tester (04/11) |
 | 03/11/2026 | 2ef7a25 | Build Codemagic `rh-connect-android` (Flutter 3.29.2) vert sur `delivery` : Analyze, 174 tests unitaires, APK. Premier passage Flutter des lots facial et heures sup ; seul correctif : test `perte du visage de 200 ms` (dernière image sans angle) | SCRUM-46 |
 | 03/11/2026 | f80e8c0 | Sécurité pointage : identité du pointeur lue dans le JWT (fiche résolue au référentiel) pour `POST /pointages`, `GET /pointages/me` et les demandes manuelles ; `X-Collaborateur-Id` différent → 403 `IDENTITE_INCOHERENTE`, rien n'est persisté (visage actif ou non). 415 tests svc-presence | SCRUM-52 |
 | 02/11/2026 | e878667 | Horaires par site et heures supplémentaires M09 (D-P11 à D-P16, ADR `docs/adr/ADR-M09-horaires-heures-sup.md`, décisions `docs/jira/decisions_M09_heures_sup.md`) : horaire hebdo + tolérances par site, `REJETE_HORS_HORAIRE`, demande d'heures sup RO → validation RH, comptage par paires, export CSV, écrans web et mobile, 2 endpoints `/internal` référentiel. Recette 129/153 puis ciblée 47/47, 406 tests svc-presence, revue GO après 2 NO-GO | SCRUM-48 à 51 → A tester (03/11) |
@@ -127,7 +128,12 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01). 
 - Libellé de la famille `DEV_BACKEND` absent côté mobile (affiche le code).
 - `svc-notification` : `NotificationTestController` (`/api/notifications/test/*`) sans `@PreAuthorize` ; non routé par la gateway mais à supprimer ou protéger (signalé par le hook `verifier_code.py`).
 - **Horaires et heures sup (SCRUM-48 à 51)** : build Codemagic vert et tickets « A tester » le 03/11 ; combinaison horaire + visage testée en unitaire seulement ; bandeau mobile et écrans heures sup à recetter sur téléphone. Décisions par défaut (5 à 20 de `decisions_M09_heures_sup.md`) à faire confirmer par le client ; plafond légal des heures sup à valider par un juriste.
-- Kit Docker : après `docker compose up --build --no-deps <service>`, redémarrer la gateway (ou désinscrire les anciennes instances Eureka), sinon alternance 200 / 500. À ajouter au guide de déploiement.
+- **Alertes d'écart M07 (SCRUM-53 à 56)** :
+  - Recetter sur téléphone le bouton RO « Valider l'évaluation » et l'affichage des notifications d'alerte (Flutter absent du PC : analyse et tests seulement sur Codemagic).
+  - Cas non joué : campagne annulée (critère 19 de SCRUM-54).
+  - Choix par défaut à faire confirmer par le client : une alerte rouverte renotifie toujours les RH ; une 2e validation RO renvoie 200 sans effet ; évaluation sans compétence technique validée sans alerte.
+  - Dettes : double appel `/moi` par requête ; appel HTTP au référentiel pendant le verrou de l'évaluation ; `DataIntegrityViolationException` non interceptée à la création concurrente ; regex du préfixe de notification mobile trop large ; contrainte CHECK de `skill_answer` incomplète ; usage de `X-Collaborateur-Id` à revoir hors svc-evaluation.
+- Kit Docker : après `docker compose up --build --no-deps <service>`, redémarrer la gateway (ou désinscrire les anciennes instances Eureka), sinon alternance 200 / 500. Une instance `DOWN` peut garder l'adresse IP réattribuée à un autre service (vu le 04/11) : supprimer les instances non `UP` (`curl -X DELETE http://eureka-server:8761/eureka/apps/<APP>/<instanceId>` depuis le conteneur gateway) puis redémarrer la gateway. À ajouter au guide de déploiement.
 - Graphify : communautés non nommées (`graphify label .` envoie les noms de classes à Claude, à autoriser) ; SQL non indexé (option `graphifyy[sql]`) ; les hooks exigent `graphify` installé sur le poste.
 - Agents Claude Code : éprouvés sur le lot facial ; à ajuster : le testeur ne doit jamais vider une table, et un agent ne peut renvoyer qu'un seul rapport.
 - **Reconnaissance faciale (SCRUM-43 à 47)** :
