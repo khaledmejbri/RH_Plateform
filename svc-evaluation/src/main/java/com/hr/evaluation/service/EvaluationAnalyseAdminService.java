@@ -8,6 +8,7 @@ import com.hr.evaluation.repository.SkillAnswerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -56,5 +57,18 @@ public class EvaluationAnalyseAdminService {
         return scoringService.analyser(
                 answerRepository.findWithQuestionByEvaluationId(evaluationId),
                 skillAnswerRepository.findByEvaluationIdOrderByQuestionTechniqueOrdreAsc(evaluationId));
+    }
+
+    /**
+     * Analyse de chaque évaluation d'une campagne (statistiques de campagne) : même transaction de lecture, questions
+     * chargées, sans niveau d'écart.
+     */
+    @Transactional(readOnly = true)
+    public List<EvaluationAnalyticsResponse> analyserCampagne(List<Evaluation> evaluations) {
+        return evaluations.stream()
+                .map(evaluation -> scoringService.analyser(
+                        answerRepository.findWithQuestionByEvaluationId(evaluation.getId()),
+                        skillAnswerRepository.findByEvaluationIdOrderByQuestionTechniqueOrdreAsc(evaluation.getId())))
+                .toList();
     }
 }

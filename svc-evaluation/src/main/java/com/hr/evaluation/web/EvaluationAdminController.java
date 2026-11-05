@@ -514,11 +514,7 @@ public class EvaluationAdminController {
     @GetMapping("/campaigns/{campaignId}/analytics")
     public ResponseEntity<Map<String, Object>> getCampaignAnalytics(@PathVariable UUID campaignId) {
         List<Evaluation> evaluations = evaluationRepository.findByCampaignId(campaignId);
-        List<EvaluationAnalyticsResponse> analytics = evaluations.stream()
-                .map(evaluation -> scoringService.analyser(
-                        workflowService.obtenirReponsesEvaluation(evaluation.getId()),
-                        workflowService.obtenirReponsesTechniques(evaluation.getId())))
-                .toList();
+        List<EvaluationAnalyticsResponse> analytics = analyseAdminService.analyserCampagne(evaluations);
 
         double averageFinal = analytics.stream()
                 .map(EvaluationAnalyticsResponse::finalScore)
