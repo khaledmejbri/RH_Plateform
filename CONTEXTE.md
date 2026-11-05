@@ -1,7 +1,7 @@
 # Contexte du projet SIRH RH-Évènement
 
 Mémo de reprise : à lire en début de session à la place de l'historique des conversations.
-À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 05/11/2026 (correctif statistiques de campagne).
+À tenir à jour à chaque lot livré (section « Journal »). Dernière mise à jour : 05/11/2026 (filtres des listes, noms dans Pointages, libellés « Alerte / Critique »).
 
 ## 1. Le produit
 
@@ -97,6 +97,7 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01). 
 
 | Date | Commit | Contenu | Tickets |
 |---|---|---|---|
+| 05/11/2026 | 3ae9886 | Filtres intelligents sur toutes les listes de la Plateforme RH (`utils/filtres.ts`, `BarreFiltres`, `FiltreCollaborateur` : recherche sans accents multi-mots, direction / département / service en cascade, filtres gardés dans l'URL) ; Pointages : nom, matricule et site au lieu des UUID + filtre collaborateur (`collaborateurId`, noms résolus par page au référentiel, repli sans nom) ; niveaux M07 ORANGE / ROUGE renommés « Alerte » / « Critique » (codes inchangés). 423 tests svc-presence, recette ciblée OK sur 8090, revue GO (+ 4 correctifs web revus GO). Vidéos de démo client dans `recette/video_demo/` (congé + évaluation avec alerte, pointage) | — |
 | 05/11/2026 | d6d0cd8 | Correctif : statistiques de campagne (`/campaigns/{id}/analytics`) en 500 sur l'onglet Évaluations (questions chargées hors transaction, open-in-view désactivé) → `EvaluationAnalyseAdminService.analyserCampagne` en lecture transactionnelle. Recette ADM01 sur le kit (8090) : toutes les pages du menu en 200. La plateforme web se teste sur 8090 (le serveur Vite 5173 relaie vers 8080, éteint) | — |
 | 04/11/2026 | 8485e0d | Alertes d'écart d'étoiles M07 (D-E04 à D-E10, ADR `docs/adr/ADR-M07-alertes-ecart.md`) : à la validation du RO, écart sur les compétences techniques collaborateur / RO → alerte ORANGE (2), ROUGE (≥ 3), URGENTE (5 contre 1, en tête de liste) ; sens RO inférieur / supérieur ; une alerte par évaluation, prise en charge et clôture RH, historique ; visible RH et DIRECTION ; notification temps réel aux RH ; bouton « Valider l'évaluation » RO sur mobile ; endpoint interne référentiel `fiche-evaluation`. Recette 69/76 puis ciblée 28/28, 173 tests svc-evaluation, revue GO après 1 NO-GO. Build Codemagic `rh-connect-android` vert le 04/11 (Analyze, tests unitaires, APK) | SCRUM-53 à 56 → A tester (04/11) |
 | 03/11/2026 | 2ef7a25 | Build Codemagic `rh-connect-android` (Flutter 3.29.2) vert sur `delivery` : Analyze, 174 tests unitaires, APK. Premier passage Flutter des lots facial et heures sup ; seul correctif : test `perte du visage de 200 ms` (dernière image sans angle) | SCRUM-46 |
@@ -134,6 +135,8 @@ Anomalie de données connue : DRH01 n'a pas de supérieur (devrait être DG01). 
   - Cas non joué : campagne annulée (critère 19 de SCRUM-54).
   - Choix par défaut à faire confirmer par le client : une alerte rouverte renotifie toujours les RH ; une 2e validation RO renvoie 200 sans effet ; évaluation sans compétence technique validée sans alerte.
   - Dettes : double appel `/moi` par requête ; appel HTTP au référentiel pendant le verrou de l'évaluation ; `DataIntegrityViolationException` non interceptée à la création concurrente ; regex du préfixe de notification mobile trop large ; contrainte CHECK de `skill_answer` incomplète ; usage de `X-Collaborateur-Id` à revoir hors svc-evaluation ; statistiques de campagne en N+1 (2 requêtes par évaluation) et champ `scoringService` devenu inutile dans `EvaluationAdminController`.
+- **Filtres des listes (3ae9886)** — dettes mineures relevées en revue : `getTousCollaborateurs` sans cache et tri instable au-delà de 200 fiches ; appel HTTP au référentiel dans la transaction de `listerAdmin` (svc-presence) sans délai d'attente ; filtre d'unité de Demandes / Documents par libellé (homonymes confondus) ; filtre Campagne par nom ; logique « onglet dans l'URL » copiée sur trois pages ; recherche des Alertes limitée à la page affichée.
+- Données de démo sur 8090 (vidéos du 05/11) : site AGENCE-LAC avec borne, 2 pointages de Sarra, demande manuelle en attente chez Omar Belhadj, campagne T4 avec alerte URGENTE, congé 25–27/11.
 - Kit Docker : après `docker compose up --build --no-deps <service>`, redémarrer la gateway (ou désinscrire les anciennes instances Eureka), sinon alternance 200 / 500. Une instance `DOWN` peut garder l'adresse IP réattribuée à un autre service (vu le 04/11) : supprimer les instances non `UP` (`curl -X DELETE http://eureka-server:8761/eureka/apps/<APP>/<instanceId>` depuis le conteneur gateway) puis redémarrer la gateway. À ajouter au guide de déploiement.
 - Graphify : communautés non nommées (`graphify label .` envoie les noms de classes à Claude, à autoriser) ; SQL non indexé (option `graphifyy[sql]`) ; les hooks exigent `graphify` installé sur le poste.
 - Agents Claude Code : éprouvés sur le lot facial ; à ajuster : le testeur ne doit jamais vider une table, et un agent ne peut renvoyer qu'un seul rapport.
