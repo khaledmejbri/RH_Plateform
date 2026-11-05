@@ -6,8 +6,8 @@ package com.hr.evaluation.domain;
  */
 public enum NiveauEcart {
     ALIGNE("Aligné"),
-    ORANGE("Orange"),
-    ROUGE("Rouge"),
+    ORANGE("Alerte"),
+    ROUGE("Critique"),
     URGENTE("Urgente");
 
     private final String libelle;

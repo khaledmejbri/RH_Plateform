@@ -13,7 +13,7 @@ import java.util.UUID;
 
 /**
  * Analyse d'une évaluation pour le détail web (D-E09.c) : les compétences du template technique reçoivent leur niveau
- * d'écart (Aligné / Orange / Rouge / Urgente), calculé par {@link EcartEtoiles} comme l'alerte. En transaction de
+ * d'écart (Aligné / Alerte / Critique / Urgente), calculé par {@link EcartEtoiles} comme l'alerte. En transaction de
  * lecture avec les questions chargées (open-in-view désactivé). Le mobile n'utilise pas cette voie : ni le collaborateur
  * ni le RO ne voient de niveau d'alerte.
  */

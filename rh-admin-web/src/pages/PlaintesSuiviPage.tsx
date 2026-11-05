@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
-import { getPlaintesRh, patchPlainteStatut, type PlainteRh } from '../api/rhClient';
+import { useEffect, useMemo, useState } from 'react';
+import { getPlaintesRh, getTousCollaborateurs, getUnites, patchPlainteStatut, type CollaborateurRow, type PlainteRh, type Unite } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
+import { appartientSelection, correspond, indexerUnites, selectionActive, useFiltresUrl } from '../utils/filtres';
 import { DialogPanel } from '../components/useDialogA11y';
 import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, formatDateTime } from '../components/ui';
 
@@ -25,13 +27,24 @@ const TRANSITIONS: Record<string, string[]> = {
   FERME:          [],
 };
 
+const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', type: '', statut: '' };
+
 export default function PlaintesSuiviPage() {
   const lectureSeule = useLectureSeule();
   const [rows, setRows]         = useState<PlainteRh[]>([]);
   const [loading, setLoading]   = useState(true);
   const [err, setErr]           = useState<string | null>(null);
-  const [filterType, setFilterType]     = useState<TypePlainte>('');
-  const [filterStatut, setFilterStatut] = useState<StatutPlainte>('');
+  const filtres = useFiltresUrl(FILTRES_DEFAUT);
+  const f = filtres.valeurs;
+  const filterType = f.type as TypePlainte;
+  const filterStatut = f.statut as StatutPlainte;
+  const [unites, setUnites] = useState<Unite[]>([]);
+  const [collabs, setCollabs] = useState<CollaborateurRow[]>([]);
+  const [collabsErr, setCollabsErr] = useState(false);
+  useEffect(() => {
+    void getUnites().then(setUnites).catch(() => {});
+    void getTousCollaborateurs().then(setCollabs).catch(() => setCollabsErr(true));
+  }, []);
 
   const [edit, setEdit]         = useState<PlainteRh | null>(null);
   /** Détail consultable par tous (Direction, plaintes clôturées) ; formulaire de transition seulement si RH + transition possible. */
@@ -54,6 +67,22 @@ export default function PlaintesSuiviPage() {
   }
 
   useEffect(() => { void load(); }, [filterType, filterStatut]);
+
+  const indexUnites = useMemo(() => indexerUnites(unites), [unites]);
+  const uniteAuteur = useMemo(
+    () => new Map(collabs.map((c) => [c.identifiant, c.unite?.identifiant])),
+    [collabs],
+  );
+  // Type et statut : serveur ; recherche et unité de l auteur : client.
+  const affichees = useMemo(
+    () =>
+      rows.filter(
+        (p) =>
+          correspond([p.auteur_nom, p.auteur_matricule, p.numero_ticket, p.titre, p.description], f.q) &&
+          (collabsErr || !selectionActive(f) || appartientSelection(indexUnites, uniteAuteur.get(p.auteur_identifiant), f)),
+      ),
+    [rows, f, indexUnites, uniteAuteur, collabsErr],
+  );
 
   function openEdit(p: PlainteRh) {
     const opts = TRANSITIONS[p.statut] ?? [];
@@ -106,36 +135,48 @@ export default function PlaintesSuiviPage() {
 
       {err ? <ErrorAlert>{err}</ErrorAlert> : null}
 
-      <div className="toolbar-filters">
-        <div>
-          <label htmlFor="plaintessuivi-f1" className="field-label">Type</label>
-          <select id="plaintessuivi-f1" className="field-input"
-            value={filterType} onChange={(e) => setFilterType(e.target.value as TypePlainte)}>
-            <option value="">Tous les types</option>
-            <option value="INTERNE">Interne</option>
-            <option value="EXTERNE">Externe</option>
-          </select>
+      <BarreFiltres
+        id="plaintes"
+        recherche={f.q}
+        onRecherche={(v) => filtres.definir({ q: v })}
+        libelleRecherche="Auteur ou plainte"
+        placeholder="Nom, matricule, ticket, titre…"
+        nbResultats={affichees.length}
+        nbTotal={rows.length}
+        nbActifs={filtres.nbActifs}
+        onReinitialiser={filtres.reinitialiser}
+      >
+        <ChampSelect
+          id="plaintessuivi-f1"
+          libelle="Type"
+          valeur={f.type}
+          toutesLibelle="Tous les types"
+          options={[{ valeur: 'INTERNE', libelle: 'Interne' }, { valeur: 'EXTERNE', libelle: 'Externe' }]}
+          onChange={(v) => filtres.definir({ type: v })}
+        />
+        <ChampSelect
+          id="plaintessuivi-f2"
+          libelle="Statut"
+          valeur={f.statut}
+          toutesLibelle="Tous les statuts"
+          options={Object.entries(STATUT_LABELS).map(([v, l]) => ({ valeur: v, libelle: l }))}
+          onChange={(v) => filtres.definir({ statut: v })}
+        />
+        <FiltresUnite idPrefixe="plaintes" unites={unites} selection={f} onChange={(sel) => filtres.definir(sel)} />
+      </BarreFiltres>
+      {collabsErr ? (
+        <div className="alert alert--warning" role="status">
+          Liste des collaborateurs indisponible : le filtre par direction, département ou service n'est pas appliqué.
         </div>
-        <div>
-          <label htmlFor="plaintessuivi-f2" className="field-label">Statut</label>
-          <select id="plaintessuivi-f2" className="field-input"
-            value={filterStatut} onChange={(e) => setFilterStatut(e.target.value as StatutPlainte)}>
-            <option value="">Tous les statuts</option>
-            {Object.entries(STATUT_LABELS).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
-            ))}
-          </select>
-        </div>
-        <span className="cell-meta" aria-live="polite">
-          {rows.length} plainte{rows.length !== 1 ? 's' : ''}
-        </span>
-      </div>
+      ) : null}
 
       <div className="panel panel--flush">
         {loading ? (
           <LoadingState label="Chargement des plaintes…" />
         ) : rows.length === 0 ? (
           <EmptyState icon="inbox" title="Aucune plainte">Aucune plainte ne correspond à ces filtres.</EmptyState>
+        ) : affichees.length === 0 ? (
+          <AucunResultat onReinitialiser={filtres.reinitialiser} />
         ) : (
           <div className="table-wrap">
             <table className="data-table data-table--responsive">
@@ -153,7 +194,7 @@ export default function PlaintesSuiviPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((p) => (
+                {affichees.map((p) => (
                   <tr key={p.identifiant}>
                     <td data-label="Ticket"><code className="cell-code">{p.numero_ticket}</code></td>
                     <td data-label="Date" className="cell-meta">{formatDateTime(p.cree_le)}</td>

@@ -1,15 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   getDemandesFormations,
+  getTousCollaborateurs,
+  getUnites,
   postFormationIntegrerPlan,
   postFormationRefuser,
+  type CollaborateurRow,
   type DemandeFormation,
+  type Unite,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
+import { appartientSelection, correspond, indexerUnites, libelleDansSelection, unitesRetenues, useFiltresUrl } from '../utils/filtres';
 import { DialogPanel } from '../components/useDialogA11y';
 import { EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, formatDateTime } from '../components/ui';
 
 type StatutFilter = '' | 'EN_VALIDATION_RRH' | 'INTEGREE_PLAN' | 'REFUSEE' | 'ANNULEE';
+
+const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', statut: 'EN_VALIDATION_RRH' };
 
 export default function FormationsPage() {
   const lectureSeule = useLectureSeule();
@@ -17,7 +25,16 @@ export default function FormationsPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [statut, setStatut] = useState<StatutFilter>('EN_VALIDATION_RRH');
+  const filtres = useFiltresUrl(FILTRES_DEFAUT);
+  const f = filtres.valeurs;
+  const statut = f.statut as StatutFilter;
+  const [unites, setUnites] = useState<Unite[]>([]);
+  const [collabs, setCollabs] = useState<CollaborateurRow[]>([]);
+  const [collabsErr, setCollabsErr] = useState(false);
+  useEffect(() => {
+    void getUnites().then(setUnites).catch(() => {});
+    void getTousCollaborateurs().then(setCollabs).catch(() => setCollabsErr(true));
+  }, []);
   const [selectedFormation, setSelectedFormation] = useState<DemandeFormation | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [action, setAction] = useState<{ kind: 'integrer' | 'refuser'; demande: DemandeFormation } | null>(null);
@@ -38,6 +55,28 @@ export default function FormationsPage() {
   }
 
   useEffect(() => { void load(); }, [statut]);
+
+  const indexUnites = useMemo(() => indexerUnites(unites), [unites]);
+  const retenues = useMemo(() => unitesRetenues(unites, f), [unites, f]);
+  const uniteDemandeur = useMemo(
+    () => new Map(collabs.map((c) => [c.identifiant, c.unite?.identifiant])),
+    [collabs],
+  );
+  // Statut : serveur ; recherche et unité (unité du demandeur ou unité ciblée) : client.
+  const affichees = useMemo(
+    () =>
+      rows.filter(
+        (d) =>
+          correspond(
+            [d.demandeur_nom, d.type_formation, d.organisme, d.unite_cible_libelle, d.objectifs_pedagogiques],
+            f.q,
+          ) &&
+          (retenues === null ||
+            appartientSelection(indexUnites, uniteDemandeur.get(d.demandeur_identifiant), f) ||
+            libelleDansSelection(retenues, d.unite_cible_libelle)),
+      ),
+    [rows, f, retenues, indexUnites, uniteDemandeur],
+  );
 
   async function confirmAction() {
     if (!action) return;
@@ -100,18 +139,37 @@ export default function FormationsPage() {
         }
       />
 
-      <div className="toolbar-filters">
-        <div>
-          <label htmlFor="formations-statut" className="field-label">Statut</label>
-          <select id="formations-statut" className="field-input" value={statut} onChange={(e) => setStatut(e.target.value as StatutFilter)}>
-            <option value="">Tous les statuts</option>
-            <option value="EN_VALIDATION_RRH">En attente RH</option>
-            <option value="INTEGREE_PLAN">Intégrées au plan</option>
-            <option value="REFUSEE">Refusées</option>
-            <option value="ANNULEE">Annulées</option>
-          </select>
+      <BarreFiltres
+        id="formations"
+        recherche={f.q}
+        onRecherche={(v) => filtres.definir({ q: v })}
+        libelleRecherche="Demandeur ou formation"
+        placeholder="Nom, formation, organisme…"
+        nbResultats={affichees.length}
+        nbTotal={rows.length}
+        nbActifs={filtres.nbActifs}
+        onReinitialiser={filtres.reinitialiser}
+      >
+        <ChampSelect
+          id="formations-statut"
+          libelle="Statut"
+          valeur={f.statut}
+          toutesLibelle="Tous les statuts"
+          options={[
+            { valeur: 'EN_VALIDATION_RRH', libelle: 'En attente RH' },
+            { valeur: 'INTEGREE_PLAN', libelle: 'Intégrées au plan' },
+            { valeur: 'REFUSEE', libelle: 'Refusées' },
+            { valeur: 'ANNULEE', libelle: 'Annulées' },
+          ]}
+          onChange={(v) => filtres.definir({ statut: v })}
+        />
+        <FiltresUnite idPrefixe="formations" unites={unites} selection={f} onChange={(sel) => filtres.definir(sel)} />
+      </BarreFiltres>
+      {collabsErr ? (
+        <div className="alert alert--warning" role="status">
+          Liste des collaborateurs indisponible : le filtre par unité ne porte que sur l'unité ciblée, pas sur l'unité du demandeur.
         </div>
-      </div>
+      ) : null}
 
       {err ? <ErrorAlert>{err}</ErrorAlert> : null}
       {msg ? <div className="alert alert--success" role="status"><Icon name="check" />{msg}</div> : null}
@@ -123,6 +181,8 @@ export default function FormationsPage() {
           <EmptyState icon="graduation" title="Aucune demande de formation">
             Aucune demande ne correspond à ce statut.
           </EmptyState>
+        ) : affichees.length === 0 ? (
+          <AucunResultat onReinitialiser={filtres.reinitialiser} />
         ) : (
           <div className="table-wrap">
             <table className="data-table data-table--responsive">
@@ -138,7 +198,7 @@ export default function FormationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((d) => (
+                {affichees.map((d) => (
                   <tr key={d.identifiant}>
                     <td data-label="Formation" className="cell-main">
                       <div className="cell-main__title">{d.type_formation}</div>

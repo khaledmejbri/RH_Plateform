@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   formatDateTunis,
   getDemandesManuelles,
@@ -9,9 +9,12 @@ import {
   type DemandeManuelle,
   type StatutDemandeManuelle,
 } from '../api/presenceApi';
+import BarreFiltres, { AucunResultat, ChampSelect } from '../components/BarreFiltres';
+import { correspond, useFiltresUrl } from '../utils/filtres';
 
 /** Seuil d'alerte RH (D-P04) — l'API renvoie déjà `alerteSeuil` ; affiché pour l'explication. */
 const SEUIL_MENSUEL = 3;
+const FILTRES_DEFAUT = { q: '', statut: 'EN_ATTENTE', type: '' };
 
 function StatutBadge({ statut }: { statut: StatutDemandeManuelle }) {
   const cls =
@@ -24,7 +27,9 @@ function StatutBadge({ statut }: { statut: StatutDemandeManuelle }) {
  * collaborateur avec alerte au-delà de 3, décision RH quand aucun responsable n'est trouvé.
  */
 export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: boolean }) {
-  const [statut, setStatut] = useState<StatutDemandeManuelle | ''>('EN_ATTENTE');
+  const filtres = useFiltresUrl(FILTRES_DEFAUT, 'm_');
+  const f = filtres.valeurs;
+  const statut = f.statut as StatutDemandeManuelle | '';
   const [demandes, setDemandes] = useState<DemandeManuelle[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -84,21 +89,51 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
     }
   }
 
-  const alertes = demandes.filter((d) => d.alerteSeuil);
+  // Statut : serveur ; collaborateur / valideur / type : client (liste complète renvoyée).
+  const affichees = useMemo(
+    () =>
+      demandes.filter(
+        (d) =>
+          correspond([d.collaborateurNom, d.valideurNom, d.justification], f.q) && (!f.type || d.type === f.type),
+      ),
+    [demandes, f.q, f.type],
+  );
+  const alertes = affichees.filter((d) => d.alerteSeuil);
 
   return (
     <div className="panel">
-      <div className="form-grid mb-md">
-        <label>
-          Statut
-          <select value={statut} onChange={(e) => setStatut(e.target.value as StatutDemandeManuelle | '')}>
-            <option value="EN_ATTENTE">En attente</option>
-            <option value="VALIDEE">Validées</option>
-            <option value="REFUSEE">Refusées</option>
-            <option value="">Toutes</option>
-          </select>
-        </label>
-      </div>
+      <BarreFiltres
+        id="manuels"
+        recherche={f.q}
+        onRecherche={(v) => filtres.definir({ q: v })}
+        libelleRecherche="Collaborateur"
+        placeholder="Nom, valideur, justification…"
+        nbResultats={affichees.length}
+        nbTotal={demandes.length}
+        nbActifs={filtres.nbActifs}
+        onReinitialiser={filtres.reinitialiser}
+      >
+        <ChampSelect
+          id="manuels-statut"
+          libelle="Statut"
+          valeur={f.statut}
+          toutesLibelle="Toutes"
+          options={[
+            { valeur: 'EN_ATTENTE', libelle: 'En attente' },
+            { valeur: 'VALIDEE', libelle: 'Validées' },
+            { valeur: 'REFUSEE', libelle: 'Refusées' },
+          ]}
+          onChange={(v) => filtres.definir({ statut: v })}
+        />
+        <ChampSelect
+          id="manuels-type"
+          libelle="Type"
+          valeur={f.type}
+          toutesLibelle="Entrée et sortie"
+          options={[{ valeur: 'ENTREE', libelle: 'Entrée' }, { valeur: 'SORTIE', libelle: 'Sortie' }]}
+          onChange={(v) => filtres.definir({ type: v })}
+        />
+      </BarreFiltres>
 
       {msg ? (
         <div className="alert alert--success" role="status">
@@ -113,7 +148,7 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
       {alertes.length > 0 ? (
         <div className="alert alert--warning" role="status">
           Plus de {SEUIL_MENSUEL} pointages manuels validés ce mois-ci pour :{' '}
-          {[...new Set(alertes.map((d) => d.collaborateurNom ?? d.collaborateurId))].join(', ')}.
+          {[...new Set(alertes.map((d) => d.collaborateurNom ?? 'Collaborateur inconnu'))].join(', ')}.
         </div>
       ) : null}
 
@@ -121,6 +156,8 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
         <p className="muted">Chargement…</p>
       ) : demandes.length === 0 ? (
         <p className="muted">Aucune demande de pointage manuel pour ce filtre.</p>
+      ) : affichees.length === 0 ? (
+        <AucunResultat onReinitialiser={filtres.reinitialiser} />
       ) : (
         <div className="table-wrap">
           <table className="table">
@@ -137,9 +174,9 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
               </tr>
             </thead>
             <tbody>
-              {demandes.map((d) => (
+              {affichees.map((d) => (
                 <tr key={d.id}>
-                  <td>{d.collaborateurNom ?? <span className="mono">{d.collaborateurId}</span>}</td>
+                  <td>{d.collaborateurNom ?? 'Collaborateur inconnu'}</td>
                   <td>
                     {d.type === 'SORTIE' ? 'Sortie' : 'Entrée'} · {formatDateTunis(d.heureDeclaree)}
                   </td>

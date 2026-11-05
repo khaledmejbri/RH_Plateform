@@ -93,7 +93,11 @@ export const LIBELLES_VERIFICATION_FACIALE: Record<string, string> = {
 export type PresencePointage = {
   id: string;
   collaborateurId: string;
+  /** Contrat pointages : nom et matricule lisibles (nullables, jamais un UUID). */
+  collaborateurNom: string | null;
+  collaborateurMatricule: string | null;
   siteId: string;
+  siteCode: string | null;
   siteLibelle: string | null;
   type: PointageType | string;
   statut: PointageStatut;
@@ -255,7 +259,10 @@ function normalizePointage(raw: Record<string, unknown>): PresencePointage {
     collaborateurId: String(
       raw.collaborateurId ?? raw.collaborateur_id ?? raw.matricule ?? '',
     ),
+    collaborateurNom: asStr(raw.collaborateurNom ?? raw.collaborateur_nom),
+    collaborateurMatricule: asStr(raw.collaborateurMatricule ?? raw.collaborateur_matricule),
     siteId: String(raw.siteId ?? raw.site_id ?? ''),
+    siteCode: asStr(raw.siteCode ?? raw.site_code),
     siteLibelle: asStr(raw.siteLibelle ?? raw.site_libelle),
     type: String(raw.type ?? ''),
     statut: String(raw.statut ?? ''),
@@ -470,6 +477,8 @@ export type PointagesListParams = {
   page?: number;
   size?: number;
   siteId?: string;
+  /** UUID de la fiche collaborateur (filtre serveur). */
+  collaborateurId?: string;
   statut?: string;
   type?: string;
   du?: string;
@@ -483,6 +492,7 @@ export function getPresencePointages(params: PointagesListParams = {}) {
   q.set('page', String(params.page ?? 0));
   q.set('size', String(params.size ?? 20));
   if (params.siteId) q.set('siteId', params.siteId);
+  if (params.collaborateurId) q.set('collaborateurId', params.collaborateurId);
   if (params.statut) q.set('statut', params.statut);
   if (params.type) q.set('type', params.type);
   if (params.du) q.set('du', params.du);

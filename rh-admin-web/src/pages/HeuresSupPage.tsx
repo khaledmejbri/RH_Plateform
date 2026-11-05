@@ -23,13 +23,19 @@ import {
   type PagePresence,
   type PresenceSite,
 } from '../api/presenceApi';
-import { getCollaborateursPage, getUnites, type CollaborateurRow } from '../api/rhClient';
+import { getTousCollaborateurs, getUnites, type CollaborateurRow } from '../api/rhClient';
+import { useSearchParams } from 'react-router-dom';
+import BarreFiltres, { ChampDate, ChampSelect } from '../components/BarreFiltres';
+import FiltreCollaborateur from '../components/FiltreCollaborateur';
+import { useFiltresUrl } from '../utils/filtres';
 import { useLectureSeule } from '../auth/useLectureSeule';
 
 type Onglet = 'a-valider' | 'historique' | 'comptees';
 type Decision = { genre: 'refuser' | 'annuler'; demande: DemandeHeuresSup };
 
 const PAGE_SIZE = 20;
+const ONGLETS: Onglet[] = ['a-valider', 'historique', 'comptees'];
+const FILTRES_DEFAUT = { du: '', au: '', site: '', collab: '', direction: '', statut: '' };
 const DUREES_OUVERTURE = [0, 30, 60, 90, 120, 150, 180, 210, 240];
 
 function libelleDuree(min: number): string {
@@ -145,15 +151,26 @@ function plageTexte(d: DemandeHeuresSup): string {
 
 export default function HeuresSupPage() {
   const lectureSeule = useLectureSeule();
-  const [onglet, setOnglet] = useState<Onglet>('a-valider');
+  const [params, setParams] = useSearchParams();
+  const ongletUrl = params.get('onglet') as Onglet | null;
+  const [onglet, setOngletEtat] = useState<Onglet>(ongletUrl && ONGLETS.includes(ongletUrl) ? ongletUrl : 'a-valider');
+  /** L'onglet est mémorisé dans l'URL avec les filtres (rafraîchissement conservé). */
+  function setOnglet(o: Onglet) {
+    setOngletEtat(o);
+    setParams(
+      (prev) => {
+        const suivant = new URLSearchParams(prev);
+        if (o === 'a-valider') suivant.delete('onglet');
+        else suivant.set('onglet', o);
+        return suivant;
+      },
+      { replace: true },
+    );
+  }
 
   /* Filtres communs */
-  const [du, setDu] = useState('');
-  const [au, setAu] = useState('');
-  const [siteId, setSiteId] = useState('');
-  const [collaborateurId, setCollaborateurId] = useState('');
-  const [directionId, setDirectionId] = useState('');
-  const [statut, setStatut] = useState('');
+  const filtres = useFiltresUrl(FILTRES_DEFAUT, 'h_');
+  const { du, au, site: siteId, collab: collaborateurId, direction: directionId, statut } = filtres.valeurs;
 
   /* Référentiels de filtres */
   const [sites, setSites] = useState<PresenceSite[]>([]);
@@ -180,12 +197,12 @@ export default function HeuresSupPage() {
       try {
         const [s, c, u] = await Promise.all([
           getPresenceSites({ size: 200 }),
-          getCollaborateursPage(0, 500),
+          getTousCollaborateurs(),
           getUnites(),
         ]);
         if (annule) return;
         setSites(s.contenu);
-        setCollaborateurs(c.contenu ?? []);
+        setCollaborateurs(c);
         setDirections(
           u
             .filter((x) => sansAccent(x.type_noeud ?? '') === 'DIRECTION')
@@ -346,62 +363,50 @@ export default function HeuresSupPage() {
       ) : null}
 
       <div className="panel">
-        <div className="form-grid mb-md">
-          <label>
-            Du
-            <input type="date" value={du} max={au || undefined} onChange={(e) => changerFiltre(() => setDu(e.target.value))} />
-          </label>
-          <label>
-            Au
-            <input type="date" value={au} min={du || undefined} onChange={(e) => changerFiltre(() => setAu(e.target.value))} />
-          </label>
-          <label>
-            Site
-            <select value={siteId} onChange={(e) => changerFiltre(() => setSiteId(e.target.value))}>
-              <option value="">Tous les sites</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.libelle}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Collaborateur
-            <select value={collaborateurId} onChange={(e) => changerFiltre(() => setCollaborateurId(e.target.value))}>
-              <option value="">Tous les collaborateurs</option>
-              {collaborateurs.map((c) => (
-                <option key={c.identifiant} value={c.identifiant}>
-                  {nomCollaborateur(c)} ({c.matricule})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Direction
-            <select value={directionId} onChange={(e) => changerFiltre(() => setDirectionId(e.target.value))}>
-              <option value="">Toutes les directions</option>
-              {directions.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.libelle}
-                </option>
-              ))}
-            </select>
-          </label>
+        <BarreFiltres
+          id="hs"
+          nbResultats={onglet === 'comptees' ? (comptees?.totalElements ?? 0) : (demandes?.totalElements ?? 0)}
+          nbActifs={filtres.nbActifs}
+          onReinitialiser={() => changerFiltre(filtres.reinitialiser)}
+        >
+          <ChampDate id="hs-du" libelle="Du" valeur={du} max={au} onChange={(v) => changerFiltre(() => filtres.definir({ du: v }))} />
+          <ChampDate id="hs-au" libelle="Au" valeur={au} min={du} onChange={(v) => changerFiltre(() => filtres.definir({ au: v }))} />
+          <ChampSelect
+            id="hs-site"
+            libelle="Site"
+            valeur={siteId}
+            toutesLibelle="Tous les sites"
+            options={sites.map((x) => ({ valeur: x.id, libelle: x.libelle }))}
+            onChange={(v) => changerFiltre(() => filtres.definir({ site: v }))}
+          />
+          <FiltreCollaborateur
+            id="hs-collab"
+            collaborateurs={collaborateurs}
+            valeur={collaborateurId}
+            onChange={(v) => changerFiltre(() => filtres.definir({ collab: v }))}
+          />
+          <ChampSelect
+            id="hs-direction"
+            libelle="Direction"
+            valeur={directionId}
+            toutesLibelle="Toutes les directions"
+            options={directions.map((d) => ({ valeur: d.id, libelle: d.libelle }))}
+            onChange={(v) => changerFiltre(() => filtres.definir({ direction: v }))}
+          />
           {onglet === 'historique' ? (
-            <label>
-              Statut
-              <select value={statut} onChange={(e) => changerFiltre(() => setStatut(e.target.value))}>
-                <option value="">Tous les statuts</option>
-                {(Object.keys(LIBELLES_STATUT_HEURES_SUP) as StatutHeuresSup[]).map((s) => (
-                  <option key={s} value={s}>
-                    {LIBELLES_STATUT_HEURES_SUP[s]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <ChampSelect
+              id="hs-statut"
+              libelle="Statut"
+              valeur={statut}
+              toutesLibelle="Tous les statuts"
+              options={(Object.keys(LIBELLES_STATUT_HEURES_SUP) as StatutHeuresSup[]).map((x) => ({
+                valeur: x,
+                libelle: LIBELLES_STATUT_HEURES_SUP[x],
+              }))}
+              onChange={(v) => changerFiltre(() => filtres.definir({ statut: v }))}
+            />
           ) : null}
-        </div>
+        </BarreFiltres>
 
         {onglet === 'comptees' ? (
           <>

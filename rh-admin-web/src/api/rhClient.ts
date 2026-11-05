@@ -151,6 +151,21 @@ export function getCollaborateursPage(page: number, taille: number) {
   );
 }
 
+/**
+ * Tous les collaborateurs (pages de 200, plafond serveur), pour les filtres et listes déroulantes.
+ * Les filtres de la page Collaborateurs s'appliquent ensuite côté client.
+ */
+export async function getTousCollaborateurs(): Promise<CollaborateurRow[]> {
+  const taille = 200;
+  const tout: CollaborateurRow[] = [];
+  for (let page = 0; page < 50; page += 1) {
+    const p = await getCollaborateursPage(page, taille);
+    tout.push(...p.contenu);
+    if (page + 1 >= p.total_pages || p.contenu.length === 0) break;
+  }
+  return tout;
+}
+
 export function getUnites() {
   return apiFetch('/api/referentiel/v1/unites').then((r) => handleRhResponse<Unite[]>(r));
 }

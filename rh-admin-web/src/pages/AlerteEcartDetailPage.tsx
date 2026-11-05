@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   AlerteEcartApiError,
   getAlerteEcart,
@@ -18,11 +18,18 @@ import { ClotureAlerteDialog } from '../components/ClotureAlerteDialog';
 import { EmptyState, LoadingState, formatDateTime } from '../components/ui';
 import { useLectureSeule } from '../auth/useLectureSeule';
 
-const RETOUR_LISTE = '/app/evaluations?onglet=alertes';
+const RETOUR_LISTE_DEFAUT = '/app/evaluations?onglet=alertes';
+
+/** Retour à la liste des alertes avec ses filtres (onglet et `a_*` transmis par le lien de la liste). */
+function retourListe(etat: unknown): string {
+  const recherche = (etat as { retourListe?: unknown } | null)?.retourListe;
+  return typeof recherche === 'string' && recherche.startsWith('?') ? `/app/evaluations${recherche}` : RETOUR_LISTE_DEFAUT;
+}
 
 export default function AlerteEcartDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const lienRetour = retourListe(useLocation().state);
   const lectureSeule = useLectureSeule();
   const [alerte, setAlerte] = useState<AlerteEcartDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,7 +70,7 @@ export default function AlerteEcartDetailPage() {
     setCloture(false);
     setMessage({ type: 'error', texte: messageErreurAction(e) });
     if (e.status === 404) {
-      navigate(RETOUR_LISTE, { replace: true });
+      navigate(lienRetour, { replace: true });
     } else {
       void charger(true);
     }
@@ -99,7 +106,7 @@ export default function AlerteEcartDetailPage() {
         <EmptyState
           icon="alert"
           title="Alerte introuvable ou inaccessible"
-          action={<Link className="btn btn--secondary" to={RETOUR_LISTE}>Retour aux alertes</Link>}
+          action={<Link className="btn btn--secondary" to={lienRetour}>Retour aux alertes</Link>}
         >
           Cette alerte n’existe pas ou vous n’avez pas le droit de la consulter.
         </EmptyState>
@@ -116,7 +123,7 @@ export default function AlerteEcartDetailPage() {
             Réessayer
           </button>
         </div>
-        <Link to={RETOUR_LISTE}>Retour aux alertes</Link>
+        <Link to={lienRetour}>Retour aux alertes</Link>
       </div>
     );
   }
@@ -129,7 +136,7 @@ export default function AlerteEcartDetailPage() {
   return (
     <div className="page">
       <p>
-        <Link to={RETOUR_LISTE}>← Retour aux alertes d’écart</Link>
+        <Link to={lienRetour}>← Retour aux alertes d’écart</Link>
       </p>
       <div className="page__header">
         <h1 className="page__title">

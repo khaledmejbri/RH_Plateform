@@ -27,6 +27,29 @@ public record PointageResponse(
 		@JsonProperty("echecs_consecutifs") Integer echecsConsecutifs,
 		@JsonProperty("bloque_jusqu_a") Instant bloqueJusqua,
 		/** Journée de rattachement (D-P11.a), nulle pour un site sans horaire. */
-		@JsonProperty("journee") java.time.LocalDate journee
+		@JsonProperty("journee") java.time.LocalDate journee,
+		/** Identité lisible, renseignée par la liste admin seulement (nulle sinon ou si introuvable). */
+		@JsonProperty("collaborateur_nom") String collaborateurNom,
+		@JsonProperty("collaborateur_matricule") String collaborateurMatricule,
+		@JsonProperty("site_code") String siteCode,
+		@JsonProperty("site_libelle") String siteLibelle
 ) {
+
+	/** Réponse sans identité lisible (mobile, historique) : les quatre champs ajoutés restent nuls. */
+	public PointageResponse(
+			UUID id, PointageStatut statut, PointageType type, Instant serverTs, UUID siteId,
+			Double distanceMetres, Double accuracyMetres, String motifRejet, String collaborateurId,
+			VerificationFaciale verificationFaciale, Integer scoreFacial, Boolean vivaciteReussie,
+			Integer echecsConsecutifs, Instant bloqueJusqua, java.time.LocalDate journee) {
+		this(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet, collaborateurId,
+				verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua, journee,
+				null, null, null, null);
+	}
+
+	/** Copie enrichie du nom et du matricule du collaborateur, du code et du libellé du site. */
+	public PointageResponse avecIdentite(String nom, String matricule, String codeSite, String libelleSite) {
+		return new PointageResponse(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet,
+				collaborateurId, verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua,
+				journee, nom, matricule, codeSite, libelleSite);
+	}
 }

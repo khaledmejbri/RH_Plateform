@@ -191,7 +191,7 @@ dans ce lot (lecture de listes, ticket de dette à ouvrir : résoudre la fiche p
   « alerte {id} sans destinataire ». Dédoublonnage.
 - **Un** `NotificationMessage` par compte, **jamais** le destinataire littéral `RH`, type `WEBSOCKET` (aucun e-mail) :
   - `recipient` = compte (UUID texte), clé Kafka = compte ;
-  - `subject` = `Alerte d'écart d'évaluation — Orange|Rouge|Urgente` ;
+  - `subject` = `Alerte d'écart d'évaluation — Alerte|Critique|Urgente` ;
   - `content` = `ALERTE_ECART_EVALUATION|alerte=<uuid>|niveau=<NIVEAU>|Évaluation de {nom} ({campagne}) : {n} compétence(s) en écart, écart max {e} étoiles.`
     (`n` = lignes avec `niveau_actuel ≥ ORANGE`, `e` = max `ecart_actuel`). Format compatible avec `svc-notification`
     (aucun changement) et la convention `TYPE|cle=valeur|texte` existante.

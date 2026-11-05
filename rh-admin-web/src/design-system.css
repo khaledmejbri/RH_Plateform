@@ -1332,3 +1332,63 @@ summary {
   max-width: 520px;
   margin: var(--space-2xl) auto;
 }
+
+/* Barre de filtres commune (BarreFiltres) */
+.barre-filtres {
+  margin-bottom: var(--space-md);
+}
+
+.barre-filtres .toolbar-filters {
+  margin-bottom: 6px;
+}
+
+.barre-filtres__recherche .field-input {
+  min-width: 260px;
+}
+
+.barre-filtres__compteur {
+  margin: 0;
+}
+
+/* Filtre collaborateur (liste de suggestions) */
+.filtre-collab {
+  position: relative;
+}
+
+.filtre-collab__liste {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  margin: 2px 0 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #d0d5dd);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.filtre-collab__option {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.filtre-collab__option:hover,
+.filtre-collab__option:focus-visible {
+  background: var(--surface-2, rgba(0, 0, 0, 0.06));
+}
+
+.filtre-collab__vide {
+  padding: 6px 10px;
+}

@@ -15,6 +15,7 @@ import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useDialogA11y } from '../components/useDialogA11y';
 import { Icon } from '../components/ui';
+import { correspond, pluriel, useFiltresUrl } from '../utils/filtres';
 
 type ModalKind = 'creer' | 'editer' | 'manager' | 'rattacher' | 'confirm-retrait' | null;
 
@@ -103,19 +104,21 @@ function findPathIds(racines: OrganigrammeNoeud[], targetId: string): string[] {
   return path;
 }
 
+/** Recherche d'une unité, d'un responsable ou d'un membre (sans accents, tous les mots). */
 function matchesSearch(n: OrganigrammeNoeud, q: string): boolean {
-  if (!q) return true;
-  const hay = [
-    n.libelle,
-    n.code,
-    n.type_noeud,
-    n.titre_poste ?? '',
-    n.manager ? `${n.manager.prenom} ${n.manager.nom}` : '',
-    n.manager?.matricule ?? '',
-  ]
-    .join(' ')
-    .toLowerCase();
-  return hay.includes(q);
+  if (!q.trim()) return true;
+  return correspond(
+    [
+      n.libelle,
+      n.code,
+      n.type_noeud,
+      n.titre_poste,
+      n.manager ? `${n.manager.prenom} ${n.manager.nom}` : '',
+      n.manager?.matricule,
+      ...(n.membres ?? []).map((m) => `${m.prenom} ${m.nom} ${m.matricule}`),
+    ],
+    q,
+  );
 }
 
 function collectSearchMatchIds(racines: OrganigrammeNoeud[], q: string): Set<string> {
@@ -508,7 +511,9 @@ export default function OrganigrammePage() {
   const [collaborateurs, setCollaborateurs] = useState<CollaborateurRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [moving, setMoving] = useState(false);
-  const [search, setSearch] = useState('');
+  const filtresOrg = useFiltresUrl({ q: '' });
+  const search = filtresOrg.valeurs.q;
+  const setSearch = (v: string) => filtresOrg.definir({ q: v });
   const [inclureInactifs, setInclureInactifs] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [aideOpen, setAideOpen] = useState(false);
@@ -537,6 +542,10 @@ export default function OrganigrammePage() {
   const highlightIds = useMemo(
     () => collectSearchMatchIds(racines, searchQ),
     [racines, searchQ],
+  );
+  const nbTrouves = useMemo(
+    () => (searchQ ? tousNoeuds.filter((n) => matchesSearch(n, searchQ)).length : 0),
+    [tousNoeuds, searchQ],
   );
 
   const showSuccess = useCallback((msg: string) => {
@@ -840,12 +849,9 @@ export default function OrganigrammePage() {
     : null;
 
   const collabsFiltered = useMemo(() => {
-    const q = collabSearch.trim().toLowerCase();
-    if (!q) return collaborateurs;
-    return collaborateurs.filter((c) => {
-      const hay = `${c.matricule} ${c.prenom} ${nomCollaborateur(c)}`.toLowerCase();
-      return hay.includes(q);
-    });
+    return collaborateurs.filter((c) =>
+      correspond([c.matricule, c.prenom, nomCollaborateur(c), c.courriel_professionnel], collabSearch),
+    );
   }, [collaborateurs, collabSearch]);
 
   const excludeForRattacher = useMemo(() => {
@@ -871,10 +877,20 @@ export default function OrganigrammePage() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher un service ou un responsable…"
-              aria-label="Rechercher un service ou un responsable"
+              placeholder="Unité, responsable, membre…"
+              aria-label="Rechercher une unité, un responsable ou un membre"
             />
           </label>
+          {searchQ ? (
+            <>
+              <span className="muted small" role="status" aria-live="polite">
+                {nbTrouves === 0 ? 'Aucun résultat pour ces filtres' : pluriel(nbTrouves, 'résultat')}
+              </span>
+              <button type="button" className="btn btn--ghost btn--sm" onClick={filtresOrg.reinitialiser}>
+                Réinitialiser
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             className="btn btn--ghost"

@@ -27,6 +27,11 @@ import {
 } from '../api/presenceApi';
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { Icon } from '../components/ui';
+import { useSearchParams } from 'react-router-dom';
+import BarreFiltres, { AucunResultat, ChampDate, ChampSelect } from '../components/BarreFiltres';
+import FiltreCollaborateur, { libelleCollaborateur } from '../components/FiltreCollaborateur';
+import { getTousCollaborateurs, type CollaborateurRow } from '../api/rhClient';
+import { correspond, useFiltresUrl } from '../utils/filtres';
 import HoraireSitePanel from './HoraireSitePanel';
 import PointagesManuelsPanel from './PointagesManuelsPanel';
 import VerificationFacialePanel from './VerificationFacialePanel';
@@ -35,6 +40,9 @@ type Tab = 'sites' | 'pointages' | 'manuels' | 'facial';
 type ModalKind = 'creer' | 'regenerer' | 'revoquer' | null;
 
 const PAGE_SIZE = 20;
+const ONGLETS: Tab[] = ['sites', 'pointages', 'manuels', 'facial'];
+const FILTRES_SITES_DEFAUT = { q: '', actif: 'all', expire: '' };
+const FILTRES_POINTAGES_DEFAUT = { collab: '', site: '', statut: '', type: '', du: '', au: '', sansFacial: '' };
 
 function Modal({
   title,
@@ -125,7 +133,28 @@ function PointageStatutBadge({ statut }: { statut: string }) {
 
 export default function PointageSitesPage() {
   const lectureSeule = useLectureSeule();
-  const [tab, setTab] = useState<Tab>('sites');
+  const [params, setParams] = useSearchParams();
+  const ongletUrl = params.get('onglet') as Tab | null;
+  const [tab, setTabEtat] = useState<Tab>(ongletUrl && ONGLETS.includes(ongletUrl) ? ongletUrl : 'sites');
+  /** L'onglet courant est mémorisé dans l'URL avec les filtres de la page. */
+  function setTab(t: Tab) {
+    setTabEtat(t);
+    setParams(
+      (prev) => {
+        const suivant = new URLSearchParams(prev);
+        if (t === 'sites') suivant.delete('onglet');
+        else suivant.set('onglet', t);
+        return suivant;
+      },
+      { replace: true },
+    );
+  }
+  const filtresSites = useFiltresUrl(FILTRES_SITES_DEFAUT, 's_');
+  const filtresPt = useFiltresUrl(FILTRES_POINTAGES_DEFAUT, 'p_');
+  const fs = filtresSites.valeurs;
+  const fp = filtresPt.valeurs;
+  const [collabs, setCollabs] = useState<CollaborateurRow[]>([]);
+  const [collabsLoading, setCollabsLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [sites, setSites] = useState<PresenceSite[]>([]);
@@ -136,9 +165,9 @@ export default function PointageSitesPage() {
   const [sitesErr, setSitesErr] = useState<string | null>(null);
   const [deployBanner, setDeployBanner] = useState(false);
 
-  const [recherche, setRecherche] = useState('');
-  const [filtreActif, setFiltreActif] = useState<'all' | 'true' | 'false'>('all');
-  const [filtreExpire, setFiltreExpire] = useState(false);
+  const recherche = fs.q;
+  const filtreActif = fs.actif as 'all' | 'true' | 'false';
+  const filtreExpire = fs.expire === '1';
 
   const [detail, setDetail] = useState<PresenceSite | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -163,12 +192,13 @@ export default function PointageSitesPage() {
   const [ptTotal, setPtTotal] = useState(0);
   const [ptLoading, setPtLoading] = useState(false);
   const [ptErr, setPtErr] = useState<string | null>(null);
-  const [ptSiteId, setPtSiteId] = useState('');
-  const [ptStatut, setPtStatut] = useState('');
-  const [ptType, setPtType] = useState('');
-  const [ptDu, setPtDu] = useState('');
-  const [ptAu, setPtAu] = useState('');
-  const [ptSansFacial, setPtSansFacial] = useState(false);
+  const ptSiteId = fp.site;
+  const ptStatut = fp.statut;
+  const ptType = fp.type;
+  const ptDu = fp.du;
+  const ptAu = fp.au;
+  const ptCollab = fp.collab;
+  const ptSansFacial = fp.sansFacial === '1';
 
   const loadSites = useCallback(async () => {
     setSitesLoading(true);
@@ -197,11 +227,9 @@ export default function PointageSitesPage() {
   }, [loadSites]);
 
   const sitesAffiches = useMemo(() => {
-    const q = recherche.trim().toLowerCase();
     return sites.filter((s) => {
       if (filtreExpire && !s.expireBientot) return false;
-      if (!q) return true;
-      return s.code.toLowerCase().includes(q) || s.libelle.toLowerCase().includes(q);
+      return correspond([s.code, s.libelle], recherche);
     });
   }, [sites, recherche, filtreExpire]);
 
@@ -238,6 +266,7 @@ export default function PointageSitesPage() {
         page: ptPage,
         size: PAGE_SIZE,
         siteId: ptSiteId || undefined,
+        collaborateurId: ptCollab || undefined,
         statut: ptStatut || undefined,
         type: ptType || undefined,
         du: ptDu || undefined,
@@ -255,11 +284,31 @@ export default function PointageSitesPage() {
     } finally {
       setPtLoading(false);
     }
-  }, [ptPage, ptSiteId, ptStatut, ptType, ptDu, ptAu, ptSansFacial]);
+  }, [ptPage, ptSiteId, ptCollab, ptStatut, ptType, ptDu, ptAu, ptSansFacial]);
 
   useEffect(() => {
     if (tab === 'pointages') void loadPointages();
   }, [tab, loadPointages]);
+
+  // Liste des collaborateurs : filtre « Collaborateur » et repli d'affichage du nom.
+  useEffect(() => {
+    if (tab !== 'pointages' || collabs.length > 0) return;
+    setCollabsLoading(true);
+    void getTousCollaborateurs()
+      .then(setCollabs)
+      .catch(() => {})
+      .finally(() => setCollabsLoading(false));
+  }, [tab, collabs.length]);
+
+  const collabParId = useMemo(() => new Map(collabs.map((c) => [c.identifiant, c])), [collabs]);
+
+  /** « Nom (matricule) », sans jamais afficher un identifiant technique. */
+  function libelleCollabPointage(p: PresencePointage): string {
+    if (p.collaborateurNom) return p.collaborateurMatricule ? `${p.collaborateurNom} (${p.collaborateurMatricule})` : p.collaborateurNom;
+    const c = collabParId.get(p.collaborateurId);
+    if (c) return libelleCollaborateur(c);
+    return 'Collaborateur inconnu';
+  }
 
   const siteOptions = useMemo(
     () => sites.map((s) => ({ id: s.id, label: `${s.code} — ${s.libelle}` })),
@@ -539,39 +588,43 @@ export default function PointageSitesPage() {
 
       {showList ? (
         <div className="panel">
-          <div className="form-grid mb-md">
-            <label>
-              Recherche
-              <input
-                type="search"
-                value={recherche}
-                onChange={(e) => setRecherche(e.target.value)}
-                placeholder="Code ou libellé"
-              />
-            </label>
-            <label>
-              Statut site
-              <select
-                value={filtreActif}
-                onChange={(e) => {
-                  setSitesPage(0);
-                  setFiltreActif(e.target.value as 'all' | 'true' | 'false');
-                }}
-              >
-                <option value="all">Tous</option>
-                <option value="true">Actifs</option>
-                <option value="false">Inactifs</option>
-              </select>
-            </label>
+          <BarreFiltres
+            id="sites"
+            recherche={fs.q}
+            onRecherche={(v) => filtresSites.definir({ q: v })}
+            placeholder="Code ou libellé"
+            nbResultats={sitesAffiches.length}
+            nbTotal={sites.length}
+            nbActifs={filtresSites.nbActifs}
+            onReinitialiser={() => {
+              setSitesPage(0);
+              filtresSites.reinitialiser();
+            }}
+          >
+            <ChampSelect
+              id="sites-actif"
+              libelle="Statut site"
+              valeur={fs.actif}
+              sansTous
+              options={[
+                { valeur: 'all', libelle: 'Tous' },
+                { valeur: 'true', libelle: 'Actifs' },
+                { valeur: 'false', libelle: 'Inactifs' },
+              ]}
+              onChange={(v) => {
+                setSitesPage(0);
+                filtresSites.definir({ actif: v });
+              }}
+            />
             <label className="checkbox-row" style={{ alignSelf: 'end' }}>
               <input
                 type="checkbox"
                 checked={filtreExpire}
-                onChange={(e) => setFiltreExpire(e.target.checked)}
+                onChange={(e) => filtresSites.definir({ expire: e.target.checked ? '1' : '' })}
               />
               QR expire ≤ 30 j
             </label>
-          </div>
+          </BarreFiltres>
 
           {sitesErr ? (
             <div className="alert alert--error">
@@ -590,7 +643,7 @@ export default function PointageSitesPage() {
               <p>
                 {sites.length === 0
                   ? 'Créez un site pour générer un QR et poser l’emplacement GPS (mobile RH).'
-                  : 'Aucun site ne correspond aux filtres.'}
+                  : 'Aucun résultat pour ces filtres.'}
               </p>
               {!lectureSeule && sites.length === 0 ? (
                 <button type="button" className="btn btn--primary" onClick={() => setModal('creer')}>
@@ -975,88 +1028,88 @@ export default function PointageSitesPage() {
 
       {tab === 'pointages' ? (
         <div className="panel">
-          <div className="form-grid mb-md">
-            <label>
-              Site
-              <select
-                value={ptSiteId}
-                onChange={(e) => {
-                  setPtPage(0);
-                  setPtSiteId(e.target.value);
-                }}
-              >
-                <option value="">Tous les sites</option>
-                {siteOptions.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Statut
-              <select
-                value={ptStatut}
-                onChange={(e) => {
-                  setPtPage(0);
-                  setPtStatut(e.target.value);
-                }}
-              >
-                {POINTAGE_STATUTS_FILTRE.map((o) => (
-                  <option key={o.value || 'all'} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Type
-              <select
-                value={ptType}
-                onChange={(e) => {
-                  setPtPage(0);
-                  setPtType(e.target.value);
-                }}
-              >
-                <option value="">Entrée et sortie</option>
-                <option value="ENTREE">Entrée</option>
-                <option value="SORTIE">Sortie</option>
-              </select>
-            </label>
-            <label>
-              Du
-              <input
-                type="date"
-                value={ptDu}
-                onChange={(e) => {
-                  setPtPage(0);
-                  setPtDu(e.target.value);
-                }}
-              />
-            </label>
-            <label>
-              Au
-              <input
-                type="date"
-                value={ptAu}
-                onChange={(e) => {
-                  setPtPage(0);
-                  setPtAu(e.target.value);
-                }}
-              />
-            </label>
+          <BarreFiltres
+            id="pointages"
+            nbResultats={ptTotal}
+            nbActifs={filtresPt.nbActifs}
+            onReinitialiser={() => {
+              setPtPage(0);
+              filtresPt.reinitialiser();
+            }}
+          >
+            <FiltreCollaborateur
+              id="pointages-collab"
+              collaborateurs={collabs}
+              valeur={ptCollab}
+              chargement={collabsLoading}
+              onChange={(v) => {
+                setPtPage(0);
+                filtresPt.definir({ collab: v });
+              }}
+            />
+            <ChampSelect
+              id="pointages-site"
+              libelle="Site"
+              valeur={ptSiteId}
+              toutesLibelle="Tous les sites"
+              options={siteOptions.map((o) => ({ valeur: o.id, libelle: o.label }))}
+              onChange={(v) => {
+                setPtPage(0);
+                filtresPt.definir({ site: v });
+              }}
+            />
+            <ChampSelect
+              id="pointages-statut"
+              libelle="Statut"
+              valeur={ptStatut}
+              sansTous
+              options={POINTAGE_STATUTS_FILTRE.map((o) => ({ valeur: o.value, libelle: o.label }))}
+              onChange={(v) => {
+                setPtPage(0);
+                filtresPt.definir({ statut: v });
+              }}
+            />
+            <ChampSelect
+              id="pointages-type"
+              libelle="Type"
+              valeur={ptType}
+              toutesLibelle="Entrée et sortie"
+              options={[{ valeur: 'ENTREE', libelle: 'Entrée' }, { valeur: 'SORTIE', libelle: 'Sortie' }]}
+              onChange={(v) => {
+                setPtPage(0);
+                filtresPt.definir({ type: v });
+              }}
+            />
+            <ChampDate
+              id="pointages-du"
+              libelle="Du"
+              valeur={ptDu}
+              onChange={(v) => {
+                setPtPage(0);
+                filtresPt.definir({ du: v });
+              }}
+            />
+            <ChampDate
+              id="pointages-au"
+              libelle="Au"
+              valeur={ptAu}
+              onChange={(v) => {
+                setPtPage(0);
+                filtresPt.definir({ au: v });
+              }}
+            />
             <label className="checkbox-row" style={{ alignSelf: 'end' }}>
               <input
                 type="checkbox"
                 checked={ptSansFacial}
                 onChange={(e) => {
                   setPtPage(0);
-                  setPtSansFacial(e.target.checked);
+                  filtresPt.definir({ sansFacial: e.target.checked ? '1' : '' });
                 }}
               />
               Sans vérification faciale
             </label>
-          </div>
+          </BarreFiltres>
 
           {ptErr ? (
             <div className="alert alert--error">
@@ -1070,15 +1123,21 @@ export default function PointageSitesPage() {
           {ptLoading ? (
             <p className="muted">Chargement des pointages…</p>
           ) : pointages.length === 0 && !ptErr ? (
-            <div className="empty-state">
-              <h3>Aucun pointage pour ces filtres</h3>
-              <p>Les essais validés et rejetés apparaîtront ici dès que le service sera actif.</p>
-            </div>
+            filtresPt.nbActifs > 0 ? (
+              <AucunResultat
+                onReinitialiser={() => {
+                  setPtPage(0);
+                  filtresPt.reinitialiser();
+                }}
+              />
+            ) : (
+              <div className="empty-state">
+                <h3>Aucun pointage</h3>
+                <p>Les essais validés et rejetés apparaîtront ici dès que le service sera actif.</p>
+              </div>
+            )
           ) : pointages.length > 0 ? (
             <>
-              <p className="muted small" aria-live="polite">
-                {ptTotal} résultat{ptTotal > 1 ? 's' : ''}
-              </p>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -1098,8 +1157,8 @@ export default function PointageSitesPage() {
                     {pointages.map((p) => (
                       <tr key={p.id}>
                         <td>{formatDateTunis(p.serverTs)}</td>
-                        <td className="mono">{p.collaborateurId || '—'}</td>
-                        <td>{p.siteLibelle ?? p.siteId ?? '—'}</td>
+                        <td>{libelleCollabPointage(p)}</td>
+                        <td>{p.siteLibelle ?? p.siteCode ?? 'Site inconnu'}</td>
                         <td>{p.type === 'ENTREE' ? 'Entrée' : p.type === 'SORTIE' ? 'Sortie' : p.type}</td>
                         <td>
                           <PointageStatutBadge statut={p.statut} />

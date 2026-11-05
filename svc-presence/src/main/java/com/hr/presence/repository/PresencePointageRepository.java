@@ -43,9 +43,17 @@ public interface PresencePointageRepository extends JpaRepository<PresencePointa
 	static Specification<PresencePointage> filtreAdmin(
 			UUID siteId, PointageStatut statut, PointageType type, Instant from, Instant to,
 			List<VerificationFaciale> verificationFaciale) {
+		return filtreAdmin(siteId, statut, type, from, to, verificationFaciale, null);
+	}
+
+	/** + filtre sur la fiche du collaborateur (identifiant stocké en texte). */
+	static Specification<PresencePointage> filtreAdmin(
+			UUID siteId, PointageStatut statut, PointageType type, Instant from, Instant to,
+			List<VerificationFaciale> verificationFaciale, UUID collaborateurId) {
 		return (root, query, cb) -> {
 			List<Predicate> predicats = new ArrayList<>();
 			if (siteId != null) predicats.add(cb.equal(root.get("siteId"), siteId));
+			if (collaborateurId != null) predicats.add(cb.equal(root.get("collaborateurId"), collaborateurId.toString()));
 			if (statut != null) predicats.add(cb.equal(root.get("statut"), statut));
 			if (type != null) predicats.add(cb.equal(root.get("type"), type));
 			if (from != null) predicats.add(cb.greaterThanOrEqualTo(root.get("serverTs"), from));

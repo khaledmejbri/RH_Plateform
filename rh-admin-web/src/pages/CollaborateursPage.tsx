@@ -1,6 +1,6 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
-  getCollaborateursPage,
+  getTousCollaborateurs,
   getFamillesMetier,
   getUnites,
   isProfilAcces,
@@ -24,8 +24,12 @@ import {
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
 import { ErrorAlert, Icon, LoadingState, StatusBadge } from '../components/ui';
+import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
+import { appartientSelection, correspond, indexerUnites, useFiltresUrl } from '../utils/filtres';
 
 const PROFIL_DEFAUT = 'COLLABORATEUR' as const;
+const TAILLE_PAGE = 15;
+const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', profil: '', statut: '' };
 
 function profilDepuisLigne(row: CollaborateurRow | null): string {
   if (row?.profil_acces) return row.profil_acces.toUpperCase();
@@ -39,7 +43,8 @@ export default function CollaborateursPage() {
   const [editing, setEditing] = useState<CollaborateurRow | null>(null);
   const [unites, setUnites] = useState<Unite[]>([]);
   const [rows, setRows] = useState<CollaborateurRow[]>([]);
-  const [total, setTotal] = useState(0);
+  const filtres = useFiltresUrl(FILTRES_DEFAUT);
+  const f = filtres.valeurs;
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -82,9 +87,8 @@ export default function CollaborateursPage() {
     setLoading(true);
     setErr(null);
     try {
-      const p = await getCollaborateursPage(page, 15);
-      setRows(p.contenu);
-      setTotal(p.total_elements);
+      // Filtres « intelligents » appliqués côté client : on charge toute la liste (pages de 200).
+      setRows(await getTousCollaborateurs());
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erreur');
     } finally {
@@ -94,7 +98,28 @@ export default function CollaborateursPage() {
 
   useEffect(() => {
     void loadList();
-  }, [page]);
+  }, []);
+
+  const indexUnites = useMemo(() => indexerUnites(unites), [unites]);
+  const filtrees = useMemo(
+    () =>
+      rows.filter(
+        (r) =>
+          correspond(
+            [r.prenom, nomCollaborateur(r), r.matricule, r.courriel_professionnel, r.poste_libelle, r.fonction,
+              r.unite?.libelle, r.unite?.code, r.departement_libelle],
+            f.q,
+          ) &&
+          appartientSelection(indexUnites, r.unite?.identifiant, f) &&
+          (!f.profil || (r.profil_acces ?? PROFIL_DEFAUT).toUpperCase() === f.profil) &&
+          (!f.statut || r.statut.toUpperCase() === f.statut),
+      ),
+    [rows, f, indexUnites],
+  );
+  const totalPages = Math.max(1, Math.ceil(filtrees.length / TAILLE_PAGE));
+  const pageCourante = Math.min(page, totalPages - 1);
+  const pageRows = filtrees.slice(pageCourante * TAILLE_PAGE, (pageCourante + 1) * TAILLE_PAGE);
+  const statuts = useMemo(() => Array.from(new Set(rows.map((r) => r.statut.toUpperCase()))).sort(), [rows]);
 
   useEffect(() => {
     if (unites.length && !uniteId) setUniteId(unites[0].identifiant);
@@ -197,8 +222,6 @@ export default function CollaborateursPage() {
     }
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / 15));
-
   async function archiveCollaborateur(row: CollaborateurRow) {
     if (row.statut === 'ARCHIVE') return;
     const ok = await confirm({
@@ -254,6 +277,40 @@ export default function CollaborateursPage() {
             <LoadingState label="Chargement des collaborateurs…" />
           ) : (
             <>
+              <BarreFiltres
+                id="collab"
+                recherche={f.q}
+                onRecherche={(v) => { filtres.definir({ q: v }); setPage(0); }}
+                placeholder="Nom, prénom, matricule, e-mail…"
+                nbResultats={filtrees.length}
+                nbTotal={rows.length}
+                nbActifs={filtres.nbActifs}
+                onReinitialiser={() => { filtres.reinitialiser(); setPage(0); }}
+              >
+                <FiltresUnite
+                  idPrefixe="collab"
+                  unites={unites}
+                  selection={f}
+                  onChange={(s) => { filtres.definir(s); setPage(0); }}
+                />
+                <ChampSelect
+                  id="collab-profil"
+                  libelle="Profil d'accès"
+                  valeur={f.profil}
+                  options={PROFILS_ACCES.map((p) => ({ valeur: p, libelle: LIBELLES_PROFIL_ACCES[p] }))}
+                  onChange={(v) => { filtres.definir({ profil: v }); setPage(0); }}
+                />
+                <ChampSelect
+                  id="collab-statut"
+                  libelle="Statut"
+                  valeur={f.statut}
+                  options={statuts.map((x) => ({ valeur: x, libelle: x }))}
+                  onChange={(v) => { filtres.definir({ statut: v }); setPage(0); }}
+                />
+              </BarreFiltres>
+              {filtrees.length === 0 ? (
+                <AucunResultat onReinitialiser={filtres.nbActifs > 0 ? () => filtres.reinitialiser() : undefined} />
+              ) : (
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -269,7 +326,7 @@ export default function CollaborateursPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => (
+                    {pageRows.map((r) => (
                       <tr key={r.identifiant}>
                         <td className="mono">{r.matricule}</td>
                         <td>
@@ -331,18 +388,19 @@ export default function CollaborateursPage() {
                   </tbody>
                 </table>
               </div>
+              )}
               <div className="pager">
-                <button type="button" className="btn btn--ghost" disabled={page <= 0} onClick={() => setPage((p) => p - 1)}>
+                <button type="button" className="btn btn--ghost" disabled={pageCourante <= 0} onClick={() => setPage(pageCourante - 1)}>
                   Prec.
                 </button>
                 <span className="muted small">
-                  {page + 1} / {totalPages} ({total})
+                  {pageCourante + 1} / {totalPages} ({filtrees.length})
                 </span>
                 <button
                   type="button"
                   className="btn btn--ghost"
-                  disabled={page + 1 >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
+                  disabled={pageCourante + 1 >= totalPages}
+                  onClick={() => setPage(pageCourante + 1)}
                 >
                   Suiv.
                 </button>

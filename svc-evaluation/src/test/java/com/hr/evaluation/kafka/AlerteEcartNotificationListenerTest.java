@@ -59,7 +59,7 @@ class AlerteEcartNotificationListenerTest {
         verify(publisher, times(2)).notifier(destinataire.capture(), sujet.capture(), contenu.capture());
         assertThat(destinataire.getAllValues()).containsExactlyInAnyOrder(drh01.toString(), rh02.toString())
                 .doesNotContain("RH");
-        assertThat(sujet.getValue()).isEqualTo("Alerte d'écart d'évaluation — Orange");
+        assertThat(sujet.getValue()).isEqualTo("Alerte d'écart d'évaluation — Alerte");
         assertThat(contenu.getValue()).isEqualTo("ALERTE_ECART_EVALUATION|alerte=" + alerteId + "|niveau=ORANGE"
                 + "|Évaluation de Sarra Khemiri (Campagne S2) : 1 compétence(s) en écart, écart max 2 étoiles.");
         verify(identite, never()).comptesParRole("ADMIN");
@@ -75,7 +75,7 @@ class AlerteEcartNotificationListenerTest {
         ArgumentCaptor<String> sujet = ArgumentCaptor.forClass(String.class);
         verify(publisher, times(2)).notifier(anyString(), sujet.capture(), anyString());
         assertThat(sujet.getAllValues()).containsExactly(
-                "Alerte d'écart d'évaluation — Rouge", "Alerte d'écart d'évaluation — Urgente");
+                "Alerte d'écart d'évaluation — Critique", "Alerte d'écart d'évaluation — Urgente");
     }
 
     @Test

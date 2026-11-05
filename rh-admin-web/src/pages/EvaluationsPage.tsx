@@ -23,6 +23,9 @@ import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useDialogA11y } from '../components/useDialogA11y';
 import { EmptyState, Icon, LoadingState, StatusBadge as Status, formatDate } from '../components/ui';
+import { getTousCollaborateurs, getUnites, type CollaborateurRow, type Unite } from '../api/rhClient';
+import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
+import { appartientSelection, correspond, indexerUnites, selectionActive, useFiltresUrl } from '../utils/filtres';
 
 type Tab = 'campaigns' | 'templates' | 'evaluations' | 'alertes';
 type TemplateSubTab = 'GENERIC' | 'TECHNICAL';
@@ -49,8 +52,24 @@ function apercuCalendrier(annee: number, mois: number, jour: number | null, dure
 
 export default function EvaluationsPage() {
   const lectureSeule = useLectureSeule();
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<Tab>(searchParams.get('onglet') === 'alertes' ? 'alertes' : 'campaigns');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const ongletUrl = searchParams.get('onglet') as Tab | null;
+  const [activeTab, setActiveTabEtat] = useState<Tab>(
+    ongletUrl && ['campaigns', 'templates', 'evaluations', 'alertes'].includes(ongletUrl) ? ongletUrl : 'campaigns',
+  );
+  /** L'onglet est mémorisé dans l'URL avec les filtres. */
+  function setActiveTab(t: Tab) {
+    setActiveTabEtat(t);
+    setSearchParams(
+      (prev) => {
+        const suivant = new URLSearchParams(prev);
+        if (t === 'campaigns') suivant.delete('onglet');
+        else suivant.set('onglet', t);
+        return suivant;
+      },
+      { replace: true },
+    );
+  }
   const [templateSub, setTemplateSub] = useState<TemplateSubTab>('GENERIC');
 
   return (
@@ -771,6 +790,8 @@ function AssignTemplatesModal({ campaign, generalTemplates, competencyTemplates,
 // EVALUATIONS (ANALYTICS) TAB
 // ──────────────────────────────────────────────────────────────────────────────
 
+const FILTRES_EVAL_DEFAUT = { q: '', direction: '', departement: '', service: '', statut: '', alerte: '', campagne: '', profilIncomplet: '' };
+
 function EvaluationsTab() {
   const [evaluations, setEvaluations] = useState<EvaluationItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -778,9 +799,20 @@ function EvaluationsTab() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [filterStatut, setFilterStatut] = useState('');
-  const [filterAlerte, setFilterAlerte] = useState('');
-  const [filterProfilIncomplet, setFilterProfilIncomplet] = useState(false);
+  const filtres = useFiltresUrl(FILTRES_EVAL_DEFAUT, 'e_');
+  const f = filtres.valeurs;
+  const filterStatut = f.statut;
+  const filterAlerte = f.alerte;
+  const filterProfilIncomplet = f.profilIncomplet === '1';
+  const [unites, setUnites] = useState<Unite[]>([]);
+  const [collabs, setCollabs] = useState<CollaborateurRow[]>([]);
+  const [collabsErr, setCollabsErr] = useState(false);
+  useEffect(() => {
+    void getUnites().then(setUnites).catch(() => {});
+    void getTousCollaborateurs().then(setCollabs).catch(() => setCollabsErr(true));
+  }, []);
+  const indexUnites = useMemo(() => indexerUnites(unites), [unites]);
+  const uniteCollab = useMemo(() => new Map(collabs.map((c) => [c.identifiant, c.unite?.identifiant])), [collabs]);
 
   useEffect(() => { void loadEvaluations(); }, [filterProfilIncomplet]);
 
@@ -798,11 +830,16 @@ function EvaluationsTab() {
     }
   };
 
+  // Profil incomplet : serveur ; le reste côté client (liste complète renvoyée).
   const filtered = evaluations.filter(e => {
     if (filterStatut && e.statut !== filterStatut) return false;
     if (filterAlerte && e.couleurAlerte !== filterAlerte) return false;
+    if (f.campagne && e.campaignNom !== f.campagne) return false;
+    if (!correspond([e.collaborateurNom, e.collaborateurMatricule, e.superieurNom, e.campaignNom], f.q)) return false;
+    if (!collabsErr && selectionActive(f) && !appartientSelection(indexUnites, uniteCollab.get(e.collaborateurIdentifiant), f)) return false;
     return true;
   });
+  const campagnesNoms = Array.from(new Set(evaluations.map(e => e.campaignNom).filter(Boolean))).sort();
 
   const stats = useMemo(() => {
     const completed = evaluations.filter(e => e.statut === 'VALIDEE').length;
@@ -855,45 +892,74 @@ function EvaluationsTab() {
 
       <div className="toolbar mt-lg">
         <h2>Évaluations</h2>
-        <div className="inline-row">
-          <select
-            value={filterStatut}
-            onChange={e => setFilterStatut(e.target.value)}
-            style={{ width: 'auto' }}
-            aria-label="Filtrer par statut"
-          >
-            <option value="">Tous les statuts</option>
-            <option value="EN_ATTENTE_VALIDATION_CROISEE">En attente</option>
-            <option value="VALIDEE_COLLABORATEUR">Validée collab.</option>
-            <option value="VALIDEE_SUPERIEUR">Validée manager</option>
-            <option value="VALIDEE">Validée</option>
-          </select>
-          <select
-            value={filterAlerte}
-            onChange={e => setFilterAlerte(e.target.value)}
-            style={{ width: 'auto' }}
-            aria-label="Filtrer par alerte"
-          >
-            <option value="">Toutes les alertes</option>
-            <option value="VERT">Vert</option>
-            <option value="ORANGE">Orange</option>
-            <option value="ROUGE">Rouge</option>
-          </select>
-          <label className="text-sm inline-row">
-            <input
-              type="checkbox"
-              checked={filterProfilIncomplet}
-              onChange={e => setFilterProfilIncomplet(e.target.checked)}
-            />
-            Profil métier incomplet
-          </label>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={() => void loadEvaluations()}>
-            Actualiser
-          </button>
-        </div>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={() => void loadEvaluations()}>
+          Actualiser
+        </button>
       </div>
 
-      {filtered.length === 0 ? (
+      <BarreFiltres
+        id="eval"
+        recherche={f.q}
+        onRecherche={(v) => filtres.definir({ q: v })}
+        libelleRecherche="Collaborateur ou manager"
+        placeholder="Nom, matricule, campagne…"
+        nbResultats={filtered.length}
+        nbTotal={evaluations.length}
+        nbActifs={filtres.nbActifs}
+        onReinitialiser={filtres.reinitialiser}
+      >
+        <ChampSelect
+          id="eval-statut"
+          libelle="Statut"
+          valeur={f.statut}
+          toutesLibelle="Tous les statuts"
+          options={[
+            { valeur: 'EN_ATTENTE_VALIDATION_CROISEE', libelle: 'En attente' },
+            { valeur: 'VALIDEE_COLLABORATEUR', libelle: 'Validée collab.' },
+            { valeur: 'VALIDEE_SUPERIEUR', libelle: 'Validée manager' },
+            { valeur: 'VALIDEE', libelle: 'Validée' },
+          ]}
+          onChange={(v) => filtres.definir({ statut: v })}
+        />
+        <ChampSelect
+          id="eval-alerte"
+          libelle="Alerte"
+          valeur={f.alerte}
+          toutesLibelle="Toutes les alertes"
+          options={[
+            { valeur: 'VERT', libelle: 'Vert' },
+            { valeur: 'ORANGE', libelle: 'Orange' },
+            { valeur: 'ROUGE', libelle: 'Rouge' },
+          ]}
+          onChange={(v) => filtres.definir({ alerte: v })}
+        />
+        <ChampSelect
+          id="eval-campagne"
+          libelle="Campagne"
+          valeur={f.campagne}
+          toutesLibelle="Toutes les campagnes"
+          options={campagnesNoms.map(n => ({ valeur: n, libelle: n }))}
+          onChange={(v) => filtres.definir({ campagne: v })}
+        />
+        <FiltresUnite idPrefixe="eval" unites={unites} selection={f} onChange={(sel) => filtres.definir(sel)} />
+        <label className="text-sm inline-row" style={{ alignSelf: 'end' }}>
+          <input
+            type="checkbox"
+            checked={filterProfilIncomplet}
+            onChange={e => filtres.definir({ profilIncomplet: e.target.checked ? '1' : '' })}
+          />
+          Profil métier incomplet
+        </label>
+      </BarreFiltres>
+      {collabsErr ? (
+        <div className="alert alert--warning" role="status">
+          Liste des collaborateurs indisponible : le filtre par direction, département ou service n'est pas appliqué.
+        </div>
+      ) : null}
+
+      {filtered.length === 0 && evaluations.length > 0 ? (
+        <AucunResultat onReinitialiser={filtres.reinitialiser} />
+      ) : filtered.length === 0 ? (
         <div className="empty-state full-width">
           <h3>Aucune évaluation</h3>
           <p>Les évaluations apparaissent ici une fois qu’une campagne est activée.</p>

@@ -44,6 +44,8 @@ class PresencePointageServiceTest {
 	private VerificationFacialePointageService verificationFaciale;
 	@Mock
 	private FenetreHoraireService fenetreHoraire;
+	@Mock
+	private com.hr.presence.client.ReferentielClient referentielClient;
 
 	private QrTokenService qrTokenService;
 	private QrDynamiqueService qrDynamique;
@@ -74,6 +76,7 @@ class PresencePointageServiceTest {
 				qrDynamique,
 				verificationFaciale,
 				fenetreHoraire,
+				referentielClient,
 				java.time.Clock.systemUTC());
 
 		now = Instant.now();
@@ -540,5 +543,99 @@ class PresencePointageServiceTest {
 
 		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_POSITION_SIMULEE);
 		org.mockito.Mockito.verifyNoInteractions(fenetreHoraire);
+	}
+
+	private PresencePointage pointageDe(UUID collaborateur, UUID siteId) {
+		PresencePointage p = new PresencePointage();
+		p.setId(UUID.randomUUID());
+		p.setCollaborateurId(collaborateur.toString());
+		p.setSiteId(siteId);
+		p.setStatut(PointageStatut.VALIDE);
+		p.setType(com.hr.presence.domain.PointageType.ENTREE);
+		p.setServerTs(now);
+		return p;
+	}
+
+	@SuppressWarnings("unchecked")
+	private void donnerPage(PresencePointage... lignes) {
+		when(pointageRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+				any(org.springframework.data.domain.Pageable.class)))
+				.thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(lignes)));
+	}
+
+	@Test
+	void listerAdminRenvoieNomsMatriculeEtSite() {
+		UUID collab = UUID.randomUUID();
+		donnerPage(pointageDe(collab, site.getId()));
+		when(siteRepository.findAllById(any())).thenReturn(java.util.List.of(site));
+		when(referentielClient.resoudreCollaborateurs(java.util.List.of(collab))).thenReturn(java.util.List.of(
+				new com.hr.presence.client.ReferentielClient.CollaborateurResolu(
+						collab, null, "M042", "Sarra Khemiri", true, null, null, null, null)));
+
+		PointageResponse r = pointageService.listerAdmin(null, null, null, null, null, null, null, 0, 20)
+				.content().get(0);
+
+		assertThat(r.collaborateurNom()).isEqualTo("Sarra Khemiri");
+		assertThat(r.collaborateurMatricule()).isEqualTo("M042");
+		assertThat(r.siteCode()).isEqualTo("HQ");
+		assertThat(r.siteLibelle()).isEqualTo("HQ");
+	}
+
+	@Test
+	void listerAdminReferentielIndisponibleLaisseNomsNulsSansErreur() {
+		UUID collab = UUID.randomUUID();
+		donnerPage(pointageDe(collab, site.getId()));
+		when(siteRepository.findAllById(any())).thenReturn(java.util.List.of(site));
+		when(referentielClient.resoudreCollaborateurs(any())).thenThrow(
+				com.hr.presence.web.PresenceMetierException.indisponible("REFERENTIEL_INDISPONIBLE", "KO"));
+
+		PointageResponse r = pointageService.listerAdmin(null, null, null, null, null, null, null, 0, 20)
+				.content().get(0);
+
+		assertThat(r.collaborateurNom()).isNull();
+		assertThat(r.collaborateurMatricule()).isNull();
+		assertThat(r.siteCode()).isEqualTo("HQ");
+	}
+
+	@Test
+	void listerAdminFicheInconnueDuReferentielLaisseNomsNuls() {
+		donnerPage(pointageDe(UUID.randomUUID(), site.getId()));
+		when(siteRepository.findAllById(any())).thenReturn(java.util.List.of(site));
+		when(referentielClient.resoudreCollaborateurs(any())).thenReturn(java.util.List.of());
+
+		PointageResponse r = pointageService.listerAdmin(null, null, null, null, null, null, null, 0, 20)
+				.content().get(0);
+
+		assertThat(r.collaborateurNom()).isNull();
+	}
+
+	@Test
+	void listerAdminUnSeulAppelGroupePourLaPage() {
+		UUID a = UUID.randomUUID();
+		UUID b = UUID.randomUUID();
+		donnerPage(pointageDe(a, site.getId()), pointageDe(b, site.getId()), pointageDe(a, site.getId()));
+		when(siteRepository.findAllById(any())).thenReturn(java.util.List.of(site));
+		when(referentielClient.resoudreCollaborateurs(any())).thenReturn(java.util.List.of());
+
+		pointageService.listerAdmin(null, null, null, null, null, null, null, 0, 20);
+
+		verify(referentielClient, org.mockito.Mockito.times(1)).resoudreCollaborateurs(java.util.List.of(a, b));
+		verify(siteRepository, org.mockito.Mockito.times(1)).findAllById(java.util.List.of(site.getId()));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void listerAdminFiltreParCollaborateurTransmisAuDepot() {
+		UUID collab = UUID.randomUUID();
+		when(pointageRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+				any(org.springframework.data.domain.Pageable.class)))
+				.thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of()));
+
+		var page = pointageService.listerAdmin(null, null, null, null, null, null, collab, 0, 20);
+
+		assertThat(page.content()).isEmpty();
+		verify(pointageRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class),
+				any(org.springframework.data.domain.Pageable.class));
+		org.mockito.Mockito.verifyNoInteractions(referentielClient);
 	}
 }

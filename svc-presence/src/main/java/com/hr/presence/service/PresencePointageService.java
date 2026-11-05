@@ -1,5 +1,6 @@
 package com.hr.presence.service;
 
+import com.hr.presence.client.ReferentielClient;
 import com.hr.presence.config.PresenceProperties;
 import com.hr.presence.domain.ModeQr;
 import com.hr.presence.domain.PointageStatut;
@@ -26,8 +27,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -46,6 +50,7 @@ public class PresencePointageService {
 	private final QrDynamiqueService qrDynamiqueService;
 	private final VerificationFacialePointageService verificationFaciale;
 	private final FenetreHoraireService fenetreHoraire;
+	private final ReferentielClient referentielClient;
 	private final Clock clock;
 
 	/** QR résolu : site et credential statique (null pour une borne écran), ou rejet déjà enregistré. */
@@ -66,6 +71,7 @@ public class PresencePointageService {
 			QrDynamiqueService qrDynamiqueService,
 			VerificationFacialePointageService verificationFaciale,
 			FenetreHoraireService fenetreHoraire,
+			ReferentielClient referentielClient,
 			Clock clock) {
 		this.pointageRepository = pointageRepository;
 		this.siteRepository = siteRepository;
@@ -77,6 +83,7 @@ public class PresencePointageService {
 		this.qrDynamiqueService = qrDynamiqueService;
 		this.verificationFaciale = verificationFaciale;
 		this.fenetreHoraire = fenetreHoraire;
+		this.referentielClient = referentielClient;
 		this.clock = clock;
 	}
 
@@ -286,12 +293,62 @@ public class PresencePointageService {
 	@Transactional(readOnly = true)
 	public PageResponse<PointageResponse> listerAdmin(
 			UUID siteId, PointageStatut statut, PointageType type, Instant from, Instant to,
-			List<VerificationFaciale> verificationFaciale, int page, int size) {
+			List<VerificationFaciale> verificationFaciale, UUID collaborateurId, int page, int size) {
 		int pageSize = Math.clamp(size, 1, 50);
 		Page<PresencePointage> result = pointageRepository.findAll(
-				PresencePointageRepository.filtreAdmin(siteId, statut, type, from, to, verificationFaciale),
+				PresencePointageRepository.filtreAdmin(siteId, statut, type, from, to, verificationFaciale, collaborateurId),
 				PageRequest.of(Math.max(page, 0), pageSize, Sort.by(Sort.Direction.DESC, "serverTs")));
-		return toPage(result);
+		return enrichirIdentites(toPage(result));
+	}
+
+	/** Ajoute noms et sites : un appel groupé au référentiel et une requête sur les sites par page. */
+	private PageResponse<PointageResponse> enrichirIdentites(PageResponse<PointageResponse> page) {
+		List<PointageResponse> lignes = page.content();
+		if (lignes.isEmpty()) {
+			return page;
+		}
+		Map<String, ReferentielClient.CollaborateurResolu> collaborateurs = resoudreNoms(lignes);
+		List<UUID> siteIds = lignes.stream().map(PointageResponse::siteId).filter(Objects::nonNull).distinct().toList();
+		Map<UUID, PresenceSite> sites = new HashMap<>();
+		if (!siteIds.isEmpty()) {
+			siteRepository.findAllById(siteIds).forEach(s -> sites.put(s.getId(), s));
+		}
+		List<PointageResponse> enrichies = lignes.stream().map(l -> {
+			ReferentielClient.CollaborateurResolu c = l.collaborateurId() == null ? null : collaborateurs.get(l.collaborateurId());
+			PresenceSite s = l.siteId() == null ? null : sites.get(l.siteId());
+			return l.avecIdentite(
+					c != null ? c.nom() : null, c != null ? c.matricule() : null,
+					s != null ? s.getCode() : null, s != null ? s.getLibelle() : null);
+		}).toList();
+		return new PageResponse<>(enrichies, page.page(), page.size(), page.totalElements(), page.totalPages());
+	}
+
+	/** Noms par identifiant de fiche ; référentiel indisponible : carte vide, la liste reste servie. */
+	private Map<String, ReferentielClient.CollaborateurResolu> resoudreNoms(List<PointageResponse> lignes) {
+		List<UUID> ids = lignes.stream().map(PointageResponse::collaborateurId)
+				.map(PresencePointageService::versUuid).filter(Objects::nonNull).distinct().toList();
+		Map<String, ReferentielClient.CollaborateurResolu> resolus = new HashMap<>();
+		if (ids.isEmpty()) {
+			return resolus;
+		}
+		try {
+			referentielClient.resoudreCollaborateurs(ids).stream().filter(c -> c.collaborateurId() != null)
+					.forEach(c -> resolus.put(c.collaborateurId().toString(), c));
+		} catch (RuntimeException ex) {
+			log.warn("Noms des collaborateurs non résolus pour la liste des pointages : {}", ex.getMessage());
+		}
+		return resolus;
+	}
+
+	private static UUID versUuid(String valeur) {
+		if (valeur == null) {
+			return null;
+		}
+		try {
+			return UUID.fromString(valeur);
+		} catch (IllegalArgumentException ex) {
+			return null;
+		}
 	}
 
 	private PointageResponse persistRejet(

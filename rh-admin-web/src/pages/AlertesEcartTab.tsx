@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import {
   AlerteEcartApiError,
   getAlertesEcart,
@@ -17,8 +17,11 @@ import { getUnites, type Unite } from '../api/rhClient';
 import { AlerteEcartBadge, StatutAlerteBadge } from '../components/AlerteEcartBadge';
 import { EmptyState, LoadingState, formatDate } from '../components/ui';
 import { routeAlerteEcart } from '../api/notificationContenu';
+import BarreFiltres, { AucunResultat, ChampSelect } from '../components/BarreFiltres';
+import { correspond, useFiltresUrl } from '../utils/filtres';
 
 const TAILLE = 20;
+const FILTRES_DEFAUT = { q: '', statut: '', niveau: '', campagne: '', unite: '' };
 
 function libelleCompteur(c: CompteurAlertes | null): string {
   if (!c) return '';
@@ -29,10 +32,9 @@ function libelleCompteur(c: CompteurAlertes | null): string {
 
 /** Onglet « Alertes d'écart » : l'ordre renvoyé par l'API est conservé tel quel (jamais retrié). */
 export default function AlertesEcartTab() {
-  const [statut, setStatut] = useState('');
-  const [niveau, setNiveau] = useState('');
-  const [campagneId, setCampagneId] = useState('');
-  const [uniteId, setUniteId] = useState('');
+  const filtres = useFiltresUrl(FILTRES_DEFAUT, 'a_');
+  const location = useLocation();
+  const { q, statut, niveau, campagne: campagneId, unite: uniteId } = filtres.valeurs;
   const [page, setPage] = useState(0);
   const [data, setData] = useState<PageAlertes | null>(null);
   const [compteur, setCompteur] = useState<CompteurAlertes | null>(null);
@@ -71,18 +73,24 @@ export default function AlertesEcartTab() {
     void charger();
   }, [charger]);
 
-  const filtresActifs = !!(statut || niveau || campagneId || uniteId);
-  const changer = (fn: () => void) => {
-    fn();
+  const filtresActifs = filtres.nbActifs > 0;
+  const changer = (changement: Partial<typeof FILTRES_DEFAUT>) => {
+    filtres.definir(changement);
     setPage(0);
   };
   const reinitialiser = () => {
-    setStatut('');
-    setNiveau('');
-    setCampagneId('');
-    setUniteId('');
+    filtres.reinitialiser();
     setPage(0);
   };
+  // Statut, niveau, campagne et unité sont filtrés par le serveur (ordre de l'API conservé) ;
+  // la recherche collaborateur / responsable ne porte que sur la page affichée (le serveur n'a pas ce paramètre).
+  const elements = useMemo(
+    () =>
+      (data?.elements ?? []).filter((a) =>
+        correspond([a.collaborateurNom, a.collaborateurMatricule, a.collaborateurUniteLibelle, a.superieurNom, a.campagneNom], q),
+      ),
+    [data, q],
+  );
 
   if (refuse) {
     return (
@@ -100,59 +108,51 @@ export default function AlertesEcartTab() {
         <strong>{libelleCompteur(compteur)}</strong>
       </p>
 
-      <div className="panel mb-md">
-        <div className="form-grid">
-          <label>
-            Statut
-            <select value={statut} onChange={(e) => changer(() => setStatut(e.target.value))}>
-              <option value="">Tous les statuts</option>
-              {(Object.keys(LIBELLES_STATUT_ALERTE) as StatutAlerteEcart[]).map((s) => (
-                <option key={s} value={s}>
-                  {LIBELLES_STATUT_ALERTE[s]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Niveau
-            <select value={niveau} onChange={(e) => changer(() => setNiveau(e.target.value))}>
-              <option value="">Tous les niveaux</option>
-              {(['URGENTE', 'ROUGE', 'ORANGE', 'ALIGNE'] as NiveauEcart[]).map((n) => (
-                <option key={n} value={n}>
-                  {LIBELLES_NIVEAU_ECART[n]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Campagne
-            <select value={campagneId} onChange={(e) => changer(() => setCampagneId(e.target.value))}>
-              <option value="">Toutes les campagnes</option>
-              {campagnes.map((c) => (
-                <option key={c.identifiant} value={c.identifiant}>
-                  {c.nom}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Unité
-            <select value={uniteId} onChange={(e) => changer(() => setUniteId(e.target.value))}>
-              <option value="">Toutes les unités</option>
-              {unites.map((u) => (
-                <option key={u.identifiant} value={u.identifiant}>
-                  {u.libelle}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className="mt-md">
-          <button type="button" className="btn btn--secondary btn--sm" disabled={!filtresActifs} onClick={reinitialiser}>
-            Réinitialiser
-          </button>
-        </div>
-      </div>
+      <BarreFiltres
+        id="alertes"
+        recherche={q}
+        onRecherche={(v) => filtres.definir({ q: v })}
+        libelleRecherche="Collaborateur"
+        placeholder="Nom, matricule, responsable…"
+        nbResultats={elements.length}
+        nbTotal={data?.elements.length}
+        nbActifs={filtres.nbActifs}
+        onReinitialiser={reinitialiser}
+        note={q && data && data.total > data.elements.length ? 'recherche limitée à la page affichée' : undefined}
+      >
+        <ChampSelect
+          id="alertes-statut"
+          libelle="Statut"
+          valeur={statut}
+          toutesLibelle="Tous les statuts"
+          options={(Object.keys(LIBELLES_STATUT_ALERTE) as StatutAlerteEcart[]).map((x) => ({ valeur: x, libelle: LIBELLES_STATUT_ALERTE[x] }))}
+          onChange={(v) => changer({ statut: v })}
+        />
+        <ChampSelect
+          id="alertes-niveau"
+          libelle="Niveau"
+          valeur={niveau}
+          toutesLibelle="Tous les niveaux"
+          options={(['URGENTE', 'ROUGE', 'ORANGE', 'ALIGNE'] as NiveauEcart[]).map((x) => ({ valeur: x, libelle: LIBELLES_NIVEAU_ECART[x] }))}
+          onChange={(v) => changer({ niveau: v })}
+        />
+        <ChampSelect
+          id="alertes-campagne"
+          libelle="Campagne"
+          valeur={campagneId}
+          toutesLibelle="Toutes les campagnes"
+          options={campagnes.map((c) => ({ valeur: c.identifiant, libelle: c.nom }))}
+          onChange={(v) => changer({ campagne: v })}
+        />
+        <ChampSelect
+          id="alertes-unite"
+          libelle="Unité"
+          valeur={uniteId}
+          toutesLibelle="Toutes les unités"
+          options={unites.map((u) => ({ valeur: u.identifiant, libelle: u.libelle }))}
+          onChange={(v) => changer({ unite: v })}
+        />
+      </BarreFiltres>
 
       {loading ? (
         <LoadingState label="Chargement des alertes…" />
@@ -167,6 +167,8 @@ export default function AlertesEcartTab() {
         <EmptyState icon="inbox" title="Aucune alerte d’écart">
           {filtresActifs ? 'Aucune alerte ne correspond à ces filtres.' : 'Aucun écart d’étoiles n’a été détecté pour le moment.'}
         </EmptyState>
+      ) : elements.length === 0 ? (
+        <AucunResultat onReinitialiser={reinitialiser} />
       ) : (
         <>
           <div className="table-container">
@@ -187,7 +189,7 @@ export default function AlertesEcartTab() {
                 </tr>
               </thead>
               <tbody>
-                {data.elements.map((a) => (
+                {elements.map((a) => (
                   <tr key={a.identifiant}>
                     <td>
                       <AlerteEcartBadge niveau={a.niveau} />
@@ -212,7 +214,7 @@ export default function AlertesEcartTab() {
                       <StatutAlerteBadge statut={a.statut} />
                     </td>
                     <td>
-                      <Link className="btn btn--secondary btn--sm" to={routeAlerteEcart(a.identifiant)}>
+                      <Link className="btn btn--secondary btn--sm" to={routeAlerteEcart(a.identifiant)} state={{ retourListe: location.search }}>
                         Voir le détail
                       </Link>
                     </td>

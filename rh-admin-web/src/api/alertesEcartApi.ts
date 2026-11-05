@@ -25,8 +25,8 @@ export type EvenementAlerteEcart =
 
 export const LIBELLES_NIVEAU_ECART: Record<NiveauEcart, string> = {
   ALIGNE: 'Aligné',
-  ORANGE: 'Orange',
-  ROUGE: 'Rouge',
+  ORANGE: 'Alerte',
+  ROUGE: 'Critique',
   URGENTE: 'Urgente',
 };
 

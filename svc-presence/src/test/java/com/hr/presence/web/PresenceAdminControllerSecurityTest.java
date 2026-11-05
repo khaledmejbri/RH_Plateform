@@ -17,7 +17,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -70,6 +73,38 @@ class PresenceAdminControllerSecurityTest {
 	@Test
 	void userSansBackofficeRefuseLectureAdmin() throws Exception {
 		mockMvc.perform(get("/api/rh/v1/admin/presence/sites")
+						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void rhPeutListerPointagesFiltresParCollaborateur() throws Exception {
+		java.util.UUID collab = java.util.UUID.randomUUID();
+		when(pointageService.listerAdmin(any(), any(), any(), any(), any(), any(), eq(collab), anyInt(), anyInt()))
+				.thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
+
+		mockMvc.perform(get("/api/rh/v1/admin/presence/pointages")
+						.param("collaborateurId", collab.toString())
+						.with(jwt().authorities(
+								new SimpleGrantedAuthority("ROLE_USER"),
+								new SimpleGrantedAuthority("ROLE_RH"))))
+				.andExpect(status().isOk());
+		verify(pointageService).listerAdmin(any(), any(), any(), any(), any(), any(), eq(collab), anyInt(), anyInt());
+	}
+
+	@Test
+	void collaborateurIdInvalideRenvoie400() throws Exception {
+		mockMvc.perform(get("/api/rh/v1/admin/presence/pointages")
+						.param("collaborateurId", "pas-un-uuid")
+						.with(jwt().authorities(
+								new SimpleGrantedAuthority("ROLE_USER"),
+								new SimpleGrantedAuthority("ROLE_RH"))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void userSansBackofficeRefuseListeDesPointages() throws Exception {
+		mockMvc.perform(get("/api/rh/v1/admin/presence/pointages")
 						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
 				.andExpect(status().isForbidden());
 	}

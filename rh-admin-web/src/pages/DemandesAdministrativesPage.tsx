@@ -1,15 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   getDemandeAdministrativeHistorique,
   getDemandeAdministrativeSuivi,
   getDemandesAdministrativesListe,
+  getUnites,
   postDemandeAdministrativeRefuserRrh,
   postDemandeAdministrativeValiderRrh,
   type DemandeAdministrative,
   type DemandeAdministrativeHistorique,
   type DemandeAdministrativeSuivi,
+  type Unite,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
+import { correspond, libelleDansSelection, unitesRetenues, useFiltresUrl } from '../utils/filtres';
 import { DialogPanel } from '../components/useDialogA11y';
 import { Avatar, Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, formatDateTime, type IconName, type Tone } from '../components/ui';
 
@@ -27,14 +31,20 @@ const ACTION_LIBELLES: Record<string, string> = {
   ANNULATION_DEMANDEUR: 'Annulée par le demandeur',
 };
 
+const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', statut: 'EN_VALIDATION_RRH', type: '' };
+
 export default function DemandesAdministrativesPage() {
   const lectureSeule = useLectureSeule();
   const [rows, setRows] = useState<DemandeAdministrative[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [statut, setStatut] = useState<StatutFilter>('EN_VALIDATION_RRH');
-  const [typeDemande, setTypeDemande] = useState('');
+  const filtres = useFiltresUrl(FILTRES_DEFAUT);
+  const f = filtres.valeurs;
+  const statut = f.statut as StatutFilter;
+  const typeDemande = f.type;
+  const [unites, setUnites] = useState<Unite[]>([]);
+  useEffect(() => { void getUnites().then(setUnites).catch(() => {}); }, []);
 
   const [selected, setSelected] = useState<DemandeAdministrative | null>(null);
   const [suivi, setSuivi] = useState<DemandeAdministrativeSuivi | null>(null);
@@ -187,6 +197,18 @@ export default function DemandesAdministrativesPage() {
       .map(([cle, libelle]) => [libelle, Array.isArray(c[cle]) ? (c[cle] as unknown[]).join(', ') : String(c[cle])]);
   }
 
+  const retenues = useMemo(() => unitesRetenues(unites, f), [unites, f]);
+  // Statut et type sont filtrés par le serveur ; recherche et unité côté client (liste complète renvoyée).
+  const affichees = useMemo(
+    () =>
+      rows.filter(
+        (d) =>
+          correspond([d.demandeur_nom, d.demandeur_matricule, d.demandeur_unite, formatTypeDemande(d.type_demande)], f.q) &&
+          libelleDansSelection(retenues, d.demandeur_unite),
+      ),
+    [rows, f.q, retenues],
+  );
+
   const peutDecider = !lectureSeule && selected?.statut === 'EN_VALIDATION_RRH';
 
   return (
@@ -202,28 +224,45 @@ export default function DemandesAdministrativesPage() {
         }
       />
 
-      <div className="toolbar-filters">
-        <div>
-          <label htmlFor="demandes-statut" className="field-label">Statut</label>
-          <select id="demandes-statut" className="field-input" value={statut} onChange={(e) => setStatut(e.target.value as StatutFilter)}>
-            <option value="">Tous les statuts</option>
-            <option value="EN_VALIDATION_RRH">À décider (validation RRH)</option>
-            <option value="EN_VALIDATION_SUPERIEUR">Chez le responsable</option>
-            <option value="APPROUVEE">Approuvées</option>
-            <option value="REFUSEE">Refusées</option>
-            <option value="ANNULEE">Annulées</option>
-          </select>
-        </div>
-        <div>
-          <label htmlFor="demandes-type" className="field-label">Type</label>
-          <select id="demandes-type" className="field-input" value={typeDemande} onChange={(e) => setTypeDemande(e.target.value)}>
-            <option value="">Tous les types</option>
-            <option value="CONGE">Congé</option>
-            <option value="AUTORISATION_SORTIE">Autorisation de sortie</option>
-            <option value="ORDRE_MISSION">Ordre de mission</option>
-          </select>
-        </div>
-      </div>
+      <BarreFiltres
+        id="demandes"
+        recherche={f.q}
+        onRecherche={(v) => filtres.definir({ q: v })}
+        libelleRecherche="Demandeur"
+        placeholder="Nom, matricule, unité…"
+        nbResultats={affichees.length}
+        nbTotal={rows.length}
+        nbActifs={filtres.nbActifs}
+        onReinitialiser={filtres.reinitialiser}
+      >
+        <ChampSelect
+          id="demandes-statut"
+          libelle="Statut"
+          valeur={f.statut}
+          toutesLibelle="Tous les statuts"
+          options={[
+            { valeur: 'EN_VALIDATION_RRH', libelle: 'À décider (validation RRH)' },
+            { valeur: 'EN_VALIDATION_SUPERIEUR', libelle: 'Chez le responsable' },
+            { valeur: 'APPROUVEE', libelle: 'Approuvées' },
+            { valeur: 'REFUSEE', libelle: 'Refusées' },
+            { valeur: 'ANNULEE', libelle: 'Annulées' },
+          ]}
+          onChange={(v) => filtres.definir({ statut: v })}
+        />
+        <ChampSelect
+          id="demandes-type"
+          libelle="Type"
+          valeur={f.type}
+          toutesLibelle="Tous les types"
+          options={[
+            { valeur: 'CONGE', libelle: 'Congé' },
+            { valeur: 'AUTORISATION_SORTIE', libelle: 'Autorisation de sortie' },
+            { valeur: 'ORDRE_MISSION', libelle: 'Ordre de mission' },
+          ]}
+          onChange={(v) => filtres.definir({ type: v })}
+        />
+        <FiltresUnite idPrefixe="demandes" unites={unites} selection={f} onChange={(sel) => filtres.definir(sel)} />
+      </BarreFiltres>
 
       {err ? <ErrorAlert>{err}</ErrorAlert> : null}
       {msg ? <div className="alert alert--success" role="status"><Icon name="check" />{msg}</div> : null}
@@ -235,6 +274,8 @@ export default function DemandesAdministrativesPage() {
           <EmptyState icon="clipboard" title="Aucune demande administrative">
             Aucune demande ne correspond à ces filtres.
           </EmptyState>
+        ) : affichees.length === 0 ? (
+          <AucunResultat onReinitialiser={filtres.reinitialiser} />
         ) : (
           <div className="table-wrap">
             <table className="data-table data-table--responsive">
@@ -250,7 +291,7 @@ export default function DemandesAdministrativesPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((d) => {
+                {affichees.map((d) => {
                   const chip = typeChip(d.type_demande);
                   const typeConge =
                     d.type_demande === 'CONGE'

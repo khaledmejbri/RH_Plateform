@@ -48,7 +48,7 @@ public class EvaluationScoringService {
 
 	/**
 	 * @param questionsTechniques identifiants des questions du template TECHNICAL : leur écart reçoit un niveau
-	 *                            (Aligné / Orange / Rouge / Urgente, D-E09.c) ; ensemble vide = aucun niveau (mobile).
+	 *                            (Aligné / Alerte / Critique / Urgente, D-E09.c) ; ensemble vide = aucun niveau (mobile).
 	 */
 	public EvaluationAnalyticsResponse analyser(List<EvaluationAnswer> generalAnswers, List<SkillAnswer> skillAnswers,
 			Set<UUID> questionsTechniques) {

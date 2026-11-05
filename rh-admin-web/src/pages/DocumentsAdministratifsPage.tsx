@@ -1,19 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   getDocumentsFileAttente,
+  getUnites,
   postDocumentDisponible,
   postPrendreProchaineDocument,
   postDocumentRejet,
   type DemandeDocument,
+  type Unite,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
+import { correspond, humanizeCode, libelleDansSelection, unitesRetenues, useFiltresUrl } from '../utils/filtres';
 import { DialogPanel } from '../components/useDialogA11y';
 import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, formatDateTime } from '../components/ui';
+
+const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', type: '', statut: '' };
 
 export default function DocumentsAdministratifsPage() {
   const lectureSeule = useLectureSeule();
   const [rows, setRows]                   = useState<DemandeDocument[]>([]);
   const [loading, setLoading]             = useState(true);
+  const filtres = useFiltresUrl(FILTRES_DEFAUT);
+  const f = filtres.valeurs;
+  const [unites, setUnites] = useState<Unite[]>([]);
   const [err, setErr]                     = useState<string | null>(null);
   const [msg, setMsg]                     = useState<string | null>(null);
   const [pickedDemande, setPickedDemande] = useState<DemandeDocument | null>(null);
@@ -33,7 +42,7 @@ export default function DocumentsAdministratifsPage() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); void getUnites().then(setUnites).catch(() => {}); }, []);
 
   /** Hors ordre FIFO = encore en attente et pas la prochaine (pas une demande déjà en traitement). */
   function isOutOfFifoOrder(d: DemandeDocument | null): boolean {
@@ -114,6 +123,21 @@ export default function DocumentsAdministratifsPage() {
   /** Une autre demande est en cours : on ne peut pas traiter celle-ci. */
   const blockedByOther = hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH';
 
+  const retenues = useMemo(() => unitesRetenues(unites, f), [unites, f]);
+  const typesDoc = useMemo(() => Array.from(new Set(rows.map((r) => r.type_document))).sort(), [rows]);
+  const statutsDoc = useMemo(() => Array.from(new Set(rows.map((r) => r.statut))).sort(), [rows]);
+  const affichees = useMemo(
+    () =>
+      rows.filter(
+        (d) =>
+          correspond([d.demandeur_nom, d.demandeur_matricule, d.demandeur_unite, d.departement_libelle, d.reference_livrable, humanizeCode(d.type_document)], f.q) &&
+          libelleDansSelection(retenues, d.demandeur_unite ?? d.departement_libelle) &&
+          (!f.type || d.type_document === f.type) &&
+          (!f.statut || d.statut === f.statut),
+      ),
+    [rows, f, retenues],
+  );
+
   return (
     <div className="page">
       <PageHeader
@@ -152,6 +176,34 @@ export default function DocumentsAdministratifsPage() {
         </p>
       </div>
 
+      <BarreFiltres
+        id="docs"
+        recherche={f.q}
+        onRecherche={(v) => filtres.definir({ q: v })}
+        libelleRecherche="Demandeur"
+        placeholder="Nom, matricule, unité, document…"
+        nbResultats={affichees.length}
+        nbTotal={rows.length}
+        nbActifs={filtres.nbActifs}
+        onReinitialiser={filtres.reinitialiser}
+      >
+        <ChampSelect
+          id="docs-type"
+          libelle="Type de document"
+          valeur={f.type}
+          options={typesDoc.map((t) => ({ valeur: t, libelle: humanizeCode(t) }))}
+          onChange={(v) => filtres.definir({ type: v })}
+        />
+        <ChampSelect
+          id="docs-statut"
+          libelle="Statut"
+          valeur={f.statut}
+          options={statutsDoc.map((t) => ({ valeur: t, libelle: humanizeCode(t) }))}
+          onChange={(v) => filtres.definir({ statut: v })}
+        />
+        <FiltresUnite idPrefixe="docs" unites={unites} selection={f} onChange={(sel) => filtres.definir(sel)} />
+      </BarreFiltres>
+
       <div className="panel panel--flush">
         {loading ? (
           <LoadingState label="Chargement de la file…" />
@@ -159,6 +211,8 @@ export default function DocumentsAdministratifsPage() {
           <EmptyState icon="file" title="Aucune demande en attente">
             La file est vide : les nouvelles demandes de documents apparaîtront ici.
           </EmptyState>
+        ) : affichees.length === 0 ? (
+          <AucunResultat onReinitialiser={filtres.reinitialiser} />
         ) : (
           <div className="table-wrap">
             <table className="data-table data-table--responsive">
@@ -176,7 +230,7 @@ export default function DocumentsAdministratifsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((d) => {
+                {affichees.map((d) => {
                   const isNext = d.est_prochaine_fifo === true;
                   const enCours = d.statut === 'EN_TRAITEMENT_RH';
                   return (
