@@ -28,6 +28,8 @@ public interface EvaluationRepository extends JpaRepository<Evaluation, UUID> {
     List<Evaluation> findByCampaignIdAndProfilMetierIncompletTrue(UUID campaignId);
 
     List<Evaluation> findByProfilMetierIncompletTrue();
+
+    long countByCampaignIdAndTemplateCompetenceAssigneIsNull(UUID campaignId);
     
     @Query("SELECT e FROM Evaluation e LEFT JOIN FETCH e.campaign WHERE e.collaborateurIdentifiant = :collaborateurIdentifiant ORDER BY e.creeLe DESC")
     List<Evaluation> findByCollaborateurIdentifiantOrderByCreeLeDescWithCampaign(UUID collaborateurIdentifiant);

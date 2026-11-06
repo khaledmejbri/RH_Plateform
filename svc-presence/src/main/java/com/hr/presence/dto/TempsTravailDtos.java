@@ -49,7 +49,9 @@ public final class TempsTravailDtos {
 			@JsonProperty("etat") EtatJourHeuresSup etat,
 			@JsonProperty("direction_libelle") String directionLibelle,
 			@JsonProperty("departement_libelle") String departementLibelle,
-			@JsonProperty("service_libelle") String serviceLibelle) {
+			@JsonProperty("service_libelle") String serviceLibelle,
+			/** D-P18.d : instant (ISO, Africa/Tunis) où une journée « EN_COURS » basculera ; nul sinon. */
+			@JsonProperty("en_cours_jusqu_a") String enCoursJusquA) {
 	}
 
 	/** Page de lignes, au format Spring {@code Page} attendu par le web. */

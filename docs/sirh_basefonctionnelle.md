@@ -70,7 +70,7 @@ Tous les appels clients passent par la gateway (`/api/**`). Les microservices in
 | **NOTIF** | Notifications temps réel (WebSocket) + e-mail | Tous | **Livré** |
 | **M01** | Demandes administratives (congé, sortie, mission) | Mobile + Web RH | **Livré** |
 | **M02** | Documents administratifs (attestations, bulletins…) | Mobile + Web RH | **Livré** |
-| **M03** | Notes de service / actualités + accusé de lecture | Mobile | **Partiel** (fil mock, pas de GED) |
+| **M03** | Notes de service / actualités + accusé de lecture | Mobile | **Cible** (le fil fictif du mobile est retiré, D-T02.a, recette UAT du 06/11/2026) |
 | **M04** | Plaintes internes / externes | Mobile + Web RH | **Livré** (transcription vocale : champ prévu, moteur IA non branché) |
 | **M05** | Besoins / demandes de formation + plan annuel | Mobile + Web RH | **Livré** (évaluations à chaud/froid : **cible**) |
 | **M06** | Besoins en personnel | — | **Cible** |
@@ -224,6 +224,7 @@ L’organigramme est la **structure organisationnelle éditable** (services / un
 - Assigner / retirer un manager **ne modifie pas** `profil_acces` (`role_workflow` ignoré s’il est encore envoyé).
 - Vue : racines → enfants, membres de l’unité, manager du nœud (signal « Sans responsable » critique pour le routage M01).
 - UX Plateforme RH : organigramme en cartes par niveaux. Sélection d’une carte, puis actions explicites : créer en dessous **uniquement les types de niveau inférieur** (DG → Direction / Département / Service ; Direction → Département / Service ; Département → Service ; Service → rien), modifier (dont `titre_poste`), rattacher via une liste limitée aux parents valides, nommer ou retirer le responsable. Le rôle d’accès (`profil_acces`) se lit, il ne se change pas depuis cet écran. Direction = lecture seule.
+- **D-H05 — Compteurs de la Structure RH (recette UAT du 06/11/2026, STR-1, choix par défaut).** Les compteurs se font **par type de nœud D-H04**, sur les nœuds actifs : Direction générale, Directions, Départements, Services, « À rattacher » ; « Unités sans responsable » compte les nœuds actifs de tout type sans manager actif (signal de routage M01 vers la RRH) ; le mot « unités » désigne l’ensemble des nœuds et n’est jamais employé pour « services ». La somme Direction générale + Directions + Départements + Services = nombre total de nœuds actifs. Hygiène du référentiel (données, pas de contrôle bloquant ajouté) : libellé conforme au type (pas de « Direction … » typé Département), pas de doublon de libellé sous un même parent, code lisible, et en principe un collaborateur ne manage qu’un nœud (un contrôle bloquant « un responsable = un nœud » n’est **pas** une règle à ce jour : à trancher par le client si souhaité).
 - <!-- D-H04 --> **Sans sélection**, « Ajouter » crée une direction (rattachée à la DG) ou un département / service **à rattacher**. Dès qu’il existe des éléments à rattacher, l’écran se partage : à **gauche** la liste « À rattacher », à **droite** la hiérarchie complète. Un élément à rattacher se **glisse-dépose** sur une carte de niveau supérieur (cibles valides mises en évidence, cibles interdites grisées) ; le dépôt est **confirmé** (ancien → nouveau parent, SCRUM-6). Les éléments déjà dans la hiérarchie se déplacent par « Rattacher… ».
 
 ### 5.4 Provisionnement de compte
@@ -307,7 +308,7 @@ Sortie courte, **maximum 2 heures** (retour testeurs du 29/10/2026, SCRUM-40 ; a
 **Règles (client + serveur)**
 
 - `heure_fin` > `heure_debut`.
-- Durée ≤ **240 minutes**. Sinon rejet métier.
+- Durée ≤ **120 minutes** (2 h, constante serveur `DUREE_MAX_SORTIE_MINUTES`). Sinon rejet métier. (Le doc indiquait encore 240 min avant le 06/11/2026 : coquille corrigée, la règle livrée est 2 h. Tout libellé « max 4h » restant dans une appli est une anomalie, cf. M-25.)
 - Indicateur de durée en temps réel sur le formulaire mobile.
 
 ### 6.4 Ordre de mission (`ORDRE_MISSION`)
@@ -361,6 +362,15 @@ Les SLA sont **surchargeables** en configuration (`referentiel.evenements.docume
 Le collaborateur suit sa demande (étape + SLA restant).  
 Voir aussi `docs/sirh_fifo_documents_vague.md`.
 
+### 7.4 Restriction des demandes en double (D-F06 — recette UAT du 06/11/2026, choix par défaut à confirmer client)
+
+Constat M-42 : l’appli mobile appelle `GET .../demandes-documents-administratifs/check-restriction` avant une attestation de travail, mais l’endpoint n’existe pas (400, traité comme un `{id}`) et l’appli autorise en cas d’erreur : **aucune règle de restriction n’est appliquée**. Aucune règle n’était écrite dans ce document ni dans `docs/sirh_fifo_documents_vague.md` ; le seul indice est le message de l’appli « Vous avez déjà une demande en cours ». Règle retenue par défaut, la plus simple :
+
+- **D-F06.a** Un collaborateur ne peut pas avoir **deux demandes ouvertes du même type de document** (ouvertes = `EN_ATTENTE_FILE` ou `EN_TRAITEMENT_RH`). La règle vaut pour **tous les types** (pas seulement l’attestation de travail). Une demande `DISPONIBLE` ou `REJETEE` ne bloque pas ; aucun délai minimal entre deux demandes.
+- **D-F06.b** Le **serveur** est le garde : `POST` d’une demande en double → **409 `DEMANDE_DOCUMENT_DEJA_EN_COURS`**, message « Vous avez déjà une demande de <type> en cours (déposée le jj/mm/aaaa). », rien n’est créé.
+- **D-F06.c** Endpoint de pré-contrôle pour l’appli : `GET .../demandes-documents-administratifs/check-restriction?type_document=<code>` (identité lue dans le JWT, rôle `USER`) → 200 `{ "can_request": bool, "message": string|null }` ; type inconnu → 400. Il ne remplace pas le contrôle du `POST`.
+- **D-F06.d** Côté mobile, un échec du pré-contrôle (réseau, 4xx, 5xx) **n’autorise pas** silencieusement : message « Vérification impossible, réessayez » et bouton Réessayer ; le `POST` reste de toute façon contrôlé par le serveur.
+
 ---
 
 ## 8. M03 — Notes de service / actualités
@@ -372,7 +382,7 @@ Voir aussi `docs/sirh_fifo_documents_vague.md`.
 - **Accusé de lecture obligatoire**.
 - Archive searchable, versioning GED, indicateur lu / non lu pour la RH.
 
-**État actuel** : écran mobile « Actualités RH » alimenté par des **données mock**. Pas de backend notes / GED. À traiter comme **maquette UX**, pas comme processus métier.
+**État actuel** : pas de backend notes / GED. L’écran mobile « Actualités RH » affichait des **données fictives codées en dur** (auteurs, « J’aime », image externe) présentées comme réelles (M-93, recette UAT du 06/11/2026). **D-T02.a** : l’écran, sa tuile d’accueil et sa route sont **retirés** de RH Connect jusqu’au branchement d’un vrai backend M03 (choix le plus simple et honnête, à confirmer client). Aucune donnée fictive ne doit être présentée comme réelle dans l’appli.
 
 ---
 
@@ -488,6 +498,7 @@ chaque campagne `PLANIFIEE` à sa **date de commencement** — évaluations cré
 visibles aussitôt sur le mobile, notification « Votre évaluation est ouverte ». Campagne non prête (template général
 manquant) → reste planifiée, RH notifiés. À la **date de fin**, la campagne passe `TERMINEE`. L'activation manuelle
 par la RH reste possible.  
+**D-E11 — Pas d’activation avant la date de commencement (recette UAT du 06/11/2026, EVA-1, choix par défaut à confirmer client).** Le code permettait d’activer à la main une campagne `PLANIFIEE` dont la date de commencement est future (constat : « Campagne annuelle 2026 » `ACTIVE` avec une période commençant le 01/12/2026). Désormais l’activation manuelle n’est possible qu’à partir de la date de commencement (Africa/Tunis, jour compris) : avant → **422 `CAMPAGNE_NON_COMMENCEE`** (« La campagne commence le jj/mm/aaaa »), rien n’est créé. Pour lancer plus tôt, la RH crée la campagne avec la bonne date. Affichage : une campagne `PLANIFIEE` est présentée « Planifiée · lancement le jj/mm/aaaa » ; « Active » n’est affiché que pour le statut `ACTIVE`. Les campagnes déjà actives ne sont pas modifiées par le code (assainissement des données de démo : fiche lot 0).  
 **Vague** : à l’activation / création, notification collaborateur (NOTIF) + rubrique Évaluations visible sur mobile tant qu’une évaluation non archivée existe.
 
 ### 12.3 Templates (constructeur RH)
@@ -500,6 +511,11 @@ par la RH reste possible.
 - Fiche collaborateur : renseigner `famille_metier` + `niveau_seniorite` (snapshot figé sur l’évaluation à la création — vague E2/E4).
 - Résolution : famille+niveau > famille seule > template technique de campagne > GENERIC seul (+ alerte RH si profil incomplet).
 - *Écart code actuel* : résolution encore formulée « rôle métier + niveau » / params — à aligner sur la clé produit ci-dessus dans la vague.
+- **D-E13 — Couverture des templates techniques et profil incomplet (recette UAT du 06/11/2026, EVA-6 / EVA-8 / COL-4, choix par défaut à confirmer client).**
+  - a. Un template technique manquant pour une famille × niveau **ne bloque pas** l’activation (la résolution ci-dessus se replie sur le template technique de campagne puis sur le GENERIC seul). En revanche la RH est **prévenue** : le résultat d’activation et la carte de la campagne indiquent « N évaluations sans questionnaire technique » (évaluations créées sans template `TECHNICAL`) ; N = 0 → rien n’est affiché.
+  - b. Le badge « Profil métier incomplet » d’une évaluation reflète le **snapshot** famille / niveau pris à la création (règle inchangée) : compléter la fiche ensuite ne modifie pas une évaluation existante. Le badge porte une explication (« Famille ou niveau non renseigné sur la fiche au lancement de la campagne ») et, pour RH / ADMIN, un lien vers la fiche du collaborateur.
+  - c. La liste Collaborateurs permet de filtrer les fiches **actives** sans famille ou sans niveau (« Profil métier à compléter ») et affiche leur nombre. Aucun blocage de saisie (la famille reste facultative à la création).
+  - d. Les templates techniques par famille × niveau sont un **contenu fourni par le client** ; le produit n’en invente pas. Pour la démonstration, un template technique transverse est publié et choisi comme template technique de campagne (fiche lot 0, données).
 
 ### 12.4 Parcours collaborateur / manager (mobile)
 
@@ -541,6 +557,11 @@ Niveaux de compétence : `DEBUTANT` (1) → `SUPERVISE` / `INTERMEDIAIRE` (2) �
   - **Rouge** : **≥ 3** critères insuffisants → **plan d’action obligatoire + escalade DG**.
 - Matrice d’écarts self / manager : `ALIGNED` / `MODERATE` / `HIGH` / `CRITICAL`.
 - Forces (notes ≥ 4), axes d’amélioration (≤ 2), recommandations automatiques.
+- **D-E12 — Un seul vocabulaire par notion (recette UAT du 06/11/2026, EVA-9, choix par défaut à confirmer client).** Deux notions distinctes coexistent et ne doivent plus partager les mots « orange / rouge / alerte » :
+  - a. **Alerte d’écart** (D-E04, compétences techniques collaborateur / RO) : libellés **« Aligné / Alerte / Critique / Urgente »** partout (onglet Alertes, détail, Suivi & scores, notifications), conformément au renommage du 05/11/2026 ; codes `ORANGE` / `ROUGE` / `URGENTE` inchangés.
+  - b. **Codage couleur** de C-M07-04 (critères sous le seuil) : affiché **« Conforme »** (ex-Vert), **« Vigilance »** (ex-Orange, 2 critères), **« Plan d’action requis »** (ex-Rouge, ≥ 3 critères) ; codes `VERT` / `ORANGE` / `ROUGE` inchangés. Calculé seulement sur les évaluations ayant au moins une note du responsable ; sinon « Non évaluée ».
+  - c. Les cartes de Suivi & scores « Alertes orange / Alertes rouge » sont remplacées par : « Alertes d’écart ouvertes » = alertes `OUVERTE` ou `EN_COURS` de la campagne sélectionnée (toutes campagnes si aucune), avec le détail Alerte / Critique / Urgente, un clic ouvrant l’onglet Alertes filtré ; et « Vigilance » / « Plan d’action requis » (comptage b). Une alerte Urgente ouverte n’affiche donc jamais « 0 ».
+- **D-E14 — Pas de score sans note (recette UAT du 06/11/2026, EVA-10, choix par défaut).** Tant qu’une évaluation n’a **aucune** note (ni collaborateur ni responsable), le panneau « Analyser » n’affiche ni score (pas de « 0/5 », « 0 % »), ni forces / axes, ni recommandation : seulement « Aucune note pour le moment ». Avec des notes du collaborateur seulement : score d’auto-évaluation affiché, score consolidé et recommandation masqués jusqu’à la première note du responsable. Libellés accentués (« évolution »).
 
 **Cible CDC restante** (hors vague évaluations Must) : export PDF + archive S3 ; bascule auto des formations recommandées vers M05 ; évaluations formation chaud/froid (M05).
 
@@ -714,6 +735,18 @@ Besoin (client, 05/11/2026) : « dans la rubrique pointage, je veux voir les heu
 | **D-P17.j** (heures sup) | **Pas de colonne heures sup** dans cette vue (le plus simple) : le suivi des heures sup reste l’écran D-P16.a. Le total D-P17.d inclut le temps pointé en heures sup ; les deux écrans ne se recalculent pas l’un l’autre. |
 | **D-P17.k** (droits) | RH et ADMIN : lecture et export. DIRECTION : lecture et export, aucune action. `COLLABORATEUR`, `RO`, `RESPONSABLE` : **403** sur l’API (l’écran n’est pas accessible hors Plateforme RH). Vue mobile (le collaborateur voit son temps ; le RO celui de son périmètre D-H03) : **Cible, lot ultérieur**. |
 
+### 14.2 quinquies Précisions d’affichage après la recette UAT du 06/11/2026 (D-P18 — choix par défaut, à confirmer client)
+
+Aucune règle de calcul D-P11 à D-P17 ne change ; seules la présentation et la lisibilité sont précisées.
+
+| ID | Décision |
+|---|---|
+| **D-P18.a** (site sans horaire, SIT-4) | Un site **sans aucun horaire** (D-P11.b) affiche sa grille hebdomadaire « Non défini » sur les 7 jours, avec le message « Aucun horaire : le pointage est possible à toute heure ». « Site fermé » n’est affiché que pour un jour sans horaire **d’un site qui a au moins un jour paramétré**. |
+| **D-P18.b** (séquences, PTG-4) | L’onglet « Pointages » signale, sur les pointages retenus (`VALIDE`, `VALIDE_MANUEL`), ceux qui sont **orphelins** au sens de D-P17.c : pastille « Entrée sans sortie » ou « Sortie sans entrée » (même calcul que le Temps de travail, pas de second algorithme). Une ENTREE devenue orpheline parce qu’elle est en cours (D-P17.e) est marquée « En cours », pas en anomalie. Aucune notification, aucun blocage au moment du pointage (refuser une 2ᵉ ENTREE reste hors périmètre). |
+| **D-P18.c** (même minute, TPS-2) | Quand deux pointages d’un même collaborateur tombent dans la même minute, les heures sont affichées à la **seconde** (hh:mm:ss) dans les paires, la liste et l’export, pour rendre l’ordre lisible. Le tri reste l’heure serveur à la seconde (D-P17.c). |
+| **D-P18.d** (état « En cours », TPS-2) | La règle D-P17.e est maintenue (site sans horaire : « En cours » tant que l’ENTREE ouverte a moins de 16 h ; ensuite « Incomplet »). L’état « En cours » affiche l’instant où il basculera (« En cours jusqu’au jj/mm hh:mm »). Une journée dont cet instant est passé ne doit **jamais** être « En cours » : c’est le critère de recette (le constat TPS-2 du 06/11 n’est une anomalie que s’il a été fait après 11:13, ENTREE à 19:13 le 05/11). |
+| **D-P18.e** (durées courtes, TPS-1) | La troncature à la minute de D-P17.d est maintenue ; les totaux à 00:00 du kit de démo viennent de pointages de quelques secondes. La démonstration se fait avec des pointages de plusieurs heures (fiche lot 0, données). |
+
 ### 14.3 Données d’un pointage
 
 **Must** : collaborateur (JWT), type `ENTREE`/`SORTIE`, `server_ts`, GPS réel, site, distance, `device_id`, statut `VALIDE` / `REJETE_*`.
@@ -781,6 +814,8 @@ Besoin (client, 05/11/2026) : « dans la rubrique pointage, je veux voir les heu
 
 **État actuel** : page d’accueil web avec **compteurs** (plaintes, demandes, documents en file, collaborateurs). Pas de KPI avancés ni d’export DG.
 
+**D-T01 — Les compteurs d’accueil comptent ce qui est à traiter (recette UAT du 06/11/2026, ACC-1, choix par défaut).** Chaque carte affiche le même nombre que l’écran qu’elle ouvre, avec le même filtre : « Demandes à décider » = demandes M01 `EN_VALIDATION_RRH` (filtre « À décider » de l’écran Demandes) ; « Documents en file » = `EN_ATTENTE_FILE` + `EN_TRAITEMENT_RH` ; « Plaintes ouvertes » = statut ≠ `FERME` ; « Collaborateurs actifs » = statut `ACTIF`. Le clic ouvre l’écran avec ce filtre appliqué et visible. Même chiffres pour la DIRECTION (libellé « en attente RH » au lieu de « à décider », elle ne décide pas).
+
 ---
 
 ## 18. Notifications (transversal)
@@ -799,6 +834,14 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 
 **Contraintes** : JWT sur le handshake WebSocket ; reconnexion mobile avec backoff ; cloche de notifications sur web et mobile.
 
+**D-T02 — RH Connect sans contenu fictif ni adresse en dur (recette UAT du 06/11/2026, choix par défaut à confirmer client).**
+- a. (M-93) Écran « Actualités » retiré (voir § 8).
+- b. (M-94) Profil : données **réelles** de `GET /api/referentiel/v1/collaborateurs/moi` (prénom **et** nom, matricule, poste, unité d’affectation, courriel) et responsable = même source que la carte « Mon responsable » de l’organigramme mobile (« Non renseigné » si absent). Compteur « Demandes en cours » = demandes M01 du collaborateur en `EN_VALIDATION_SUPERIEUR` ou `EN_VALIDATION_RRH` (même source que la liste « Mes demandes »). **Aucun solde de congés** affiché tant que le solde n’est pas spécifié (§ 23) : la carte « Jours congés » est retirée. Les entrées sans action (« Informations personnelles », « Sécurité », « Notifications », « Aide & Support », crayon d’édition) sont retirées ; restent les entrées qui fonctionnent (dont la vérification faciale si elle est proposée, et la déconnexion).
+- c. (M-01) Le bouton « Continuer en démo » n’existe que dans un build lancé avec `--dart-define=DEMO_MODE=true` ; absent par défaut, donc des builds Codemagic.
+- d. (T-01) L’URL WebSocket est **déduite de l’URL de l’API** configurée (`API_BASE_URL`) : même hôte et même port, `wss` si l’API est en `https`, `ws` sinon, chemin `/ws`. Aucune adresse `localhost` en dur. Reconnexion avec attente croissante (1 s, 2 s, 4 s… plafonnée à 60 s).
+- e. (M-13) « Mes heures sup » du collaborateur lit `GET .../heures-sup/moi` (D-P16.b, rôle `USER`) et non `.../demandes/moi/comptees` (réservé au demandeur RO). Une erreur (403, 5xx, réseau) s’affiche comme une erreur avec « Réessayer », **jamais** comme « aucune heure ».
+- f. (M-25) Plus aucun libellé « max 4h » : 2 h partout (§ 6.3) ; le code mort du hub Demandes est supprimé ou aligné.
+
 ---
 
 ## 19. Contraintes
@@ -815,6 +858,7 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 | C-M01-06 | **Personne ne valide sa propre demande** (D-H03) : demande d’un manager de nœud → manager ACTIF du premier nœud ancêtre (sinon RRH) ; RH / ADMIN demandeur → étape RRH traitée par un **autre** RH / ADMIN ; tentative sur sa propre demande → **403** |
 | C-M02-01 | File documents **FIFO** ; dérogation justifiée et tracée |
 | C-M02-02 | SLA par type, échéance calculée à la soumission |
+| C-M02-03 | **D-F06 (06/11/2026, choix par défaut)** : une seule demande ouverte (`EN_ATTENTE_FILE` / `EN_TRAITEMENT_RH`) par collaborateur et par type de document ; double → 409 `DEMANDE_DOCUMENT_DEJA_EN_COURS` ; pré-contrôle mobile `check-restriction`, jamais permissif en cas d’échec |
 | C-M04-01 | Plainte interne ≠ externe (destinataires et auteurs) |
 | C-M04-02 | Transitions de statut strictement séquentielles |
 | C-M05-01 | Intégration au plan / refus : action RH ; annulation : demandeur |
@@ -823,6 +867,7 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 | C-M07-03 | Passage étape technique : questions générales obligatoires complètes |
 | C-M07-04 | Rouge (≥ 3 critères insuffisants) → plan d’action + escalade DG |
 | C-M07-05 | **Cible (D-E04 à D-E09, 04/11/2026)** : écart d’étoiles collaborateur / RO par compétence technique (`evaluation_answer` des templates TECHNICAL) ≥ 2 ⇒ alerte d’écart (2 orange, 3 rouge, 4 urgente en tête de liste), une par évaluation, détectée à la validation du RO (bouton mobile D-E10), notifiée en temps réel aux RH (pas d’e-mail) ; la RH la clôt avec conclusion et commentaire, sans toucher aux notes ; personne ne traite une alerte qui le concerne. Périmètre, moment, granularité et visibilité tranchés par le client le 04/11/2026 |
+| C-M07-06 | **D-E11 (06/11/2026, choix par défaut)** : activation manuelle d’une campagne seulement à partir de sa date de commencement (sinon 422 `CAMPAGNE_NON_COMMENCEE`) ; « Active » affiché uniquement pour le statut `ACTIVE` |
 | C-M09-01 | **Vague Must** : pointage `VALIDE` = QR actif valide **et** GPS ≤ rayon du site (serveur, D-P01 : 20 m extérieur / 50 m intérieur par défaut, précision ≤ rayon, position non simulée) ; pas de partiel QR-sans-GPS. **Cible CDC (C-M09-01b)** : QR+GPS **puis** face on-device |
 | C-M09-02 | **Livré, réglage INACTIVE par défaut (D-P06 à D-P10)** : réglage `verification_faciale` ACTIVE **et** collaborateur `ENROLE` ⇒ pointage `VALIDE` seulement si QR + GPS valides **et** vivant réussi (2 défis, 10 s) **et** score ≥ seuil (92 % défaut, 80–99 %) **et** appareil enrôlé ; 3 échecs consécutifs ⇒ blocage 15 min ; collaborateur `REFUSE` / `REVOQUE` / appareil incompatible ⇒ QR + GPS marqué « sans vérification faciale » |
 | C-M09-03 | **Livré (D-P11 à D-P14, 02/11/2026)** : sur un site doté d’un horaire, un pointage `VALIDE` exige en plus d’être dans la fenêtre du jour [début − tolérance avant (0–90 min, défaut 60) ; fin + tolérance après], élargie par les heures sup validées (30 min à 4 h de chaque côté) ; sinon `REJETE_HORS_HORAIRE`. Heures sup comptées = temps pointé dans les plages validées, tolérance exclue, arrondi 15 min vers le bas ; aucune valeur de paie |
@@ -888,7 +933,7 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 ### Collaborateur (journée type)
 
 1. Se connecte (matricule).
-2. Consulte l’accueil : raccourcis Pointage, Congés, Documents, Formations, Plaintes, Évaluations, Organigramme, Autorisation, Actualités.
+2. Consulte l’accueil : raccourcis Pointage, Congés, Documents, Formations, Plaintes, Évaluations, Organigramme, Autorisation (Actualités retirées le 06/11/2026, D-T02.a).
 3. Dépose une demande ; suit le workflow ; reçoit une notification à chaque étape.
 4. Pendant une campagne : complète l’auto-évaluation (général puis compétences), valide.
 5. Consulte l’organigramme pour identifier son manager / son unité.
@@ -966,6 +1011,9 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 - [ ] M07 dette : voie héritée `skill_answer` / `technical_question` / `SkillLevel` vide et non utilisée par l’alerte (source = `evaluation_answer` TECHNICAL, D-E04) ; sa contrainte CHECK `skill_answer_niveau_*_check` n’accepte que DEBUTANT / INTERMEDIAIRE / AVANCE / EXPERT (SUPERVISE et AUTONOME rejetés) : supprimer la voie ou corriger la contrainte.
 - [ ] Sécurité : `/internal/users/by-role` est `permitAll` dans svc-identite-acces (utilisé par D-E07) : à protéger par `X-Internal-Token` (architecte).
 - [ ] M07 : les notes (générales et techniques) restent modifiables après validation (contrôles d’appartenance vides dans `EvaluationWorkflowService`) ; décider s’il faut les verrouiller (D-E06.c en tient compte en attendant).
+- [ ] Lot 0 de la recette UAT du 06/11/2026 (fiche `docs/jira/fiche_lot0_uat.md`) : D-F06, D-E11 à D-E14, D-H05, D-P18, D-T01, D-T02 sont des **choix par défaut à faire confirmer par le client**, en particulier la restriction des documents (D-F06 : un seul type ouvert à la fois, tous types), le refus d’activer une campagne avant sa date (D-E11), les libellés « Conforme / Vigilance / Plan d’action requis » (D-E12.b) et le retrait de l’écran Actualités (D-T02.a).
+- [ ] Identité du client à clarifier : l’en-tête de ce document indique « AGUA — Service d’assainissement » (familles métier de chantier / assainissement), alors que le produit s’appelle RH-Évènement et que l’acheteur de la recette UAT juge ce vocabulaire hors activité événementielle (P02, COL-5). Conditionne le domaine des courriels de démo et le catalogue des familles métier.
+- [ ] Contrôle « un collaborateur manage au plus un nœud » : non exigé à ce jour (D-H05) ; à trancher par le client.
 - [ ] Architecte : choisir le modèle de comparaison faciale embarqué (ML Kit ne compare pas les visages ; ex. MobileFaceNet via TFLite) compatible Flutter 3.29.2, et un `device_id` stable.
 
 ---

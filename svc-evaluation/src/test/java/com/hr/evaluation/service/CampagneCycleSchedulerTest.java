@@ -74,7 +74,7 @@ class CampagneCycleSchedulerTest {
         when(campaignRepository.findByStatutAndDateDebutLessThanEqual(EvaluationCampaignStatus.PLANIFIEE, maintenant))
                 .thenReturn(List.of(c));
         when(campaignService.activerCampagne(c.getId()))
-                .thenReturn(new CampaignActivationResult(c.getId(), "ACTIVE", 35, 0, 2, 0));
+                .thenReturn(new CampaignActivationResult(c.getId(), "ACTIVE", 35, 0, 2, 0, 0));
 
         CampagneCycleScheduler.Bilan bilan = scheduler.executer(maintenant);
 
@@ -117,7 +117,7 @@ class CampagneCycleSchedulerTest {
                 .thenReturn(List.of(c1, c2));
         when(campaignService.activerCampagne(c1.getId())).thenThrow(new IllegalStateException("référentiel indisponible"));
         when(campaignService.activerCampagne(c2.getId()))
-                .thenReturn(new CampaignActivationResult(c2.getId(), "ACTIVE", 3, 0, 0, 0));
+                .thenReturn(new CampaignActivationResult(c2.getId(), "ACTIVE", 3, 0, 0, 0, 0));
 
         CampagneCycleScheduler.Bilan bilan = scheduler.executer(maintenant);
 

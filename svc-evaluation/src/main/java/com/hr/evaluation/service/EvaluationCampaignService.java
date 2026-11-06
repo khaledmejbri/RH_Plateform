@@ -21,6 +21,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -29,6 +32,7 @@ import java.util.UUID;
 public class EvaluationCampaignService {
 
     private static final Logger log = LoggerFactory.getLogger(EvaluationCampaignService.class);
+    private static final DateTimeFormatter FORMAT_JOUR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final EvaluationCampaignRepository campaignRepository;
     private final EvaluationTemplateRepository templateRepository;
@@ -131,11 +135,28 @@ public class EvaluationCampaignService {
      */
     @Transactional
     public CampaignActivationResult activerCampagne(UUID campaignId) {
+        return activerCampagne(campaignId, Instant.now());
+    }
+
+    /**
+     * Variante à instant explicite (tests, D-E11) : l'activation n'est possible qu'à partir du jour de commencement
+     * (Africa/Tunis, jour compris) ; avant, 422 {@code CAMPAGNE_NON_COMMENCEE} et rien n'est créé.
+     */
+    @Transactional
+    public CampaignActivationResult activerCampagne(UUID campaignId, Instant maintenant) {
         EvaluationCampaign campaign = chargerCampagne(campaignId);
 
         if (campaign.getStatut() != EvaluationCampaignStatus.PLANIFIEE) {
             throw EvaluationMetierException.unprocessable("CAMPAGNE_STATUT_INVALIDE",
                     "Seule une campagne planifiee peut etre activee. Statut actuel: " + campaign.getStatut());
+        }
+
+        if (campaign.getDateDebut() != null) {
+            LocalDate premierJour = campaign.getDateDebut().atZone(CampagneCalendrier.ZONE).toLocalDate();
+            if (maintenant.atZone(CampagneCalendrier.ZONE).toLocalDate().isBefore(premierJour)) {
+                throw EvaluationMetierException.unprocessable("CAMPAGNE_NON_COMMENCEE",
+                        "La campagne commence le " + premierJour.format(FORMAT_JOUR));
+            }
         }
 
         if (!templateGeneralPret(campaign)) {
@@ -151,6 +172,7 @@ public class EvaluationCampaignService {
         int ignoresExistantes = 0;
         int ignoresManager = 0;
         int profilsIncomplets = 0;
+        int sansTemplateTechnique = 0;
 
         for (CollaborateurEvaluationSnapshot collab : population) {
             if (evaluationRepository.findByCampaignIdAndCollaborateurIdentifiant(campaignId, collab.identifiant())
@@ -172,6 +194,9 @@ public class EvaluationCampaignService {
                 if (evaluation.isProfilMetierIncomplet()) {
                     profilsIncomplets++;
                 }
+                if (evaluation.getTemplateCompetenceAssigne() == null) {
+                    sansTemplateTechnique++; // D-E13.a : prévenu, jamais bloqué
+                }
                 creees++;
                 eventPublisher.publierEvaluationCampagneOuverte(evaluation, campaign.getNom());
             } catch (IllegalStateException dup) {
@@ -185,7 +210,20 @@ public class EvaluationCampaignService {
                 creees,
                 ignoresExistantes,
                 ignoresManager,
-                profilsIncomplets);
+                profilsIncomplets,
+                sansTemplateTechnique);
+    }
+
+    /**
+     * D-E13.a : nombre d'évaluations de la campagne sans questionnaire technique (aucun template technique résolu
+     * à la création et aucun template technique de campagne). 0 → rien à afficher.
+     */
+    @Transactional(readOnly = true)
+    public long compterEvaluationsSansTemplateTechnique(EvaluationCampaign campaign) {
+        if (campaign.getTemplateCompetence() != null) {
+            return 0;
+        }
+        return evaluationRepository.countByCampaignIdAndTemplateCompetenceAssigneIsNull(campaign.getId());
     }
 
     private void appliquerSnapshotIdentite(Evaluation evaluation, CollaborateurEvaluationSnapshot collab) {

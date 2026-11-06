@@ -332,4 +332,120 @@ class TempsTravailServiceTest {
 				.isEqualTo(EnumSet.of(PointageStatut.VALIDE, PointageStatut.VALIDE_MANUEL));
 		assertThat(TempsTravailService.STATUTS_RETENUS).noneMatch(s -> s.name().startsWith("REJETE"));
 	}
+
+	// ---- Lot 0 UAT : D-P18.d (TPS-2) et D-P18.b (PTG-4) -----------------------------------------------------------
+
+	private TempsTravailService serviceA(int mois, int jour, int heure, int minute) {
+		Clock c = Clock.fixed(t(mois, jour, heure, minute), ClockConfig.ZONE_TUNIS);
+		return new TempsTravailService(pointageRepository, siteRepository, heuresSupJourRepository, demandeRepository,
+				referentiel, properties, c);
+	}
+
+	private LigneTempsTravail uniqueLigne(TempsTravailService s) {
+		TempsTravailResponse r = s.consulter(LocalDate.of(2026, 11, 4), LocalDate.of(2026, 11, 5), null, null, null, null, 0, 50);
+		assertThat(r.lignes().content()).hasSize(1);
+		return r.lignes().content().get(0);
+	}
+
+	@Test
+	void enCoursExposeLInstantDeBasculeEtIncompletUneMinuteApres() {
+		// ENTREE orpheline à J 19:13 (4/11) sur site sans horaire : fenêtre fermée à J+1 11:13
+		pointages.add(p(ficheSarra, siteA, PointageType.ENTREE, t(11, 4, 19, 13)));
+
+		LigneTempsTravail avant = uniqueLigne(serviceA(11, 5, 11, 12));
+		assertThat(avant.etat()).isEqualTo(EtatJourHeuresSup.EN_COURS);
+		assertThat(avant.enCoursJusquA()).isEqualTo("2026-11-05T11:13:00+01:00");
+
+		LigneTempsTravail pile = uniqueLigne(serviceA(11, 5, 11, 13));
+		assertThat(pile.etat()).isEqualTo(EtatJourHeuresSup.EN_COURS);
+
+		LigneTempsTravail apres = uniqueLigne(serviceA(11, 5, 11, 14));
+		assertThat(apres.etat()).isEqualTo(EtatJourHeuresSup.INCOMPLET);
+		assertThat(apres.enCoursJusquA()).isNull();
+	}
+
+	@Test
+	void journeeCompleteSansInstantDeBascule() {
+		journee(ficheSarra, siteA, 11, 4, 8, 17);
+
+		LigneTempsTravail l = uniqueLigne(service);
+
+		assertThat(l.etat()).isEqualTo(EtatJourHeuresSup.COMPLET);
+		assertThat(l.enCoursJusquA()).isNull();
+	}
+
+	private com.hr.presence.dto.PageResponse<com.hr.presence.dto.PointageResponse> page(PresencePointage... ps) {
+		List<com.hr.presence.dto.PointageResponse> contenu = new ArrayList<>();
+		for (PresencePointage p : ps) {
+			contenu.add(new com.hr.presence.dto.PointageResponse(p.getId(), p.getStatut(), p.getType(), p.getServerTs(),
+					p.getSiteId(), null, null, null, p.getCollaborateurId(), null, null, null, null, null, p.getJournee()));
+		}
+		return new com.hr.presence.dto.PageResponse<>(contenu, 0, 20, contenu.size(), 1);
+	}
+
+	private void contexte(PresencePointage... ps) {
+		pointages.addAll(List.of(ps));
+		when(pointageRepository.findAllById(any())).thenReturn(List.of(ps));
+	}
+
+	@Test
+	void sequenceEntreeEntreeSortie_seulementLaPremiereEntreeEstSansSortie() {
+		PresencePointage e1 = p(ficheSarra, siteA, PointageType.ENTREE, t(11, 3, 8, 0));
+		PresencePointage e2 = p(ficheSarra, siteA, PointageType.ENTREE, t(11, 3, 9, 0));
+		PresencePointage s = p(ficheSarra, siteA, PointageType.SORTIE, t(11, 3, 17, 0));
+		contexte(e1, e2, s);
+
+		var annotee = service.annoterSequences(page(e1, e2, s));
+
+		assertThat(annotee.content().get(0).etatSequence())
+				.isEqualTo(com.hr.presence.domain.EtatSequencePointage.ENTREE_SANS_SORTIE);
+		assertThat(annotee.content().get(1).etatSequence()).isNull();
+		assertThat(annotee.content().get(2).etatSequence()).isNull();
+	}
+
+	@Test
+	void sequenceSortieSeule_sortieSansEntree() {
+		PresencePointage s = p(ficheSarra, siteA, PointageType.SORTIE, t(11, 3, 17, 0));
+		contexte(s);
+
+		var annotee = service.annoterSequences(page(s));
+
+		assertThat(annotee.content().get(0).etatSequence())
+				.isEqualTo(com.hr.presence.domain.EtatSequencePointage.SORTIE_SANS_ENTREE);
+	}
+
+	@Test
+	void sequenceEntreeOuverteDansSaFenetre_enCoursPuisOrphelineApres() {
+		PresencePointage e = p(ficheSarra, siteA, PointageType.ENTREE, t(11, 4, 19, 13));
+		contexte(e);
+
+		// 5/11 10:00 : avant 11:13 → EN_COURS (pas une anomalie)
+		assertThat(service.annoterSequences(page(e)).content().get(0).etatSequence())
+				.isEqualTo(com.hr.presence.domain.EtatSequencePointage.EN_COURS);
+		// 5/11 11:14 : fenêtre fermée → orpheline
+		assertThat(serviceA(11, 5, 11, 14).annoterSequences(page(e)).content().get(0).etatSequence())
+				.isEqualTo(com.hr.presence.domain.EtatSequencePointage.ENTREE_SANS_SORTIE);
+	}
+
+	@Test
+	void sequenceLesPointagesRejetesNeportentJamaisDePastille() {
+		PresencePointage rejete = p(ficheSarra, siteA, PointageType.ENTREE, t(11, 3, 8, 0));
+		rejete.setStatut(PointageStatut.REJETE_HORS_ZONE);
+		contexte();
+
+		var annotee = service.annoterSequences(page(rejete));
+
+		assertThat(annotee.content().get(0).etatSequence()).isNull();
+	}
+
+	@Test
+	void sequencePaireApprieeSansPastille() {
+		PresencePointage e = p(ficheSarra, siteA, PointageType.ENTREE, t(11, 3, 8, 0));
+		PresencePointage s = p(ficheSarra, siteA, PointageType.SORTIE, t(11, 3, 12, 0));
+		contexte(e, s);
+
+		var annotee = service.annoterSequences(page(e, s));
+
+		assertThat(annotee.content()).allSatisfy(r -> assertThat(r.etatSequence()).isNull());
+	}
 }

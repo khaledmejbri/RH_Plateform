@@ -85,4 +85,44 @@ class EvaluationScoringServiceTest {
 			assertThat(g.competenceTechnique()).isFalse();
 		});
 	}
+
+	// --- Lot 0 UAT : D-E14 (EVA-10), pas de score ni de recommandation sans note ---
+
+	private static com.hr.evaluation.entity.EvaluationAnswer reponseSansNote() {
+		com.hr.evaluation.entity.EvaluationQuestion q = new com.hr.evaluation.entity.EvaluationQuestion();
+		q.setId(java.util.UUID.randomUUID());
+		q.setLibelle("Q sans note");
+		com.hr.evaluation.entity.EvaluationAnswer a = new com.hr.evaluation.entity.EvaluationAnswer();
+		a.setQuestion(q);
+		return a;
+	}
+
+	@Test
+	void analyseSansAucuneNoteNeSignaleAucuneNoteEtNeRecommandeRien() {
+		var analyse = service.analyser(java.util.List.of(reponseSansNote()), java.util.List.of());
+
+		assertThat(analyse.aNotesCollaborateur()).isFalse();
+		assertThat(analyse.aNotesResponsable()).isFalse();
+		assertThat(analyse.recommendations()).isEmpty();
+	}
+
+	@Test
+	void analyseAvecNotesCollaborateurSeulementSignaleSeulementLesNotesCollaborateur() {
+		com.hr.evaluation.entity.EvaluationAnswer a = reponse(java.util.UUID.randomUUID(), 4, 4);
+		a.setNoteManager(null);
+
+		var analyse = service.analyser(java.util.List.of(a), java.util.List.of());
+
+		assertThat(analyse.aNotesCollaborateur()).isTrue();
+		assertThat(analyse.aNotesResponsable()).isFalse();
+		assertThat(analyse.recommendations()).anyMatch(r -> r.contains("évolution"));
+	}
+
+	@Test
+	void analyseAvecNotesDesDeuxCotesLesSignaleToutes() {
+		var analyse = service.analyser(java.util.List.of(reponse(java.util.UUID.randomUUID(), 4, 3)), java.util.List.of());
+
+		assertThat(analyse.aNotesCollaborateur()).isTrue();
+		assertThat(analyse.aNotesResponsable()).isTrue();
+	}
 }

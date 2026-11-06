@@ -233,7 +233,7 @@ export default function HoraireSitePanel({ siteId, lectureSeule }: { siteId: str
         <>
           {!horaire.avec_horaire ? (
             <p className="muted small">
-              Aucun horaire : le pointage est possible à toute heure sur ce site.
+              Aucun horaire : le pointage est possible à toute heure.
               {lectureSeule ? '' : ' Renseignez la grille puis enregistrez pour activer le contrôle horaire.'}
             </p>
           ) : (
@@ -267,6 +267,8 @@ export default function HoraireSitePanel({ siteId, lectureSeule }: { siteId: str
               <tbody>
                 {JOURS_SEMAINE.map(({ value, label }) => {
                   const l = brouillon[value];
+                  // D-P18.a : « Site fermé » seulement si au moins un jour est paramétré ; sinon « Non défini ».
+                  const horaireNonDefini = JOURS_SEMAINE.every(({ value: j }) => brouillon[j].ferme);
                   const nuit = !l.ferme && finLendemain(l.debut, l.fin);
                   const erreurJour = erreurs.jours[value];
                   return (
@@ -303,7 +305,7 @@ export default function HoraireSitePanel({ siteId, lectureSeule }: { siteId: str
                       </td>
                       <td>
                         {l.ferme ? (
-                          <span className="muted small">Site fermé</span>
+                          <span className="muted small">{horaireNonDefini ? 'Non défini' : 'Site fermé'}</span>
                         ) : nuit ? (
                           <span className="badge badge--info" title="La fin tombe le lendemain">
                             Nuit · fin +1 j

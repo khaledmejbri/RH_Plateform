@@ -95,6 +95,8 @@ class AlerteEcartControllerSecurityTest {
 		when(traitementService.lister(any(), any(), any(), any(), anyInt(), anyInt()))
 				.thenReturn(new AlerteEcartPage(List.of(), 0, 0, 20));
 		when(traitementService.compteur()).thenReturn(new AlerteEcartCompteur(0, 0));
+		when(traitementService.ouvertesParNiveau(any())).thenReturn(
+				com.hr.evaluation.dto.AlerteEcartOuvertesParNiveau.de(0, 0, 1));
 		when(traitementService.detail(eq(alerteId), any())).thenReturn(mock());
 		when(traitementService.prendreEnCharge(eq(alerteId), any(), any())).thenReturn(mock());
 		when(traitementService.cloturer(eq(alerteId), any(), any(), any())).thenReturn(mock());
@@ -222,5 +224,22 @@ class AlerteEcartControllerSecurityTest {
 		mockMvc.perform(get(BASE + "/compteur").with(avec("RH"))).andExpect(status().isOk());
 		verify(traitementService).compteur();
 		verifyNoInteractions(workflowService);
+	}
+
+	@Test
+	void ouvertesParNiveau_lectureRhDirectionAdmin200_autresRoles403_sansJeton401() throws Exception {
+		for (String role : List.of("RH", "DIRECTION", "ADMIN")) {
+			mockMvc.perform(get(BASE + "/ouvertes-par-niveau").with(avec(role)))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.ORANGE").value(0))
+					.andExpect(jsonPath("$.ROUGE").value(0))
+					.andExpect(jsonPath("$.URGENTE").value(1))
+					.andExpect(jsonPath("$.total").value(1));
+		}
+		for (String role : List.of("RO", "RESPONSABLE")) {
+			mockMvc.perform(get(BASE + "/ouvertes-par-niveau").with(avec(role))).andExpect(status().isForbidden());
+		}
+		mockMvc.perform(get(BASE + "/ouvertes-par-niveau").with(avec())).andExpect(status().isForbidden());
+		mockMvc.perform(get(BASE + "/ouvertes-par-niveau")).andExpect(status().isUnauthorized());
 	}
 }

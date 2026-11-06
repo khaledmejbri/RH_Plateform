@@ -5,6 +5,7 @@ import com.hr.evaluation.domain.StatutAlerteEcart;
 import com.hr.evaluation.dto.AlerteEcartActionRequest;
 import com.hr.evaluation.dto.AlerteEcartCompteur;
 import com.hr.evaluation.dto.AlerteEcartDetail;
+import com.hr.evaluation.dto.AlerteEcartOuvertesParNiveau;
 import com.hr.evaluation.dto.AlerteEcartPage;
 import com.hr.evaluation.security.IdentiteAppelantResolver;
 import com.hr.evaluation.service.AlerteEcartTraitementService;
@@ -54,6 +55,13 @@ public class AlerteEcartController {
     @GetMapping("/compteur")
     public ResponseEntity<AlerteEcartCompteur> compteur() {
         return ResponseEntity.ok(traitementService.compteur());
+    }
+
+    /** D-E12.c : cartes de Suivi & scores — alertes OUVERTE + EN_COURS par niveau (campagne facultative). */
+    @GetMapping("/ouvertes-par-niveau")
+    public ResponseEntity<AlerteEcartOuvertesParNiveau> ouvertesParNiveau(
+            @RequestParam(required = false) UUID campagneId) {
+        return ResponseEntity.ok(traitementService.ouvertesParNiveau(campagneId));
     }
 
     @GetMapping("/{alerteId}")

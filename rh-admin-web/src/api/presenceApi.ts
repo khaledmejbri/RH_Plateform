@@ -107,7 +107,20 @@ export type PresencePointage = {
   motifRejet: string | null;
   verificationFaciale: VerificationFaciale | string | null;
   scoreFacial: number | null;
+  /**
+   * D-P18.b : état de séquence calculé par le serveur (appariement D-P17.c). Champ optionnel :
+   * absent ou « aucun » = rien à signaler. JSON `etat_sequence`.
+   */
+  etatSequence: EtatSequencePointage;
 };
+
+export type EtatSequencePointage = 'ENTREE_SANS_SORTIE' | 'SORTIE_SANS_ENTREE' | 'EN_COURS' | null;
+
+function normalizeEtatSequence(raw: unknown): EtatSequencePointage {
+  const v = String(raw ?? '').trim().toUpperCase().replace(/[\s-]/g, '_');
+  if (v === 'ENTREE_SANS_SORTIE' || v === 'SORTIE_SANS_ENTREE' || v === 'EN_COURS') return v;
+  return null;
+}
 
 export type PagePresence<T> = {
   contenu: T[];
@@ -272,6 +285,7 @@ function normalizePointage(raw: Record<string, unknown>): PresencePointage {
     motifRejet: asStr(raw.motifRejet ?? raw.motif_rejet),
     verificationFaciale: asStr(raw.verificationFaciale ?? raw.verification_faciale),
     scoreFacial: asNum(raw.scoreFacial ?? raw.score_facial),
+    etatSequence: normalizeEtatSequence(raw.etat_sequence),
   };
 }
 
@@ -290,7 +304,18 @@ export function normalizePage<T>(
   return { contenu, totalElements, totalPages, page, taille };
 }
 
-export function formatDateTunis(iso: string | null | undefined): string {
+/** Clé « minute » (Africa/Tunis) d'un horodatage ISO, pour repérer deux instants dans la même minute (D-P18.c). */
+export function minuteTunis(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Tunis', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(d);
+}
+
+export function formatDateTunis(iso: string | null | undefined, avecSecondes = false): string {
   if (!iso) return '—';
   try {
     // fr-TN rend l'heure en 12 h (AM/PM) selon les navigateurs : fr-FR + h23 force le format 24 h (SCRUM-16).
@@ -301,6 +326,7 @@ export function formatDateTunis(iso: string | null | undefined): string {
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      ...(avecSecondes ? { second: '2-digit' as const } : {}),
       hourCycle: 'h23',
     }).format(new Date(iso));
   } catch {
@@ -759,6 +785,11 @@ export type LigneTempsTravail = {
   orphelins: OrphelinTempsTravail[];
   minutes_travaillees: number;
   etat: EtatTempsTravail;
+  /**
+   * D-P18.d : instant (ISO) où une journée « En cours » basculera en « Incomplet ». Champ optionnel
+   * (JSON `en_cours_jusqu_a`).
+   */
+  en_cours_jusqu_a?: string | null;
   direction_libelle?: string | null;
   departement_libelle?: string | null;
   service_libelle?: string | null;

@@ -206,6 +206,14 @@ export function getAlertesEcart(f: FiltreAlertes, page = 0, taille = 20): Promis
   }));
 }
 
+export type OuvertesParNiveau = { ORANGE: number; ROUGE: number; URGENTE: number; total: number };
+
+/** Alertes OUVERTE + EN_COURS par niveau (jamais TRAITEE), éventuellement pour une campagne. */
+export function getAlertesOuvertesParNiveau(campagneId?: string): Promise<OuvertesParNiveau> {
+  const q = campagneId ? `?campagneId=${encodeURIComponent(campagneId)}` : '';
+  return call<OuvertesParNiveau>(`/api/rh/v1/admin/evaluations/alertes-ecart/ouvertes-par-niveau${q}`);
+}
+
 export function getCompteurAlertesEcart(): Promise<CompteurAlertes> {
   return call<CompteurAlertes>(`${BASE}/compteur`);
 }

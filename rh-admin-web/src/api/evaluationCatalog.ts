@@ -81,15 +81,16 @@ export function normalizeCouleurAlerte(raw?: string | null): CouleurAlerte | und
   return undefined;
 }
 
-export const ALERTE_META: Record<CouleurAlerte, { label: string; className: string; icon: string }> = {
-  VERT: { label: 'Situation stable', className: 'badge--eval-vert', icon: '✓' },
-  ORANGE: { label: 'Alerte RH — 2 critères sous le seuil', className: 'badge--eval-orange', icon: '!' },
-  ROUGE: { label: 'Plan d’action — escalade direction générale', className: 'badge--eval-rouge', icon: '!!' },
+/** D-E12.b : libellés du codage couleur (codes VERT / ORANGE / ROUGE inchangés côté API). */
+export const ALERTE_META: Record<CouleurAlerte, { label: string; court: string; className: string; icon: string }> = {
+  VERT: { label: 'Conforme — aucun critère sous le seuil', court: 'Conforme', className: 'badge--eval-vert', icon: '✓' },
+  ORANGE: { label: 'Vigilance — 2 critères sous le seuil', court: 'Vigilance', className: 'badge--eval-orange', icon: '!' },
+  ROUGE: { label: 'Plan d’action requis — 3 critères ou plus sous le seuil', court: 'Plan d’action requis', className: 'badge--eval-rouge', icon: '!!' },
 };
 
 export const DISCREPANCY_FR: Record<string, { label: string; icon: string; badge?: string }> = {
   ALIGNED: { label: 'Aligné', icon: '≈' },
   MODERATE: { label: 'Écart modéré', icon: '~' },
-  HIGH: { label: 'Écart élevé', icon: '↑', badge: 'badge--warning' },
-  CRITICAL: { label: 'Écart critique', icon: '!!', badge: 'badge--eval-rouge' },
+  HIGH: { label: 'Alerte', icon: '↑', badge: 'badge--warning' },
+  CRITICAL: { label: 'Critique', icon: '!!', badge: 'badge--eval-rouge' },
 };

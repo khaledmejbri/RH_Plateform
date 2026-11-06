@@ -32,7 +32,9 @@ public record PointageResponse(
 		@JsonProperty("collaborateur_nom") String collaborateurNom,
 		@JsonProperty("collaborateur_matricule") String collaborateurMatricule,
 		@JsonProperty("site_code") String siteCode,
-		@JsonProperty("site_libelle") String siteLibelle
+		@JsonProperty("site_libelle") String siteLibelle,
+		/** D-P18.b : état de séquence (liste admin seulement), nul pour un pointage apparié ou rejeté. */
+		@JsonProperty("etat_sequence") com.hr.presence.domain.EtatSequencePointage etatSequence
 ) {
 
 	/** Réponse sans identité lisible (mobile, historique) : les quatre champs ajoutés restent nuls. */
@@ -43,13 +45,20 @@ public record PointageResponse(
 			Integer echecsConsecutifs, Instant bloqueJusqua, java.time.LocalDate journee) {
 		this(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet, collaborateurId,
 				verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua, journee,
-				null, null, null, null);
+				null, null, null, null, null);
 	}
 
 	/** Copie enrichie du nom et du matricule du collaborateur, du code et du libellé du site. */
 	public PointageResponse avecIdentite(String nom, String matricule, String codeSite, String libelleSite) {
 		return new PointageResponse(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet,
 				collaborateurId, verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua,
-				journee, nom, matricule, codeSite, libelleSite);
+				journee, nom, matricule, codeSite, libelleSite, etatSequence);
+	}
+
+	/** Copie avec l'état de séquence D-P18.b. */
+	public PointageResponse avecEtatSequence(com.hr.presence.domain.EtatSequencePointage etat) {
+		return new PointageResponse(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet,
+				collaborateurId, verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua,
+				journee, collaborateurNom, collaborateurMatricule, siteCode, siteLibelle, etat);
 	}
 }

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,7 +27,9 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
   final List<String> _moisSelectionnes = [];
 
   var _loading = false;
-  bool _canSubmit = true;
+  bool _canSubmit = false;
+  bool _verifEnCours = true;
+  bool _verifEnErreur = false;
   String? _restrictionMessage;
 
   Future<void> _showMonthYearPicker() async {
@@ -118,24 +121,39 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
   }
 
   Future<void> _checkRestrictions() async {
-    if (_type == 'ATTESTATION_TRAVAIL') {
-      try {
-        final repo = ref.read(documentRepositoryProvider);
-        final canRequest = await repo.canRequestAttestationTravail();
-        setState(() {
-          _canSubmit = canRequest.canRequest;
-          _restrictionMessage = canRequest.message;
-        });
-      } catch (e) {
-        debugPrint('Error checking restrictions: $e');
-      }
+    final type = _type;
+    setState(() {
+      _verifEnCours = true;
+      _verifEnErreur = false;
+      _canSubmit = false;
+      _restrictionMessage = null;
+    });
+    try {
+      final r = await ref.read(documentRepositoryProvider).verifierRestriction(type);
+      if (!mounted || type != _type) return;
+      setState(() {
+        _canSubmit = r.canRequest;
+        _restrictionMessage = r.canRequest ? null : (r.message ?? 'Vous avez déjà une demande en cours pour ce document.');
+        _verifEnCours = false;
+      });
+    } catch (_) {
+      if (!mounted || type != _type) return;
+      setState(() {
+        _canSubmit = false;
+        _verifEnErreur = true;
+        _verifEnCours = false;
+      });
     }
   }
 
   Future<void> _submit() async {
     if (!_canSubmit) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_restrictionMessage ?? 'Vous ne pouvez pas faire cette demande maintenant')),
+        SnackBar(
+          content: Text(_verifEnErreur
+              ? 'Vérification impossible, réessayez.'
+              : (_restrictionMessage ?? 'Vous ne pouvez pas faire cette demande maintenant')),
+        ),
       );
       return;
     }
@@ -171,7 +189,11 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
         context.pop();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(rhErrorMessage(e))));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(rhErrorMessage(e))));
+        // 409 DEMANDE_DOCUMENT_DEJA_EN_COURS : le message serveur est affiché tel quel, on resynchronise le pré-contrôle.
+        if (e is DioException && e.response?.statusCode == 409) _checkRestrictions();
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -407,7 +429,32 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
             ],
           ],
 
-          if (!_canSubmit && _type == 'ATTESTATION_TRAVAIL') ...[
+          if (_verifEnCours) ...[
+            const SizedBox(height: 24),
+            const Center(child: CircularProgressIndicator()),
+          ] else if (_verifEnErreur) ...[
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.errorSurface,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded, color: AppTheme.errorDark),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Vérification impossible, réessayez.',
+                      style: const TextStyle(color: AppTheme.errorDark, fontSize: 13),
+                    ),
+                  ),
+                  TextButton(onPressed: _checkRestrictions, child: const Text('Réessayer')),
+                ],
+              ),
+            ),
+          ] else if (!_canSubmit) ...[
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(16),
@@ -418,12 +465,12 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: AppTheme.warning),
+                  const Icon(Icons.warning_amber_rounded, color: AppTheme.warning),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       _restrictionMessage ?? 'Vous avez déjà une demande en cours',
-                      style: TextStyle(color: AppTheme.warning, fontSize: 13),
+                      style: const TextStyle(color: AppTheme.warning, fontSize: 13),
                     ),
                   ),
                 ],

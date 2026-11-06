@@ -6,6 +6,7 @@ import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import com.hr.evaluation.dto.AlerteEcartCompteur;
 import com.hr.evaluation.dto.AlerteEcartDetail;
+import com.hr.evaluation.dto.AlerteEcartOuvertesParNiveau;
 import com.hr.evaluation.dto.AlerteEcartPage;
 import com.hr.evaluation.dto.AlerteEcartResume;
 import com.hr.evaluation.entity.AlerteEcart;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -90,6 +92,26 @@ public class AlerteEcartTraitementService {
         return new AlerteEcartCompteur(
                 alerteRepository.countByStatutNot(StatutAlerteEcart.TRAITEE),
                 alerteRepository.countByStatutNotAndNiveauCourant(StatutAlerteEcart.TRAITEE, NiveauEcart.URGENTE));
+    }
+
+    /**
+     * D-E12.c : alertes d'écart ouvertes (OUVERTE + EN_COURS, jamais TRAITEE) par niveau, pour une campagne ou,
+     * si {@code campagneId} est nul, toutes campagnes. Les trois niveaux sont toujours présents (0 si aucune).
+     */
+    @Transactional(readOnly = true)
+    public AlerteEcartOuvertesParNiveau ouvertesParNiveau(UUID campagneId) {
+        List<StatutAlerteEcart> statuts = List.of(StatutAlerteEcart.OUVERTE, StatutAlerteEcart.EN_COURS);
+        List<Object[]> lignes = campagneId == null
+                ? alerteRepository.compterParNiveau(statuts)
+                : alerteRepository.compterParNiveauEtCampagne(statuts, campagneId);
+        Map<NiveauEcart, Long> parNiveau = new EnumMap<>(NiveauEcart.class);
+        for (Object[] ligne : lignes) {
+            parNiveau.merge((NiveauEcart) ligne[0], ((Number) ligne[1]).longValue(), Long::sum);
+        }
+        return AlerteEcartOuvertesParNiveau.de(
+                parNiveau.getOrDefault(NiveauEcart.ORANGE, 0L),
+                parNiveau.getOrDefault(NiveauEcart.ROUGE, 0L),
+                parNiveau.getOrDefault(NiveauEcart.URGENTE, 0L));
     }
 
     @Transactional(readOnly = true)

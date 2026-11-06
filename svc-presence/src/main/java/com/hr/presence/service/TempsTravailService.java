@@ -5,7 +5,11 @@ import com.hr.presence.client.ReferentielClient.Affectation;
 import com.hr.presence.config.ClockConfig;
 import com.hr.presence.config.PresenceProperties;
 import com.hr.presence.domain.EtatJourHeuresSup;
+import com.hr.presence.domain.EtatSequencePointage;
 import com.hr.presence.domain.PointageStatut;
+import com.hr.presence.domain.PointageType;
+import com.hr.presence.dto.PageResponse;
+import com.hr.presence.dto.PointageResponse;
 import com.hr.presence.dto.TempsTravailDtos.LigneTempsTravail;
 import com.hr.presence.dto.TempsTravailDtos.OrphelinDto;
 import com.hr.presence.dto.TempsTravailDtos.PageLignes;
@@ -187,14 +191,7 @@ public class TempsTravailService {
 			return List.of();
 		}
 
-		Map<String, Affectation> affectations = resoudreAffectations(pointages);
-		Map<String, Affectation> parIdentifiant = new HashMap<>();
-		affectations.values().forEach(a -> {
-			parIdentifiant.put(a.collaborateurId().toString(), a);
-			if (a.compteId() != null) {
-				parIdentifiant.put(a.compteId().toString(), a);
-			}
-		});
+		Map<String, Affectation> parIdentifiant = indexerParIdentifiant(pointages);
 		java.util.function.Function<String, String> cle = id -> {
 			Affectation a = parIdentifiant.get(id);
 			return a != null ? a.collaborateurId().toString() : id;
@@ -223,7 +220,12 @@ public class TempsTravailService {
 			if (etatFiltre != null && etat != etatFiltre) {
 				continue;
 			}
-			lignes.add(versLigne(j, etat, site, parIdentifiant.get(j.collaborateur())));
+			String enCoursJusquA = null;
+			if (etat == EtatJourHeuresSup.EN_COURS) {
+				Instant fermeture = TempsTravailCalcul.fermetureFenetre(j, tolerance, ouverture, dureeMax);
+				enCoursJusquA = fermeture != null ? iso(fermeture) : null;
+			}
+			lignes.add(versLigne(j, etat, enCoursJusquA, site, parIdentifiant.get(j.collaborateur())));
 		}
 		lignes.sort(Comparator.comparing((LigneDetaillee l) -> l.ligne().jour()).reversed()
 				.thenComparing(l -> l.ligne().collaborateurNom() == null ? "￿" : l.ligne().collaborateurNom().toLowerCase())
@@ -268,6 +270,98 @@ public class TempsTravailService {
 			}
 		}
 		return identites;
+	}
+
+	/** Affectations indexées par identifiant de fiche ET de compte. */
+	private Map<String, Affectation> indexerParIdentifiant(List<PresencePointage> pointages) {
+		Map<String, Affectation> parIdentifiant = new HashMap<>();
+		resoudreAffectations(pointages).values().forEach(a -> {
+			parIdentifiant.put(a.collaborateurId().toString(), a);
+			if (a.compteId() != null) {
+				parIdentifiant.put(a.compteId().toString(), a);
+			}
+		});
+		return parIdentifiant;
+	}
+
+	/**
+	 * D-P18.b : annote les pointages d'une page de la liste admin. Même appariement que le Temps de travail
+	 * (D-P17.c, même code) calculé avec le contexte voisin (jours autour de la page, fiche ET compte), pour qu'une
+	 * paire à cheval sur deux pages soit jugée correctement. Seuls VALIDE et VALIDE_MANUEL portent un état ;
+	 * une ENTREE orpheline encore dans sa fenêtre (D-P17.e) est « EN_COURS », pas en anomalie.
+	 */
+	@Transactional(readOnly = true)
+	public PageResponse<PointageResponse> annoterSequences(PageResponse<PointageResponse> page) {
+		List<PointageResponse> retenus = page.content().stream()
+				.filter(p -> p.statut() != null && STATUTS_RETENUS.contains(p.statut()) && p.serverTs() != null
+						&& p.collaborateurId() != null)
+				.toList();
+		if (retenus.isEmpty()) {
+			return page;
+		}
+		Map<UUID, EtatSequencePointage> etats = etatsSequence(retenus);
+		List<PointageResponse> annotes = page.content().stream()
+				.map(p -> etats.containsKey(p.id()) ? p.avecEtatSequence(etats.get(p.id())) : p).toList();
+		return new PageResponse<>(annotes, page.page(), page.size(), page.totalElements(), page.totalPages());
+	}
+
+	private Map<UUID, EtatSequencePointage> etatsSequence(List<PointageResponse> retenus) {
+		Instant min = retenus.stream().map(PointageResponse::serverTs).min(Comparator.naturalOrder()).orElseThrow();
+		Instant max = retenus.stream().map(PointageResponse::serverTs).max(Comparator.naturalOrder()).orElseThrow();
+		Instant from = TempsTravailCalcul.dateTunis(min).minusDays(MARGE_JOURS).atStartOfDay(ClockConfig.ZONE_TUNIS).toInstant();
+		Instant to = TempsTravailCalcul.dateTunis(max).plusDays(MARGE_JOURS + 1L).atStartOfDay(ClockConfig.ZONE_TUNIS).toInstant();
+
+		// Identités de la page, élargies à la fiche et au compte quand le référentiel répond
+		Set<String> identites = new LinkedHashSet<>();
+		retenus.forEach(p -> identites.add(p.collaborateurId()));
+		List<PresencePointage> amorce = pointageRepository.findAllById(retenus.stream().map(PointageResponse::id).toList());
+		indexerParIdentifiant(amorce).keySet().forEach(identites::add);
+
+		List<PresencePointage> contexte = pointageRepository.findAll(
+				PresencePointageRepository.filtreTempsTravail(STATUTS_RETENUS, from, to, null, identites),
+				Sort.by(Sort.Direction.ASC, "serverTs"));
+		Map<String, Affectation> parIdentifiant = indexerParIdentifiant(contexte);
+		java.util.function.Function<String, String> cle = id -> {
+			Affectation a = parIdentifiant.get(id);
+			return a != null ? a.collaborateurId().toString() : id;
+		};
+		int dureeMax = properties.getTempsTravail().getDureeMaxSansHoraireHeures();
+		List<JourTravail> jours = TempsTravailCalcul.regrouper(contexte, cle, dureeMax);
+		Map<UUID, PresenceSite> sites = siteRepository.findAllById(
+				jours.stream().map(JourTravail::siteId).filter(Objects::nonNull).collect(Collectors.toSet())).stream()
+				.collect(Collectors.toMap(PresenceSite::getId, s -> s));
+		Map<String, Integer> ouvertures = jours.isEmpty() ? Map.of() : ouverturesApres(jours, parIdentifiant, cle);
+		Instant maintenant = clock.instant();
+
+		Map<UUID, EtatSequencePointage> etats = new HashMap<>();
+		for (JourTravail j : jours) {
+			if (j.orphelins().isEmpty()) {
+				continue;
+			}
+			PresenceSite site = j.siteId() != null ? sites.get(j.siteId()) : null;
+			int tolerance = site != null ? site.getToleranceApresMinutes() : PresenceSite.TOLERANCE_DEFAUT_MINUTES;
+			int ouverture = ouvertures.getOrDefault(cleOuverture(j.collaborateur(), j.siteId(), j.jour()), 0);
+			boolean enCours = TempsTravailCalcul.etat(j, maintenant, tolerance, ouverture, dureeMax) == EtatJourHeuresSup.EN_COURS;
+			Instant derniereSortiePaire = j.paires().stream().map(p -> p.sortie().getServerTs())
+					.max(Comparator.naturalOrder()).orElse(null);
+			// l'ENTREE finale (après la dernière paire) est la seule qui garde la fenêtre ouverte
+			PresencePointage finale = j.orphelins().stream()
+					.filter(o -> o.getType() == PointageType.ENTREE
+							&& (derniereSortiePaire == null || o.getServerTs().isAfter(derniereSortiePaire)))
+					.max(Comparator.comparing(PresencePointage::getServerTs)).orElse(null);
+			for (PresencePointage o : j.orphelins()) {
+				EtatSequencePointage etat;
+				if (o.getType() == PointageType.SORTIE) {
+					etat = EtatSequencePointage.SORTIE_SANS_ENTREE;
+				} else if (enCours && o == finale) {
+					etat = EtatSequencePointage.EN_COURS;
+				} else {
+					etat = EtatSequencePointage.ENTREE_SANS_SORTIE;
+				}
+				etats.put(o.getId(), etat);
+			}
+		}
+		return etats;
 	}
 
 	/** Affectations par identifiant brut des pointages (fiche ou compte) ; carte vide si le référentiel échoue. */
@@ -330,7 +424,7 @@ public class TempsTravailService {
 
 	// ---- Mise en forme -------------------------------------------------------------------------------------------
 
-	private static LigneDetaillee versLigne(JourTravail j, EtatJourHeuresSup etat, PresenceSite site, Affectation a) {
+	private static LigneDetaillee versLigne(JourTravail j, EtatJourHeuresSup etat, String enCoursJusquA, PresenceSite site, Affectation a) {
 		List<PaireDto> paires = j.paires().stream().map(TempsTravailService::versPaire).toList();
 		List<OrphelinDto> orphelins = j.orphelins().stream()
 				.map(o -> new OrphelinDto(o.getType().name(), iso(o.getServerTs()), TempsTravailCalcul.estManuel(o))).toList();
@@ -347,7 +441,7 @@ public class TempsTravailService {
 				j.jour(),
 				j.premiereEntree() != null ? iso(j.premiereEntree()) : null,
 				j.derniereSortie() != null ? iso(j.derniereSortie()) : null,
-				paires, orphelins, (int) j.minutes(), etat, direction, departement, service);
+				paires, orphelins, (int) j.minutes(), etat, direction, departement, service, enCoursJusquA);
 		return new LigneDetaillee(ligne, direction, departement, service, j.manuel());
 	}
 

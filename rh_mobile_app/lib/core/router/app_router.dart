@@ -18,7 +18,6 @@ import '../../features/facial/data/facial_models.dart';
 import '../../features/facial/presentation/facial_consentement_screen.dart';
 import '../../features/facial/presentation/facial_enrolement_screen.dart';
 import '../../features/facial/presentation/facial_mon_visage_screen.dart';
-import '../../features/feed/presentation/feed_screen.dart';
 import '../../features/formations/presentation/formation_create_screen.dart';
 import '../../features/formations/presentation/formations_list_screen.dart';
 import '../../features/heures_sup/presentation/demande_heures_sup_screen.dart';
@@ -99,7 +98,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(path: '/facial/mon-visage', builder: (_, __) => const FacialMonVisageScreen()),
-      GoRoute(path: '/feed', builder: (_, __) => const FeedScreen()),
+      // D-T02.a : l'écran Actualités est retiré, l'ancienne route renvoie à l'accueil.
+      GoRoute(path: '/feed', redirect: (_, __) => '/home'),
       GoRoute(path: '/formations', builder: (_, __) => const FormationsListScreen()),
       GoRoute(path: '/formations/nouveau', builder: (_, __) => const FormationCreateScreen()),
       GoRoute(path: '/plaintes', builder: (_, __) => const PlaintesListScreen()),

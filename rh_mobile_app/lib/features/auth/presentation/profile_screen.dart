@@ -55,8 +55,9 @@ class ProfileScreen extends ConsumerWidget {
             return const Center(child: Text('Aucune donnée utilisateur'));
           }
 
-          final initials =
-              '${user.prenom.isNotEmpty ? user.prenom[0] : ""}${user.name.isNotEmpty ? user.name[0] : ""}';
+          final initials = user.initiales;
+          final responsable = ref.watch(profilResponsableProvider);
+          final demandesEnCours = ref.watch(profilDemandesEnCoursProvider);
 
           return CustomScrollView(
             slivers: [
@@ -77,7 +78,6 @@ class ProfileScreen extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
                     child: Column(
                       children: [
-                        // Avatar with edit button
                         Stack(
                           children: [
                             Container(
@@ -105,36 +105,11 @@ class ProfileScreen extends ConsumerWidget {
                                 ),
                               ),
                             ),
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: Material(
-                                color: AppTheme.primaryLight,
-                                shape: const CircleBorder(),
-                                child: InkWell(
-                                  onTap: () {
-                                    // TODO: Navigate to edit profile
-                                  },
-                                  customBorder: const CircleBorder(),
-                                  child: Container(
-                                    width: 30,
-                                    height: 30,
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primaryLight,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: Colors.white, width: 2.5),
-                                    ),
-                                    child: const Icon(Icons.edit_rounded,
-                                        size: 14, color: Colors.white),
-                                  ),
-                                ),
-                              ),
-                            ),
                           ],
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          '${user.prenom} ${user.name}',
+                          user.nomComplet.isEmpty ? 'Nom non renseigné' : user.nomComplet,
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,
@@ -149,24 +124,35 @@ class ProfileScreen extends ConsumerWidget {
                             color: Colors.white.withValues(alpha: 0.75),
                           ),
                         ),
-                        const SizedBox(height: 24),
-                        // Stats row
+                        const SizedBox(height: 20),
                         Container(
+                          width: double.infinity,
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(16),
                           ),
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 16, horizontal: 24),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          child: Column(
                             children: [
-                              _StatItem(value: '12', label: 'Jours\ncongés'),
-                              Container(
-                                  width: 0.5,
-                                  height: 40,
-                                  color: Colors.white.withValues(alpha: 0.3)),
-                              _StatItem(value: '4', label: 'Demandes\nen cours'),
+                              _InfoLigne(label: 'Matricule', value: user.matricule ?? 'Non renseigné'),
+                              _InfoLigne(label: 'Poste', value: user.posteLibelle ?? 'Non renseigné'),
+                              _InfoLigne(label: 'Unité', value: user.uniteLibelle ?? 'Non renseigné'),
+                              _InfoLigne(
+                                label: 'Responsable',
+                                value: responsable.when(
+                                  data: (r) => r,
+                                  loading: () => 'Chargement…',
+                                  error: (_, __) => 'Indisponible',
+                                ),
+                              ),
+                              _InfoLigne(
+                                label: 'Demandes en cours',
+                                value: demandesEnCours.when(
+                                  data: (n) => '$n',
+                                  loading: () => '…',
+                                  error: (_, __) => 'Indisponible',
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -182,32 +168,13 @@ class ProfileScreen extends ConsumerWidget {
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     const SizedBox(height: 8),
-                    _MenuSection(items: [
-                      _MenuItem(
-                          icon: Icons.person_outline_rounded,
-                          label: 'Informations personnelles',
-                          onTap: () {}),
-                      _MenuItem(
-                          icon: Icons.lock_outline_rounded,
-                          label: 'Sécurité',
-                          onTap: () {}),
-                      _MenuItem(
-                          icon: Icons.notifications_none_rounded,
-                          label: 'Notifications',
-                          onTap: () {}),
-                      if (ref.watch(facialControllerProvider).afficherEntreeProfil)
+                    if (ref.watch(facialControllerProvider).afficherEntreeProfil)
+                      _MenuSection(items: [
                         _MenuItem(
                             icon: Icons.face_rounded,
                             label: 'Vérification faciale',
                             onTap: () => context.push('/facial/mon-visage')),
-                    ]),
-                    const SizedBox(height: 12),
-                    _MenuSection(items: [
-                      _MenuItem(
-                          icon: Icons.help_outline_rounded,
-                          label: 'Aide & Support',
-                          onTap: () {}),
-                    ]),
+                      ]),
                     const SizedBox(height: 24),
                     // Logout
                     Material(
@@ -243,24 +210,30 @@ class ProfileScreen extends ConsumerWidget {
   }
 }
 
-class _StatItem extends StatelessWidget {
-  final String value;
+class _InfoLigne extends StatelessWidget {
   final String label;
-  const _StatItem({required this.value, required this.label});
+  final String value;
+  const _InfoLigne({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(value,
-            style: const TextStyle(
-                fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
-        const SizedBox(height: 2),
-        Text(label,
-            textAlign: TextAlign.center,
-            style:
-                TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.65))),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(label,
+                style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.7))),
+          ),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
+          ),
+        ],
+      ),
     );
   }
 }

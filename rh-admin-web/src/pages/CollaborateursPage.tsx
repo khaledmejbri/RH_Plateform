@@ -29,7 +29,13 @@ import { appartientSelection, correspond, indexerUnites, useFiltresUrl } from '.
 
 const PROFIL_DEFAUT = 'COLLABORATEUR' as const;
 const TAILLE_PAGE = 15;
-const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', profil: '', statut: '' };
+const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', profil: '', statut: '', metier: '' };
+
+/** D-E13.c : fiche active sans famille ou sans niveau. */
+function profilMetierIncomplet(r: CollaborateurRow): boolean {
+  return r.statut.toUpperCase() === 'ACTIF'
+    && (!(r.famille_metier_code || r.famille_metier_libelle) || !r.niveau_seniorite);
+}
 
 function profilDepuisLigne(row: CollaborateurRow | null): string {
   if (row?.profil_acces) return row.profil_acces.toUpperCase();
@@ -112,10 +118,12 @@ export default function CollaborateursPage() {
           ) &&
           appartientSelection(indexUnites, r.unite?.identifiant, f) &&
           (!f.profil || (r.profil_acces ?? PROFIL_DEFAUT).toUpperCase() === f.profil) &&
-          (!f.statut || r.statut.toUpperCase() === f.statut),
+          (!f.statut || r.statut.toUpperCase() === f.statut) &&
+          (f.metier !== 'A_COMPLETER' || profilMetierIncomplet(r)),
       ),
     [rows, f, indexUnites],
   );
+  const nbMetierACompleter = useMemo(() => rows.filter(profilMetierIncomplet).length, [rows]);
   const totalPages = Math.max(1, Math.ceil(filtrees.length / TAILLE_PAGE));
   const pageCourante = Math.min(page, totalPages - 1);
   const pageRows = filtrees.slice(pageCourante * TAILLE_PAGE, (pageCourante + 1) * TAILLE_PAGE);
@@ -307,6 +315,13 @@ export default function CollaborateursPage() {
                   options={statuts.map((x) => ({ valeur: x, libelle: x }))}
                   onChange={(v) => { filtres.definir({ statut: v }); setPage(0); }}
                 />
+                <ChampSelect
+                  id="collab-metier"
+                  libelle="Profil métier"
+                  valeur={f.metier}
+                  options={[{ valeur: 'A_COMPLETER', libelle: `Profil métier à compléter (${nbMetierACompleter})` }]}
+                  onChange={(v) => { filtres.definir({ metier: v }); setPage(0); }}
+                />
               </BarreFiltres>
               {filtrees.length === 0 ? (
                 <AucunResultat onReinitialiser={filtres.nbActifs > 0 ? () => filtres.reinitialiser() : undefined} />
@@ -342,7 +357,7 @@ export default function CollaborateursPage() {
                           ) : null}
                         </td>
                         <td>
-                          {r.famille_metier_code || r.niveau_seniorite ? (
+                          {r.famille_metier_code || r.famille_metier_libelle || r.niveau_seniorite ? (
                             <span className="small">
                               {r.famille_metier_libelle
                                 ?? libelleFamilleMetier(r.famille_metier_code, familles)}

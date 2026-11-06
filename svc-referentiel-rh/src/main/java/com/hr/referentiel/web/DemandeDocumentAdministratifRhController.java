@@ -43,6 +43,16 @@ public class DemandeDocumentAdministratifRhController {
 				.body(demandeDocumentAdministratifRhService.soumettre(requete, principal.getToken()));
 	}
 
+	/** D-F06.c : pré-contrôle « puis-je déposer une demande de ce type ? » (identité lue dans le JWT). */
+	@GetMapping("/check-restriction")
+	@PreAuthorize("hasRole('USER')")
+	public ResponseEntity<CheckRestrictionDocumentResponse> checkRestriction(
+			@RequestParam(name = "type_document", required = false) String typeDocument,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(
+				demandeDocumentAdministratifRhService.verifierRestriction(typeDocument, principal.getToken()));
+	}
+
 	/** Mes demandes de documents. */
 	@GetMapping
 	@PreAuthorize("hasRole('USER')")

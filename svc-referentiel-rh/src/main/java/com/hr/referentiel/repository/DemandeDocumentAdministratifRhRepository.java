@@ -29,6 +29,11 @@ public interface DemandeDocumentAdministratifRhRepository extends JpaRepository<
 	/** Trouve la plus ancienne demande en attente (FIFO). */
 	Optional<DemandeDocumentAdministratifRh> findFirstByStatutOrderByCreeLeAsc(StatutDocumentAdministratifDemandeRh statut);
 
+	/** D-F06.a : plus ancienne demande ouverte du collaborateur pour ce type. */
+	Optional<DemandeDocumentAdministratifRh> findFirstByDemandeurIdAndTypeDocumentAndStatutInOrderByCreeLeAsc(
+			UUID demandeurId, com.hr.referentiel.domain.TypeDocumentAdministratifDemandeRh typeDocument,
+			List<StatutDocumentAdministratifDemandeRh> statuts);
+
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select d from DemandeDocumentAdministratifRh d where d.statut = :statut order by d.creeLe asc")
 	List<DemandeDocumentAdministratifRh> findQueueForUpdate(@Param("statut") StatutDocumentAdministratifDemandeRh statut);

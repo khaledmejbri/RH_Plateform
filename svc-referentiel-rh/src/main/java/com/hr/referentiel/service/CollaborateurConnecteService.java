@@ -43,4 +43,9 @@ public class CollaborateurConnecteService {
 		}
 		return Optional.empty();
 	}
+
+	/** Verrou d'écriture sur la fiche (à appeler dans une transaction) : sérialise les demandes simultanées (D-F06). */
+	public void verrouiller(Collaborateur collaborateur) {
+		collaborateurRepository.findByIdForUpdate(collaborateur.getId());
+	}
 }

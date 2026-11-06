@@ -241,4 +241,116 @@ class EvaluationCampaignServiceTest {
                 .satisfies(ex -> assertThat(((EvaluationMetierException) ex).getCode())
                         .isEqualTo("CAMPAGNE_GENERIC_MANQUANT"));
     }
+
+    // --- Lot 0 UAT : D-E11 (EVA-1) et D-E13.a (EVA-6) ---
+
+    private EvaluationCampaign campagnePlanifieeCommencant(java.time.LocalDate jour, UUID campaignId) {
+        EvaluationTemplate generic = new EvaluationTemplate();
+        generic.setId(UUID.randomUUID());
+        generic.setType(TemplateType.GENERIC);
+        generic.setStatut(TemplateStatus.PUBLISHED);
+        generic.setActif(true);
+        EvaluationCampaign campaign = new EvaluationCampaign();
+        campaign.setId(campaignId);
+        campaign.setNom("Campagne démo");
+        campaign.setStatut(EvaluationCampaignStatus.PLANIFIEE);
+        campaign.setTemplateGeneral(generic);
+        campaign.setDateDebut(jour.atStartOfDay(com.hr.evaluation.service.CampagneCalendrier.ZONE).toInstant());
+        return campaign;
+    }
+
+    @Test
+    void activationAvantLaDateDeCommencementRefusee422AucuneEvaluationCreee() {
+        UUID campaignId = UUID.randomUUID();
+        EvaluationCampaign campaign = campagnePlanifieeCommencant(java.time.LocalDate.of(2026, 11, 7), campaignId);
+        when(campaignRepository.findById(campaignId)).thenReturn(Optional.of(campaign));
+        // Aujourd'hui (Tunis) = 06/11/2026 à 23:30
+        java.time.Instant maintenant = java.time.LocalDateTime.of(2026, 11, 6, 23, 30)
+                .atZone(com.hr.evaluation.service.CampagneCalendrier.ZONE).toInstant();
+
+        assertThatThrownBy(() -> campaignService.activerCampagne(campaignId, maintenant))
+                .isInstanceOf(EvaluationMetierException.class)
+                .satisfies(ex -> {
+                    EvaluationMetierException m = (EvaluationMetierException) ex;
+                    assertThat(m.getCode()).isEqualTo("CAMPAGNE_NON_COMMENCEE");
+                    assertThat(m.getHttpStatus()).isEqualTo(422);
+                    assertThat(m.getMessage()).contains("07/11/2026");
+                });
+        assertThat(campaign.getStatut()).isEqualTo(EvaluationCampaignStatus.PLANIFIEE);
+        verify(campaignRepository, never()).save(any());
+        verifyNoInteractions(referentielClient, workflowService);
+    }
+
+    @Test
+    void activationLeJourDeCommencementAutorisee200() {
+        UUID campaignId = UUID.randomUUID();
+        EvaluationCampaign campaign = campagnePlanifieeCommencant(java.time.LocalDate.of(2026, 11, 7), campaignId);
+        when(campaignRepository.findById(campaignId)).thenReturn(Optional.of(campaign));
+        when(campaignRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(referentielClient.listerActifsPourEvaluation()).thenReturn(List.of());
+        // Le jour J, 00:05 heure de Tunis
+        java.time.Instant maintenant = java.time.LocalDateTime.of(2026, 11, 7, 0, 5)
+                .atZone(com.hr.evaluation.service.CampagneCalendrier.ZONE).toInstant();
+
+        CampaignActivationResult result = campaignService.activerCampagne(campaignId, maintenant);
+
+        assertThat(result.statut()).isEqualTo("ACTIVE");
+    }
+
+    @Test
+    void activationCompteLesEvaluationsSansQuestionnaireTechniqueSansBloquer() {
+        UUID campaignId = UUID.randomUUID();
+        EvaluationCampaign campaign = campagnePlanifieeCommencant(java.time.LocalDate.of(2026, 11, 6), campaignId);
+        when(campaignRepository.findById(campaignId)).thenReturn(Optional.of(campaign));
+        when(campaignRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        UUID c1 = UUID.randomUUID();
+        UUID c2 = UUID.randomUUID();
+        UUID c3 = UUID.randomUUID();
+        UUID manager = UUID.randomUUID();
+        when(referentielClient.listerActifsPourEvaluation()).thenReturn(List.of(
+                new CollaborateurEvaluationSnapshot(c1, "ACTIF", "DEV_LOGICIEL", "SENIOR", manager, "COLLABORATEUR",
+                        null, "A", null, null, null),
+                new CollaborateurEvaluationSnapshot(c2, "ACTIF", "GENIE_CIVIL", "JUNIOR", manager, "COLLABORATEUR",
+                        null, "B", null, null, null),
+                new CollaborateurEvaluationSnapshot(c3, "ACTIF", "GENIE_CIVIL", "JUNIOR", manager, "COLLABORATEUR",
+                        null, "C", null, null, null)));
+        when(evaluationRepository.findByCampaignIdAndCollaborateurIdentifiant(eq(campaignId), any()))
+                .thenReturn(Optional.empty());
+        EvaluationTemplate technique = new EvaluationTemplate();
+        technique.setId(UUID.randomUUID());
+        technique.setType(TemplateType.TECHNICAL);
+        for (UUID c : List.of(c1, c2, c3)) {
+            Evaluation e = new Evaluation();
+            e.setId(UUID.randomUUID());
+            e.setCollaborateurIdentifiant(c);
+            // seul c1 a un template technique résolu
+            e.setTemplateCompetenceAssigne(c.equals(c1) ? technique : null);
+            when(workflowService.creerEvaluationDepuisSnapshot(any(), eq(c), any(), any(), any())).thenReturn(e);
+        }
+
+        CampaignActivationResult result = campaignService.activerCampagne(campaignId,
+                java.time.Instant.parse("2026-11-06T10:00:00Z"));
+
+        assertThat(result.evaluationsCreees()).isEqualTo(3);
+        assertThat(result.evaluationsSansTemplateTechnique()).isEqualTo(2);
+    }
+
+    @Test
+    void compteurSansTemplateTechniqueNulSiLaCampagneAUnTemplateTechnique() {
+        EvaluationCampaign campaign = new EvaluationCampaign();
+        campaign.setId(UUID.randomUUID());
+        campaign.setTemplateCompetence(new EvaluationTemplate());
+
+        assertThat(campaignService.compterEvaluationsSansTemplateTechnique(campaign)).isZero();
+        verifyNoInteractions(evaluationRepository);
+    }
+
+    @Test
+    void compteurSansTemplateTechniqueLitLeDepotSansTemplateDeCampagne() {
+        EvaluationCampaign campaign = new EvaluationCampaign();
+        campaign.setId(UUID.randomUUID());
+        when(evaluationRepository.countByCampaignIdAndTemplateCompetenceAssigneIsNull(campaign.getId())).thenReturn(2L);
+
+        assertThat(campaignService.compterEvaluationsSansTemplateTechnique(campaign)).isEqualTo(2);
+    }
 }

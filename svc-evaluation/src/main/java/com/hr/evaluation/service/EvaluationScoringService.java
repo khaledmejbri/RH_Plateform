@@ -142,8 +142,10 @@ public class EvaluationScoringService {
 		if (!improvements.isEmpty()) {
 			recommendations.add("Creer un plan de developpement cible sur les axes faibles identifies.");
 		}
-		if (recommendations.isEmpty()) {
-			recommendations.add("Maintenir les objectifs et suivre l'evolution au prochain cycle.");
+		boolean aNotesCollaborateur = lines.stream().anyMatch(line -> line.selfScore != null);
+		// D-E14 : aucune note du tout → aucune recommandation
+		if (recommendations.isEmpty() && (aNotesCollaborateur || hasManagerNotes)) {
+			recommendations.add("Maintenir les objectifs et suivre l'évolution au prochain cycle.");
 		}
 
 		return new EvaluationAnalyticsResponse(
@@ -158,7 +160,9 @@ public class EvaluationScoringService {
 				sectionScores,
 				strengths,
 				improvements,
-				recommendations
+				recommendations,
+				aNotesCollaborateur,
+				hasManagerNotes
 		);
 	}
 

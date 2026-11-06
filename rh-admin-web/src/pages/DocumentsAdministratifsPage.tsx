@@ -133,7 +133,8 @@ export default function DocumentsAdministratifsPage() {
           correspond([d.demandeur_nom, d.demandeur_matricule, d.demandeur_unite, d.departement_libelle, d.reference_livrable, humanizeCode(d.type_document)], f.q) &&
           libelleDansSelection(retenues, d.demandeur_unite ?? d.departement_libelle) &&
           (!f.type || d.type_document === f.type) &&
-          (!f.statut || d.statut === f.statut),
+          (!f.statut
+            || (f.statut === 'A_TRAITER' ? d.statut === 'EN_ATTENTE_FILE' || d.statut === 'EN_TRAITEMENT_RH' : d.statut === f.statut)),
       ),
     [rows, f, retenues],
   );
@@ -198,7 +199,10 @@ export default function DocumentsAdministratifsPage() {
           id="docs-statut"
           libelle="Statut"
           valeur={f.statut}
-          options={statutsDoc.map((t) => ({ valeur: t, libelle: humanizeCode(t) }))}
+          options={[
+            { valeur: 'A_TRAITER', libelle: 'À traiter (en attente + en traitement)' },
+            ...statutsDoc.map((t) => ({ valeur: t, libelle: docStatusLabel(t) ?? humanizeCode(t) })),
+          ]}
           onChange={(v) => filtres.definir({ statut: v })}
         />
         <FiltresUnite idPrefixe="docs" unites={unites} selection={f} onChange={(sel) => filtres.definir(sel)} />

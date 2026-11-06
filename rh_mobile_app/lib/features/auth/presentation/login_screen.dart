@@ -6,6 +6,9 @@ import '../../../core/theme/app_theme.dart';
 import '../data/auth_repository.dart';
 import '../providers/auth_notifier.dart';
 
+/// Vrai uniquement si le build est lancé avec `--dart-define=DEMO_MODE=true` (absent par défaut, donc de Codemagic).
+const bool modeDemoActif = bool.fromEnvironment('DEMO_MODE', defaultValue: false);
+
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -53,6 +56,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _demo() async {
+    if (!modeDemoActif) return;
     setState(() => _loading = true);
     await ref.read(authNotifierProvider.notifier).demo();
     if (mounted) {
@@ -277,31 +281,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               : const Text('Se connecter'),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      // D-T02.c : démo seulement dans un build `--dart-define=DEMO_MODE=true`.
+                      if (modeDemoActif) ...[
+                        const SizedBox(height: 12),
 
-                      // Divider
-                      Row(
-                        children: [
-                          const Expanded(child: Divider()),
-                          Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 12),
-                            child: Text('ou',
-                                style: Theme.of(context).textTheme.bodySmall),
-                          ),
-                          const Expanded(child: Divider()),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Demo button
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: _loading ? null : _demo,
-                          child: const Text('Continuer en démo'),
+                        // Divider
+                        Row(
+                          children: [
+                            const Expanded(child: Divider()),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('ou',
+                                  style: Theme.of(context).textTheme.bodySmall),
+                            ),
+                            const Expanded(child: Divider()),
+                          ],
                         ),
-                      ),
+                        const SizedBox(height: 12),
+
+                        // Demo button
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: _loading ? null : _demo,
+                            child: const Text('Continuer en démo'),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

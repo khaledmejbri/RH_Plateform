@@ -13,7 +13,11 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.hr.referentiel.web.ReferentielMetierException;
+
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +36,14 @@ public class DemandeDocumentAdministratifRhService {
 			"Des demandes antérieures sont encore en attente. "
 					+ "Pour traiter cette demande hors ordre FIFO, veuillez fournir une justification obligatoire "
 					+ "(champ justification_derogation_fifo).";
+
+	/** D-F06.a : demandes « ouvertes » qui bloquent une nouvelle demande du même type. */
+	static final List<StatutDocumentAdministratifDemandeRh> STATUTS_OUVERTS = List.of(
+			StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE,
+			StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH);
+
+	private static final ZoneId FUSEAU_TUNIS = ZoneId.of("Africa/Tunis");
+	private static final DateTimeFormatter FORMAT_JOUR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
 	private final DemandeDocumentAdministratifRhRepository repository;
 	private final CollaborateurConnecteService collaborateurConnecteService;
@@ -53,6 +65,14 @@ public class DemandeDocumentAdministratifRhService {
 	public DemandeDocumentAdministratifRhResponse soumettre(DemandeDocumentAdministratifCreationRequest req, Jwt jwt) {
 		Collaborateur demandeur = collaborateurConnecteService.exigerCollaborateur(jwt);
 		TypeDocumentAdministratifDemandeRh type = req.getTypeDocument();
+		// D-F06.b : le serveur est le garde ; la fiche est verrouillée pour que deux POST simultanés
+		// du même type ne passent pas tous les deux.
+		collaborateurConnecteService.verrouiller(demandeur);
+		repository.findFirstByDemandeurIdAndTypeDocumentAndStatutInOrderByCreeLeAsc(
+				demandeur.getId(), type, STATUTS_OUVERTS).ifPresent(ouverte -> {
+					throw ReferentielMetierException.conflict("DEMANDE_DOCUMENT_DEJA_EN_COURS",
+							messageDoublon(ouverte));
+				});
 		int sla = evenementsProperties.delaiSlaHeuresPourDocument(type.name(), type.getDelaiSlaHeuresDefaut());
 		Instant echeance = Instant.now().plus(sla, ChronoUnit.HOURS);
 
@@ -74,6 +94,35 @@ public class DemandeDocumentAdministratifRhService {
 		}
 
 		return toResponse(d);
+	}
+
+	/**
+	 * D-F06.c : pré-contrôle pour l'appli (ne remplace pas le contrôle du POST). Type inconnu → 400.
+	 */
+	@Transactional(readOnly = true)
+	public CheckRestrictionDocumentResponse verifierRestriction(String typeDocument, Jwt jwt) {
+		Collaborateur demandeur = collaborateurConnecteService.exigerCollaborateur(jwt);
+		TypeDocumentAdministratifDemandeRh type = parserType(typeDocument);
+		return repository.findFirstByDemandeurIdAndTypeDocumentAndStatutInOrderByCreeLeAsc(
+						demandeur.getId(), type, STATUTS_OUVERTS)
+				.map(ouverte -> new CheckRestrictionDocumentResponse(false, messageDoublon(ouverte)))
+				.orElseGet(() -> new CheckRestrictionDocumentResponse(true, null));
+	}
+
+	private static TypeDocumentAdministratifDemandeRh parserType(String code) {
+		if (code != null) {
+			try {
+				return TypeDocumentAdministratifDemandeRh.valueOf(code.trim());
+			} catch (IllegalArgumentException ignored) {
+				// retombe sur le 400 ci-dessous
+			}
+		}
+		throw new IllegalArgumentException("Type de document inconnu.");
+	}
+
+	private static String messageDoublon(DemandeDocumentAdministratifRh ouverte) {
+		return "Vous avez déjà une demande de " + ouverte.getTypeDocument().getLibelle()
+				+ " en cours (déposée le " + FORMAT_JOUR.format(ouverte.getCreeLe().atZone(FUSEAU_TUNIS)) + ").";
 	}
 
 	@Transactional(readOnly = true)

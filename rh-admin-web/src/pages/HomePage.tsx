@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  getCollaborateursPage,
+  getTousCollaborateurs,
   getDemandesAdministrativesListe,
   getDocumentsFileAttente,
   getPlaintesRh,
@@ -20,17 +20,18 @@ export default function HomePage() {
     let cancel = false;
     void (async () => {
       try {
+        // D-T01 : chaque carte compte exactement ce que l'écran ouvert affiche avec le même filtre.
         const [p, d, dm, cp] = await Promise.all([
           getPlaintesRh(),
           getDocumentsFileAttente(),
-          getDemandesAdministrativesListe(),
-          getCollaborateursPage(0, 1),
+          getDemandesAdministrativesListe({ statut: 'EN_VALIDATION_RRH' }),
+          getTousCollaborateurs(),
         ]);
         if (cancel) return;
-        setPlaintes(p.length);
-        setDocs(d.length);
-        setDemandes(dm.length);
-        setCollabs(cp.total_elements);
+        setPlaintes(p.filter((x) => x.statut !== 'FERME').length);
+        setDocs(d.filter((x) => x.statut === 'EN_ATTENTE_FILE' || x.statut === 'EN_TRAITEMENT_RH').length);
+        setDemandes(dm.filter((x) => x.statut === 'EN_VALIDATION_RRH').length);
+        setCollabs(cp.filter((x) => x.statut.toUpperCase() === 'ACTIF').length);
       } catch (e) {
         if (!cancel) setErr(e instanceof Error ? e.message : 'Erreur');
       }
@@ -42,36 +43,36 @@ export default function HomePage() {
 
   const stats = [
     {
-      to: '/app/plaintes',
+      to: '/app/plaintes?statut=OUVERTES',
       value: n(plaintes),
-      label: 'Plaintes',
-      sub: 'Suivi et traitement',
+      label: 'Plaintes ouvertes',
+      sub: 'Non fermées',
       icon: <IconChat />,
       accent: '#1d4ed8',
       bg: '#eff6ff',
     },
     {
-      to: '/app/demandes-administratives',
+      to: '/app/demandes-administratives?statut=EN_VALIDATION_RRH',
       value: n(demandes),
-      label: 'Demandes',
+      label: lectureSeule ? 'Demandes en attente RH' : 'Demandes à décider',
       sub: 'Congés et autorisations',
       icon: <IconFile />,
       accent: '#0f766e',
       bg: '#f0fdfa',
     },
     {
-      to: '/app/documents-administratifs',
+      to: '/app/documents-administratifs?statut=A_TRAITER',
       value: n(docs),
-      label: 'Documents',
-      sub: 'Attestations et bulletins',
+      label: 'Documents en file',
+      sub: 'En attente ou en traitement',
       icon: <IconDoc />,
       accent: '#b45309',
       bg: '#fffbeb',
     },
     {
-      to: '/app/collaborateurs',
+      to: '/app/collaborateurs?statut=ACTIF',
       value: n(collabs),
-      label: 'Collaborateurs',
+      label: 'Collaborateurs actifs',
       sub: 'Fiches et comptes',
       icon: <IconUsers />,
       accent: '#4338ca',

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -8,6 +9,7 @@ import '../constants/api_constants.dart';
 import '../network/api_client.dart';
 import '../storage/secure_token_storage.dart';
 import 'notification_model.dart';
+import 'ws_url.dart';
 
 class NotificationState {
   final List<AppNotification> notifications;
@@ -38,6 +40,9 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
   StompClient? _client;
   String? _currentUserId;
   bool _connecting = false;
+  Timer? _timerReconnexion;
+  int _tentativesReconnexion = 0;
+  bool _arretVoulu = false;
   final Set<String> _seenNotificationKeys = <String>{};
 
   Future<void> connect(String userId) async {
@@ -54,23 +59,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       debugPrint('[STOMP] ═════════════════════════════════════════');
       debugPrint('[STOMP] DEBUG: Raw ApiConstants.baseUrl = "$baseUrl"');
 
-      // Extract host and port from base URL
-      // Use raw WebSocket endpoint (Flutter has native WebSocket support)
-      String wsUrl;
-      if (baseUrl.contains('10.0.2.2')) {
-        // Android emulator
-        wsUrl = 'ws://10.0.2.2:8080/ws';
-      } else if (baseUrl.contains('127.0.0.1')) {
-        // iOS simulator
-        wsUrl = 'ws://127.0.0.1:8080/ws';
-      } else if (baseUrl.contains('localhost')) {
-        // Web or other
-        wsUrl = 'ws://localhost:8080/ws';
-      } else {
-        // Generic conversion
-        final base = baseUrl.replaceFirst('http', 'ws');
-        wsUrl = base.endsWith('/ws') ? base : '$base/ws';
-      }
+      final wsUrl = deduireUrlWebSocket(baseUrl);
 
       debugPrint('[STOMP] Constructed WebSocket URL: $wsUrl');
       debugPrint('[STOMP] Using raw WebSocket (Flutter native support)');
@@ -107,6 +96,8 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
 
       if (_client != null) {
         debugPrint('[STOMP] Existing client found, deactivating before reconnect');
+        _arretVoulu = true;
+        _timerReconnexion?.cancel();
         _client!.deactivate();
         // Give it a moment to disconnect
         await Future.delayed(const Duration(milliseconds: 500));
@@ -114,6 +105,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       }
 
       _currentUserId = finalUserId;
+      _arretVoulu = false;
 
       // STOMP-level headers — these populate the CONNECT frame that
       // StompAuthInterceptor reads on the backend.
@@ -139,9 +131,13 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
           stompConnectHeaders: stompHeaders,
           webSocketConnectHeaders: wsHeaders,
           connectionTimeout: const Duration(seconds: 15),
+          // Reconnexion gérée ici (1 s → 60 s) : l'intervalle fixe du client est désactivé.
+          reconnectDelay: Duration.zero,
           useSockJS: false, // Flutter has native WebSocket, no need for SockJS
           onConnect: (frame) {
             debugPrint('[STOMP] ✅ CONNECTED SUCCESSFULLY!');
+            _tentativesReconnexion = 0;
+            _timerReconnexion?.cancel();
             debugPrint('[STOMP] Frame: ${frame.command}');
             // Use microtask to avoid updating state during build phase
             Future.microtask(() {
@@ -168,6 +164,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
             Future.microtask(() {
               state = state.copyWith(connected: false);
             });
+            _planifierReconnexion();
           },
           onWebSocketError: (dynamic error) {
             debugPrint('[STOMP] ⚠️  WebSocket Error: $error');
@@ -179,6 +176,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
             Future.microtask(() {
               state = state.copyWith(connected: false);
             });
+            _planifierReconnexion();
           },
           onStompError: (StompFrame frame) {
             debugPrint('[STOMP] ⚠️  STOMP Protocol Error');
@@ -189,6 +187,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
             Future.microtask(() {
               state = state.copyWith(connected: false);
             });
+            _planifierReconnexion();
           },
           beforeConnect: () async {
             debugPrint('[STOMP] 🔄 Before connect - preparing connection...');
@@ -222,7 +221,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       } else {
         debugPrint('[STOMP] ⚠️  Connection timeout after 10 seconds');
         debugPrint('[STOMP] Please check:');
-        debugPrint('[STOMP]   1. Backend is running on port 8080');
+        debugPrint('[STOMP]   1. Backend is running (gateway)');
         debugPrint('[STOMP]   2. WebSocket endpoint /ws is available');
         debugPrint('[STOMP]   3. CORS is configured for WebSocket');
         debugPrint('[STOMP]   4. User ID is correct: $finalUserId');
@@ -234,6 +233,19 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
     } finally {
       _connecting = false;
     }
+  }
+
+  /// Relance le client avec une attente croissante (1 s, 2 s, 4 s… 60 s) ; une seule relance en attente.
+  void _planifierReconnexion() {
+    if (_arretVoulu || _client == null || (_timerReconnexion?.isActive ?? false)) return;
+    final delai = delaiReconnexion(_tentativesReconnexion++);
+    debugPrint('[STOMP] Nouvelle tentative dans ${delai.inSeconds} s');
+    _timerReconnexion = Timer(delai, () {
+      final client = _client;
+      if (_arretVoulu || client == null || state.connected) return;
+      client.deactivate();
+      client.activate();
+    });
   }
 
   void _handleFrame(StompFrame frame) {
@@ -278,6 +290,9 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
   }
 
   void disconnect() {
+    _arretVoulu = true;
+    _timerReconnexion?.cancel();
+    _tentativesReconnexion = 0;
     debugPrint('[STOMP] Disconnecting...');
     _client?.deactivate();
     _client = null;
@@ -302,6 +317,8 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
 
   @override
   void dispose() {
+    _arretVoulu = true;
+    _timerReconnexion?.cancel();
     _client?.deactivate();
     super.dispose();
   }

@@ -17,7 +17,11 @@ public record EvaluationAnalyticsResponse(
         List<SectionScore> sections,
         List<String> strengths,
         List<String> improvementAreas,
-        List<String> recommendations
+        List<String> recommendations,
+        /** D-E14 : au moins une note du collaborateur (auto-évaluation). */
+        boolean aNotesCollaborateur,
+        /** D-E14 : au moins une note du responsable. */
+        boolean aNotesResponsable
 ) {
     public record GapItem(
             String questionId,

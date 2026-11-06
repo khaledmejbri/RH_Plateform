@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   campaignApi,
   evaluationApi,
   LIBELLES_TYPE_CAMPAGNE,
   parametresApi,
+  lireSansTemplateTechnique,
   templateApi,
   type CampaignAnalytics,
   type CampaignType,
@@ -15,6 +16,7 @@ import {
   type EvaluationTemplate,
 } from '../api/evaluationApi';
 import { libelleNiveauSeniorite, profilMetierLabel } from '../api/evaluationCatalog';
+import { getAlertesOuvertesParNiveau, LIBELLES_NIVEAU_ECART } from '../api/alertesEcartApi';
 import { DiscrepancyLabel, EvalAlertBadge } from '../components/EvalAlertBadge';
 import EnhancedTemplatesTab from './EnhancedTemplatesTab';
 import AlertesEcartTab from './AlertesEcartTab';
@@ -23,9 +25,9 @@ import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useDialogA11y } from '../components/useDialogA11y';
 import { EmptyState, Icon, LoadingState, StatusBadge as Status, formatDate } from '../components/ui';
-import { getTousCollaborateurs, getUnites, type CollaborateurRow, type Unite } from '../api/rhClient';
+import { getTousCollaborateurs, getUnites, nomCollaborateur, type CollaborateurRow, type Unite } from '../api/rhClient';
 import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
-import { appartientSelection, correspond, indexerUnites, selectionActive, useFiltresUrl } from '../utils/filtres';
+import { appartientSelection, correspond, indexerUnites, pluriel, selectionActive, useFiltresUrl } from '../utils/filtres';
 
 type Tab = 'campaigns' | 'templates' | 'evaluations' | 'alertes';
 type TemplateSubTab = 'GENERIC' | 'TECHNICAL';
@@ -35,6 +37,23 @@ const CAMPAGNE_MOIS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
 const JOUR_DEBUT_DEFAUT = 20;
 
 const formatJour = (d: Date) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+/** AAAA-MM-JJ → jj/mm/aaaa sans passer par `Date` (pas de décalage de fuseau). */
+function jourFr(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : formatJour(new Date(iso));
+}
+
+/** Jour courant (AAAA-MM-JJ) en Africa/Tunis, comme le serveur. Sert à l'affichage seulement : le serveur décide (422). */
+function aujourdhuiTunis(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Tunis' });
+}
+
+/** Les mots de la sortie serveur gardent leurs accents (D-E14 : « évolution »). */
+function accentuer(texte: string): string {
+  return texte.replace(/evolution/g, 'évolution').replace(/Evolution/g, 'Évolution');
+}
 
 /**
  * Aperçu du calendrier, aligné sur le serveur : début = jour (20 par défaut) du mois choisi,
@@ -71,6 +90,23 @@ export default function EvaluationsPage() {
     );
   }
   const [templateSub, setTemplateSub] = useState<TemplateSubTab>('GENERIC');
+
+  /** D-E12.c : ouvre l'onglet Alertes déjà filtré (alertes non closes, niveau et campagne éventuels). */
+  function ouvrirAlertes(filtre: { niveau?: string; campagneId?: string }) {
+    setActiveTabEtat('alertes');
+    setSearchParams(
+      (prev) => {
+        const suivant = new URLSearchParams(prev);
+        for (const k of ['a_statut', 'a_niveau', 'a_campagne', 'a_unite', 'a_q']) suivant.delete(k);
+        suivant.set('onglet', 'alertes');
+        suivant.set('a_statut', 'NON_CLOSES');
+        if (filtre.niveau) suivant.set('a_niveau', filtre.niveau);
+        if (filtre.campagneId) suivant.set('a_campagne', filtre.campagneId);
+        return suivant;
+      },
+      { replace: true },
+    );
+  }
 
   return (
     <div className="page">
@@ -151,7 +187,7 @@ export default function EvaluationsPage() {
             <EnhancedTemplatesTab templateType={templateSub} lectureSeule={lectureSeule} />
           </div>
         )}
-        {activeTab === 'evaluations' && <EvaluationsTab />}
+        {activeTab === 'evaluations' && <EvaluationsTab onOuvrirAlertes={ouvrirAlertes} />}
         {activeTab === 'alertes' && <AlertesEcartTab />}
       </div>
     </div>
@@ -298,6 +334,9 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
       const parts = [
         result.evaluationsCreees != null ? `${result.evaluationsCreees} évaluation(s) créée(s)` : null,
         result.profilsIncomplets ? `${result.profilsIncomplets} profil(s) métier incomplet(s)` : null,
+        (lireSansTemplateTechnique(result) ?? 0) > 0
+          ? `${pluriel(lireSansTemplateTechnique(result) ?? 0, 'évaluation')} sans questionnaire technique`
+          : null,
         result.ignoresManagerManquant ? `${result.ignoresManagerManquant} sans manager` : null,
       ].filter(Boolean);
       setActionSuccess(parts.length ? `Campagne activée — ${parts.join(' · ')}` : 'Campagne activée.');
@@ -583,12 +622,19 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
   const [expanded, setExpanded] = useState(false);
   const hasTemplates = campaign.templateGeneral || campaign.templateTechnique;
   const isActive = campaign.statut === 'ACTIVE';
+  // D-E11 : affichage « Planifiée · lancement le … » ; le serveur reste juge (422 CAMPAGNE_NON_COMMENCEE).
+  const commenceLe = campaign.dateDebut?.slice(0, 10) ?? '';
+  const pasEncoreCommencee = campaign.statut === 'PLANIFIEE' && !!commenceLe && commenceLe > aujourdhuiTunis();
+  const sansTechnique = campaign.evaluationsSansTemplateTechnique ?? 0;
 
   return (
     <div className="card">
       <div className="card__header">
         <h3 className="struct-title__name">{campaign.nom}</h3>
-        <StatusBadge status={campaign.statut} />
+        <StatusBadge
+          status={campaign.statut}
+          label={campaign.statut === 'PLANIFIEE' ? `Planifiée · lancement le ${jourFr(campaign.dateDebut)}` : undefined}
+        />
       </div>
 
       <p className="cell-meta" style={{ whiteSpace: 'normal', margin: '0.5rem 0' }}>
@@ -603,7 +649,7 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
         </div>
         {campaign.statut === 'PLANIFIEE' && (
           <div className="cell-meta">
-            Lancement automatique le {formatJour(new Date(campaign.dateDebut))}
+            Lancement automatique à cette date{pasEncoreCommencee ? ' ; activation manuelle impossible avant' : ''}
             {campaign.templateGeneral ? '' : ' — associez un template général avant cette date'}
           </div>
         )}
@@ -620,6 +666,12 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
             : <span className="badge badge--default">Non assigné</span>}
         </div>
       </div>
+
+      {sansTechnique > 0 && (
+        <div className="alert alert--warning mt-sm" role="status">
+          {pluriel(sansTechnique, 'évaluation')} sans questionnaire technique
+        </div>
+      )}
 
       {analytics && (
         <div className="stats-grid stats-grid--compact mt-sm">
@@ -644,7 +696,13 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
             )}
 
             {campaign.statut === 'PLANIFIEE' && (
-              <button type="button" className="btn btn--success btn--sm" onClick={onActivate}>
+              <button
+                type="button"
+                className="btn btn--success btn--sm"
+                onClick={onActivate}
+                disabled={pasEncoreCommencee}
+                title={pasEncoreCommencee ? `Activation possible à partir du ${jourFr(campaign.dateDebut)}` : undefined}
+              >
                 Activer
               </button>
             )}
@@ -678,6 +736,12 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
             {campaign.dateDebut && <div><dt>Début</dt><dd>{formatDate(campaign.dateDebut)}</dd></div>}
             {campaign.dateFin && <div><dt>Fin</dt><dd>{formatDate(campaign.dateFin)}</dd></div>}
           </dl>
+          {pasEncoreCommencee && !lectureSeule && (
+            <div className="alert alert--info mt-sm">
+              La campagne commence le {jourFr(campaign.dateDebut)} : elle ne peut pas être activée avant cette date
+              et se lancera automatiquement ce jour-là.
+            </div>
+          )}
           {!campaign.templateGeneral && campaign.statut === 'PLANIFIEE' && !lectureSeule && (
             <div className="alert alert--info mt-sm">
               Impossible d’activer : publiez et assignez d’abord un template général.
@@ -792,7 +856,8 @@ function AssignTemplatesModal({ campaign, generalTemplates, competencyTemplates,
 
 const FILTRES_EVAL_DEFAUT = { q: '', direction: '', departement: '', service: '', statut: '', alerte: '', campagne: '', profilIncomplet: '' };
 
-function EvaluationsTab() {
+function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { niveau?: string; campagneId?: string }) => void }) {
+  const lectureSeule = useLectureSeule();
   const [evaluations, setEvaluations] = useState<EvaluationItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<EvaluationAnalytics | null>(null);
@@ -813,6 +878,21 @@ function EvaluationsTab() {
   }, []);
   const indexUnites = useMemo(() => indexerUnites(unites), [unites]);
   const uniteCollab = useMemo(() => new Map(collabs.map((c) => [c.identifiant, c.unite?.identifiant])), [collabs]);
+  // La liste admin ne renvoie que les identifiants : nom et matricule résolus depuis les fiches (EVA-8, U03).
+  const evaluationsNommees = useMemo(() => {
+    const fiches = new Map(collabs.map((c) => [c.identifiant, c]));
+    const nom = (c?: CollaborateurRow) => (c ? `${c.prenom} ${nomCollaborateur(c)}`.trim() : undefined);
+    return evaluations.map((e) => {
+      const collab = fiches.get(e.collaborateurIdentifiant);
+      const sup = e.superieurIdentifiant ? fiches.get(e.superieurIdentifiant) : undefined;
+      return {
+        ...e,
+        collaborateurNom: e.collaborateurNom || nom(collab),
+        collaborateurMatricule: e.collaborateurMatricule || collab?.matricule,
+        superieurNom: e.superieurNom || nom(sup),
+      };
+    });
+  }, [evaluations, collabs]);
 
   useEffect(() => { void loadEvaluations(); }, [filterProfilIncomplet]);
 
@@ -830,31 +910,79 @@ function EvaluationsTab() {
     }
   };
 
+  // Campagne par défaut (TRV-8) : l'ACTIVE la plus récente, sinon toutes les non annulées.
+  // '*' dans l'URL = « Toutes les campagnes » choisi explicitement ; une valeur dans l'URL prime sur le défaut.
+  const [campagnes, setCampagnes] = useState<EvaluationCampaign[]>([]);
+  const [campagnesChargees, setCampagnesChargees] = useState(false);
+  useEffect(() => {
+    campaignApi.list().then(setCampagnes).catch(() => setCampagnes([])).finally(() => setCampagnesChargees(true));
+  }, []);
+  const campagneParDefaut = useMemo(
+    () => campagnes
+      .filter(c => c.statut === 'ACTIVE')
+      .sort((a, b) => (b.dateDebut || '').localeCompare(a.dateDebut || ''))[0]?.nom ?? '',
+    [campagnes],
+  );
+  const campagneChoisie = f.campagne === '*' ? '' : (f.campagne || campagneParDefaut);
+  const toutesExplicite = f.campagne === '*';
+  const nomsAnnulees = useMemo(() => new Set(campagnes.filter(c => c.statut === 'ANNULEE').map(c => c.nom)), [campagnes]);
+  const masquerAnnulees = !f.campagne && !campagneChoisie;
+
   // Profil incomplet : serveur ; le reste côté client (liste complète renvoyée).
-  const filtered = evaluations.filter(e => {
+  const filtered = evaluationsNommees.filter(e => {
     if (filterStatut && e.statut !== filterStatut) return false;
-    if (filterAlerte && e.couleurAlerte !== filterAlerte) return false;
-    if (f.campagne && e.campaignNom !== f.campagne) return false;
+    if (filterAlerte === 'NON_EVALUEE' ? couleurEffective(e) !== undefined : filterAlerte && couleurEffective(e) !== filterAlerte) return false;
+    if (campagneChoisie && e.campaignNom !== campagneChoisie) return false;
+    if (masquerAnnulees && nomsAnnulees.has(e.campaignNom)) return false;
     if (!correspond([e.collaborateurNom, e.collaborateurMatricule, e.superieurNom, e.campaignNom], f.q)) return false;
     if (!collabsErr && selectionActive(f) && !appartientSelection(indexUnites, uniteCollab.get(e.collaborateurIdentifiant), f)) return false;
     return true;
   });
   const campagnesNoms = Array.from(new Set(evaluations.map(e => e.campaignNom).filter(Boolean))).sort();
 
+  // Les compteurs suivent la campagne sélectionnée (toutes si aucune).
+  const duPerimetre = useMemo(
+    () => evaluations.filter(e => (!campagneChoisie || e.campaignNom === campagneChoisie)
+      && !(masquerAnnulees && nomsAnnulees.has(e.campaignNom))),
+    [evaluations, campagneChoisie, masquerAnnulees, nomsAnnulees],
+  );
   const stats = useMemo(() => {
-    const completed = evaluations.filter(e => e.statut === 'VALIDEE').length;
-    const inProgress = evaluations.filter(e => e.statut !== 'VALIDEE').length;
-    const orange = evaluations.filter(e => e.couleurAlerte === 'ORANGE').length;
-    const rouge = evaluations.filter(e => e.couleurAlerte === 'ROUGE').length;
+    const completed = duPerimetre.filter(e => e.statut === 'VALIDEE').length;
+    const inProgress = duPerimetre.filter(e => e.statut !== 'VALIDEE').length;
+    // D-E12.b : codage couleur compté seulement sur les évaluations notées par le responsable.
+    const vigilance = duPerimetre.filter(e => couleurEffective(e) === 'ORANGE').length;
+    const planAction = duPerimetre.filter(e => couleurEffective(e) === 'ROUGE').length;
     return {
-      total: evaluations.length,
+      total: duPerimetre.length,
       completed,
       inProgress,
-      completion: evaluations.length ? Math.round((completed / evaluations.length) * 100) : 0,
-      orange,
-      rouge,
+      completion: duPerimetre.length ? Math.round((completed / duPerimetre.length) * 100) : 0,
+      vigilance,
+      planAction,
     };
-  }, [evaluations]);
+  }, [duPerimetre]);
+
+  // D-E12.c : alertes d'écart ouvertes (OUVERTE + EN_COURS) par niveau, pour la campagne sélectionnée.
+  const [alertesOuvertes, setAlertesOuvertes] = useState<Record<NiveauAlerte, number> | 'erreur' | null>(null);
+  const campagneIdChoisie = campagneChoisie ? campagnes.find(c => c.nom === campagneChoisie)?.identifiant : undefined;
+  const attendCampagne = !campagnesChargees || (!!campagneChoisie && campagnes.length === 0);
+  useEffect(() => {
+    if (attendCampagne) return;
+    let annule = false;
+    setAlertesOuvertes(null);
+    void (async () => {
+      try {
+        const r = await getAlertesOuvertesParNiveau(campagneIdChoisie);
+        if (!annule) setAlertesOuvertes({ ORANGE: r.ORANGE, ROUGE: r.ROUGE, URGENTE: r.URGENTE });
+      } catch {
+        if (!annule) setAlertesOuvertes('erreur');
+      }
+    })();
+    return () => { annule = true; };
+  }, [campagneIdChoisie, attendCampagne]);
+  const totalAlertesOuvertes = alertesOuvertes && alertesOuvertes !== 'erreur'
+    ? alertesOuvertes.ORANGE + alertesOuvertes.ROUGE + alertesOuvertes.URGENTE
+    : null;
 
   const openAnalytics = async (id: string) => {
     if (selectedId === id) { setSelectedId(null); setAnalytics(null); return; }
@@ -886,8 +1014,27 @@ function EvaluationsTab() {
         <MiniStat label="En cours" value={String(stats.inProgress)} />
         <MiniStat label="Validées" value={String(stats.completed)} />
         <MiniStat label="Taux complétion" value={`${stats.completion}%`} />
-        <MiniStat label="Alertes orange" value={String(stats.orange)} />
-        <MiniStat label="Alertes rouge" value={String(stats.rouge)} />
+        <CarteStatLien
+          label="Alertes d’écart ouvertes"
+          value={alertesOuvertes === 'erreur' ? '—' : totalAlertesOuvertes === null ? '…' : String(totalAlertesOuvertes)}
+          detail={alertesOuvertes && alertesOuvertes !== 'erreur'
+            ? NIVEAUX_ALERTE.map(n => `${LIBELLES_NIVEAU_ECART[n]} ${alertesOuvertes[n]}`).join(' · ')
+            : alertesOuvertes === 'erreur' ? 'Compteur indisponible' : undefined}
+          onClick={() => onOuvrirAlertes({ campagneId: campagneIdChoisie })}
+          aide="Ouvrir l’onglet Alertes d’écart (alertes non closes)"
+        />
+        <CarteStatLien
+          label="Vigilance"
+          value={String(stats.vigilance)}
+          onClick={() => filtres.definir({ alerte: 'ORANGE' })}
+          aide="Filtrer la liste sur « Vigilance »"
+        />
+        <CarteStatLien
+          label="Plan d’action requis"
+          value={String(stats.planAction)}
+          onClick={() => filtres.definir({ alerte: 'ROUGE' })}
+          aide="Filtrer la liste sur « Plan d’action requis »"
+        />
       </div>
 
       <div className="toolbar mt-lg">
@@ -923,22 +1070,23 @@ function EvaluationsTab() {
         />
         <ChampSelect
           id="eval-alerte"
-          libelle="Alerte"
+          libelle="Codage couleur"
           valeur={f.alerte}
-          toutesLibelle="Toutes les alertes"
+          toutesLibelle="Tous"
           options={[
-            { valeur: 'VERT', libelle: 'Vert' },
-            { valeur: 'ORANGE', libelle: 'Orange' },
-            { valeur: 'ROUGE', libelle: 'Rouge' },
+            { valeur: 'VERT', libelle: 'Conforme' },
+            { valeur: 'ORANGE', libelle: 'Vigilance' },
+            { valeur: 'ROUGE', libelle: 'Plan d’action requis' },
+            { valeur: 'NON_EVALUEE', libelle: 'Non évaluée' },
           ]}
           onChange={(v) => filtres.definir({ alerte: v })}
         />
         <ChampSelect
           id="eval-campagne"
           libelle="Campagne"
-          valeur={f.campagne}
-          toutesLibelle="Toutes les campagnes"
-          options={campagnesNoms.map(n => ({ valeur: n, libelle: n }))}
+          valeur={toutesExplicite ? '*' : campagneChoisie || '*'}
+          sansTous
+          options={[{ valeur: '*', libelle: 'Toutes les campagnes' }, ...campagnesNoms.map(n => ({ valeur: n, libelle: n }))]}
           onChange={(v) => filtres.definir({ campagne: v })}
         />
         <FiltresUnite idPrefixe="eval" unites={unites} selection={f} onChange={(sel) => filtres.definir(sel)} />
@@ -975,7 +1123,7 @@ function EvaluationsTab() {
                 <th>Étape</th>
                 <th>Statut</th>
                 <th>Score</th>
-                <th>Alerte</th>
+                <th>Codage couleur</th>
                 <th></th>
               </tr>
             </thead>
@@ -987,9 +1135,23 @@ function EvaluationsTab() {
                       <strong>{evaluation.campaignNom}</strong>
                       {evaluation.profilMetierIncomplet && (
                         <div>
-                          <span className="badge badge--warning" style={{ fontSize: '0.7rem' }}>
+                          <span
+                            className="badge badge--warning"
+                            style={{ fontSize: '0.7rem' }}
+                            title="Famille ou niveau non renseigné sur la fiche au lancement de la campagne"
+                          >
                             Profil métier incomplet
                           </span>
+                          <div className="text-muted text-sm">
+                            Famille ou niveau non renseigné sur la fiche au lancement de la campagne.{' '}
+                            {(evaluation.collaborateurMatricule || evaluation.collaborateurNom) ? (
+                              <Link
+                                to={`/app/collaborateurs?q=${encodeURIComponent(evaluation.collaborateurMatricule || evaluation.collaborateurNom || '')}`}
+                              >
+                                {lectureSeule ? 'Voir la fiche' : 'Compléter la fiche'}
+                              </Link>
+                            ) : null}
+                          </div>
                         </div>
                       )}
                     </td>
@@ -1010,7 +1172,7 @@ function EvaluationsTab() {
                       )}
                     </td>
                     <td>
-                      <EvalAlertBadge couleur={evaluation.couleurAlerte} compact />
+                      <EvalAlertBadge couleur={couleurEffective(evaluation)} compact />
                     </td>
                     <td>
                       <button type="button" className="btn btn--sm" onClick={() => void openAnalytics(evaluation.identifiant)}>
@@ -1042,16 +1204,35 @@ function EvaluationsTab() {
 }
 
 function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
+  // D-E14 : aucun score ni recommandation sans note. On se fie aux champs serveur s'ils existent,
+  // sinon à la présence d'au moins une note par question (une note vaut au moins 1).
+  const aNotesCollab = analytics.aNotesCollaborateur ?? analytics.gaps.some(g => (g.selfScore ?? 0) > 0);
+  const aNotesResp = analytics.aNotesResponsable ?? analytics.gaps.some(g => (g.managerScore ?? 0) > 0);
+  if (!aNotesCollab && !aNotesResp) {
+    return (
+      <div className="analytics-panel">
+        <EmptyState icon="info" title="Aucune note pour le moment">
+          Les scores et les recommandations apparaîtront dès les premières notes.
+        </EmptyState>
+      </div>
+    );
+  }
   return (
     <div className="analytics-panel">
-      <p className="text-muted text-sm mt-0">
-        Score final : 70 % notes manager + 30 % auto-évaluation (si notes manager présentes).
-      </p>
+      {aNotesResp ? (
+        <p className="text-muted text-sm mt-0">
+          Score final : 70 % notes manager + 30 % auto-évaluation (si notes manager présentes).
+        </p>
+      ) : (
+        <p className="text-muted text-sm mt-0">
+          Seule l’auto-évaluation du collaborateur est notée : score consolidé et recommandations disponibles après la première note du responsable.
+        </p>
+      )}
       <div className="stats-grid stats-grid--compact">
-        <MiniStat label="Auto-éval." value={`${analytics.selfAverage}/5`} />
-        <MiniStat label="Manager" value={`${analytics.managerAverage}/5`} />
-        <MiniStat label="Score final" value={`${analytics.finalScore}/5`} />
-        <MiniStat label="Écart" value={`${analytics.discrepancyPercentage}%`} />
+        {aNotesCollab ? <MiniStat label="Auto-éval." value={`${analytics.selfAverage}/5`} /> : null}
+        {aNotesResp ? <MiniStat label="Manager" value={`${analytics.managerAverage}/5`} /> : null}
+        {aNotesResp ? <MiniStat label="Score final" value={`${analytics.finalScore}/5`} /> : null}
+        {aNotesResp ? <MiniStat label="Écart" value={`${analytics.discrepancyPercentage}%`} /> : null}
       </div>
 
       <div className="grid grid--2 mt-md">
@@ -1067,8 +1248,8 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
                   </div>
                   <div className="question-meta">
                     <span>Self {section.selfAverage}</span>
-                    <span>Manager {section.managerAverage}</span>
-                    <span>Gap {section.gap}</span>
+                    {aNotesResp ? <span>Manager {section.managerAverage}</span> : null}
+                    {aNotesResp ? <span>Écart {section.gap}</span> : null}
                   </div>
                 </div>
               </div>
@@ -1076,15 +1257,15 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
           </div>
         </div>
         <div>
-          {analytics.recommendations.length > 0 && (
+          {aNotesResp && analytics.recommendations.length > 0 && (
             <>
               <h4 className="section-title">Recommandations</h4>
               <ul className="insight-list">
-                {analytics.recommendations.map(item => <li key={item}>{item}</li>)}
+                {analytics.recommendations.map(item => <li key={item}>{accentuer(item)}</li>)}
               </ul>
             </>
           )}
-          {analytics.gaps.some(g => g.competenceTechnique) && (
+          {aNotesResp && analytics.gaps.some(g => g.competenceTechnique) && (
             <>
               <h4 className="section-title">Compétences techniques</h4>
               <ul className="insight-list">
@@ -1099,7 +1280,7 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
               </ul>
             </>
           )}
-          {analytics.gaps.filter(g => !g.competenceTechnique && (g.severity === 'HIGH' || g.severity === 'CRITICAL')).length > 0 && (
+          {aNotesResp && analytics.gaps.filter(g => !g.competenceTechnique && (g.severity === 'HIGH' || g.severity === 'CRITICAL')).length > 0 && (
             <>
               <h4 className="section-title">Écarts élevés</h4>
               <ul className="insight-list">
@@ -1120,6 +1301,33 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
   );
 }
 
+const NIVEAUX_ALERTE = ['ORANGE', 'ROUGE', 'URGENTE'] as const;
+type NiveauAlerte = typeof NIVEAUX_ALERTE[number];
+
+/** D-E12.b : « Non évaluée » tant que le responsable n'a noté aucune compétence. */
+function couleurEffective(e: EvaluationItem) {
+  return e.aNoteResponsable === false ? undefined : e.couleurAlerte;
+}
+
+/** Carte de chiffre cliquable (D-E12.c) : bouton, libellé et détail lisibles au clavier. */
+function CarteStatLien({ label, value, detail, onClick, aide }: {
+  label: string; value: string; detail?: string; onClick: () => void; aide?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="stat-card"
+      onClick={onClick}
+      title={aide}
+      style={{ cursor: 'pointer', textAlign: 'inherit', font: 'inherit', color: 'inherit' }}
+    >
+      <div className="stat-value">{value}</div>
+      <div className="stat-label">{label}</div>
+      {detail ? <div className="stat-label text-sm">{detail}</div> : null}
+    </button>
+  );
+}
+
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="stat-card">
@@ -1129,7 +1337,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, label }: { status: string; label?: string }) {
   const config: Record<string, { label: string; className: string }> = {
     PLANIFIEE: { label: 'Planifiée', className: 'badge--info' },
     ACTIVE: { label: 'Active', className: 'badge--success' },
@@ -1141,7 +1349,7 @@ function StatusBadge({ status }: { status: string }) {
     VALIDEE: { label: 'Validée', className: 'badge--success' },
   };
   const meta = config[status] || { label: status, className: 'badge--default' };
-  return <span className={`badge ${meta.className}`}>{meta.label}</span>;
+  return <span className={`badge ${meta.className}`}>{label ?? meta.label}</span>;
 }
 
 function getMonthName(month: number): string {

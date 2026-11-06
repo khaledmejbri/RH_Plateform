@@ -135,6 +135,16 @@ public final class TempsTravailCalcul {
 	 */
 	public static EtatJourHeuresSup etat(JourTravail jour, Instant maintenant, int toleranceApresMinutes,
 										 int ouvertureApresMinutes, int dureeMaxHeures) {
+		Instant fermeture = fermetureFenetre(jour, toleranceApresMinutes, ouvertureApresMinutes, dureeMaxHeures);
+		return CalculHeuresSupService.etat(!jour.orphelins().isEmpty(), maintenant, fermeture);
+	}
+
+	/**
+	 * Instant où la fenêtre du jour se ferme (D-P17.e) : une journée « En cours » bascule en « Incomplet » juste après
+	 * (D-P18.d). Nul si aucune fenêtre ne reste ouverte.
+	 */
+	public static Instant fermetureFenetre(JourTravail jour, int toleranceApresMinutes, int ouvertureApresMinutes,
+										   int dureeMaxHeures) {
 		Instant fermeture = null;
 		if (jour.horaireFin() != null) {
 			fermeture = jour.horaireFin().plus((long) toleranceApresMinutes + ouvertureApresMinutes, ChronoUnit.MINUTES);
@@ -150,7 +160,7 @@ public final class TempsTravailCalcul {
 				}
 			}
 		}
-		return CalculHeuresSupService.etat(!jour.orphelins().isEmpty(), maintenant, fermeture);
+		return fermeture;
 	}
 
 	public static boolean estManuel(PresencePointage p) {

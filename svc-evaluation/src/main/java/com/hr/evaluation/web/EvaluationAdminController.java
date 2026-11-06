@@ -111,6 +111,9 @@ public class EvaluationAdminController {
             campaignMap.put("jourDebut", campaign.getJourDebut());
             campaignMap.put("dureeJours", campaign.getDureeJours());
             campaignMap.put("creeLe", campaign.getCreeLe());
+            // D-E13.a : avertissement « N évaluations sans questionnaire technique » (0 → rien à afficher)
+            campaignMap.put("evaluationsSansTemplateTechnique",
+                    campaignService.compterEvaluationsSansTemplateTechnique(campaign));
             
             // Include template information if available
             if (campaign.getTemplateGeneral() != null) {
@@ -468,11 +471,17 @@ public class EvaluationAdminController {
             evaluations = evaluationRepository.findAll();
         }
         List<Map<String, Object>> response = new ArrayList<>();
-        
+        Map<UUID, com.hr.evaluation.service.EvaluationAnalyseAdminService.NotesResponsable> notesResponsable =
+                analyseAdminService.notesResponsable(evaluations.stream().map(Evaluation::getId).toList());
+
         for (Evaluation evaluation : evaluations) {
             Map<String, Object> evalMap = new HashMap<>();
             evalMap.put("identifiant", evaluation.getId().toString());
             evalMap.put("campaignNom", evaluation.getCampaign().getNom());
+            // D-E12.b : couleur seulement si le responsable a noté (jamais VERT par défaut)
+            var notes = notesResponsable.get(evaluation.getId());
+            evalMap.put("aNoteResponsable", notes != null && notes.aNote());
+            evalMap.put("couleurAlerte", notes != null && notes.aNote() ? notes.couleur().name() : null);
             evalMap.put("collaborateurIdentifiant", evaluation.getCollaborateurIdentifiant().toString());
             evalMap.put("superieurIdentifiant", Objects.toString(evaluation.getSuperieurIdentifiant(), null));
             evalMap.put("statut", evaluation.getStatut().name());

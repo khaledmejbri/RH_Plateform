@@ -16,7 +16,7 @@ import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBad
  */
 
 type TypePlainte = 'INTERNE' | 'EXTERNE' | '';
-type StatutPlainte = 'NOUVEAU' | 'EN_ANALYSE' | 'EN_TRAITEMENT' | 'RESOLU' | 'FERME' | '';
+type StatutPlainte = 'OUVERTES' | 'NOUVEAU' | 'EN_ANALYSE' | 'EN_TRAITEMENT' | 'RESOLU' | 'FERME' | '';
 
 /** CDC §M04 : transitions autorisées côté front (miroir de la validation back). */
 const TRANSITIONS: Record<string, string[]> = {
@@ -58,7 +58,7 @@ export default function PlaintesSuiviPage() {
     setLoading(true);
     setErr(null);
     try {
-      setRows(await getPlaintesRh(filterType || undefined, filterStatut || undefined));
+      setRows(await getPlaintesRh(filterType || undefined, filterStatut && filterStatut !== 'OUVERTES' ? filterStatut : undefined));
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erreur chargement');
     } finally {
@@ -78,6 +78,7 @@ export default function PlaintesSuiviPage() {
     () =>
       rows.filter(
         (p) =>
+          (filterStatut !== 'OUVERTES' || p.statut !== 'FERME') &&
           correspond([p.auteur_nom, p.auteur_matricule, p.numero_ticket, p.titre, p.description], f.q) &&
           (collabsErr || !selectionActive(f) || appartientSelection(indexUnites, uniteAuteur.get(p.auteur_identifiant), f)),
       ),
@@ -159,7 +160,10 @@ export default function PlaintesSuiviPage() {
           libelle="Statut"
           valeur={f.statut}
           toutesLibelle="Tous les statuts"
-          options={Object.entries(STATUT_LABELS).map(([v, l]) => ({ valeur: v, libelle: l }))}
+          options={[
+            { valeur: 'OUVERTES', libelle: 'Ouvertes (non fermées)' },
+            ...Object.entries(STATUT_LABELS).map(([v, l]) => ({ valeur: v, libelle: l })),
+          ]}
           onChange={(v) => filtres.definir({ statut: v })}
         />
         <FiltresUnite idPrefixe="plaintes" unites={unites} selection={f} onChange={(sel) => filtres.definir(sel)} />

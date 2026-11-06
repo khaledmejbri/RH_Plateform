@@ -27,6 +27,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -404,5 +405,39 @@ class AlerteEcartTraitementServiceTest {
         // son seul collaborateur est le dépôt des alertes.
         assertThat(AlerteEcartTraitementService.class.getDeclaredConstructors()[0].getParameterTypes())
                 .containsExactly(AlerteEcartRepository.class);
+    }
+
+    // --- Lot 0 UAT : D-E12.c (EVA-9) ---
+
+    @Test
+    void ouvertesParNiveauCompteUneUrgenteOuverteEtInterrogeSeulementOuverteEtEnCours() {
+        when(repository.compterParNiveau(any())).thenReturn(java.util.Collections.singletonList(
+                new Object[] {NiveauEcart.URGENTE, 1L}));
+
+        var r = service.ouvertesParNiveau(null);
+
+        assertThat(r.urgente()).isEqualTo(1);
+        assertThat(r.orange()).isZero();
+        assertThat(r.rouge()).isZero();
+        assertThat(r.total()).isEqualTo(1);
+        // une alerte TRAITEE n'est jamais comptée : seuls OUVERTE et EN_COURS sont demandés au dépôt
+        verify(repository).compterParNiveau(org.mockito.ArgumentMatchers.argThat(statuts ->
+                statuts.size() == 2 && statuts.contains(StatutAlerteEcart.OUVERTE)
+                        && statuts.contains(StatutAlerteEcart.EN_COURS)));
+    }
+
+    @Test
+    void ouvertesParNiveauAvecCampagneUtiliseLaRequeteParCampagne() {
+        UUID campagne = UUID.randomUUID();
+        when(repository.compterParNiveauEtCampagne(any(), eq(campagne))).thenReturn(List.of(
+                new Object[] {NiveauEcart.ORANGE, 2L}, new Object[] {NiveauEcart.ROUGE, 3L}));
+
+        var r = service.ouvertesParNiveau(campagne);
+
+        assertThat(r.orange()).isEqualTo(2);
+        assertThat(r.rouge()).isEqualTo(3);
+        assertThat(r.urgente()).isZero();
+        assertThat(r.total()).isEqualTo(5);
+        verify(repository, never()).compterParNiveau(any());
     }
 }

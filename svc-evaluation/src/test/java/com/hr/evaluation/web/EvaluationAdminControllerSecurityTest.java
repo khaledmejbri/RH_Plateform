@@ -156,4 +156,60 @@ class EvaluationAdminControllerSecurityTest {
 								new SimpleGrantedAuthority("ROLE_COLLABORATOR"))))
 				.andExpect(status().isForbidden());
 	}
+
+	// --- Lot 0 UAT : D-E11 (EVA-1), D-E13.a (EVA-6) ---
+
+	@Test
+	void rhActiveEtLeResultatExposeLesEvaluationsSansTemplateTechnique() throws Exception {
+		UUID id = UUID.randomUUID();
+		when(campaignService.activerCampagne(id)).thenReturn(
+				new com.hr.evaluation.dto.CampaignActivationResult(id, "ACTIVE", 5, 0, 0, 0, 2));
+
+		mockMvc.perform(post("/api/rh/v1/admin/evaluations/campaigns/" + id + "/activate")
+						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("ROLE_RH"))))
+				.andExpect(status().isOk())
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+						.jsonPath("$.evaluationsSansTemplateTechnique").value(2));
+	}
+
+	@Test
+	void activationAvantLaDate_422CampagneNonCommencee() throws Exception {
+		UUID id = UUID.randomUUID();
+		when(campaignService.activerCampagne(id)).thenThrow(EvaluationMetierException.unprocessable(
+				"CAMPAGNE_NON_COMMENCEE", "La campagne commence le 07/11/2026"));
+
+		mockMvc.perform(post("/api/rh/v1/admin/evaluations/campaigns/" + id + "/activate")
+						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("ROLE_RH"))))
+				.andExpect(status().isUnprocessableEntity())
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+						.jsonPath("$.code").value("CAMPAGNE_NON_COMMENCEE"));
+	}
+
+	@Test
+	void directionNePeutPasActiverUneCampagne() throws Exception {
+		mockMvc.perform(post("/api/rh/v1/admin/evaluations/campaigns/" + UUID.randomUUID() + "/activate")
+						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("ROLE_DIRECTION"))))
+				.andExpect(status().isForbidden());
+		verifyNoInteractions(campaignService);
+	}
+
+	@Test
+	void listeDesCampagnesExposeStatutPlanifieeEtLeCompteurSansTemplateTechnique() throws Exception {
+		EvaluationCampaign c = new EvaluationCampaign();
+		c.setId(UUID.randomUUID());
+		c.setNom("Future");
+		c.setType(EvaluationCampaignType.TRIMESTRIELLE);
+		c.setStatut(EvaluationCampaignStatus.PLANIFIEE);
+		c.setDateDebut(java.time.Instant.parse("2026-12-01T00:00:00Z"));
+		when(campaignService.listerCampagnes(null)).thenReturn(List.of(c));
+		when(campaignService.compterEvaluationsSansTemplateTechnique(c)).thenReturn(2L);
+
+		mockMvc.perform(get("/api/rh/v1/admin/evaluations/campaigns")
+						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("ROLE_DIRECTION"))))
+				.andExpect(status().isOk())
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].statut").value("PLANIFIEE"))
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].dateDebut").exists())
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+						.jsonPath("$[0].evaluationsSansTemplateTechnique").value(2));
+	}
 }

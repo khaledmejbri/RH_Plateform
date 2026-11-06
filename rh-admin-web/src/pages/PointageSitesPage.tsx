@@ -3,6 +3,8 @@ import {
   downloadSiteQrPng,
   formatDateCourteTunis,
   formatDateTunis,
+  minuteTunis,
+  type EtatSequencePointage,
   getPresencePointages,
   getPresenceSite,
   getPresenceSites,
@@ -304,6 +306,18 @@ export default function PointageSitesPage() {
   const collabParId = useMemo(() => new Map(collabs.map((c) => [c.identifiant, c])), [collabs]);
 
   /** « Nom (matricule) », sans jamais afficher un identifiant technique. */
+  /** D-P18.c : deux pointages du même collaborateur dans la même minute → heures à la seconde. */
+  const minutesPartagees = useMemo(() => {
+    const compte = new Map<string, number>();
+    for (const p of pointages) {
+      const cle = `${p.collaborateurId}|${minuteTunis(p.serverTs)}`;
+      compte.set(cle, (compte.get(cle) ?? 0) + 1);
+    }
+    return new Set(
+      pointages.filter((p) => (compte.get(`${p.collaborateurId}|${minuteTunis(p.serverTs)}`) ?? 0) > 1).map((p) => p.id),
+    );
+  }, [pointages]);
+
   function libelleCollabPointage(p: PresencePointage): string {
     if (p.collaborateurNom) return p.collaborateurMatricule ? `${p.collaborateurNom} (${p.collaborateurMatricule})` : p.collaborateurNom;
     const c = collabParId.get(p.collaborateurId);
@@ -1172,12 +1186,13 @@ export default function PointageSitesPage() {
                   <tbody>
                     {pointages.map((p) => (
                       <tr key={p.id}>
-                        <td>{formatDateTunis(p.serverTs)}</td>
+                        <td>{formatDateTunis(p.serverTs, minutesPartagees.has(p.id))}</td>
                         <td>{libelleCollabPointage(p)}</td>
                         <td>{p.siteLibelle ?? p.siteCode ?? 'Site inconnu'}</td>
                         <td>{p.type === 'ENTREE' ? 'Entrée' : p.type === 'SORTIE' ? 'Sortie' : p.type}</td>
                         <td>
                           <PointageStatutBadge statut={p.statut} />
+                          <PastilleSequence etat={p.etatSequence} statut={p.statut} />
                         </td>
                         <td className="small">
                           {p.verificationFaciale
@@ -1324,6 +1339,21 @@ export default function PointageSitesPage() {
           </div>
         </Modal>
       ) : null}
+    </div>
+  );
+}
+
+/** D-P18.b : pastille de séquence calculée par le serveur ; jamais sur un pointage rejeté. */
+function PastilleSequence({ etat, statut }: { etat: EtatSequencePointage; statut: string }) {
+  if (!etat || statut.toUpperCase().startsWith('REJETE')) return null;
+  const meta = {
+    ENTREE_SANS_SORTIE: { libelle: 'Entrée sans sortie', classe: 'badge badge--warning', aide: 'Aucune sortie ne correspond à cette entrée' },
+    SORTIE_SANS_ENTREE: { libelle: 'Sortie sans entrée', classe: 'badge badge--warning', aide: 'Aucune entrée ne précède cette sortie' },
+    EN_COURS: { libelle: 'En cours', classe: 'badge badge--default', aide: 'Entrée ouverte : la sortie est encore attendue' },
+  }[etat];
+  return (
+    <div>
+      <span className={meta.classe} title={meta.aide}>{meta.libelle}</span>
     </div>
   );
 }

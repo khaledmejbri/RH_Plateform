@@ -13,6 +13,7 @@ import com.hr.presence.dto.SiteResponse;
 import com.hr.presence.service.PresencePointageService;
 import com.hr.presence.service.PresenceQrService;
 import com.hr.presence.service.PresenceSiteService;
+import com.hr.presence.service.TempsTravailService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -43,11 +44,14 @@ public class PresenceAdminController {
 	private final PresenceSiteService siteService;
 	private final PresenceQrService qrService;
 	private final PresencePointageService pointageService;
+	private final TempsTravailService tempsTravailService;
 
 	public PresenceAdminController(
 			PresenceSiteService siteService,
 			PresenceQrService qrService,
-			PresencePointageService pointageService) {
+			PresencePointageService pointageService,
+			TempsTravailService tempsTravailService) {
+		this.tempsTravailService = tempsTravailService;
 		this.siteService = siteService;
 		this.qrService = qrService;
 		this.pointageService = pointageService;
@@ -130,7 +134,9 @@ public class PresenceAdminController {
 			@RequestParam(defaultValue = "20") int size) {
 		Instant debut = from != null ? from : du != null ? du.atStartOfDay(ZONE_TUNIS).toInstant() : null;
 		Instant fin = to != null ? to : au != null ? au.plusDays(1).atStartOfDay(ZONE_TUNIS).toInstant() : null;
-		return pointageService.listerAdmin(siteId, statut, type, debut, fin, verificationFaciale, collaborateurId, page, size);
+		// D-P18.b : pastille de séquence (même appariement que le Temps de travail)
+		return tempsTravailService.annoterSequences(
+				pointageService.listerAdmin(siteId, statut, type, debut, fin, verificationFaciale, collaborateurId, page, size));
 	}
 
 	private static final ZoneId ZONE_TUNIS = ZoneId.of("Africa/Tunis");

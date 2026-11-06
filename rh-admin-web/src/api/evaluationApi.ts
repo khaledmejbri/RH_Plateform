@@ -59,6 +59,10 @@ export interface EvaluationCampaign {
   creeLe: string;
   templateGeneral?: { identifiant: string; nom: string };
   templateTechnique?: { identifiant: string; nom: string };
+  /**
+   * D-E13.a : nombre d'évaluations créées sans template TECHNICAL (absent = rien à signaler).
+   */
+  evaluationsSansTemplateTechnique?: number;
 }
 
 export interface CreateCampaignRequest {
@@ -91,6 +95,14 @@ export interface ActivateCampaignResult {
   ignoresDejaExistantes?: number;
   ignoresManagerManquant?: number;
   profilsIncomplets?: number;
+  /** D-E13.a : évaluations créées sans template TECHNICAL. */
+  evaluationsSansTemplateTechnique?: number;
+}
+
+/** Lit `evaluationsSansTemplateTechnique` (D-E13.a) si c'est un nombre. */
+export function lireSansTemplateTechnique(value: unknown): number | undefined {
+  const brut = (value as Record<string, unknown> | null | undefined)?.evaluationsSansTemplateTechnique;
+  return typeof brut === 'number' && Number.isFinite(brut) ? brut : undefined;
 }
 
 export interface EvaluationQuestion {
@@ -212,6 +224,11 @@ export interface EvaluationItem {
   appreciation?: string;
   couleurAlerte?: CouleurAlerte;
   profilMetierIncomplet?: boolean;
+  /**
+   * D-E12.b : le responsable a-t-il noté au moins une compétence ?
+   * `false` explicite = « Non évaluée », absent = on se fie à la présence du codage couleur.
+   */
+  aNoteResponsable?: boolean;
   creeLe: string;
 }
 
@@ -244,6 +261,9 @@ export interface EvaluationAnalytics {
   strengths: string[];
   improvementAreas: string[];
   recommendations: string[];
+  /** D-E14 : présence de notes ; absents → déduits des notes par question. */
+  aNotesCollaborateur?: boolean;
+  aNotesResponsable?: boolean;
 }
 
 export interface CampaignAnalytics {
@@ -336,6 +356,10 @@ function normalizeEvaluationItem(value: any): EvaluationItem {
     appreciation,
     couleurAlerte: normalizeCouleurAlerte(value?.couleurAlerte ?? value?.couleur_alerte),
     profilMetierIncomplet: Boolean(value?.profilMetierIncomplet ?? value?.profil_metier_incomplet),
+    aNoteResponsable: (() => {
+      const brut = value?.aNoteResponsable;
+      return typeof brut === 'boolean' ? brut : undefined;
+    })(),
     creeLe: value?.creeLe ?? new Date().toISOString(),
   };
 }
@@ -345,7 +369,8 @@ function normalizeCampaign(value: any): EvaluationCampaign {
     ...value,
     identifiant: idOf(value),
     templateGeneral: value?.templateGeneral,
-    templateTechnique: value?.templateTechnique
+    templateTechnique: value?.templateTechnique,
+    evaluationsSansTemplateTechnique: lireSansTemplateTechnique(value),
   };
 }
 
@@ -360,7 +385,8 @@ export const campaignApi = {
   },
   async activate(id: string): Promise<ActivateCampaignResult> {
     const response = await api.post(`/api/rh/v1/admin/evaluations/campaigns/${id}/activate`);
-    return (response.data && typeof response.data === 'object') ? response.data : {};
+    const data: ActivateCampaignResult = (response.data && typeof response.data === 'object') ? response.data : {};
+    return { ...data, evaluationsSansTemplateTechnique: lireSansTemplateTechnique(data) };
   },
   async terminate(id: string): Promise<void> {
     await api.post(`/api/rh/v1/admin/evaluations/campaigns/${id}/terminate`);

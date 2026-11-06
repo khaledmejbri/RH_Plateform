@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useDialogA11y } from '../components/useDialogA11y';
 import { Avatar, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, type IconName, type Tone } from '../components/ui';
+import { niveauUnite, normaliser } from '../utils/filtres';
 import {
   deleteOrganigrammeManager,
   getCollaborateursPage,
@@ -814,13 +815,19 @@ export default function StructureOrganisationPage() {
   // Départements = unités sans parent
   const departements = unites.filter((u) => !u.parent_identifiant);
 
-  // Unités = unités avec parent (toute profondeur)
-  const unitesEnfants = unites.filter((u) => !!u.parent_identifiant);
-
-  // Stats — responsables = managers de nœud (même source que l'organigramme)
+  // D-H05 : compteurs par type de nœud D-H04, sur les nœuds actifs ; leur somme = nombre de nœuds actifs.
+  const actives = unites.filter((u) => u.actif !== false);
+  const estDg = (u: Unite) => normaliser(u.type_noeud).replace(/[\s_-]/g, '') === 'directiongenerale';
+  const nbDg = actives.filter(estDg).length;
+  const nbDirections = actives.filter((u) => niveauUnite(u) === 'direction').length;
+  const nbDepartements = actives.filter((u) => niveauUnite(u) === 'departement').length;
+  const nbServices = actives.filter((u) => niveauUnite(u) === 'service').length;
+  const nbARattacher = actives.filter(
+    (u) => !u.parent_identifiant && (niveauUnite(u) === 'departement' || niveauUnite(u) === 'service'),
+  ).length;
+  // Unités sans responsable : tous types (signal de routage M01 vers la RRH).
+  const totalSansResponsable = actives.filter((u) => !managers.has(u.identifiant)).length;
   const totalTravailleurs = collaborateurs.filter((c) => c.statut === 'ACTIF').length;
-  const totalResponsables = unites.filter((u) => managers.has(u.identifiant)).length;
-  const totalSansResponsable = unites.filter((u) => u.actif && !managers.has(u.identifiant)).length;
 
   return (
     <div className="page">
@@ -851,10 +858,14 @@ export default function StructureOrganisationPage() {
       {err ? <ErrorAlert>{err}</ErrorAlert> : null}
 
       <section className="dash-stats" aria-label="Chiffres clés">
-        <StatCard icon="building" value={departements.length} label="Départements" tone="info" />
-        <StatCard icon="clipboard" value={unitesEnfants.length} label="Unités" tone="progress" />
-        <StatCard icon="briefcase" value={totalResponsables} label="Services avec responsable" tone="success" />
-        <StatCard icon="target" value={totalSansResponsable} label="Services sans responsable" tone="warning" />
+        <StatCard icon="building" value={nbDg} label="Direction générale" tone="info" />
+        <StatCard icon="briefcase" value={nbDirections} label="Directions" tone="info" />
+        <StatCard icon="building" value={nbDepartements} label="Départements" tone="progress" />
+        <StatCard icon="clipboard" value={nbServices} label="Services" tone="progress" />
+        {nbARattacher > 0 ? (
+          <StatCard icon="alert" value={nbARattacher} label="À rattacher" tone="warning" />
+        ) : null}
+        <StatCard icon="target" value={totalSansResponsable} label="Unités sans responsable" tone="warning" />
         <StatCard icon="users" value={totalTravailleurs} label="Collaborateurs actifs" tone="neutral" />
       </section>
 

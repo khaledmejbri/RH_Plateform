@@ -21,7 +21,7 @@ class TempsTravailCsvServiceTest {
 										EtatJourHeuresSup etat, boolean manuel, String sortie) {
 		return new LigneDetaillee(new LigneTempsTravail("id", nom, "COL-WEB", UUID.randomUUID(), "SIEGE", "Siège",
 				LocalDate.of(2026, 11, 3), "2026-11-03T08:02:00+01:00", sortie, paires, orphelins, minutes, etat,
-				"Direction Technique", "Logiciel", "Web"),
+				"Direction Technique", "Logiciel", "Web", null),
 				"Direction Technique", "Logiciel", "Web", manuel);
 	}
 

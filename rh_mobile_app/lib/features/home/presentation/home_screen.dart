@@ -68,12 +68,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 shape: BoxShape.circle,
                 border: Border.all(color: AppTheme.border, width: 1.5),
               ),
-              child: const CircleAvatar(
+              child: CircleAvatar(
                 radius: 18,
                 backgroundColor: AppTheme.primarySurface,
                 child: Text(
-                  'U',
-                  style: TextStyle(
+                  ref.watch(collaborateurNotifierProvider).valueOrNull?.initiales ?? '?',
+                  style: const TextStyle(
                     color: AppTheme.primary,
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -409,7 +409,7 @@ class _DashboardPage extends ConsumerWidget {
                                 const SizedBox(height: 2),
                                 Text(
                                   user != null
-                                      ? '${user.prenom} ${user.name}'
+                                      ? user.nomComplet
                                       : 'Bienvenue',
                                   style: Theme.of(context).textTheme.titleLarge
                                       ?.copyWith(fontWeight: FontWeight.w700),
@@ -671,14 +671,6 @@ class _DashboardPage extends ConsumerWidget {
                           '/demandes-admin/autorisation/nouveau',
                         ),
                   ),
-                  _ServiceCard(
-                    title: 'Actualités',
-                    subtitle: 'Lire',
-                    icon: Icons.newspaper_rounded,
-                    iconBg: AppTheme.primarySurface,
-                    iconColor: AppTheme.primaryDark,
-                    onTap: () => context.push('/feed'),
-                  ),
                 ],
               ),
             ),
@@ -836,7 +828,7 @@ class _DemandesPage extends ConsumerWidget {
           const SizedBox(height: 12),
           _DemandeChoiceCard(
             title: 'Autorisations de sortie',
-            subtitle: 'Demander une permission (max 4h)',
+            subtitle: 'Demander une permission (2 h max)',
             icon: Icons.vpn_key_rounded,
             iconBg: AppTheme.primarySurface,
             iconColor: AppTheme.primaryLight,

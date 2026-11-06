@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
@@ -41,21 +40,14 @@ class DocumentRepository {
     await _dio.post<Map<String, dynamic>>(ApiConstants.demandesDocuments, data: body);
   }
 
-  Future<CanRequestResult> canRequestAttestationTravail() async {
-    try {
-      final res = await _dio.get<Map<String, dynamic>>(
-        '${ApiConstants.demandesDocuments}/check-restriction',
-        queryParameters: {'type_document': 'ATTESTATION_TRAVAIL'},
-      );
-      final data = res.data!;
-      return CanRequestResult(
-        canRequest: data['can_request'] as bool? ?? false,
-        message: data['message'] as String?,
-      );
-    } catch (e) {
-      debugPrint('Error checking restriction: $e');
-      return const CanRequestResult(canRequest: true, message: null);
-    }
+  /// Pré-contrôle D-F06 : une seule demande ouverte par type de document.
+  /// Ne rattrape aucune erreur : en cas d'échec l'appelant bloque l'envoi (jamais permissif).
+  Future<CanRequestResult> verifierRestriction(String typeDocument) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '${ApiConstants.demandesDocuments}/check-restriction',
+      queryParameters: {'type_document': typeDocument},
+    );
+    return CanRequestResult.fromJson(res.data);
   }
 }
 
@@ -64,4 +56,13 @@ class CanRequestResult {
   final String? message;
 
   const CanRequestResult({required this.canRequest, required this.message});
+
+  /// Réponse absente ou sans `can_request` : refus (jamais permissif).
+  factory CanRequestResult.fromJson(Map<String, dynamic>? json) {
+    final data = json ?? const <String, dynamic>{};
+    return CanRequestResult(
+      canRequest: data['can_request'] == true,
+      message: data['message'] as String?,
+    );
+  }
 }

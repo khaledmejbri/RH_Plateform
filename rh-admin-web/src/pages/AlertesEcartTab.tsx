@@ -23,6 +23,25 @@ import { correspond, useFiltresUrl } from '../utils/filtres';
 const TAILLE = 20;
 const FILTRES_DEFAUT = { q: '', statut: '', niveau: '', campagne: '', unite: '' };
 
+/**
+ * Filtre « Non closes » (ouvertes + en cours), utilisé par la carte de Suivi & scores (D-E12.c) :
+ * le serveur ne filtre qu'un statut à la fois, on lit donc toutes les pages sans statut et on écarte les
+ * alertes traitées. L'ordre de l'API est conservé.
+ */
+async function chargerNonCloses(
+  f: { niveau?: string; campagneId?: string; uniteId?: string },
+  page: number,
+): Promise<PageAlertes> {
+  const tout: PageAlertes['elements'] = [];
+  for (let p = 0; p < 20; p += 1) {
+    const r = await getAlertesEcart(f, p, 100);
+    tout.push(...r.elements);
+    if (r.elements.length === 0 || tout.length >= r.total) break;
+  }
+  const ouvertes = tout.filter((a) => a.statut !== 'TRAITEE');
+  return { elements: ouvertes.slice(page * TAILLE, (page + 1) * TAILLE), total: ouvertes.length, page, taille: TAILLE };
+}
+
 function libelleCompteur(c: CompteurAlertes | null): string {
   if (!c) return '';
   if (c.nonCloses === 0) return 'Aucune alerte non close';
@@ -55,7 +74,7 @@ export default function AlertesEcartTab() {
     setRefuse(false);
     try {
       const [p, c] = await Promise.all([
-        getAlertesEcart({ statut, niveau, campagneId, uniteId }, page, TAILLE),
+        statut === 'NON_CLOSES' ? chargerNonCloses({ niveau, campagneId, uniteId }, page) : getAlertesEcart({ statut, niveau, campagneId, uniteId }, page, TAILLE),
         getCompteurAlertesEcart().catch(() => null),
       ]);
       setData(p);
@@ -125,7 +144,10 @@ export default function AlertesEcartTab() {
           libelle="Statut"
           valeur={statut}
           toutesLibelle="Tous les statuts"
-          options={(Object.keys(LIBELLES_STATUT_ALERTE) as StatutAlerteEcart[]).map((x) => ({ valeur: x, libelle: LIBELLES_STATUT_ALERTE[x] }))}
+          options={[
+            { valeur: 'NON_CLOSES', libelle: 'Non closes (ouvertes + en cours)' },
+            ...(Object.keys(LIBELLES_STATUT_ALERTE) as StatutAlerteEcart[]).map((x) => ({ valeur: x, libelle: LIBELLES_STATUT_ALERTE[x] })),
+          ]}
           onChange={(v) => changer({ statut: v })}
         />
         <ChampSelect

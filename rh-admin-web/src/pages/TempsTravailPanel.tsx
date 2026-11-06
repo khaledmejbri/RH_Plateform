@@ -69,14 +69,49 @@ const FMT_HEURE = new Intl.DateTimeFormat('fr-FR', {
   minute: '2-digit',
   hourCycle: 'h23',
 });
+const FMT_HEURE_SEC = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: 'Africa/Tunis',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+const FMT_JOUR_COURT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Africa/Tunis', day: '2-digit', month: '2-digit' });
 const FMT_JOUR = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Tunis', year: 'numeric', month: '2-digit', day: '2-digit' });
 
 /** Heure Tunis, suffixée « (J+1) » si l'horodatage tombe après la journée de travail. */
-function heureAvecJour(isoTs: string | null | undefined, jour: string): string {
+function heureAvecJour(isoTs: string | null | undefined, jour: string, secondes = false): string {
   if (!isoTs) return '—';
   const d = new Date(isoTs);
   if (Number.isNaN(d.getTime())) return '—';
-  return FMT_JOUR.format(d) > jour ? `${FMT_HEURE.format(d)} (J+1)` : FMT_HEURE.format(d);
+  const heure = (secondes ? FMT_HEURE_SEC : FMT_HEURE).format(d);
+  return FMT_JOUR.format(d) > jour ? `${heure} (J+1)` : heure;
+}
+
+/**
+ * D-P18.c : minutes (hh:mm) portées par au moins deux instants distincts de la ligne ;
+ * ces instants s'affichent alors à la seconde.
+ */
+function minutesAmbigues(l: LigneTempsTravail): Set<string> {
+  const instants = [
+    ...l.paires.flatMap((p) => [p.entree, p.sortie]),
+    ...l.orphelins.map((o) => o.horodatage),
+  ].filter(Boolean);
+  const parMinute = new Map<string, Set<string>>();
+  for (const t of instants) {
+    const d = new Date(t);
+    if (Number.isNaN(d.getTime())) continue;
+    const cle = FMT_JOUR.format(d) + ' ' + FMT_HEURE.format(d);
+    parMinute.set(cle, (parMinute.get(cle) ?? new Set()).add(t));
+  }
+  return new Set([...parMinute].filter(([, v]) => v.size > 1).map(([k]) => k));
+}
+
+function hms(ambigues: Set<string>, isoTs: string | null | undefined, jour: string): string {
+  if (!isoTs) return '—';
+  const d = new Date(isoTs);
+  if (Number.isNaN(d.getTime())) return '—';
+  return heureAvecJour(isoTs, jour, ambigues.has(FMT_JOUR.format(d) + ' ' + FMT_HEURE.format(d)));
 }
 
 function formatJour(jour: string): string {
@@ -84,9 +119,14 @@ function formatJour(jour: string): string {
   return a && m && j ? `${j}/${m}/${a}` : jour;
 }
 
-function EtatBadge({ etat }: { etat: EtatTempsTravail }) {
+function EtatBadge({ etat, jusqua }: { etat: EtatTempsTravail; jusqua?: string | null }) {
   const e = ETATS.find((x) => x.valeur === etat);
-  return <span className={e?.classe ?? 'badge badge--default'}>{e?.libelle ?? etat}</span>;
+  // D-P18.d : « En cours » indique l'instant où la journée basculera en « Incomplet ».
+  const d = etat === 'EN_COURS' && jusqua ? new Date(jusqua) : null;
+  const libelle = d && !Number.isNaN(d.getTime())
+    ? `En cours jusqu’au ${FMT_JOUR_COURT.format(d)} ${FMT_HEURE.format(d)}`
+    : (e?.libelle ?? etat);
+  return <span className={e?.classe ?? 'badge badge--default'}>{libelle}</span>;
 }
 
 function libelleUnite(l: LigneTempsTravail): string {
@@ -98,14 +138,16 @@ const Manuel = () => <span className="muted small"> (manuel)</span>;
 function Horaires({ ligne }: { ligne: LigneTempsTravail }) {
   const { paires, orphelins, jour } = ligne;
   if (paires.length === 0 && orphelins.length === 0) return <span className="muted">—</span>;
+  const amb = minutesAmbigues(ligne);
+  const h = (t: string | null | undefined) => hms(amb, t, jour);
   return (
     <div>
       {paires.map((p, i) => (
         <div key={`p${i}`}>
-          {heureAvecJour(p.entree, jour)}
+          {h(p.entree)}
           {p.entree_manuelle ? <Manuel /> : null}
           {' → '}
-          {heureAvecJour(p.sortie, jour)}
+          {h(p.sortie)}
           {p.sortie_manuelle ? <Manuel /> : null}
         </div>
       ))}
@@ -117,8 +159,8 @@ function Horaires({ ligne }: { ligne: LigneTempsTravail }) {
           title="Pointage sans entrée ou sortie correspondante : non compté dans le total"
         >
           {o.type === 'SORTIE'
-            ? `entrée manquante → ${heureAvecJour(o.horodatage, jour)}`
-            : `${heureAvecJour(o.horodatage, jour)} → sortie manquante`}
+            ? `entrée manquante → ${h(o.horodatage)}`
+            : `${h(o.horodatage)} → sortie manquante`}
           {o.manuel ? <Manuel /> : null}
         </div>
       ))}
@@ -226,6 +268,7 @@ export default function TempsTravailPanel() {
   const lignes = data?.lignes.content ?? [];
   const totalPages = data?.lignes.totalPages ?? 0;
   const siteOptions = sites
+    .filter((s) => s.actif || s.id === f.site)
     .map((s) => ({ valeur: s.id, libelle: s.libelle || s.code }))
     .sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr'));
   const nomCollab = (n: string | null, m: string | null) => n || m || 'Collaborateur inconnu';
@@ -359,11 +402,11 @@ export default function TempsTravailPanel() {
                     <td>
                       <Horaires ligne={l} />
                     </td>
-                    <td>{heureAvecJour(l.premiere_entree, l.jour)}</td>
-                    <td>{heureAvecJour(l.derniere_sortie, l.jour)}</td>
+                    <td>{hms(minutesAmbigues(l), l.premiere_entree, l.jour)}</td>
+                    <td>{hms(minutesAmbigues(l), l.derniere_sortie, l.jour)}</td>
                     <td>{hhmm(l.minutes_travaillees)}</td>
                     <td>
-                      <EtatBadge etat={l.etat} />
+                      <EtatBadge etat={l.etat} jusqua={l.en_cours_jusqu_a} />
                     </td>
                   </tr>
                 ))}

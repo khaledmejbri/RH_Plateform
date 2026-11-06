@@ -66,7 +66,10 @@ class _MesDemandesHeuresSupScreenState extends ConsumerState<MesDemandesHeuresSu
   @override
   Widget build(BuildContext context) {
     final demandes = ref.watch(mesDemandesHeuresSupProvider);
-    final comptees = ref.watch(heuresComptesMesDemandesProvider).valueOrNull ?? const <HeuresComptees>[];
+    final compteesAsync = ref.watch(heuresComptesMesDemandesProvider);
+    final comptees = compteesAsync.valueOrNull ?? const <HeuresComptees>[];
+    // D-T02.e : une erreur sur les heures comptées n'est jamais présentée comme « aucune heure ».
+    final compteesEnErreur = compteesAsync.hasError;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -87,9 +90,18 @@ class _MesDemandesHeuresSupScreenState extends ConsumerState<MesDemandesHeuresSu
         builder: (context, liste) => ListView.separated(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-          itemCount: liste.length,
+          itemCount: liste.length + (compteesEnErreur ? 1 : 0),
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (_, i) {
+            if (compteesEnErreur) {
+              if (i == 0) {
+                return _BandeauErreurComptees(
+                  erreur: compteesAsync.error!,
+                  onRetry: () => ref.invalidate(heuresComptesMesDemandesProvider),
+                );
+              }
+              i--;
+            }
             final d = liste[i];
             final lignes = comptees.where((c) => c.referenceDemande == d.reference).toList();
             return _CarteDemande(
@@ -100,6 +112,35 @@ class _MesDemandesHeuresSupScreenState extends ConsumerState<MesDemandesHeuresSu
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _BandeauErreurComptees extends StatelessWidget {
+  const _BandeauErreurComptees({required this.erreur, required this.onRetry});
+
+  final Object erreur;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = estHorsLigne(erreur)
+        ? 'Hors ligne : les heures comptées ne sont pas disponibles.'
+        : messageErreurPresence(erreur, fallback: 'Heures comptées indisponibles.');
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.errorSurface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded, color: AppTheme.errorDark),
+          const SizedBox(width: 10),
+          Expanded(child: Text(message, style: const TextStyle(color: AppTheme.errorDark, fontSize: 13))),
+          TextButton(onPressed: onRetry, child: const Text('Réessayer')),
+        ],
       ),
     );
   }

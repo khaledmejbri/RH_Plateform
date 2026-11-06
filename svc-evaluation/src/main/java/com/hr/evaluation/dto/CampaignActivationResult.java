@@ -11,6 +11,8 @@ public record CampaignActivationResult(
 		int evaluationsCreees,
 		int ignoresDejaExistantes,
 		int ignoresManagerManquant,
-		int profilsIncomplets
+		int profilsIncomplets,
+		/** D-E13.a : évaluations créées sans template TECHNICAL (avertissement, jamais un blocage). */
+		int evaluationsSansTemplateTechnique
 ) {
 }

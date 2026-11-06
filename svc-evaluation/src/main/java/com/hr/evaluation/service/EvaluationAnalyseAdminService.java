@@ -1,6 +1,8 @@
 package com.hr.evaluation.service;
 
+import com.hr.evaluation.domain.CouleurAlerteEvaluationRh;
 import com.hr.evaluation.dto.EvaluationAnalyticsResponse;
+import com.hr.evaluation.entity.EvaluationAnswer;
 import com.hr.evaluation.entity.Evaluation;
 import com.hr.evaluation.repository.EvaluationAnswerRepository;
 import com.hr.evaluation.repository.EvaluationRepository;
@@ -8,7 +10,11 @@ import com.hr.evaluation.repository.SkillAnswerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -36,6 +42,30 @@ public class EvaluationAnalyseAdminService {
         this.skillAnswerRepository = skillAnswerRepository;
         this.scoringService = scoringService;
         this.templateTechnique = templateTechnique;
+    }
+
+    /**
+     * D-E12.b : pour la liste de suivi, indique pour chaque évaluation si le responsable a noté et, seulement dans ce
+     * cas, le codage couleur C-M07-04 calculé sur ses notes. Sans note du responsable : pas de couleur (« Non évaluée »),
+     * jamais un VERT par défaut. Une seule requête pour tout le lot.
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, NotesResponsable> notesResponsable(Collection<UUID> evaluationIds) {
+        if (evaluationIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, List<Integer>> notes = new HashMap<>();
+        for (EvaluationAnswer a : answerRepository.findAvecNoteManagerParEvaluations(evaluationIds)) {
+            notes.computeIfAbsent(a.getEvaluation().getId(), k -> new ArrayList<>()).add(a.getNoteManager());
+        }
+        Map<UUID, NotesResponsable> out = new HashMap<>();
+        notes.forEach((id, valeurs) -> out.put(id, new NotesResponsable(true,
+                scoringService.calculer(valeurs.toArray(new Integer[0])).couleurAlerte())));
+        return out;
+    }
+
+    /** @param couleur codage couleur C-M07-04 ; nul si le responsable n'a noté aucune question. */
+    public record NotesResponsable(boolean aNote, CouleurAlerteEvaluationRh couleur) {
     }
 
     @Transactional(readOnly = true)
