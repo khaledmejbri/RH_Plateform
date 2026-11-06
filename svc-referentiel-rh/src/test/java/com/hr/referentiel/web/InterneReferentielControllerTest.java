@@ -1,6 +1,7 @@
 package com.hr.referentiel.web;
 
 import com.hr.referentiel.dto.CollaborateurPointageResponse;
+import com.hr.referentiel.service.AffectationService;
 import com.hr.referentiel.service.PerimetreValidationService;
 import com.hr.referentiel.service.ReferentielRhService;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,9 @@ class InterneReferentielControllerTest {
 
 	private final ReferentielRhService service = mock(ReferentielRhService.class);
 	private final PerimetreValidationService perimetre = mock(PerimetreValidationService.class);
-	private final InterneReferentielController controller = new InterneReferentielController(service, perimetre, "secret-partage");
+	private final AffectationService affectationService = mock(AffectationService.class);
+	private final InterneReferentielController controller =
+			new InterneReferentielController(service, perimetre, affectationService, "secret-partage");
 
 	@Test
 	void sansJeton_401() {
@@ -131,5 +134,47 @@ class InterneReferentielControllerTest {
 
 		assertThat(res.getStatusCode().value()).isEqualTo(200);
 		assertThat(res.getBody()).isEqualTo(reponse);
+	}
+
+	// --- Temps de travail de svc-presence (D-P17) ---
+
+	@Test
+	void membresDeUnite_sansJetonOuMauvaisJeton_401_serviceNonAppele() {
+		UUID id = UUID.randomUUID();
+
+		assertThat(controller.membresDeUnite(null, id).getStatusCode().value()).isEqualTo(401);
+		assertThat(controller.membresDeUnite("autre", id).getStatusCode().value()).isEqualTo(401);
+		verifyNoInteractions(affectationService);
+	}
+
+	@Test
+	void membresDeUnite_bonJeton_200() {
+		UUID id = UUID.randomUUID();
+		when(affectationService.membresDeUnite(id)).thenReturn(List.of());
+
+		assertThat(controller.membresDeUnite("secret-partage", id).getStatusCode().value()).isEqualTo(200);
+	}
+
+	@Test
+	void affectations_sansJetonOuMauvaisJeton_401_serviceNonAppele() {
+		UUID id = UUID.randomUUID();
+
+		assertThat(controller.affectations(null, corps(List.of(id))).getStatusCode().value()).isEqualTo(401);
+		assertThat(controller.affectations("autre", corps(List.of(id))).getStatusCode().value()).isEqualTo(401);
+		verifyNoInteractions(affectationService);
+	}
+
+	@Test
+	void affectations_bonJeton_200_listeVideOuTropLongue_400() {
+		List<UUID> cent_un = new ArrayList<>();
+		for (int i = 0; i < 101; i++) {
+			cent_un.add(UUID.randomUUID());
+		}
+		when(affectationService.affectations(any())).thenReturn(List.of());
+
+		assertThat(controller.affectations("secret-partage", corps(List.of(UUID.randomUUID()))).getStatusCode().value()).isEqualTo(200);
+		assertThat(controller.affectations("secret-partage", corps(List.of())).getStatusCode().value()).isEqualTo(400);
+		assertThat(controller.affectations("secret-partage", null).getStatusCode().value()).isEqualTo(400);
+		assertThat(controller.affectations("secret-partage", corps(cent_un)).getStatusCode().value()).isEqualTo(400);
 	}
 }

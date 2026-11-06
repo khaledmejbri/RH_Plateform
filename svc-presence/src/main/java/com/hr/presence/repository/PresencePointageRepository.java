@@ -30,6 +30,25 @@ public interface PresencePointageRepository extends JpaRepository<PresencePointa
 	Page<PresencePointage> findByCollaborateurIdOrderByServerTsDesc(String collaborateurId, Pageable pageable);
 
 	/**
+	 * Pointages retenus pour la vue « Temps de travail » (D-P17.a) : statuts demandés, fenêtre sur l'heure serveur
+	 * (marge autour de la période, la journée de travail est filtrée ensuite), site et identités (fiche ou compte)
+	 * optionnels. Filtres construits dynamiquement (pas de paramètre NULL en JPQL sous PostgreSQL).
+	 */
+	static Specification<PresencePointage> filtreTempsTravail(
+			java.util.Collection<PointageStatut> statuts, Instant from, Instant to, UUID siteId,
+			java.util.Collection<String> collaborateurIds) {
+		return (root, query, cb) -> {
+			List<Predicate> predicats = new ArrayList<>();
+			predicats.add(root.get("statut").in(statuts));
+			predicats.add(cb.greaterThanOrEqualTo(root.get("serverTs"), from));
+			predicats.add(cb.lessThan(root.get("serverTs"), to));
+			if (siteId != null) predicats.add(cb.equal(root.get("siteId"), siteId));
+			if (collaborateurIds != null) predicats.add(root.get("collaborateurId").in(collaborateurIds));
+			return cb.and(predicats.toArray(Predicate[]::new));
+		};
+	}
+
+	/**
 	 * Recherche admin : filtres optionnels construits dynamiquement (SCRUM-11).
 	 * Une requête JPQL {@code (:p is null or ...)} échouait sous PostgreSQL quand tous les filtres étaient NULL
 	 * (« could not determine data type of parameter »).

@@ -730,3 +730,111 @@ export function messageErreurCode(err: unknown, fallback = 'Erreur'): string {
 export function codeErreur(err: unknown): string | undefined {
   return err instanceof PresenceApiError ? err.code : undefined;
 }
+
+/* ─── Temps de travail (D-P17) ─────────────────────────────────────────── */
+
+export type EtatTempsTravail = 'COMPLET' | 'EN_COURS' | 'INCOMPLET';
+
+export type PaireTempsTravail = {
+  entree: string;
+  sortie: string;
+  entree_manuelle: boolean;
+  sortie_manuelle: boolean;
+  minutes: number;
+};
+
+export type OrphelinTempsTravail = { type: 'ENTREE' | 'SORTIE' | string; horodatage: string; manuel: boolean };
+
+export type LigneTempsTravail = {
+  collaborateur_id: string;
+  collaborateur_nom: string | null;
+  collaborateur_matricule: string | null;
+  site_id: string | null;
+  site_code: string | null;
+  site_libelle: string | null;
+  jour: string;
+  premiere_entree: string | null;
+  derniere_sortie: string | null;
+  paires: PaireTempsTravail[];
+  orphelins: OrphelinTempsTravail[];
+  minutes_travaillees: number;
+  etat: EtatTempsTravail;
+  direction_libelle?: string | null;
+  departement_libelle?: string | null;
+  service_libelle?: string | null;
+};
+
+export type SyntheseTempsTravail = {
+  collaborateur_id: string;
+  collaborateur_nom: string | null;
+  collaborateur_matricule: string | null;
+  nb_jours: number;
+  nb_incompletes?: number;
+  minutes: number;
+};
+
+export type TempsTravailReponse = {
+  lignes: { content: LigneTempsTravail[]; totalElements: number; totalPages: number; number: number; size: number };
+  total_minutes: number;
+  nb_lignes: number;
+  nb_incompletes?: number;
+  nb_en_cours?: number;
+  synthese: SyntheseTempsTravail[];
+};
+
+export type TempsTravailFiltres = {
+  du: string;
+  au: string;
+  collaborateurId?: string;
+  siteId?: string;
+  uniteId?: string;
+  etat?: string;
+};
+
+function paramsTempsTravail(f: TempsTravailFiltres): URLSearchParams {
+  const q = new URLSearchParams();
+  q.set('du', f.du);
+  q.set('au', f.au);
+  if (f.collaborateurId) q.set('collaborateurId', f.collaborateurId);
+  if (f.siteId) q.set('siteId', f.siteId);
+  if (f.uniteId) q.set('uniteId', f.uniteId);
+  if (f.etat) q.set('etat', f.etat);
+  return q;
+}
+
+export function getTempsTravail(f: TempsTravailFiltres, page = 0, size = 50) {
+  const q = paramsTempsTravail(f);
+  q.set('page', String(page));
+  q.set('size', String(size));
+  return apiFetch(`${BASE}/temps-travail?${q}`).then((r) => handlePresenceResponse<TempsTravailReponse>(r));
+}
+
+export async function exporterTempsTravailCsv(f: TempsTravailFiltres): Promise<void> {
+  const res = await apiFetch(`${BASE}/temps-travail/export?${paramsTempsTravail(f)}`, {
+    headers: { Accept: 'text/csv' },
+  });
+  if (res.status === 401) {
+    clearToken();
+    window.location.href = '/login';
+    throw new PresenceApiError('Session expirée', 401);
+  }
+  if (!res.ok) {
+    const body = await parseJson<{ erreur?: string; message?: string; code?: string }>(res).catch(
+      () => ({}) as { erreur?: string; message?: string; code?: string },
+    );
+    throw new PresenceApiError(
+      body.erreur ?? body.message ?? (res.statusText || 'Export impossible'),
+      res.status,
+      body.code,
+    );
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `temps-de-travail-${f.du}-${f.au}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

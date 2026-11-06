@@ -1,8 +1,11 @@
 package com.hr.referentiel.web;
 
+import com.hr.referentiel.dto.AffectationCollaborateurResponse;
 import com.hr.referentiel.dto.CollaborateurEvaluationSnapshotResponse;
 import com.hr.referentiel.dto.CollaborateurPointageResponse;
 import com.hr.referentiel.dto.FicheEvaluationResponse;
+import com.hr.referentiel.dto.MembreUniteResponse;
+import com.hr.referentiel.service.AffectationService;
 import com.hr.referentiel.service.PerimetreValidationService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hr.referentiel.service.ReferentielRhService;
@@ -35,14 +38,17 @@ public class InterneReferentielController {
 
 	private final ReferentielRhService referentielRhService;
 	private final PerimetreValidationService perimetreValidationService;
+	private final AffectationService affectationService;
 	private final String jetonInterne;
 
 	public InterneReferentielController(
 			ReferentielRhService referentielRhService,
 			PerimetreValidationService perimetreValidationService,
+			AffectationService affectationService,
 			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne) {
 		this.referentielRhService = referentielRhService;
 		this.perimetreValidationService = perimetreValidationService;
+		this.affectationService = affectationService;
 		this.jetonInterne = jetonInterne;
 	}
 
@@ -97,6 +103,37 @@ public class InterneReferentielController {
 		return referentielRhService.obtenirFicheEvaluation(ficheId)
 				.map(ResponseEntity::ok)
 				.orElseGet(() -> ResponseEntity.notFound().build());
+	}
+
+	/** Collaborateurs d'une unité et de ses sous-unités (filtre d'unité du temps de travail, D-P17.g). Unité inconnue : []. */
+	@GetMapping("/unites/{uniteId}/collaborateurs")
+	public ResponseEntity<List<MembreUniteResponse>> membresDeUnite(
+			@RequestHeader(value = "X-Internal-Token", required = false) String jeton,
+			@PathVariable UUID uniteId) {
+		if (!jetonValide(jeton)) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+		}
+		return ResponseEntity.ok(affectationService.membresDeUnite(uniteId));
+	}
+
+	/**
+	 * Affectation (direction, département, service) de 1 à 100 collaborateurs désignés par fiche ou compte.
+	 * Un identifiant inconnu est absent de la réponse. Liste vide ou trop longue : 400.
+	 */
+	@PostMapping("/collaborateurs/affectations")
+	public ResponseEntity<List<AffectationCollaborateurResponse>> affectations(
+			@RequestHeader(value = "X-Internal-Token", required = false) String jeton,
+			@RequestBody ResolutionPointageRequest requete) {
+		if (!jetonValide(jeton)) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+		}
+		List<UUID> ids = requete == null || requete.collaborateurIds() == null
+				? List.of()
+				: List.copyOf(new LinkedHashSet<>(requete.collaborateurIds()));
+		if (ids.isEmpty() || ids.size() > AffectationService.RESOLUTION_MAX) {
+			return ResponseEntity.badRequest().build();
+		}
+		return ResponseEntity.ok(affectationService.affectations(ids));
 	}
 
 	private boolean jetonValide(String jeton) {

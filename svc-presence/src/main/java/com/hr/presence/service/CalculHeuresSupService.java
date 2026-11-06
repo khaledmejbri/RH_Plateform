@@ -89,15 +89,50 @@ public class CalculHeuresSupService {
 
 	// ---- Calcul pur --------------------------------------------------------------------------------------------
 
+	/** Paire ENTREE / SORTIE successives (D-P14.a). */
+	public record Paire(PresencePointage entree, PresencePointage sortie) {
+	}
+
+	/** Résultat de l'appariement : paires dans l'ordre chronologique, pointages orphelins (ENTREE ou SORTIE) à part. */
+	public record Appariement(List<Paire> paires, List<PresencePointage> orphelins) {
+	}
+
+	/**
+	 * Appariement D-P14.a, partagé avec la vue « Temps de travail » (D-P17.c) : chaque ENTREE est appariée à la SORTIE
+	 * suivante, une nouvelle ENTREE rend la précédente orpheline, une SORTIE sans ENTREE est orpheline.
+	 *
+	 * @param pointages pointages acceptés triés par heure serveur
+	 */
+	public static Appariement apparier(List<PresencePointage> pointages) {
+		List<Paire> paires = new ArrayList<>();
+		List<PresencePointage> orphelins = new ArrayList<>();
+		PresencePointage entreeEnCours = null;
+		for (PresencePointage p : pointages) {
+			if (p.getType() == PointageType.ENTREE) {
+				if (entreeEnCours != null) {
+					orphelins.add(entreeEnCours);
+				}
+				entreeEnCours = p;
+			} else if (entreeEnCours == null) {
+				orphelins.add(p);
+			} else {
+				paires.add(new Paire(entreeEnCours, p));
+				entreeEnCours = null;
+			}
+		}
+		if (entreeEnCours != null) {
+			orphelins.add(entreeEnCours);
+		}
+		return new Appariement(paires, orphelins);
+	}
+
 	/**
 	 * @param pointages pointages acceptés du collaborateur pour la journée, triés par heure serveur
 	 */
 	public static ResultatJour calculerJour(List<PresencePointage> pointages, int ouvertureAvantMinutes, int ouvertureApresMinutes) {
+		Appariement appariement = apparier(pointages);
 		long secondes = 0;
-		boolean orphelin = false;
-		PresencePointage entreeEnCours = null;
 		Instant premiereEntree = null;
-		Instant derniereSortie = null;
 		Instant horaireDebut = null;
 		Instant horaireFin = null;
 		for (PresencePointage p : pointages) {
@@ -105,28 +140,18 @@ public class CalculHeuresSupService {
 				horaireDebut = p.getHoraireDebutTs();
 				horaireFin = p.getHoraireFinTs();
 			}
-			if (p.getType() == PointageType.ENTREE) {
-				if (entreeEnCours != null) {
-					orphelin = true;
-				}
-				entreeEnCours = p;
-				if (premiereEntree == null) {
-					premiereEntree = p.getServerTs();
-				}
-			} else if (entreeEnCours == null) {
-				orphelin = true;
-			} else {
-				secondes += secondesComptees(entreeEnCours, p, ouvertureAvantMinutes, ouvertureApresMinutes);
-				derniereSortie = p.getServerTs();
-				entreeEnCours = null;
+			if (premiereEntree == null && p.getType() == PointageType.ENTREE) {
+				premiereEntree = p.getServerTs();
 			}
 		}
-		if (entreeEnCours != null) {
-			orphelin = true;
+		Instant derniereSortie = null;
+		for (Paire paire : appariement.paires()) {
+			secondes += secondesComptees(paire.entree(), paire.sortie(), ouvertureAvantMinutes, ouvertureApresMinutes);
+			derniereSortie = paire.sortie().getServerTs();
 		}
 		long minutes = secondes / 60;
-		return new ResultatJour(minutes - minutes % ARRONDI_MINUTES, premiereEntree, derniereSortie, orphelin,
-				horaireDebut, horaireFin);
+		return new ResultatJour(minutes - minutes % ARRONDI_MINUTES, premiereEntree, derniereSortie,
+				!appariement.orphelins().isEmpty(), horaireDebut, horaireFin);
 	}
 
 	/** Intersection de la paire avec les plages validées : [début - ouverture avant ; début] et [fin ; fin + ouverture après]. */

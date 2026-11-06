@@ -19,7 +19,7 @@ import java.util.UUID;
 public class HeuresSupCsvService {
 
 	static final char SEPARATEUR = ';';
-	private static final String BOM = "﻿";
+	static final String BOM = "﻿";
 	private static final String[] ENTETES = {"Matricule", "Nom", "Site", "Date", "Horaire du jour", "Plage validée",
 			"ENTREE", "SORTIE", "Heures comptées (hh:mm)", "Référence de la demande", "État"};
 
@@ -58,7 +58,7 @@ public class HeuresSupCsvService {
 				: FenetreHoraireService.HEURE_MINUTE.format(ZonedDateTime.ofInstant(instant, ClockConfig.ZONE_TUNIS));
 	}
 
-	private static String ligne(String... cellules) {
+	static String ligne(String... cellules) {
 		StringBuilder sb = new StringBuilder();
 		for (int i = 0; i < cellules.length; i++) {
 			if (i > 0) {

@@ -13,6 +13,35 @@ public class PresenceProperties {
 	private final Referentiel referentiel = new Referentiel();
 	private final Facial facial = new Facial();
 	private final HeuresSup heuresSup = new HeuresSup();
+	private final TempsTravail tempsTravail = new TempsTravail();
+
+	public TempsTravail getTempsTravail() {
+		return tempsTravail;
+	}
+
+	/** Vue « Temps de travail » (D-P17). */
+	public static class TempsTravail {
+		/** Période maximale consultée ou exportée, bornes comprises (jours). */
+		private int periodeMaxJours = 31;
+		/** Rattachement d'une SORTIE après minuit à l'ENTREE ouverte, sur un site sans horaire (heures, D-P17.b). */
+		private int dureeMaxSansHoraireHeures = 16;
+
+		public int getPeriodeMaxJours() {
+			return periodeMaxJours;
+		}
+
+		public void setPeriodeMaxJours(int periodeMaxJours) {
+			this.periodeMaxJours = periodeMaxJours;
+		}
+
+		public int getDureeMaxSansHoraireHeures() {
+			return dureeMaxSansHoraireHeures;
+		}
+
+		public void setDureeMaxSansHoraireHeures(int dureeMaxSansHoraireHeures) {
+			this.dureeMaxSansHoraireHeures = dureeMaxSansHoraireHeures;
+		}
+	}
 
 	public HeuresSup getHeuresSup() {
 		return heuresSup;

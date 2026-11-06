@@ -72,4 +72,12 @@ public interface CollaborateurRepository extends JpaRepository<Collaborateur, UU
 	@EntityGraph(attributePaths = {"unite", "superieur"})
 	@Query("select c from Collaborateur c where c.statut = 'ACTIF'")
 	java.util.List<Collaborateur> findAllActifsWithUnite();
+
+	/** Tous les collaborateurs, quel que soit leur statut, avec leur unité (vue « Temps de travail » de svc-presence). */
+	@EntityGraph(attributePaths = {"unite"})
+	@Query("select c from Collaborateur c")
+	java.util.List<Collaborateur> findAllWithUnite();
+
+	@EntityGraph(attributePaths = {"unite"})
+	java.util.List<Collaborateur> findAllByCompteUtilisateurIdIn(java.util.Collection<UUID> compteIds);
 }

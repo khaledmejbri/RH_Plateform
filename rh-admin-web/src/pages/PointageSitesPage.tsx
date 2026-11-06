@@ -34,13 +34,14 @@ import { getTousCollaborateurs, type CollaborateurRow } from '../api/rhClient';
 import { correspond, useFiltresUrl } from '../utils/filtres';
 import HoraireSitePanel from './HoraireSitePanel';
 import PointagesManuelsPanel from './PointagesManuelsPanel';
+import TempsTravailPanel from './TempsTravailPanel';
 import VerificationFacialePanel from './VerificationFacialePanel';
 
-type Tab = 'sites' | 'pointages' | 'manuels' | 'facial';
+type Tab = 'sites' | 'pointages' | 'temps' | 'manuels' | 'facial';
 type ModalKind = 'creer' | 'regenerer' | 'revoquer' | null;
 
 const PAGE_SIZE = 20;
-const ONGLETS: Tab[] = ['sites', 'pointages', 'manuels', 'facial'];
+const ONGLETS: Tab[] = ['sites', 'pointages', 'temps', 'manuels', 'facial'];
 const FILTRES_SITES_DEFAUT = { q: '', actif: 'all', expire: '' };
 const FILTRES_POINTAGES_DEFAUT = { collab: '', site: '', statut: '', type: '', du: '', au: '', sansFacial: '' };
 
@@ -506,7 +507,9 @@ export default function PointageSitesPage() {
               ? detail?.libelle ?? 'Fiche site'
               : tab === 'pointages'
                 ? 'Pointages'
-                : tab === 'manuels'
+                : tab === 'temps'
+                  ? 'Temps de travail'
+                  : tab === 'manuels'
                   ? 'Pointages manuels'
                   : tab === 'facial'
                     ? 'Vérification faciale'
@@ -517,7 +520,9 @@ export default function PointageSitesPage() {
               ? `Code ${detail?.code ?? '…'} · zone de ${detail?.rayonMetres ?? '…'} m`
               : tab === 'pointages'
                 ? 'Consultation des essais VALIDÉ / REJETÉ (support et anti-fraude).'
-                : tab === 'manuels'
+                : tab === 'temps'
+                  ? 'Heures travaillées par collaborateur, jour et site, d’après les pointages validés.'
+                  : tab === 'manuels'
                   ? 'Pointages demandés après un refus, validés par le responsable ou les RH.'
                   : tab === 'facial'
                     ? 'Réglage, consentement et enrôlement des collaborateurs. Aucune image n’est conservée ni affichée.'
@@ -544,6 +549,16 @@ export default function PointageSitesPage() {
             }}
           >
             Pointages
+          </button>
+          <button
+            type="button"
+            className={'tab' + (tab === 'temps' ? ' tab--on' : '')}
+            onClick={() => {
+              setTab('temps');
+              setSelectedId(null);
+            }}
+          >
+            Temps de travail
           </button>
           <button
             type="button"
@@ -578,7 +593,7 @@ export default function PointageSitesPage() {
           Module pointage en cours de déploiement — le service présence peut être temporairement indisponible.
         </div>
       ) : null}
-      {lectureSeule && (showList || showDetail || tab === 'pointages') ? (
+      {lectureSeule && (showList || showDetail || tab === 'pointages' || tab === 'temps') ? (
         <div className="alert alert--info" role="status">
           Profil Direction — consultation uniquement.
         </div>
@@ -1023,6 +1038,7 @@ export default function PointageSitesPage() {
         </div>
       ) : null}
 
+      {tab === 'temps' ? <TempsTravailPanel /> : null}
       {tab === 'manuels' ? <PointagesManuelsPanel lectureSeule={lectureSeule} /> : null}
       {tab === 'facial' ? <VerificationFacialePanel lectureSeule={lectureSeule} /> : null}
 

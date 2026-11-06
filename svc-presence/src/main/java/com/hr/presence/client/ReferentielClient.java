@@ -72,6 +72,48 @@ public class ReferentielClient {
 		}
 	}
 
+	/** Nombre maximal d'identifiants par appel d'affectation (limite du référentiel). */
+	private static final int AFFECTATIONS_LOT = 100;
+
+	/**
+	 * Affectation actuelle (direction, département, service) de collaborateurs désignés par fiche ou compte, par lots
+	 * de 100 (D-P17). Un identifiant inconnu est absent de la réponse. Référentiel injoignable : 503.
+	 */
+	public List<Affectation> affectations(List<UUID> identifiants) {
+		List<Affectation> out = new java.util.ArrayList<>();
+		try {
+			for (int i = 0; i < identifiants.size(); i += AFFECTATIONS_LOT) {
+				List<UUID> lot = identifiants.subList(i, Math.min(i + AFFECTATIONS_LOT, identifiants.size()));
+				Affectation[] body = restClient.post()
+						.uri("/internal/referentiel/collaborateurs/affectations")
+						.header(EN_TETE_JETON_INTERNE, jetonInterne)
+						.body(Map.of("collaborateur_ids", lot))
+						.retrieve()
+						.body(Affectation[].class);
+				if (body != null) {
+					out.addAll(List.of(body));
+				}
+			}
+			return out;
+		} catch (RestClientException ex) {
+			throw referentielIndisponible(ex);
+		}
+	}
+
+	/** Collaborateurs (fiche et compte) d'une unité et de ses sous-unités, tous statuts ; unité inconnue : liste vide. */
+	public List<MembreUnite> membresDeUnite(UUID uniteId) {
+		try {
+			MembreUnite[] body = restClient.get()
+					.uri("/internal/referentiel/unites/{uniteId}/collaborateurs", uniteId)
+					.header(EN_TETE_JETON_INTERNE, jetonInterne)
+					.retrieve()
+					.body(MembreUnite[].class);
+			return body == null ? List.of() : List.of(body);
+		} catch (RestClientException ex) {
+			throw referentielIndisponible(ex);
+		}
+	}
+
 	private static PresenceMetierException referentielIndisponible(RestClientException ex) {
 		log.warn("Référentiel indisponible : {}", ex.getMessage());
 		return PresenceMetierException.indisponible("REFERENTIEL_INDISPONIBLE",
@@ -129,6 +171,27 @@ public class ReferentielClient {
 			@JsonProperty("direction_libelle") String directionLibelle,
 			@JsonProperty("valideur_id") UUID valideurId,
 			@JsonProperty("valideur_compte_id") UUID valideurCompteId
+	) {
+	}
+
+	/** Collaborateur avec son affectation actuelle (endpoint {@code /internal}). */
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record Affectation(
+			@JsonProperty("collaborateur_id") UUID collaborateurId,
+			@JsonProperty("compte_id") UUID compteId,
+			@JsonProperty("matricule") String matricule,
+			@JsonProperty("nom") String nom,
+			@JsonProperty("direction_libelle") String directionLibelle,
+			@JsonProperty("departement_libelle") String departementLibelle,
+			@JsonProperty("service_libelle") String serviceLibelle
+	) {
+	}
+
+	/** Membre d'une unité : identifiants de fiche et de compte. */
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record MembreUnite(
+			@JsonProperty("collaborateur_id") UUID collaborateurId,
+			@JsonProperty("compte_id") UUID compteId
 	) {
 	}
 }
