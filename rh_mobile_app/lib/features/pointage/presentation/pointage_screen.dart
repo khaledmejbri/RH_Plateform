@@ -490,6 +490,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
                 top: 12,
                 right: 12,
                 child: IconButton(
+                  tooltip: 'Fermer',
                   style: IconButton.styleFrom(backgroundColor: Colors.black54),
                   onPressed: () => Navigator.pop(sheetContext),
                   icon: const Icon(Icons.close, color: Colors.white),

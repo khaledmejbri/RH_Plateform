@@ -29,7 +29,7 @@ public class LocalEvaluationArchiveStorage implements EvaluationArchiveStorage {
 			String s3Url = "s3://" + properties.getS3Bucket() + "/" + objectKey.replace('\\', '/');
 			return new ArchivedPdf(objectKey, s3Url);
 		} catch (IOException ex) {
-			throw new IllegalStateException("Impossible d'archiver le PDF d'evaluation.", ex);
+			throw new IllegalStateException("Impossible d'archiver le PDF d'évaluation.", ex);
 		}
 	}
 }

@@ -3,12 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { clearToken, getToken, signIn } from '../api/auth';
 import { canAccessBackoffice } from '../auth/jwtRoles';
 
+/** Coordonnée du support RH : valeur de configuration (VITE_SUPPORT_RH_EMAIL), jamais en dur. */
+const SUPPORT_RH_EMAIL = (import.meta.env.VITE_SUPPORT_RH_EMAIL as string | undefined)?.trim() || '';
+
 export default function LoginPage() {
   const nav = useNavigate();
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    document.title = 'Connexion — RH-Évènement';
+  }, []);
 
   useEffect(() => {
     const t = getToken();
@@ -48,7 +55,7 @@ export default function LoginPage() {
         <h1>Connexion</h1>
         <p className="lead">Réservé aux comptes RH, Direction ou Admin.</p>
         <form onSubmit={onSubmit}>
-          <label htmlFor="login-f1" className="field-label">Utilisateur ou e-mail</label>
+          <label htmlFor="login-f1" className="field-label">Identifiant ou courriel</label>
           <input id="login-f1"
             className="field-input"
             value={user}
@@ -74,6 +81,16 @@ export default function LoginPage() {
             {loading ? 'Connexion…' : 'Se connecter'}
           </button>
         </form>
+        <details className="login-forgot" style={{ marginTop: 12 }}>
+          <summary>Mot de passe oublié ?</summary>
+          <p className="small" style={{ margin: '8px 0 0' }}>
+            {SUPPORT_RH_EMAIL ? (
+              <>Contactez votre service RH : <a href={`mailto:${SUPPORT_RH_EMAIL}`}>{SUPPORT_RH_EMAIL}</a></>
+            ) : (
+              'Contactez votre service RH pour réinitialiser votre mot de passe.'
+            )}
+          </p>
+        </details>
         <p className="login-foot">Collaborateurs : utilisez l’application mobile RH Connect.</p>
       </main>
     </div>

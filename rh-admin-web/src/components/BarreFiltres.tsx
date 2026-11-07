@@ -9,6 +9,7 @@ import {
   type SelectionUnite,
 } from '../utils/filtres';
 import { EmptyState, Icon } from './ui';
+import { SaisieDate } from './ChampsFr';
 
 export type OptionFiltre = { valeur: string; libelle: string };
 
@@ -62,15 +63,7 @@ export function ChampDate({
   return (
     <div>
       <label className="field-label" htmlFor={id}>{libelle}</label>
-      <input
-        id={id}
-        type="date"
-        className="field-input"
-        value={valeur}
-        min={min || undefined}
-        max={max || undefined}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      <SaisieDate id={id} valeur={valeur} min={min} max={max} onChange={onChange} />
     </div>
   );
 }

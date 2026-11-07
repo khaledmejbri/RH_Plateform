@@ -19,9 +19,11 @@ import java.util.UUID;
 public class HeuresSupCsvService {
 
 	static final char SEPARATEUR = ';';
+	/** Date française jj/mm/aaaa (D-L01.c). */
+	static final java.time.format.DateTimeFormatter DATE = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
 	static final String BOM = "﻿";
 	private static final String[] ENTETES = {"Matricule", "Nom", "Site", "Date", "Horaire du jour", "Plage validée",
-			"ENTREE", "SORTIE", "Heures comptées (hh:mm)", "Référence de la demande", "État"};
+			"Entrée", "Sortie", "Heures comptées (hh:mm)", "Référence de la demande", "État"};
 
 	private final HeuresSupService heuresSupService;
 
@@ -38,10 +40,10 @@ public class HeuresSupCsvService {
 		sb.append(ligne(ENTETES)).append("\r\n");
 		for (HeuresComptees l : lignes) {
 			sb.append(ligne(
-					l.matricule(), l.nom(), l.siteLibelle(), l.journee() != null ? l.journee().toString() : null,
+					l.matricule(), l.nom(), l.siteLibelle(), l.journee() != null ? DATE.format(l.journee()) : null,
 					l.horaireDebut() != null ? l.horaireDebut() + "-" + l.horaireFin() : null,
 					plages(l), heure(l.entree()), heure(l.sortie()), l.heuresComptees(), l.referenceDemande(),
-					l.etat() != null ? l.etat().name() : null)).append("\r\n");
+					l.etat() != null ? l.etat().libelle() : null)).append("\r\n");
 		}
 		return sb.toString().getBytes(StandardCharsets.UTF_8);
 	}

@@ -20,7 +20,7 @@ const COMPETENCY_SCALE_FR = ['Débutant', 'Supervisé', 'Autonome', 'Avancé', '
 const QUESTION_TYPES: Array<{ value: CreateQuestionRequest['typeQuestion']; label: string; hint: string }> = [
   { value: 'TEXT', label: 'Texte court', hint: 'Une ligne' },
   { value: 'PARAGRAPH', label: 'Paragraphe', hint: 'Réponse libre' },
-  { value: 'MULTIPLE_CHOICE', label: 'Choix unique', hint: 'Radio — une seule option' },
+  { value: 'MULTIPLE_CHOICE', label: 'Choix unique', hint: 'Une seule option' },
   { value: 'CHECKBOX', label: 'Cases à cocher', hint: 'Plusieurs options' },
   { value: 'RATING', label: 'Note', hint: 'Score numérique' },
   { value: 'SCALE', label: 'Échelle', hint: 'Ex. 1 à 5 + libellés' },
@@ -256,7 +256,7 @@ export default function TemplateBuilder({ templateType, onSave, onCancel }: Temp
             type="text"
             value={templateInfo.description}
             onChange={e => setTemplateInfo({ ...templateInfo, description: e.target.value })}
-            placeholder="Contexte d’usage du template"
+            placeholder="Contexte d’usage du questionnaire"
           />
         </div>
 
@@ -295,7 +295,7 @@ export default function TemplateBuilder({ templateType, onSave, onCancel }: Temp
                 type="text"
                 value={templateInfo.domaine}
                 onChange={e => setTemplateInfo({ ...templateInfo, domaine: e.target.value })}
-                placeholder="Optionnel — pas une clé de matching"
+                placeholder="Optionnel"
               />
             </div>
           </>

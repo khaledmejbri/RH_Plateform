@@ -1,3 +1,4 @@
+import '../../../core/libelles/libelles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -27,6 +28,7 @@ class FormationsListScreen extends ConsumerWidget {
         title: const Text('Formations'),
         actions: [
           IconButton(
+            tooltip: 'Actualiser la liste',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () => ref.invalidate(formationsListProvider),
           ),
@@ -73,8 +75,8 @@ class _FormationCard extends StatelessWidget {
     final status = _statusMeta(item.statut);
     final cible =
         item.cible == 'UNITE'
-            ? (item.uniteCibleLibelle ?? 'Unite cible')
-            : 'Collaborateurs selectionnes';
+            ? (item.uniteCibleLibelle ?? 'Unité cible')
+            : 'Collaborateurs sélectionnés';
 
     return Material(
       color: AppTheme.surface,
@@ -124,7 +126,10 @@ class _FormationCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${item.organisme} - ${item.dureeHeures} h',
+                        [
+                          if ((item.numero ?? '').isNotEmpty) item.numero!,
+                          '${item.organisme} · ${item.dureeHeures} h',
+                        ].join(' · '),
                         style: const TextStyle(
                           fontSize: 12,
                           color: AppTheme.textSecondary,
@@ -205,23 +210,12 @@ class _FormationCard extends StatelessWidget {
   }
 
   (String, Color, Color) _statusMeta(String statut) {
+    final libelle = Libelles.statutFormation(statut);
     return switch (statut) {
-      'INTEGREE_PLAN' => (
-        'Planifiee',
-        AppTheme.successSurface,
-        AppTheme.success,
-      ),
-      'REFUSEE' => (
-        'Refusee',
-        AppTheme.errorSurface,
-        AppTheme.errorDark,
-      ),
-      'ANNULEE' => (
-        'Annulee',
-        AppTheme.surfaceMuted,
-        AppTheme.textSecondary,
-      ),
-      _ => ('RH', AppTheme.primarySurface, AppTheme.primaryDark),
+      'INTEGREE_PLAN' => (libelle, AppTheme.successSurface, AppTheme.success),
+      'REFUSEE' => (libelle, AppTheme.errorSurface, AppTheme.errorDark),
+      'ANNULEE' => (libelle, AppTheme.surfaceMuted, AppTheme.textSecondary),
+      _ => (libelle, AppTheme.primarySurface, AppTheme.primaryDark),
     };
   }
 }

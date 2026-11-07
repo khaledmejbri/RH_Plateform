@@ -15,6 +15,8 @@ import BarreFiltres, { AucunResultat, ChampDate, ChampSelect, FiltresUnite } fro
 import FiltreCollaborateur from '../components/FiltreCollaborateur';
 import { EmptyState, LoadingState } from '../components/ui';
 import { useFiltresUrl, type SelectionUnite } from '../utils/filtres';
+import { formatDate, formatDateHeure, formatHeuresMinutes, formatPeriode, formatPersonne, SITE_INTROUVABLE } from '../utils/format';
+import { VALEUR_NON_RECONNUE } from '../utils/libelles';
 
 const TAILLE_PAGE = 50;
 const JOURS_MAX = 31;
@@ -59,8 +61,7 @@ function erreurPeriode(du: string, au: string): string | null {
 }
 
 export function hhmm(minutes: number): string {
-  const m = Math.max(0, Math.floor(minutes || 0));
-  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  return formatHeuresMinutes(minutes);
 }
 
 const FMT_HEURE = new Intl.DateTimeFormat('fr-FR', {
@@ -76,7 +77,6 @@ const FMT_HEURE_SEC = new Intl.DateTimeFormat('fr-FR', {
   second: '2-digit',
   hourCycle: 'h23',
 });
-const FMT_JOUR_COURT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Africa/Tunis', day: '2-digit', month: '2-digit' });
 const FMT_JOUR = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Tunis', year: 'numeric', month: '2-digit', day: '2-digit' });
 
 /** Heure Tunis, suffixée « (J+1) » si l'horodatage tombe après la journée de travail. */
@@ -114,18 +114,15 @@ function hms(ambigues: Set<string>, isoTs: string | null | undefined, jour: stri
   return heureAvecJour(isoTs, jour, ambigues.has(FMT_JOUR.format(d) + ' ' + FMT_HEURE.format(d)));
 }
 
-function formatJour(jour: string): string {
-  const [a, m, j] = jour.split('-');
-  return a && m && j ? `${j}/${m}/${a}` : jour;
-}
+const formatJour = formatDate;
 
 function EtatBadge({ etat, jusqua }: { etat: EtatTempsTravail; jusqua?: string | null }) {
   const e = ETATS.find((x) => x.valeur === etat);
   // D-P18.d : « En cours » indique l'instant où la journée basculera en « Incomplet ».
   const d = etat === 'EN_COURS' && jusqua ? new Date(jusqua) : null;
   const libelle = d && !Number.isNaN(d.getTime())
-    ? `En cours jusqu’au ${FMT_JOUR_COURT.format(d)} ${FMT_HEURE.format(d)}`
-    : (e?.libelle ?? etat);
+    ? `En cours jusqu’au ${formatDateHeure(jusqua)}`
+    : (e?.libelle ?? VALEUR_NON_RECONNUE);
   return <span className={e?.classe ?? 'badge badge--default'}>{libelle}</span>;
 }
 
@@ -156,11 +153,9 @@ function Horaires({ ligne }: { ligne: LigneTempsTravail }) {
           key={`o${i}`}
           className="muted"
           style={{ fontStyle: 'italic' }}
-          title="Pointage sans entrée ou sortie correspondante : non compté dans le total"
+          title="Pointage sans entrée ou sans sortie correspondante : non compté dans le total"
         >
-          {o.type === 'SORTIE'
-            ? `entrée manquante → ${h(o.horodatage)}`
-            : `${h(o.horodatage)} → sortie manquante`}
+          {o.type === 'SORTIE' ? `— → ${h(o.horodatage)}` : `${h(o.horodatage)} → —`}
           {o.manuel ? <Manuel /> : null}
         </div>
       ))}
@@ -271,7 +266,7 @@ export default function TempsTravailPanel() {
     .filter((s) => s.actif || s.id === f.site)
     .map((s) => ({ valeur: s.id, libelle: s.libelle || s.code }))
     .sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr'));
-  const nomCollab = (n: string | null, m: string | null) => n || m || 'Collaborateur inconnu';
+  const nomCollab = (n: string | null, m: string | null) => formatPersonne(n, m);
 
   return (
     <div className="panel">
@@ -319,6 +314,9 @@ export default function TempsTravailPanel() {
         </button>
       </BarreFiltres>
 
+      {!erreurLocale ? (
+        <p className="muted small" style={{ margin: '4px 0 0' }}>Période affichée : {formatPeriode(f.du, f.au)}</p>
+      ) : null}
       {erreurAffichee ? (
         <div className="alert alert--error" role="alert">
           {erreurAffichee}
@@ -361,7 +359,7 @@ export default function TempsTravailPanel() {
               <strong>{hhmm(data.total_minutes)}</strong>
             </div>
             <div>
-              <div className="muted small">Lignes (collaborateur × jour × site)</div>
+              <div className="muted small">Journées</div>
               <strong>{data.nb_lignes}</strong>
             </div>
             <div>
@@ -382,7 +380,7 @@ export default function TempsTravailPanel() {
                   <th>Unité</th>
                   <th>Site</th>
                   <th>Jour</th>
-                  <th>Entrée / Sortie</th>
+                  <th>Entrées / sorties</th>
                   <th>Première entrée</th>
                   <th>Dernière sortie</th>
                   <th>Total</th>
@@ -394,10 +392,9 @@ export default function TempsTravailPanel() {
                   <tr key={`${l.collaborateur_id}|${l.site_id}|${l.jour}`}>
                     <td>
                       {nomCollab(l.collaborateur_nom, l.collaborateur_matricule)}
-                      {l.collaborateur_matricule ? <div className="muted small">{l.collaborateur_matricule}</div> : null}
                     </td>
                     <td>{libelleUnite(l)}</td>
-                    <td>{l.site_libelle ?? l.site_code ?? 'Site inconnu'}</td>
+                    <td>{l.site_libelle ?? SITE_INTROUVABLE}</td>
                     <td>{formatJour(l.jour)}</td>
                     <td>
                       <Horaires ligne={l} />
@@ -415,13 +412,13 @@ export default function TempsTravailPanel() {
           </div>
           <div className="pager">
             <button type="button" className="btn btn--ghost" disabled={page <= 0} onClick={() => setPage((p) => p - 1)}>
-              Préc.
+              Précédent
             </button>
             <span className="muted small">
-              {page + 1} / {Math.max(totalPages, 1)} ({data.lignes.totalElements})
+              Page {page + 1} sur {Math.max(totalPages, 1)} ({data.lignes.totalElements} journées)
             </span>
             <button type="button" className="btn btn--ghost" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>
-              Suiv.
+              Suivant
             </button>
           </div>
 
@@ -443,7 +440,6 @@ export default function TempsTravailPanel() {
                       <tr key={s.collaborateur_id}>
                         <td>
                           {nomCollab(s.collaborateur_nom, s.collaborateur_matricule)}
-                          {s.collaborateur_matricule ? <span className="muted small"> · {s.collaborateur_matricule}</span> : null}
                         </td>
                         <td>{s.nb_jours}</td>
                         <td>{s.nb_incompletes ?? 0}</td>

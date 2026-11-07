@@ -125,4 +125,41 @@ class EvaluationScoringServiceTest {
 		assertThat(analyse.aNotesCollaborateur()).isTrue();
 		assertThat(analyse.aNotesResponsable()).isTrue();
 	}
+
+	// --- Lot 1 UAT, ticket 1B : D-L01.d, textes accentués (EVA-10) ---
+
+	private static final java.util.regex.Pattern MOTS_SANS_ACCENT = java.util.regex.Pattern.compile(
+			"\b(Creer|developpement|criteres|critere|evolution|Prevoir|ecarts|identifies|cible|rapproche)\b");
+
+	@Test
+	void recommandationsDeLAnalyseSontAccentuees() {
+		java.util.UUID q1 = java.util.UUID.randomUUID();
+		java.util.UUID q2 = java.util.UUID.randomUUID();
+		// écarts importants et notes faibles : calibration + plan de développement
+		var analyse = service.analyser(java.util.List.of(reponse(q1, 5, 1), reponse(q2, 5, 2)), java.util.List.of());
+
+		assertThat(analyse.recommendations())
+				.contains("Créer un plan de développement ciblé sur les axes faibles identifiés.")
+				.anyMatch(r -> r.startsWith("Planifier un entretien de calibration : les écarts"))
+				.noneMatch(r -> MOTS_SANS_ACCENT.matcher(r).find());
+	}
+
+	@Test
+	void recommandationsDeScoreSontAccentuees() {
+		assertThat(service.calculer(2, 2, 4, 4).recommandationsIa())
+				.isEqualTo("Deux critères sous le seuil. Prévoir une alerte RH et un suivi rapproché.");
+		assertThat(service.calculer(1, 2, 2, 5).recommandationsIa())
+				.isEqualTo("Trois critères ou plus sont insuffisants. Plan d'action obligatoire et escalade DG.");
+		for (int[] notes : new int[][] {{5, 5, 5, 5}, {2, 2, 4, 4}, {1, 2, 2, 5}}) {
+			assertThat(service.calculer(notes[0], notes[1], notes[2], notes[3]).recommandationsIa())
+					.doesNotContainPattern(MOTS_SANS_ACCENT.pattern());
+		}
+	}
+
+	@Test
+	void sectionParDefautAccentuee() {
+		var analyse = service.analyser(java.util.List.of(reponse(java.util.UUID.randomUUID(), 4, 3)), java.util.List.of());
+
+		assertThat(analyse.sections()).extracting(sec -> sec.section()).containsExactly("Général");
+	}
 }

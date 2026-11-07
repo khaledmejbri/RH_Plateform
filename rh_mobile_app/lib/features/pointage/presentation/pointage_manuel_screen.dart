@@ -1,3 +1,4 @@
+import '../../../core/widgets/confirmation_action.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -147,12 +148,24 @@ class _DemandeCardState extends ConsumerState<_DemandeCard> {
   bool _busy = false;
 
   Future<void> _valider() async {
+    final d = widget.demande;
+    final ok = await confirmerAction(
+      context,
+      action: 'Valider ce pointage manuel ?',
+      element: _libelleElement(d),
+      libelleConfirmer: 'Valider',
+    );
+    if (!ok || !mounted) return;
     await _decider(() => ref.read(presenceRepositoryProvider).validerDemandeManuelle(widget.demande.id),
         'Pointage manuel validé.');
   }
 
+  /// « Entrée — Sarra Khemiri » : nom de l'élément affiché dans les dialogues de confirmation.
+  static String _libelleElement(DemandeManuelle d) =>
+      [d.typeLibelle, d.collaborateurNom ?? ''].where((e) => e.isNotEmpty).join(' — ');
+
   Future<void> _refuser() async {
-    final motif = await showDialog<String>(context: context, builder: (_) => const _MotifRefusDialog());
+    final motif = await showDialog<String>(context: context, builder: (_) => _MotifRefusDialog(element: _libelleElement(widget.demande)));
     if (motif == null) return;
     await _decider(() => ref.read(presenceRepositoryProvider).refuserDemandeManuelle(widget.demande.id, motif),
         'Pointage manuel refusé.');
@@ -259,7 +272,10 @@ class _DemandeCardState extends ConsumerState<_DemandeCard> {
 }
 
 class _MotifRefusDialog extends StatefulWidget {
-  const _MotifRefusDialog();
+  const _MotifRefusDialog({required this.element});
+
+  /// Nom de l'élément refusé, rappelé dans le dialogue.
+  final String element;
 
   @override
   State<_MotifRefusDialog> createState() => _MotifRefusDialogState();
@@ -279,13 +295,23 @@ class _MotifRefusDialogState extends State<_MotifRefusDialog> {
     final motif = _controller.text.trim();
     return AlertDialog(
       title: const Text('Refuser le pointage manuel'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        maxLines: 3,
-        maxLength: 500,
-        onChanged: (_) => setState(() {}),
-        decoration: const InputDecoration(labelText: 'Motif du refus *'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Êtes-vous sûr ?', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text(widget.element, style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            maxLines: 3,
+            maxLength: 500,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(labelText: 'Motif du refus *'),
+          ),
+        ],
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),

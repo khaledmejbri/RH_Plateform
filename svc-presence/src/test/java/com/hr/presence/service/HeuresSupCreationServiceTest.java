@@ -93,11 +93,18 @@ class HeuresSupCreationServiceTest {
 	private final UUID ficheB = UUID.randomUUID();
 	private Map<DayOfWeek, Horaire> horaires;
 
+	private final java.util.Map<String, Long> rangs = new java.util.HashMap<>();
+
+	private com.hr.presence.numero.CompteurNumero compteurMemoire() {
+		return cle -> rangs.merge(cle, 1L, Long::sum);
+	}
+
 	@BeforeEach
 	void setUp() {
 		service = new HeuresSupCreationService(demandeRepository, beneficiaireRepository, jourRepository, siteRepository,
 				fenetreService, referentielClient, accessService, acteurResolver, notifier, mapper,
-				Clock.fixed(MAINTENANT, ClockConfig.ZONE_TUNIS));
+				Clock.fixed(MAINTENANT, ClockConfig.ZONE_TUNIS),
+				new com.hr.presence.numero.NumeroDemandeService(compteurMemoire()));
 		site = new PresenceSite();
 		site.setId(UUID.randomUUID());
 		site.setLibelle("Siège");
@@ -118,7 +125,6 @@ class HeuresSupCreationServiceTest {
 		lenient().when(demandeRepository.saveAndFlush(any(PresenceHeuresSupDemande.class))).thenAnswer(inv -> {
 			PresenceHeuresSupDemande d = inv.getArgument(0);
 			d.setId(UUID.randomUUID());
-			d.setReference("HS-TEST0001");
 			return d;
 		});
 		lenient().when(beneficiaireRepository.save(any(PresenceHeuresSupBeneficiaire.class))).thenAnswer(inv -> {
@@ -159,6 +165,9 @@ class HeuresSupCreationServiceTest {
 		ArgumentCaptor<PresenceHeuresSupDemande> d = ArgumentCaptor.forClass(PresenceHeuresSupDemande.class);
 		verify(demandeRepository).saveAndFlush(d.capture());
 		assertThat(d.getValue().getStatut()).isEqualTo(StatutHeuresSup.EN_ATTENTE);
+		// D-L02 : HS-AAAAMM-NNNN, mois de création Africa/Tunis ; l'ancienne référence est alignée
+		assertThat(d.getValue().getNumero()).isEqualTo("HS-202611-0001");
+		assertThat(d.getValue().getReference()).isEqualTo("HS-202611-0001");
 		assertThat(d.getValue().isCreeeValidee()).isFalse();
 		assertThat(d.getValue().getDemandeurCompteId()).isEqualTo(compteRo.toString());
 		assertThat(d.getValue().getDemandeurFicheId()).isEqualTo(ficheRo.toString());

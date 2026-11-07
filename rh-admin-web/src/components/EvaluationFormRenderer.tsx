@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SaisieDate } from './ChampsFr';
 import { EvaluationQuestion } from '../api/evaluationApi';
 
 interface EvaluationFormRendererProps {
@@ -21,7 +22,7 @@ export default function EvaluationFormRenderer({ questions, onSubmit, readOnly =
             type="text"
             value={value || ''}
             onChange={e => setResponses({...responses, [question.identifiant]: e.target.value})}
-            placeholder={question.placeholder || 'Votre réponse...'}
+            placeholder={question.placeholder || 'Votre réponse…'}
             required={question.obligatoire}
             disabled={readOnly}
             className="field-input"
@@ -33,7 +34,7 @@ export default function EvaluationFormRenderer({ questions, onSubmit, readOnly =
           <textarea
             value={value || ''}
             onChange={e => setResponses({...responses, [question.identifiant]: e.target.value})}
-            placeholder={question.placeholder || 'Votre réponse détaillée...'}
+            placeholder={question.placeholder || 'Votre réponse détaillée…'}
             required={question.obligatoire}
             disabled={readOnly}
             rows={4}
@@ -130,13 +131,11 @@ export default function EvaluationFormRenderer({ questions, onSubmit, readOnly =
 
       case 'DATE':
         return (
-          <input
-            type="date"
-            value={value || ''}
-            onChange={e => setResponses({...responses, [question.identifiant]: e.target.value})}
+          <SaisieDate
+            valeur={value || ''}
+            onChange={v => setResponses({...responses, [question.identifiant]: v})}
             required={question.obligatoire}
             disabled={readOnly}
-            className="field-input"
           />
         );
 

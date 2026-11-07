@@ -4,8 +4,10 @@ import com.hr.referentiel.dto.AffectationCollaborateurResponse;
 import com.hr.referentiel.dto.CollaborateurEvaluationSnapshotResponse;
 import com.hr.referentiel.dto.CollaborateurPointageResponse;
 import com.hr.referentiel.dto.FicheEvaluationResponse;
+import com.hr.referentiel.dto.LibellesProfilResponse;
 import com.hr.referentiel.dto.MembreUniteResponse;
 import com.hr.referentiel.service.AffectationService;
+import com.hr.referentiel.service.FamilleMetierService;
 import com.hr.referentiel.service.PerimetreValidationService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hr.referentiel.service.ReferentielRhService;
@@ -39,16 +41,19 @@ public class InterneReferentielController {
 	private final ReferentielRhService referentielRhService;
 	private final PerimetreValidationService perimetreValidationService;
 	private final AffectationService affectationService;
+	private final FamilleMetierService familleMetierService;
 	private final String jetonInterne;
 
 	public InterneReferentielController(
 			ReferentielRhService referentielRhService,
 			PerimetreValidationService perimetreValidationService,
 			AffectationService affectationService,
+			FamilleMetierService familleMetierService,
 			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne) {
 		this.referentielRhService = referentielRhService;
 		this.perimetreValidationService = perimetreValidationService;
 		this.affectationService = affectationService;
+		this.familleMetierService = familleMetierService;
 		this.jetonInterne = jetonInterne;
 	}
 
@@ -134,6 +139,16 @@ public class InterneReferentielController {
 			return ResponseEntity.badRequest().build();
 		}
 		return ResponseEntity.ok(affectationService.affectations(ids));
+	}
+
+	/** Libellés des familles métier et des niveaux de séniorité, pour les textes de svc-evaluation (lot 2). */
+	@GetMapping("/libelles-profil")
+	public ResponseEntity<LibellesProfilResponse> libellesProfil(
+			@RequestHeader(value = "X-Internal-Token", required = false) String jeton) {
+		if (!jetonValide(jeton)) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+		}
+		return ResponseEntity.ok(familleMetierService.libellesProfil());
 	}
 
 	private boolean jetonValide(String jeton) {

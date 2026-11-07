@@ -62,7 +62,7 @@ public final class IdentiteAppelant {
 		} catch (RuntimeException ignore) {
 			// repli sur le sujet
 		}
-		return sujet != null ? sujet : (compteJwt != null ? compteJwt.toString() : "inconnu");
+		return sujet != null ? sujet : "Utilisateur inconnu";
 	}
 
 	/**

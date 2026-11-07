@@ -11,15 +11,31 @@ import {
 } from '../api/presenceApi';
 import BarreFiltres, { AucunResultat, ChampSelect } from '../components/BarreFiltres';
 import { correspond, useFiltresUrl } from '../utils/filtres';
+import { useConfirm } from '../components/ConfirmDialog';
+import { COLLABORATEUR_INTROUVABLE, formatPersonne, ressembleAUnIdentifiant } from '../utils/format';
+import { VALEUR_NON_RECONNUE } from '../utils/libelles';
+import { LIBELLES_POINTAGE_STATUT } from '../api/presenceApi';
 
 /** Seuil d'alerte RH (D-P04) — l'API renvoie déjà `alerteSeuil` ; affiché pour l'explication. */
 const SEUIL_MENSUEL = 3;
 const FILTRES_DEFAUT = { q: '', statut: 'EN_ATTENTE', type: '' };
 
+/** Motif du refus automatique : libellé du statut si c'est un code, sinon le texte du serveur. */
+function motifLisible(m: string | null): string {
+  if (!m) return '—';
+  if (/^[A-Z][A-Z0-9_]+$/.test(m)) return LIBELLES_POINTAGE_STATUT[m] ?? VALEUR_NON_RECONNUE;
+  return m;
+}
+
+/** Personne qui a décidé : jamais un identifiant. */
+function decideur(v: string): string {
+  return ressembleAUnIdentifiant(v) ? 'Personne introuvable' : v;
+}
+
 function StatutBadge({ statut }: { statut: StatutDemandeManuelle }) {
   const cls =
     statut === 'VALIDEE' ? 'badge badge--success' : statut === 'REFUSEE' ? 'badge badge--warning' : 'badge badge--default';
-  return <span className={cls}>{LIBELLES_DEMANDE_MANUELLE[statut] ?? statut}</span>;
+  return <span className={cls}>{LIBELLES_DEMANDE_MANUELLE[statut] ?? VALEUR_NON_RECONNUE}</span>;
 }
 
 /**
@@ -27,6 +43,7 @@ function StatutBadge({ statut }: { statut: StatutDemandeManuelle }) {
  * collaborateur avec alerte au-delà de 3, décision RH quand aucun responsable n'est trouvé.
  */
 export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: boolean }) {
+  const confirm = useConfirm();
   const filtres = useFiltresUrl(FILTRES_DEFAUT, 'm_');
   const f = filtres.valeurs;
   const statut = f.statut as StatutDemandeManuelle | '';
@@ -54,13 +71,16 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
     void charger();
   }, [charger]);
 
+  const nomDe = (d: DemandeManuelle) => formatPersonne(d.collaborateurNom, d.collaborateurMatricule);
+
   async function valider(d: DemandeManuelle) {
+    if (!(await confirm({ message: `Valider le pointage manuel de ${nomDe(d)} ?`, confirmLabel: 'Valider' }))) return;
     setBusyId(d.id);
     setErr(null);
     try {
       const r = await postValiderDemandeManuelle(d.id);
       setMsg(
-        `Pointage manuel de ${d.collaborateurNom ?? 'ce collaborateur'} validé` +
+        `Pointage manuel de ${nomDe(d)} validé` +
           (r.alerteSeuil ? ` — attention : ${r.manuelsDuMois} pointages manuels ce mois-ci.` : '.'),
       );
       await charger();
@@ -74,6 +94,13 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
   async function refuser(e: FormEvent) {
     e.preventDefault();
     if (!refusId) return;
+    const cible = demandes.find((x) => x.id === refusId);
+    const ok = await confirm({
+      message: `Refuser le pointage manuel de ${cible ? nomDe(cible) : 'ce collaborateur'} ?`,
+      confirmLabel: 'Refuser',
+      danger: true,
+    });
+    if (!ok) return;
     setBusyId(refusId);
     setErr(null);
     try {
@@ -94,7 +121,7 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
     () =>
       demandes.filter(
         (d) =>
-          correspond([d.collaborateurNom, d.valideurNom, d.justification], f.q) && (!f.type || d.type === f.type),
+          correspond([d.numero, d.collaborateurNom, d.collaborateurMatricule, d.valideurNom, d.justification], f.q) && (!f.type || d.type === f.type),
       ),
     [demandes, f.q, f.type],
   );
@@ -107,7 +134,7 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
         recherche={f.q}
         onRecherche={(v) => filtres.definir({ q: v })}
         libelleRecherche="Collaborateur"
-        placeholder="Nom, valideur, justification…"
+        placeholder="Numéro, nom, responsable, justification…"
         nbResultats={affichees.length}
         nbTotal={demandes.length}
         nbActifs={filtres.nbActifs}
@@ -148,7 +175,7 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
       {alertes.length > 0 ? (
         <div className="alert alert--warning" role="status">
           Plus de {SEUIL_MENSUEL} pointages manuels validés ce mois-ci pour :{' '}
-          {[...new Set(alertes.map((d) => d.collaborateurNom ?? 'Collaborateur inconnu'))].join(', ')}.
+          {[...new Set(alertes.map((d) => d.collaborateurNom ?? COLLABORATEUR_INTROUVABLE))].join(', ')}.
         </div>
       ) : null}
 
@@ -163,28 +190,30 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
           <table className="table">
             <thead>
               <tr>
+                <th>Numéro</th>
                 <th>Collaborateur</th>
                 <th>Pointage demandé</th>
                 <th>Justification</th>
-                <th>Refus automatique</th>
-                <th>Valideur</th>
+                <th>Refus automatique du pointage</th>
+                <th>Responsable</th>
                 <th>Statut</th>
                 <th>Manuels du mois</th>
-                <th>Actions</th>
+                <th><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
               {affichees.map((d) => (
                 <tr key={d.id}>
-                  <td>{d.collaborateurNom ?? 'Collaborateur inconnu'}</td>
+                  <td className="small">{d.numero ?? ''}</td>
+                  <td>{nomDe(d)}</td>
                   <td>
                     {d.type === 'SORTIE' ? 'Sortie' : 'Entrée'} · {formatDateTunis(d.heureDeclaree)}
                   </td>
                   <td className="small">{d.justification}</td>
-                  <td className="muted small">{d.motifRejetInitial ?? '—'}</td>
+                  <td className="muted small">{motifLisible(d.motifRejetInitial)}</td>
                   <td className="small">
                     {d.validationParRh ? 'RH (aucun responsable)' : d.valideurNom ?? '—'}
-                    {d.decidePar ? <div className="muted">Décidé par {d.decidePar}</div> : null}
+                    {d.decidePar ? <div className="muted">Décidé par {decideur(d.decidePar)}</div> : null}
                     {d.motifRefus ? <div className="muted">Motif : {d.motifRefus}</div> : null}
                   </td>
                   <td>

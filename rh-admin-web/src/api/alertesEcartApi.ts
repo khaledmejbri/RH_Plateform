@@ -37,9 +37,21 @@ export const LIBELLES_STATUT_ALERTE: Record<StatutAlerteEcart, string> = {
 };
 
 export const LIBELLES_SENS_GLOBAL: Record<SensGlobal, string> = {
-  RO_INFERIEUR: 'Note du responsable plus basse',
-  RO_SUPERIEUR: 'Note du responsable plus haute',
+  RO_INFERIEUR: 'Le responsable note plus bas que le collaborateur',
+  RO_SUPERIEUR: 'Le responsable note plus haut que le collaborateur',
   DEUX_SENS: 'Écarts dans les deux sens',
+};
+
+/** Sens d'un écart, version courte (colonne du tableau). */
+export const LIBELLES_SENS_ECART: Record<SensEcart, string> = {
+  RO_INFERIEUR: 'Plus basse',
+  RO_SUPERIEUR: 'Plus haute',
+};
+
+/** Lecture neutre de l'écart, affichée une seule fois par alerte (EVA-15). */
+export const LECTURE_NEUTRE: Record<SensEcart, string> = {
+  RO_INFERIEUR: 'Note du responsable plus basse que l’auto-évaluation : à clarifier lors d’un échange.',
+  RO_SUPERIEUR: 'Note du responsable plus haute que l’auto-évaluation : à clarifier lors d’un échange.',
 };
 
 /** Ordre d'affichage des 7 conclusions (D-E08.c). */
@@ -63,7 +75,8 @@ export const LIBELLES_EVENEMENT: Record<EvenementAlerteEcart, string> = {
 
 export function libelleConclusion(code: string | null | undefined, serveur?: string | null): string {
   if (serveur) return serveur;
-  return CONCLUSIONS.find((c) => c.code === code)?.libelle ?? code ?? '—';
+  if (!code) return '—';
+  return CONCLUSIONS.find((c) => c.code === code)?.libelle ?? 'Valeur non reconnue';
 }
 
 export type AlerteEcartResume = {
@@ -107,6 +120,10 @@ export type LigneAlerteEcart = {
 export type HistoriqueAlerteEcart = {
   identifiant: string;
   typeEvenement: EvenementAlerteEcart;
+  /** Libellés français fournis par le serveur (lot 1B) ; repli sur les tables locales. */
+  typeEvenementLibelle?: string | null;
+  statutAvantLibelle?: string | null;
+  statutApresLibelle?: string | null;
   auteurLibelle: string | null;
   auteurSysteme: boolean;
   le: string;

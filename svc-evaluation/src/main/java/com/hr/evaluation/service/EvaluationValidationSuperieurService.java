@@ -123,7 +123,7 @@ public class EvaluationValidationSuperieurService {
     }
 
     private static EvaluationMetierException introuvable(UUID evaluationId) {
-        return EvaluationMetierException.notFound(EVALUATION_INTROUVABLE, "Évaluation introuvable : " + evaluationId);
+        return EvaluationMetierException.notFound(EVALUATION_INTROUVABLE, "Évaluation introuvable");
     }
 
     private List<CompetenceManquante> competencesManquantes(Evaluation evaluation, List<EvaluationQuestion> questions) {

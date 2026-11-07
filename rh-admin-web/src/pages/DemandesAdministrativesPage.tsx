@@ -6,35 +6,30 @@ import {
   getUnites,
   postDemandeAdministrativeRefuserRrh,
   postDemandeAdministrativeValiderRrh,
+  RhApiError,
   type DemandeAdministrative,
   type DemandeAdministrativeHistorique,
   type DemandeAdministrativeSuivi,
   type Unite,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { useConfirm } from '../components/ConfirmDialog';
+
 import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
 import { correspond, libelleDansSelection, unitesRetenues, useFiltresUrl } from '../utils/filtres';
 import { DialogPanel } from '../components/useDialogA11y';
-import { Avatar, Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, formatDateTime, type IconName, type Tone } from '../components/ui';
+import { Avatar, Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, type IconName, type Tone } from '../components/ui';
+import { formatDate, formatDateHeure, formatDuree, formatHeure, formatPeriode as formatPeriodeFr, formatPersonne } from '../utils/format';
+import { libelle, libelleConnu, optionsDomaine } from '../utils/libelles';
 
-/** Par défaut la RH arrive sur sa file : demandes en attente de décision RRH (§ 6.1). */
+/** Par défaut la RH arrive sur sa file : demandes en attente de décision RH (§ 6.1). */
 type StatutFilter = '' | 'EN_VALIDATION_SUPERIEUR' | 'EN_VALIDATION_RRH' | 'APPROUVEE' | 'REFUSEE' | 'ANNULEE';
-
-const ACTION_LIBELLES: Record<string, string> = {
-  CREATION_DEMANDE: 'Création de la demande',
-  SOUMISE_A_RO: 'Soumise au responsable',
-  VALIDATION_RO: 'Validée par le responsable',
-  REFUS_RO: 'Refusée par le responsable',
-  VALIDATION_RRH: 'Transmise à la RRH',
-  REFUS_RRH: 'Refusée par la RRH',
-  APPROBATION_RRH: 'Approuvée par la RRH',
-  ANNULATION_DEMANDEUR: 'Annulée par le demandeur',
-};
 
 const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', statut: 'EN_VALIDATION_RRH', type: '' };
 
 export default function DemandesAdministrativesPage() {
   const lectureSeule = useLectureSeule();
+  const confirm = useConfirm();
   const [rows, setRows] = useState<DemandeAdministrative[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -51,11 +46,6 @@ export default function DemandesAdministrativesPage() {
   const [historique, setHistorique] = useState<DemandeAdministrativeHistorique[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailErr, setDetailErr] = useState<string | null>(null);
-
-  const [action, setAction] = useState<'approuver' | 'refuser' | null>(null);
-  const [motif, setMotif] = useState('');
-  const [actionErr, setActionErr] = useState<string | null>(null);
-  const [acting, setActing] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -79,7 +69,6 @@ export default function DemandesAdministrativesPage() {
     setSuivi(null);
     setHistorique([]);
     setDetailErr(null);
-    setAction(null);
     setMsg(null);
     setDetailLoading(true);
     try {
@@ -98,60 +87,70 @@ export default function DemandesAdministrativesPage() {
 
   function closeDetail() {
     setSelected(null);
-    setAction(null);
   }
 
-  function openAction(kind: 'approuver' | 'refuser') {
-    setAction(kind);
-    setMotif('');
-    setActionErr(null);
-  }
-
-  async function confirmAction() {
-    if (!selected || !action) return;
-    const texte = motif.trim();
-    if (action === 'refuser' && !texte) {
-      setActionErr('Le motif de refus est obligatoire.');
+  /** Une seule fenêtre « Êtes-vous sûr ? » porte le motif, l'envoi et l'erreur (D-L03). */
+  async function decider(kind: 'approuver' | 'refuser') {
+    if (!selected) return;
+    const cible = selected;
+    const qui = `${intitule(cible)}${cible.numero ? ` ${cible.numero}` : ''} de ${formatPersonne(cible.demandeur_nom, cible.demandeur_matricule)}`;
+    let conflit: string | null = null;
+    const ok = await confirm({
+      message: kind === 'approuver' ? `Approuver la demande : ${qui} ?` : `Refuser la demande : ${qui} ?`,
+      confirmLabel: kind === 'approuver' ? 'Approuver' : 'Refuser',
+      danger: kind === 'refuser',
+      motif: kind === 'refuser'
+        ? { label: 'Motif du refus', obligatoire: true, placeholder: 'Expliquez la raison du refus au demandeur…' }
+        : undefined,
+      envoyer: async (texte) => {
+        try {
+          if (kind === 'approuver') await postDemandeAdministrativeValiderRrh(cible.identifiant);
+          else await postDemandeAdministrativeRefuserRrh(cible.identifiant, texte);
+        } catch (e) {
+          if (e instanceof RhApiError && e.status === 409) conflit = e.message;
+          throw e;
+        }
+      },
+      echecDefinitif: () => conflit !== null,
+    });
+    if (conflit) {
+      // La demande a changé entre-temps : on referme la fenêtre, on affiche l'erreur et on recharge la liste.
+      // load() remet l'erreur à zéro : le message est posé après le rechargement.
+      setSelected(null);
+      await load();
+      setErr(conflit);
       return;
     }
-    setActing(true);
-    setActionErr(null);
-    try {
-      if (action === 'approuver') {
-        await postDemandeAdministrativeValiderRrh(selected.identifiant);
-        setMsg('Demande approuvée. Le demandeur est notifié.');
-      } else {
-        await postDemandeAdministrativeRefuserRrh(selected.identifiant, texte);
-        setMsg('Demande refusée. Le demandeur est notifié.');
-      }
-      setSelected(null);
-      setAction(null);
-      await load();
-    } catch (e) {
-      setActionErr(e instanceof Error ? e.message : 'Erreur');
-    } finally {
-      setActing(false);
-    }
+    if (!ok) return;
+    setMsg(kind === 'approuver' ? 'Demande approuvée. Le demandeur est notifié.' : 'Demande refusée. Le demandeur est notifié.');
+    setSelected(null);
+    await load();
   }
 
   function formatTypeDemande(type: string): string {
-    if (type === 'AUTORISATION_SORTIE') return 'Autorisation de sortie';
-    if (type === 'CONGE') return 'Congé';
-    if (type === 'ORDRE_MISSION') return 'Ordre de mission';
-    return type.replaceAll('_', ' ').toLowerCase().split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    return libelle('typeDemande', type);
   }
 
+  /** « Congé annuel » : le libellé du type de congé est complet. */
   function formatTypeConge(code: string | undefined): string | null {
-    if (!code) return null;
-    const map: Record<string, string> = {
-      ANNUEL: 'Annuel',
-      MALADIE: 'Maladie',
-      MATERNITE: 'Maternité',
-      SANS_SOLDE: 'Sans solde',
-      AUTRE: 'Autre',
-    };
-    return map[code.toUpperCase()] ?? code;
+    return code ? libelle('typeConge', code) : null;
+  }
+
+  /** Intitulé de la demande : « Congé annuel », « Autorisation de sortie »… */
+  function intitule(d: DemandeAdministrative): string {
+    if (d.type_demande === 'CONGE') {
+      const c = (d.contenu as { type_conge?: string } | undefined)?.type_conge;
+      if (c) return libelle('typeConge', c);
+    }
+    return formatTypeDemande(d.type_demande);
+  }
+
+  /** Un commentaire qui n'est qu'un code ou en contient un (« Demande CONGE créée ») n'est pas affiché. */
+  function commentaireLisible(c: string | undefined): string | null {
+    const t = (c ?? '').trim();
+    if (!t) return null;
+    if (/^[A-Z0-9_ ]+$/.test(t) || /[A-Z]{3,}_[A-Z_]+/.test(t) || /\b(CONGE|RRH|RO)\b/.test(t)) return null;
+    return t;
   }
 
   function typeChip(type: string): { tone: Tone; icon: IconName } {
@@ -164,23 +163,19 @@ export default function DemandesAdministrativesPage() {
     if (d.type_demande === 'AUTORISATION_SORTIE') {
       const c = d.contenu as { date_jour?: string; heure_debut?: string; heure_fin?: string } | undefined;
       if (c?.date_jour) {
-        const heures = c.heure_debut && c.heure_fin ? ` · ${c.heure_debut} → ${c.heure_fin}` : '';
+        const heures = c.heure_debut && c.heure_fin ? ` · ${formatHeure(c.heure_debut)} → ${formatHeure(c.heure_fin)}` : '';
         let duree = '';
         if (c.heure_debut && c.heure_fin) {
           const [hd, md] = c.heure_debut.split(':').map(Number);
           const [hf, mf] = c.heure_fin.split(':').map(Number);
           const mins = (hf * 60 + mf) - (hd * 60 + md);
-          if (mins > 0) {
-            const h = Math.floor(mins / 60), m = mins % 60;
-            duree = ` (${h > 0 ? h + 'h' : ''}${m > 0 ? m + 'min' : ''})`;
-          }
+          if (mins > 0) duree = ` (${formatDuree(mins)})`;
         }
-        return `${c.date_jour}${heures}${duree}`;
+        return `${formatDate(c.date_jour)}${heures}${duree}`;
       }
     }
-    if (d.periode_debut && d.periode_fin) return `${d.periode_debut} → ${d.periode_fin}`;
-    if (d.periode_debut) return d.periode_debut;
-    return '-';
+    if (d.periode_debut) return formatPeriodeFr(d.periode_debut, d.periode_fin ?? d.periode_debut);
+    return '—';
   }
 
   /** Champs saisis par le demandeur, hors champs déjà rendus (type de congé, période). */
@@ -203,7 +198,7 @@ export default function DemandesAdministrativesPage() {
     () =>
       rows.filter(
         (d) =>
-          correspond([d.demandeur_nom, d.demandeur_matricule, d.demandeur_unite, formatTypeDemande(d.type_demande)], f.q) &&
+          correspond([d.numero, d.demandeur_nom, d.demandeur_matricule, d.demandeur_unite, intitule(d)], f.q) &&
           libelleDansSelection(retenues, d.demandeur_unite),
       ),
     [rows, f.q, retenues],
@@ -215,7 +210,7 @@ export default function DemandesAdministrativesPage() {
     <div className="page">
       <PageHeader
         title="Demandes administratives"
-        lead="Congés, autorisations de sortie et ordres de mission : décision RRH après le responsable."
+        lead="Congés, autorisations de sortie et ordres de mission : décision de la RH après le responsable."
         actions={
           <button type="button" className="btn btn--secondary" onClick={() => void load()} disabled={loading}>
             <Icon name="refresh" />
@@ -229,7 +224,7 @@ export default function DemandesAdministrativesPage() {
         recherche={f.q}
         onRecherche={(v) => filtres.definir({ q: v })}
         libelleRecherche="Demandeur"
-        placeholder="Nom, matricule, unité…"
+        placeholder="Numéro, nom, matricule, unité…"
         nbResultats={affichees.length}
         nbTotal={rows.length}
         nbActifs={filtres.nbActifs}
@@ -241,7 +236,7 @@ export default function DemandesAdministrativesPage() {
           valeur={f.statut}
           toutesLibelle="Tous les statuts"
           options={[
-            { valeur: 'EN_VALIDATION_RRH', libelle: 'À décider (validation RRH)' },
+            { valeur: 'EN_VALIDATION_RRH', libelle: 'À décider (validation RH)' },
             { valeur: 'EN_VALIDATION_SUPERIEUR', libelle: 'Chez le responsable' },
             { valeur: 'APPROUVEE', libelle: 'Approuvées' },
             { valeur: 'REFUSEE', libelle: 'Refusées' },
@@ -254,15 +249,16 @@ export default function DemandesAdministrativesPage() {
           libelle="Type"
           valeur={f.type}
           toutesLibelle="Tous les types"
-          options={[
-            { valeur: 'CONGE', libelle: 'Congé' },
-            { valeur: 'AUTORISATION_SORTIE', libelle: 'Autorisation de sortie' },
-            { valeur: 'ORDRE_MISSION', libelle: 'Ordre de mission' },
-          ]}
+          options={optionsDomaine('typeDemande')}
           onChange={(v) => filtres.definir({ type: v })}
         />
         <FiltresUnite idPrefixe="demandes" unites={unites} selection={f} onChange={(sel) => filtres.definir(sel)} />
       </BarreFiltres>
+      {f.statut === FILTRES_DEFAUT.statut ? (
+        <p className="muted small" role="status">
+          Filtre actif : demandes à décider. Choisissez « Tous les statuts » pour voir l’ensemble des demandes.
+        </p>
+      ) : null}
 
       {err ? <ErrorAlert>{err}</ErrorAlert> : null}
       {msg ? <div className="alert alert--success" role="status"><Icon name="check" />{msg}</div> : null}
@@ -282,6 +278,7 @@ export default function DemandesAdministrativesPage() {
               <caption className="sr-only">Liste des demandes administratives</caption>
               <thead>
                 <tr>
+                  <th scope="col">Numéro</th>
                   <th scope="col">Créée le</th>
                   <th scope="col">Type</th>
                   <th scope="col">Statut</th>
@@ -299,11 +296,11 @@ export default function DemandesAdministrativesPage() {
                       : null;
                   return (
                     <tr key={d.identifiant}>
-                      <td data-label="Créée le" className="cell-meta">{formatDateTime(d.cree_le)}</td>
+                      <td data-label="Numéro" className="cell-meta">{d.numero ?? ''}</td>
+                      <td data-label="Créée le" className="cell-meta">{formatDateHeure(d.cree_le)}</td>
                       <td data-label="Type">
                         <Chip tone={chip.tone} icon={chip.icon}>
-                          {formatTypeDemande(d.type_demande)}
-                          {typeConge ? <span className="muted">· {typeConge}</span> : null}
+                          {typeConge ?? formatTypeDemande(d.type_demande)}
                         </Chip>
                       </td>
                       <td data-label="Statut">
@@ -312,12 +309,10 @@ export default function DemandesAdministrativesPage() {
                       <td data-label="Période" className="cell-meta">{formatPeriode(d)}</td>
                       <td data-label="Demandeur">
                         <span className="cell-user">
-                          <Avatar name={d.demandeur_nom ?? d.demandeur_identifiant} size={28} />
+                          <Avatar name={d.demandeur_nom ?? '?'} size={28} />
                           <span>
-                            <div>{d.demandeur_nom ?? '—'}</div>
-                            <div className="cell-meta">
-                              {[d.demandeur_matricule, d.demandeur_unite].filter(Boolean).join(' · ')}
-                            </div>
+                            <div>{formatPersonne(d.demandeur_nom, d.demandeur_matricule)}</div>
+                            <div className="cell-meta">{d.demandeur_unite ?? ''}</div>
                           </span>
                         </span>
                       </td>
@@ -341,8 +336,10 @@ export default function DemandesAdministrativesPage() {
           <DialogPanel label="Détail de la demande administrative" className="modal modal--md" onClose={closeDetail}>
             <div className="modal__head">
               <div>
-                <h3 className="modal__title" style={{ margin: 0 }}>{formatTypeDemande(selected.type_demande)}</h3>
-                <code className="cell-code">{selected.identifiant.slice(0, 8)}…</code>
+                <h3 className="modal__title" style={{ margin: 0 }}>{intitule(selected)}</h3>
+                <p className="cell-meta" style={{ margin: 0 }}>
+                  {[selected.numero, formatPersonne(selected.demandeur_nom, selected.demandeur_matricule)].filter(Boolean).join(' · ')}
+                </p>
               </div>
               <button type="button" className="modal__close" aria-label="Fermer" onClick={closeDetail}>
                 <Icon name="x" size={18} />
@@ -362,12 +359,11 @@ export default function DemandesAdministrativesPage() {
                 <div>
                   <dt>Demandeur</dt>
                   <dd>
-                    {selected.demandeur_nom ?? '—'}
-                    {selected.demandeur_matricule ? <span className="cell-meta"> · {selected.demandeur_matricule}</span> : null}
+                    {formatPersonne(selected.demandeur_nom, selected.demandeur_matricule)}
                   </dd>
                 </div>
                 <div><dt>Unité</dt><dd>{selected.demandeur_unite ?? '—'}</dd></div>
-                <div><dt>Créée le</dt><dd>{formatDateTime(selected.cree_le)}</dd></div>
+                <div><dt>Créée le</dt><dd>{formatDateHeure(selected.cree_le)}</dd></div>
                 {contenuLignes(selected).map(([libelle, valeur]) => (
                   <div key={libelle}><dt>{libelle}</dt><dd>{valeur}</dd></div>
                 ))}
@@ -390,7 +386,7 @@ export default function DemandesAdministrativesPage() {
                   <ol className="small" style={{ marginTop: 0, paddingLeft: 18 }}>
                     {suivi.etapes.map((e) => (
                       <li key={e.code}>
-                        {e.libelle}{' '}
+                        {libelleConnu('etapeDemande', e.code) ?? e.libelle}{' '}
                         {e.terminee ? <StatusBadge statut="VALIDE" label="Terminée" /> : e.en_cours ? <StatusBadge statut="EN_COURS" label="En cours" /> : null}
                       </li>
                     ))}
@@ -402,65 +398,31 @@ export default function DemandesAdministrativesPage() {
                 <>
                   <p className="section-title">Historique</p>
                   <ul className="small" style={{ marginTop: 0, paddingLeft: 18 }}>
-                    {historique.map((h) => (
-                      <li key={h.identifiant}>
-                        <span className="cell-meta">{formatDateTime(h.date_action)}</span>{' — '}
-                        {ACTION_LIBELLES[h.action] ?? h.action}
-                        {h.acteur_nom ? ` · ${h.acteur_nom}` : ''}
-                        {h.commentaire ? <span className="muted"> · « {h.commentaire} »</span> : null}
-                      </li>
-                    ))}
+                    {historique.map((h) => {
+                      const commentaire = commentaireLisible(h.commentaire);
+                      return (
+                        <li key={h.identifiant}>
+                          <span className="cell-meta">{formatDateHeure(h.date_action)}</span>{' — '}
+                          {h.etape_libelle?.trim() || libelle('actionDemande', h.action)}
+                          {h.acteur_nom ? ` · ${libelleConnu('acteur', h.acteur_nom) ?? h.acteur_nom}` : ''}
+                          {commentaire ? <span className="muted"> · « {commentaire} »</span> : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </>
               ) : null}
 
-              {peutDecider && action === 'refuser' ? (
-                <>
-                  <label htmlFor="demande-motif-refus" className="field-label">Motif du refus (obligatoire)</label>
-                  <textarea
-                    id="demande-motif-refus"
-                    className="field-input field-input--area"
-                    rows={3}
-                    value={motif}
-                    onChange={(e) => setMotif(e.target.value)}
-                    placeholder="Expliquez la raison du refus au demandeur…"
-                    aria-invalid={!!actionErr}
-                    aria-describedby={actionErr ? 'demande-action-err' : undefined}
-                    autoFocus
-                  />
-                </>
-              ) : null}
-              {peutDecider && action === 'approuver' ? (
-                <div className="callout">
-                  <p className="callout__title">Confirmer l’approbation</p>
-                  <p>La demande passera au statut « Approuvée » et le demandeur sera notifié.</p>
-                </div>
-              ) : null}
             </div>
 
-            {actionErr ? <p id="demande-action-err" className="alert alert--error" role="alert">{actionErr}</p> : null}
-
             <div className="modal__actions" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
-              {peutDecider && action === null ? (
+              {peutDecider ? (
                 <>
-                  <button type="button" className="btn btn--ghost" onClick={() => openAction('refuser')}>Refuser</button>
+                  <button type="button" className="btn btn--ghost" onClick={() => void decider('refuser')}>Refuser</button>
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button type="button" className="btn btn--secondary" onClick={closeDetail}>Fermer</button>
-                    <button type="button" className="btn btn--primary" onClick={() => openAction('approuver')}>Approuver</button>
+                    <button type="button" className="btn btn--primary" onClick={() => void decider('approuver')}>Approuver</button>
                   </div>
-                </>
-              ) : peutDecider ? (
-                <>
-                  <button type="button" className="btn btn--secondary" onClick={() => setAction(null)}>Retour</button>
-                  <button
-                    type="button"
-                    className={`btn ${action === 'refuser' ? 'btn--danger' : 'btn--primary'}`}
-                    disabled={acting || (action === 'refuser' && !motif.trim())}
-                    aria-busy={acting}
-                    onClick={() => void confirmAction()}
-                  >
-                    {acting ? 'Envoi…' : action === 'refuser' ? 'Confirmer le refus' : 'Confirmer l’approbation'}
-                  </button>
                 </>
               ) : (
                 <button type="button" className="btn btn--secondary" onClick={closeDetail} style={{ marginLeft: 'auto' }}>Fermer</button>

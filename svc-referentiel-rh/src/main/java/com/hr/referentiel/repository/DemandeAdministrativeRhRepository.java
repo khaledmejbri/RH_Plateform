@@ -13,6 +13,10 @@ import java.util.UUID;
 
 public interface DemandeAdministrativeRhRepository extends JpaRepository<DemandeAdministrativeRh, UUID> {
 
+	/** D-L02 : recherche RH par numéro lisible (le numéro est stocké en majuscules ; correspondance exacte). */
+	@Query("select d from DemandeAdministrativeRh d join fetch d.demandeur where d.numero = :numero")
+	List<DemandeAdministrativeRh> findPourRhByNumero(@Param("numero") String numero);
+
 	List<DemandeAdministrativeRh> findByDemandeurIdOrderByCreeLeDesc(UUID demandeurId);
 
 	/** @deprecated Préférer {@link #findByValideurAttenduIdAndStatutOrderByCreeLeDesc} (manager nœud). */

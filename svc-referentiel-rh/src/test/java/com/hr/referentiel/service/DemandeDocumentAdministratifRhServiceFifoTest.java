@@ -56,6 +56,9 @@ class DemandeDocumentAdministratifRhServiceFifoTest {
 	@Mock
 	private RhNotificationPublisher notificationPublisher;
 
+	@Mock
+	private NumeroLisibleService numeroLisibleService;
+
 	@InjectMocks
 	private DemandeDocumentAdministratifRhService service;
 
@@ -352,7 +355,7 @@ class DemandeDocumentAdministratifRhServiceFifoTest {
 			when(repository.countByStatutAndCreeLeBefore(
 					StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE, demandeB.getCreeLe())).thenReturn(1L);
 
-			var file = service.fileAttentePourRh();
+			var file = service.fileAttentePourRh(null);
 
 			assertEquals(1, file.get(0).getRangDansFile());
 			assertFalse(file.get(0).isEstProchaineFifo());

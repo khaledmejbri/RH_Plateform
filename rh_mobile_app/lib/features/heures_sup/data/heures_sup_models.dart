@@ -1,5 +1,6 @@
 // Modèles heures supplémentaires (ADR-M09-HORAIRES, D-P13 à D-P16). JSON en snake_case.
 
+import '../../../core/libelles/libelles.dart';
 import '../../pointage/data/fenetre_du_jour.dart';
 
 /// Statuts d'une demande d'heures sup.
@@ -16,7 +17,7 @@ abstract final class StatutHeuresSup {
         refusee => 'Refusée',
         annulee => 'Annulée',
         expiree => 'Expirée',
-        _ => statut,
+        _ => Libelles.valeurNonReconnue,
       };
 }
 
@@ -128,7 +129,8 @@ class HeuresComptees {
   String get etatLibelle => switch (etat) {
         'INCOMPLET' => 'Pointage incomplet',
         'EN_COURS' => 'En cours',
-        _ => 'Complet',
+        'COMPLET' => 'Complet',
+        _ => Libelles.valeurNonReconnue,
       };
 }
 
@@ -183,6 +185,9 @@ class HeuresSupAVenir {
 class DemandeHeuresSup {
   final String id;
   final String reference;
+
+  /// Numéro lisible `HS-AAAAMM-NNNN` (D-L02), envoyé par le serveur.
+  final String? numero;
   final String statut;
   final String? siteLibelle;
   final String? dateDebut;
@@ -200,6 +205,7 @@ class DemandeHeuresSup {
   const DemandeHeuresSup({
     required this.id,
     this.reference = '',
+    this.numero,
     required this.statut,
     this.siteLibelle,
     this.dateDebut,
@@ -222,6 +228,7 @@ class DemandeHeuresSup {
     return DemandeHeuresSup(
       id: (json['id'] ?? '').toString(),
       reference: (json['reference'] ?? '').toString(),
+      numero: json['numero']?.toString(),
       statut: (json['statut'] ?? '').toString(),
       siteLibelle: json['site_libelle']?.toString(),
       dateDebut: json['date_debut']?.toString(),
@@ -246,6 +253,9 @@ class DemandeHeuresSup {
   bool get enAttente => statut == StatutHeuresSup.enAttente;
   bool get validee => statut == StatutHeuresSup.validee;
   String get statutLibelle => StatutHeuresSup.libelle(statut);
+
+  /// Référence à afficher : le numéro `HS-…`, jamais un identifiant technique (vide si absente).
+  String get numeroAffiche => numeroLisibleHeuresSup(numero, reference);
 
   /// « 2 h avant · 1 h après ».
   String get ouverturesLibelle => HeuresSupDuJour(
@@ -322,4 +332,13 @@ class CreationHeuresSupRequest {
         if (ouvertureApresMinutes > 0) 'ouverture_apres_minutes': ouvertureApresMinutes,
         'motif': motif.trim(),
       };
+}
+
+/// Numéro lisible `HS-AAAAMM-NNNN` (`numero`, D-L02) ; à défaut `reference` si ce n'est pas un identifiant technique.
+String numeroLisibleHeuresSup(String? numero, String reference) {
+  final uuid = RegExp(r'^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$');
+  final n = numero?.trim() ?? '';
+  if (n.isNotEmpty) return n;
+  final r = reference.trim();
+  return uuid.hasMatch(r) ? '' : r;
 }

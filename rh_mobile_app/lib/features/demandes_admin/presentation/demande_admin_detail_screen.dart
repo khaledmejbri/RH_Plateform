@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
-
 import '../../../core/constants/api_constants.dart';
+import '../../../core/format/formats.dart';
+import '../../../core/libelles/libelles.dart';
 import '../../../core/network/api_client.dart';
 import '../data/demande_admin_models.dart';
 import '../data/demande_admin_repository.dart';
@@ -31,13 +31,6 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
   const DemandeAdminDetailScreen({super.key, required this.id});
 
   final String id;
-
-  String _formatTypeDemande(String type) {
-    return type.replaceAll('_', ' ').toLowerCase().split(' ').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1);
-    }).join(' ');
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -70,28 +63,42 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text(rhErrorMessage(e))),
               data: (j) {
-                String statusLabel = 'Envoyée';
-                String statusDescription = 'Votre demande a été envoyée et sera traitée prochainement.';
-                
-                if (j['statut'] == 'EN_ATTENTE_VALIDATION' || j['statut'] == 'EN_COURS') {
-                  statusLabel = 'En cours de validation';
-                  statusDescription = 'Votre demande est en cours de validation par votre responsable. Délai estimé : 2-3 jours ouvrables.';
-                } else if (j['statut'] == 'APPROUVEE' || j['statut'] == 'VALIDE') {
-                  statusLabel = 'Approuvée';
-                  statusDescription = 'Votre demande a été approuvée. Vous pouvez consulter les détails ci-dessous.';
-                } else if (j['statut'] == 'REJETEE' || j['statut'] == 'REFUSEE') {
-                  statusLabel = 'Refusée';
-                  statusDescription = 'Votre demande a été refusée. Veuillez consulter le motif ci-dessous.';
+                final statut = j['statut']?.toString();
+                final statusLabel = Libelles.statutDemande(statut);
+                final bool refusee = statut == 'REFUSEE';
+                final bool approuvee = statut == 'APPROUVEE';
+                final bool enAttente = statut == 'SOUMISE' ||
+                    statut == 'EN_VALIDATION_SUPERIEUR' ||
+                    statut == 'EN_VALIDATION_RRH';
+                final valideur = (j['valideur_attendu_nom_complet']?.toString() ?? '').trim();
+                String statusDescription = 'Votre demande a été enregistrée.';
+                if (enAttente) {
+                  statusDescription = statut == 'EN_VALIDATION_SUPERIEUR' && valideur.isNotEmpty
+                      ? 'Votre demande est en attente de validation par $valideur.'
+                      : 'Votre demande est en cours de validation.';
+                } else if (approuvee) {
+                  statusDescription = 'Votre demande a été approuvée.';
+                } else if (refusee) {
+                  statusDescription = 'Votre demande a été refusée. Consultez le motif ci-dessous.';
+                } else if (statut == 'ANNULEE') {
+                  statusDescription = 'Cette demande a été annulée.';
                 }
-                
+
                 Color statusColor = AppTheme.textTertiary;
-                if (statusLabel.contains('validation')) {
+                if (enAttente) {
                   statusColor = AppTheme.warning;
-                } else if (statusLabel == 'Approuvée') {
+                } else if (approuvee) {
                   statusColor = AppTheme.success;
-                } else if (statusLabel == 'Refusée') {
+                } else if (refusee) {
                   statusColor = AppTheme.error;
                 }
+                final contenu = j['contenu'] is Map ? j['contenu'] as Map : const {};
+                final titre = Libelles.titreDemande(
+                  j['type_demande']?.toString(),
+                  typeCongeCode: contenu['type_conge']?.toString(),
+                );
+                final dateDepot = j['cree_le'] ?? j['date_creation'];
+                final numero = (j['numero']?.toString() ?? '').trim();
 
                 return ListView(
                   padding: const EdgeInsets.all(20),
@@ -122,7 +129,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Icon(
-                                  statusLabel == 'Approuvée' ? Icons.check_circle : Icons.calendar_today_outlined,
+                                  approuvee ? Icons.check_circle : Icons.calendar_today_outlined,
                                   color: statusColor,
                                   size: 24,
                                 ),
@@ -133,18 +140,21 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      _formatTypeDemande(j['type_demande'] ?? ''),
+                                      titre,
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 18,
                                         color: AppTheme.textPrimary,
                                       ),
                                     ),
-                                    if (j['date_creation'] != null)
+                                    if (dateDepot != null || numero.isNotEmpty)
                                       Padding(
                                         padding: const EdgeInsets.only(top: 4),
                                         child: Text(
-                                          'Demandé le ${DateFormat('dd MMM yyyy', 'fr_FR').format(DateTime.parse(j['date_creation']))}',
+                                          [
+                                            if (numero.isNotEmpty) numero,
+                                            if (dateDepot != null) 'déposée le ${formatDateIso(dateDepot)}',
+                                          ].join(' · '),
                                           style: TextStyle(color: AppTheme.textTertiary, fontSize: 13),
                                         ),
                                       ),
@@ -200,7 +210,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                                   style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                                 ),
                                 Text(
-                                  '${j['periode_debut']} → ${j['periode_fin']}',
+                                  formatPeriode(j['periode_debut'], j['periode_fin']),
                                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textPrimary),
                                 ),
                               ],
@@ -209,7 +219,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    if ((j['statut'] == 'REJETEE' || j['statut'] == 'REFUSEE') && j['motif_refus'] != null) ...[
+                    if (refusee && j['motif_refus'] != null) ...[
                       const SizedBox(height: 16),
                       Container(
                         padding: const EdgeInsets.all(16),
@@ -269,8 +279,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                           : scheme.outline;
                   return ListTile(
                     leading: Icon(icon, color: color),
-                    title: Text(e.libelle),
-                    subtitle: Text(e.code),
+                    title: Text(e.libelleAffiche),
                   );
                 },
               ),
@@ -317,9 +326,6 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
   }
 
   Widget _buildTimelineItem(WorkflowHistoryItem item, {required bool isLast}) {
-    final dateFormat = DateFormat('dd MMM yyyy HH:mm', 'fr_FR');
-    final date = DateTime.parse(item.dateAction);
-    
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -375,7 +381,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                       ),
                     ),
                     Text(
-                      dateFormat.format(date),
+                      formatDateHeureIso(item.dateAction),
                       style: TextStyle(
                         fontSize: 11,
                         color: AppTheme.textTertiary,
@@ -386,14 +392,14 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                 if (item.acteurNom != null) ...[
                   const SizedBox(height: 4),
                   Text(
-                    'Par: ${item.acteurNom}',
+                    'Par ${item.acteurNom}',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppTheme.textSecondary,
                     ),
                   ),
                 ],
-                if (item.commentaire != null && item.commentaire!.isNotEmpty) ...[
+                if (item.commentaireAffiche != null) ...[
                   const SizedBox(height: 6),
                   Container(
                     padding: const EdgeInsets.all(8),
@@ -402,7 +408,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      item.commentaire!,
+                      item.commentaireAffiche!,
                       style: TextStyle(
                         fontSize: 12,
                         color: AppTheme.textSecondary,

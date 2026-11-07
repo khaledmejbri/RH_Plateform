@@ -12,6 +12,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 
@@ -162,6 +163,15 @@ public class PresenceExceptionHandler {
 	public ResponseEntity<ErrorResponse> illegalArgument(IllegalArgumentException ex) {
 		return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(
 				ErrorResponse.of("INVALID_INPUT", ex.getMessage(), ex.getMessage(), List.of(), 422)
+		);
+	}
+
+	/** Route inconnue : 404, comme le référentiel, au lieu du 500 générique. */
+	@ExceptionHandler(NoResourceFoundException.class)
+	public ResponseEntity<ErrorResponse> routeInconnue(NoResourceFoundException ex) {
+		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+				ErrorResponse.of("ROUTE_INCONNUE", "Ressource introuvable",
+						"La ressource demandée n'existe pas.", List.of(), HttpStatus.NOT_FOUND.value())
 		);
 	}
 

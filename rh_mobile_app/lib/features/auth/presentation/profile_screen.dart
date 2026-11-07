@@ -21,6 +21,7 @@ class ProfileScreen extends ConsumerWidget {
         backgroundColor: AppTheme.surface,
         elevation: 0,
         leading: IconButton(
+          tooltip: 'Retour',
           icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
           onPressed: () => Navigator.of(context).pop(),
         ),
@@ -35,21 +36,7 @@ class ProfileScreen extends ConsumerWidget {
       ),
       body: userAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: AppTheme.error),
-              const SizedBox(height: 16),
-              Text(rhErrorMessage(e)),
-              TextButton(
-                onPressed: () =>
-                    ref.read(collaborateurNotifierProvider.notifier).fetchMoi(),
-                child: const Text('Réessayer'),
-              ),
-            ],
-          ),
-        ),
+        error: (e, _) => RhErrorState.depuis(e, onRetry: () => ref.read(collaborateurNotifierProvider.notifier).fetchMoi()),
         data: (user) {
           if (user == null) {
             return const Center(child: Text('Aucune donnée utilisateur'));

@@ -58,7 +58,7 @@ public class EvaluationScoringService {
 			Integer self = firstNonNull(answer.getNoteCollaborateur(), answer.getNoteAttribuee());
 			Integer manager = answer.getNoteManager();
 			if (self != null || manager != null) {
-				String section = firstText(answer.getQuestion().getSectionLibelle(), answer.getQuestion().getSectionCode(), "General");
+				String section = firstText(answer.getQuestion().getSectionLibelle(), answer.getQuestion().getSectionCode(), "Général");
 				BigDecimal weight = answer.getQuestion().getPoids() != null ? answer.getQuestion().getPoids() : BigDecimal.ONE;
 				lines.add(new ScoreLine(
 						answer.getQuestion().getId().toString(),
@@ -137,10 +137,10 @@ public class EvaluationScoringService {
 
 		List<String> recommendations = new ArrayList<>();
 		if (discrepancy.compareTo(BigDecimal.valueOf(30)) >= 0) {
-			recommendations.add("Planifier un entretien de calibration: les ecarts self/manager sont significatifs.");
+			recommendations.add("Planifier un entretien de calibration : les écarts entre auto-évaluation et évaluation du responsable sont significatifs.");
 		}
 		if (!improvements.isEmpty()) {
-			recommendations.add("Creer un plan de developpement cible sur les axes faibles identifies.");
+			recommendations.add("Créer un plan de développement ciblé sur les axes faibles identifiés.");
 		}
 		boolean aNotesCollaborateur = lines.stream().anyMatch(line -> line.selfScore != null);
 		// D-E14 : aucune note du tout → aucune recommandation
@@ -212,8 +212,8 @@ public class EvaluationScoringService {
 	private String recommandation(CouleurAlerteEvaluationRh couleur, List<Integer> valeurs) {
 		return switch (couleur) {
 			case VERT -> "Profil stable. Maintenir les objectifs et capitaliser sur les points forts.";
-			case ORANGE -> "Deux criteres sous le seuil. Prevoir une alerte RH et un suivi rapproche.";
-			case ROUGE -> "Trois criteres ou plus sont insuffisants. Plan d'action obligatoire et escalade DG.";
+			case ORANGE -> "Deux critères sous le seuil. Prévoir une alerte RH et un suivi rapproché.";
+			case ROUGE -> "Trois critères ou plus sont insuffisants. Plan d'action obligatoire et escalade DG.";
 		};
 	}
 

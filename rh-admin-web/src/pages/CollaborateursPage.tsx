@@ -9,7 +9,6 @@ import {
   postCollaborateur,
   putCollaborateur,
   PROFILS_ACCES,
-  LIBELLES_PROFIL_ACCES,
   type CollaborateurRow,
   type FamilleMetierRow,
   type Unite,
@@ -25,7 +24,11 @@ import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
 import { ErrorAlert, Icon, LoadingState, StatusBadge } from '../components/ui';
 import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
-import { appartientSelection, correspond, indexerUnites, useFiltresUrl } from '../utils/filtres';
+import { appartientSelection, cheminUnite, correspond, indexerUnites, useFiltresUrl } from '../utils/filtres';
+import { formatNombre, formatPersonne } from '../utils/format';
+import { libelle, optionsDomaine } from '../utils/libelles';
+import { SaisieDate } from '../components/ChampsFr';
+import MenuLigne from '../components/MenuLigne';
 
 const PROFIL_DEFAUT = 'COLLABORATEUR' as const;
 const TAILLE_PAGE = 15;
@@ -127,7 +130,6 @@ export default function CollaborateursPage() {
   const totalPages = Math.max(1, Math.ceil(filtrees.length / TAILLE_PAGE));
   const pageCourante = Math.min(page, totalPages - 1);
   const pageRows = filtrees.slice(pageCourante * TAILLE_PAGE, (pageCourante + 1) * TAILLE_PAGE);
-  const statuts = useMemo(() => Array.from(new Set(rows.map((r) => r.statut.toUpperCase()))).sort(), [rows]);
 
   useEffect(() => {
     if (unites.length && !uniteId) setUniteId(unites[0].identifiant);
@@ -217,7 +219,7 @@ export default function CollaborateursPage() {
           niveau_seniorite: niveauSeniorite || undefined,
           mot_de_passe_initial: motDePasseInitial,
         });
-        setMsg('Collaborateur enregistre avec succes. La creation du compte et le courriel se font en arriere-plan.');
+        setMsg('Collaborateur enregistré. Le compte de connexion est créé en arrière-plan.');
       }
       resetForm();
       setTab('liste');
@@ -234,7 +236,7 @@ export default function CollaborateursPage() {
     if (row.statut === 'ARCHIVE') return;
     const ok = await confirm({
       title: 'Archiver le collaborateur',
-      message: `Archiver ${row.prenom} ${nomCollaborateur(row)} ?`,
+      message: `Archiver ${formatPersonne(`${row.prenom} ${nomCollaborateur(row)}`, row.matricule)} ? Sa fiche ne sera plus active.`,
       confirmLabel: 'Archiver',
       danger: true,
     });
@@ -243,7 +245,7 @@ export default function CollaborateursPage() {
     setMsg(null);
     try {
       await putCollaborateur(row.identifiant, { statut: 'ARCHIVE' });
-      setMsg(`Collaborateur ${row.matricule} archive.`);
+      setMsg(`${formatPersonne(`${row.prenom} ${nomCollaborateur(row)}`, row.matricule)} a été archivé.`);
       await loadList();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erreur archivage');
@@ -255,7 +257,7 @@ export default function CollaborateursPage() {
       <div className="page__head">
         <div>
           <h2 className="page__title">Collaborateurs</h2>
-          <p className="page__lead">Referentiel : le compte mobile est cree en arriere-plan ; le collaborateur recoit un courriel si SMTP est configure.</p>
+          <p className="page__lead">Fiches et comptes : le compte de connexion est créé en arrière-plan à la création de la fiche.</p>
         </div>
         <div className="tabs">
           <button
@@ -270,7 +272,7 @@ export default function CollaborateursPage() {
           </button>
           {!lectureSeule ? (
             <button type="button" className={'tab' + (tab === 'form' && !editing ? ' tab--on' : '')} onClick={openCreer}>
-              Creer
+              Créer
             </button>
           ) : null}
         </div>
@@ -305,14 +307,14 @@ export default function CollaborateursPage() {
                   id="collab-profil"
                   libelle="Profil d'accès"
                   valeur={f.profil}
-                  options={PROFILS_ACCES.map((p) => ({ valeur: p, libelle: LIBELLES_PROFIL_ACCES[p] }))}
+                  options={PROFILS_ACCES.map((p) => ({ valeur: p, libelle: libelle('profilAcces', p) }))}
                   onChange={(v) => { filtres.definir({ profil: v }); setPage(0); }}
                 />
                 <ChampSelect
                   id="collab-statut"
                   libelle="Statut"
                   valeur={f.statut}
-                  options={statuts.map((x) => ({ valeur: x, libelle: x }))}
+                  options={optionsDomaine('statutCollaborateur')}
                   onChange={(v) => { filtres.definir({ statut: v }); setPage(0); }}
                 />
                 <ChampSelect
@@ -332,12 +334,12 @@ export default function CollaborateursPage() {
                     <tr>
                       <th>Matricule</th>
                       <th>Nom</th>
-                      <th>Email</th>
+                      <th>Courriel</th>
                       <th>Profil d&apos;accès</th>
                       <th>Famille / niveau</th>
                       <th>Statut</th>
                       <th>Compte</th>
-                      <th>Actions</th>
+                      <th><span className="sr-only">Actions</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -347,14 +349,9 @@ export default function CollaborateursPage() {
                         <td>
                           {r.prenom} {nomCollaborateur(r)}
                         </td>
-                        <td className="muted">{r.courriel_professionnel ?? '-'}</td>
+                        <td className="muted">{r.courriel_professionnel ?? '—'}</td>
                         <td>
-                          {libelleProfilAcces(r.profil_acces)}
-                          {r.profil_acces ? (
-                            <span className="badge badge--default" style={{ marginLeft: 8 }}>
-                              {r.profil_acces}
-                            </span>
-                          ) : null}
+                          {libelleProfilAcces(r.profil_acces ?? PROFIL_DEFAUT)}
                         </td>
                         <td>
                           {r.famille_metier_code || r.famille_metier_libelle || r.niveau_seniorite ? (
@@ -369,8 +366,8 @@ export default function CollaborateursPage() {
                             <span className="muted small">—</span>
                           )}
                         </td>
-                        <td>{r.statut}</td>
-                        <td>{r.compte_utilisateur_id ? <StatusBadge statut="VALIDE" label="Lié" /> : '-'}</td>
+                        <td><StatusBadge statut={r.statut} label={libelle('statutCollaborateur', r.statut)} /></td>
+                        <td>{r.compte_utilisateur_id ? <StatusBadge statut="VALIDE" label="Lié" /> : '—'}</td>
                         <td>
                           {lectureSeule ? (
                             <span className="muted small">Lecture seule</span>
@@ -379,22 +376,23 @@ export default function CollaborateursPage() {
                               <button type="button" className="btn btn--secondary btn--sm" onClick={() => openEditer(r)}>
                                 Modifier
                               </button>
-                              <button
-                                type="button"
-                                className="btn btn--ghost btn--sm"
-                                onClick={() => archiveCollaborateur(r)}
-                                disabled={r.statut === 'ARCHIVE'}
-                              >
-                                Archiver
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn--secondary btn--sm"
-                                title="Endpoint changement mot de passe a connecter cote backend."
-                                disabled
-                              >
-                                Changer mot de passe
-                              </button>
+                              <MenuLigne
+                                libelle={`Autres actions pour ${r.prenom} ${nomCollaborateur(r)}`}
+                                actions={[
+                                  {
+                                    libelle: 'Archiver',
+                                    desactive: r.statut === 'ARCHIVE',
+                                    raison: 'Cette fiche est déjà archivée.',
+                                    onSelect: () => void archiveCollaborateur(r),
+                                  },
+                                  {
+                                    libelle: 'Changer le mot de passe',
+                                    desactive: true,
+                                    raison: 'Non disponible pour le moment : cette fonction n’est pas encore activée sur le serveur.',
+                                    onSelect: () => {},
+                                  },
+                                ]}
+                              />
                             </div>
                           )}
                         </td>
@@ -406,10 +404,10 @@ export default function CollaborateursPage() {
               )}
               <div className="pager">
                 <button type="button" className="btn btn--ghost" disabled={pageCourante <= 0} onClick={() => setPage(pageCourante - 1)}>
-                  Prec.
+                  Précédent
                 </button>
                 <span className="muted small">
-                  {pageCourante + 1} / {totalPages} ({filtrees.length})
+                  Page {pageCourante + 1} sur {totalPages} ({formatNombre(filtrees.length, 0)} collaborateurs)
                 </span>
                 <button
                   type="button"
@@ -417,7 +415,7 @@ export default function CollaborateursPage() {
                   disabled={pageCourante + 1 >= totalPages}
                   onClick={() => setPage(pageCourante + 1)}
                 >
-                  Suiv.
+                  Suivant
                 </button>
               </div>
             </>
@@ -426,7 +424,7 @@ export default function CollaborateursPage() {
       ) : (
         <form className="panel panel--form" onSubmit={onSubmit}>
           <p className="page__lead" style={{ marginTop: 0 }}>
-            {editing ? `Modifier ${editing.matricule}` : 'Nouveau collaborateur'}
+            {editing ? `Modifier ${formatPersonne(`${editing.prenom} ${nomCollaborateur(editing)}`, editing.matricule)}` : 'Nouveau collaborateur'}
           </p>
           <div className="form-grid">
             <div>
@@ -440,7 +438,7 @@ export default function CollaborateursPage() {
               />
             </div>
             <div>
-              <label htmlFor="collaborateurs-f2" className="field-label">Prenom</label>
+              <label htmlFor="collaborateurs-f2" className="field-label">Prénom</label>
               <input id="collaborateurs-f2" className="field-input" value={prenom} onChange={(e) => setPrenom(e.target.value)} required />
             </div>
             <div>
@@ -454,9 +452,9 @@ export default function CollaborateursPage() {
             <div>
               <label htmlFor="collaborateurs-f5" className="field-label">Statut</label>
               <select id="collaborateurs-f5" className="field-input" value={statut} onChange={(e) => setStatut(e.target.value)} required>
-                <option value="ACTIF">ACTIF</option>
-                <option value="SUSPENDU">SUSPENDU</option>
-                <option value="ARCHIVE">ARCHIVE</option>
+                {optionsDomaine('statutCollaborateur').map((o) => (
+                  <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -468,11 +466,11 @@ export default function CollaborateursPage() {
                 required
               >
                 {!isProfilAcces(profilAcces) && profilAcces ? (
-                  <option value={profilAcces}>{profilAcces}</option>
+                  <option value={profilAcces}>{libelle('profilAcces', profilAcces)}</option>
                 ) : null}
                 {PROFILS_ACCES.map((code) => (
                   <option key={code} value={code}>
-                    {LIBELLES_PROFIL_ACCES[code]}
+                    {libelle('profilAcces', code)}
                   </option>
                 ))}
               </select>
@@ -494,7 +492,7 @@ export default function CollaborateursPage() {
               </select>
               {catalogueStub ? (
                 <p className="field-help" style={{ marginTop: 4 }}>
-                  Catalogue familles temporairement indisponible — liste seed affichée.
+                  Liste des familles métier temporairement indisponible : liste par défaut affichée.
                 </p>
               ) : null}
             </div>
@@ -514,18 +512,21 @@ export default function CollaborateursPage() {
                 ))}
               </select>
               <p className="field-help" style={{ marginTop: 4 }}>
-                Clé matching évaluations (indépendant du profil d&apos;accès).
+                Sert à choisir le questionnaire technique de l’évaluation (indépendant des droits d&apos;accès).
               </p>
             </div>
             <div>
-              <label htmlFor="collaborateurs-f7" className="field-label">Unite</label>
+              <label htmlFor="collaborateurs-f7" className="field-label">Unité</label>
               <select id="collaborateurs-f7" className="field-input" value={uniteId} onChange={(e) => setUniteId(e.target.value)} required>
                 {unites.map((u) => (
                   <option key={u.identifiant} value={u.identifiant}>
-                    {u.code} - {u.libelle}
+                    {u.libelle}
                   </option>
                 ))}
               </select>
+              {uniteId ? (
+                <p className="field-help" style={{ marginTop: 4 }}>{cheminUnite(indexUnites, uniteId)}</p>
+              ) : null}
             </div>
 
             <div>
@@ -538,13 +539,8 @@ export default function CollaborateursPage() {
             </div>
 
             <div>
-              <label htmlFor="collaborateurs-f10" className="field-label">Date recrutement</label>
-              <input id="collaborateurs-f10"
-                className="field-input"
-                type="date"
-                value={dateRecrutement}
-                onChange={(e) => setDateRecrutement(e.target.value)}
-              />
+              <label htmlFor="collaborateurs-f10" className="field-label">Date de recrutement</label>
+              <SaisieDate id="collaborateurs-f10" valeur={dateRecrutement} onChange={setDateRecrutement} />
             </div>
 
             {!editing ? (
@@ -573,7 +569,7 @@ export default function CollaborateursPage() {
               Annuler
             </button>
             <button type="submit" className="btn btn--primary" disabled={saving}>
-              {saving ? '...' : editing ? 'Enregistrer' : 'Creer'}
+              {saving ? 'Enregistrement…' : editing ? 'Enregistrer' : 'Créer'}
             </button>
           </div>
         </form>

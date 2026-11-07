@@ -14,7 +14,7 @@ String messageErreurDemandeAdmin(Object error, {String fallback = 'Une erreur es
   }
   if (error.type == DioExceptionType.connectionError ||
       error.type == DioExceptionType.connectionTimeout) {
-    return 'Serveur injoignable.';
+    return 'Impossible de joindre le serveur.';
   }
   return server ?? fallback;
 }

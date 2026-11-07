@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/login_screen.dart';
+import '../widgets/garde_role.dart';
+import '../widgets/rh_ui.dart';
 import '../../features/auth/providers/auth_notifier.dart';
+import '../../features/auth/providers/collaborateur_notifier.dart';
 import '../../features/demandes_admin/presentation/demande_admin_detail_screen.dart';
 import '../../features/demandes_admin/presentation/demandes_admin_list_screen.dart';
 import '../../features/demandes_admin/presentation/autorisations_list_screen.dart';
@@ -37,6 +40,9 @@ import '../../features/pointage/presentation/presence_test_terrain_screen.dart';
 import '../../features/splash/presentation/splash_screen.dart';
 import '../../features/organigramme/presentation/organigramme_screen.dart';
 
+bool _peutConfigurerPresence(CollaborateurInfo info) => info.peutConfigurerPresence;
+bool _peutDemanderHeuresSup(CollaborateurInfo info) => info.peutDemanderHeuresSup;
+
 final _routerRefresh = ValueNotifier<int>(0);
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -68,6 +74,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       return null;
     },
+    errorBuilder: (context, state) => Scaffold(
+      appBar: AppBar(title: const Text('Élément introuvable')),
+      body: RhEmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'Élément introuvable',
+        message: 'Cette page n’existe pas ou n’est plus disponible.',
+        action: FilledButton(
+          onPressed: () => context.go('/home'),
+          child: const Text('Retour à l’accueil'),
+        ),
+      ),
+    ),
     routes: [
       GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
@@ -75,15 +93,33 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/pointage', builder: (_, __) => const PointageScreen()),
       GoRoute(path: '/pointage/manuel', builder: (_, __) => const PointageManuelScreen()),
       GoRoute(path: '/heures-sup/moi', builder: (_, __) => const MesHeuresSupScreen()),
-      GoRoute(path: '/heures-sup/demandes', builder: (_, __) => const MesDemandesHeuresSupScreen()),
-      GoRoute(path: '/heures-sup/nouveau', builder: (_, __) => const DemandeHeuresSupScreen()),
+      GoRoute(
+        path: '/heures-sup/demandes',
+        builder: (_, __) => const GardeRole(
+          autorise: _peutDemanderHeuresSup,
+          enfant: MesDemandesHeuresSupScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/heures-sup/nouveau',
+        builder: (_, __) => const GardeRole(
+          autorise: _peutDemanderHeuresSup,
+          enfant: DemandeHeuresSupScreen(),
+        ),
+      ),
       GoRoute(
         path: '/presence/sites',
-        builder: (_, __) => const PresenceSitesAdminScreen(),
+        builder: (_, __) => const GardeRole(
+          autorise: _peutConfigurerPresence,
+          enfant: PresenceSitesAdminScreen(),
+        ),
       ),
       GoRoute(
         path: '/presence/test-terrain',
-        builder: (_, __) => const PresenceTestTerrainScreen(),
+        builder: (_, __) => const GardeRole(
+          autorise: _peutConfigurerPresence,
+          enfant: PresenceTestTerrainScreen(),
+        ),
       ),
       GoRoute(
         path: '/facial/consentement',

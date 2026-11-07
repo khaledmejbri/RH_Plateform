@@ -134,10 +134,10 @@ public class PlainteRhService {
 	public PlainteRhResponse validerPlainteExterneParRo(UUID id, Jwt jwt) {
 		PlainteRh p = charger(id);
 		if (p.getTypePlainte() != TypePlainteRh.EXTERNE) {
-			throw new IllegalArgumentException("Seules les plaintes externes passent par une validation RO.");
+			throw new IllegalArgumentException("Seules les plaintes externes passent par une validation du responsable.");
 		}
 		if (p.getStatut() != StatutPlainteRh.NOUVEAU) {
-			throw new IllegalArgumentException("Cette plainte externe n'est pas en attente de validation RO.");
+			throw new IllegalArgumentException("Cette plainte externe n'est pas en attente de validation du responsable.");
 		}
 
 		Collaborateur ro = collaborateurConnecteService.exigerCollaborateur(jwt);
@@ -159,7 +159,7 @@ public class PlainteRhService {
 		logEntry.put("acteur_id", ro.getId().toString());
 		logEntry.put("acteur_nom", nomComplet(ro));
 		logEntry.put("horodatage", Instant.now().toString());
-		logEntry.put("commentaire", "Validée par le RO et transmise au RH");
+		logEntry.put("commentaire", "Validée par le responsable et transmise à la RH");
 		log.add(logEntry);
 		p.setLogActions(log);
 
@@ -188,7 +188,7 @@ public class PlainteRhService {
 		if ((nouveauStatut == StatutPlainteRh.RESOLU || nouveauStatut == StatutPlainteRh.FERME)
 				&& (req.getCommentaireRh() == null || req.getCommentaireRh().isBlank())) {
 			throw new IllegalArgumentException(
-					"Un commentaire RH est obligatoire pour passer au statut " + nouveauStatut + ".");
+					"Un commentaire RH est obligatoire pour passer au statut « " + nouveauStatut.getLibelle() + " ».");
 		}
 
 		p.setStatut(nouveauStatut);
@@ -245,7 +245,8 @@ public class PlainteRhService {
 		if (p.getTypePlainte() != TypePlainteRh.EXTERNE) return null;
 		boolean validee = p.getLogActions() != null && p.getLogActions().stream()
 				.anyMatch(e -> ACTION_VALIDATION_RO.equals(e.get("action"))
-						|| "Validée par le RO et transmise au RH".equals(e.get("commentaire")));
+						|| "Validée par le responsable et transmise à la RH".equals(e.get("commentaire"))
+						|| "Validée par le RO et transmise au RH".equals(e.get("commentaire"))); // anciens journaux
 		if (validee) return "VALIDEE";
 		return p.getStatut() == StatutPlainteRh.NOUVEAU ? "EN_ATTENTE" : "NON_REQUISE";
 	}

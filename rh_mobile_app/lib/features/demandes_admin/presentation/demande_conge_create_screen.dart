@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../core/format/formats.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
@@ -332,7 +333,6 @@ class _DateTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fmt = DateFormat.yMMMd('fr_FR');
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -370,7 +370,7 @@ class _DateTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  date == null ? 'Sélectionner' : fmt.format(date!),
+                  date == null ? 'Sélectionner' : formatDate(date!),
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,

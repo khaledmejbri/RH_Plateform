@@ -22,6 +22,7 @@ import com.hr.evaluation.service.EvaluationValidationSuperieurService;
 import com.hr.evaluation.service.TemplateTechniqueEvaluation;
 import com.hr.evaluation.service.EvaluationAnalyseAdminService;
 import com.hr.evaluation.service.EvaluationWorkflowService;
+import com.hr.evaluation.service.LibellesProfilService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -52,6 +53,7 @@ public class EvaluationMobileController {
     private final TemplateTechniqueEvaluation templateTechnique;
     private final EvaluationValidationSuperieurService validationSuperieurService;
     private final IdentiteAppelantResolver identiteResolver;
+    private final LibellesProfilService libellesProfil;
 
     public EvaluationMobileController(
             EvaluationWorkflowService workflowService,
@@ -62,7 +64,8 @@ public class EvaluationMobileController {
             EvaluationAccessService evaluationAccess,
             TemplateTechniqueEvaluation templateTechnique,
             EvaluationValidationSuperieurService validationSuperieurService,
-            IdentiteAppelantResolver identiteResolver) {
+            IdentiteAppelantResolver identiteResolver,
+            LibellesProfilService libellesProfil) {
         this.workflowService = workflowService;
         this.questionRepository = questionRepository;
         this.technicalQuestionRepository = technicalQuestionRepository;
@@ -72,6 +75,7 @@ public class EvaluationMobileController {
         this.templateTechnique = templateTechnique;
         this.validationSuperieurService = validationSuperieurService;
         this.identiteResolver = identiteResolver;
+        this.libellesProfil = libellesProfil;
     }
 
     /**
@@ -451,7 +455,10 @@ public class EvaluationMobileController {
                         : "EVALUATION_GENERALE",
                 evaluation.getScoreSur20(),
                 evaluation.getFamilleMetierCode(),
+                libellesProfil.famille(evaluation.getFamilleMetierCode()),
                 evaluation.getNiveauSeniorite(),
+                libellesProfil.niveau(evaluation.getNiveauSeniorite()),
+                libellesProfil.niveau(evaluation.getNiveauSeniorite()),
                 evaluation.getValidationCollaborateurLe(),
                 evaluation.getValidationSuperieurLe(),
                 evaluation.getCreeLe()

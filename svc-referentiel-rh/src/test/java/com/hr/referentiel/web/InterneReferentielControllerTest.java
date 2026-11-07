@@ -2,6 +2,9 @@ package com.hr.referentiel.web;
 
 import com.hr.referentiel.dto.CollaborateurPointageResponse;
 import com.hr.referentiel.service.AffectationService;
+import com.hr.referentiel.service.FamilleMetierService;
+import com.hr.referentiel.dto.LibellesProfilResponse;
+import java.util.Map;
 import com.hr.referentiel.service.PerimetreValidationService;
 import com.hr.referentiel.service.ReferentielRhService;
 import org.junit.jupiter.api.Test;
@@ -24,8 +27,9 @@ class InterneReferentielControllerTest {
 	private final ReferentielRhService service = mock(ReferentielRhService.class);
 	private final PerimetreValidationService perimetre = mock(PerimetreValidationService.class);
 	private final AffectationService affectationService = mock(AffectationService.class);
+	private final FamilleMetierService familleService = mock(FamilleMetierService.class);
 	private final InterneReferentielController controller =
-			new InterneReferentielController(service, perimetre, affectationService, "secret-partage");
+			new InterneReferentielController(service, perimetre, affectationService, familleService, "secret-partage");
 
 	@Test
 	void sansJeton_401() {
@@ -43,6 +47,22 @@ class InterneReferentielControllerTest {
 	void bonJeton_200() {
 		when(service.listerActifsPourEvaluation()).thenReturn(List.of());
 		assertThat(controller.listerActifsEvaluation("secret-partage").getStatusCode().value()).isEqualTo(200);
+	}
+
+	@Test
+	void libellesProfil_sansJetonOuMauvaisJeton_401() {
+		assertThat(controller.libellesProfil(null).getStatusCode().value()).isEqualTo(401);
+		assertThat(controller.libellesProfil("autre").getStatusCode().value()).isEqualTo(401);
+		verifyNoInteractions(familleService);
+	}
+
+	@Test
+	void libellesProfil_bonJeton_200_codeVersLibelle() {
+		when(familleService.libellesProfil()).thenReturn(new LibellesProfilResponse(
+				Map.of("DEV_BACKEND", "Développement backend"), Map.of("SENIOR", "Sénior")));
+		var rep = controller.libellesProfil("secret-partage");
+		assertThat(rep.getStatusCode().value()).isEqualTo(200);
+		assertThat(rep.getBody().familles()).containsEntry("DEV_BACKEND", "Développement backend");
 	}
 
 	// --- Heures supplémentaires de svc-presence (SCRUM-50) ---

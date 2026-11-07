@@ -1,3 +1,5 @@
+import '../../../core/libelles/libelles.dart';
+
 class DocumentDemandeItem {
   const DocumentDemandeItem({
     required this.id,
@@ -8,6 +10,7 @@ class DocumentDemandeItem {
     this.enRetard,
     this.dateCreation,
     this.motifRejet,
+    this.numero,
   });
 
   final String id;
@@ -18,6 +21,12 @@ class DocumentDemandeItem {
   final bool? enRetard;
   final DateTime? dateCreation;
   final String? motifRejet;
+
+  /// Numéro lisible `DOC-AAAAMM-NNNN` (D-L02), si le serveur l'envoie.
+  final String? numero;
+
+  String get typeLibelle => Libelles.typeDocument(typeDocument);
+  String get statutLibelle => Libelles.statutDocument(statut);
 
   static DocumentDemandeItem fromJson(Map<String, dynamic> j) {
     final rang = j['rang_dans_file'];
@@ -31,6 +40,7 @@ class DocumentDemandeItem {
       enRetard: j['en_retard'] as bool?,
       dateCreation: dateRaw != null ? DateTime.tryParse(dateRaw) : null,
       motifRejet: j['motif_rejet'] as String?,
+      numero: j['numero'] as String?,
     );
   }
 }

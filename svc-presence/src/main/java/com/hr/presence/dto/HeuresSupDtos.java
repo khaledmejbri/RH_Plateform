@@ -47,6 +47,8 @@ public final class HeuresSupDtos {
 	public record DemandeHeuresSupResponse(
 			@JsonProperty("id") UUID id,
 			@JsonProperty("reference") String reference,
+			/** Numéro lisible HS-AAAAMM-NNNN (D-L02) ; identique à {@code reference} une fois la reprise faite. */
+			@JsonProperty("numero") String numero,
 			@JsonProperty("statut") StatutHeuresSup statut,
 			@JsonProperty("site_id") UUID siteId,
 			@JsonProperty("site_libelle") String siteLibelle,

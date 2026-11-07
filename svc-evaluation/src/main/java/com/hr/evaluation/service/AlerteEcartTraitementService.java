@@ -214,7 +214,7 @@ public class AlerteEcartTraitementService {
     }
 
     private static EvaluationMetierException introuvable(UUID alerteId) {
-        return EvaluationMetierException.notFound(ALERTE_INTROUVABLE, "Alerte introuvable : " + alerteId);
+        return EvaluationMetierException.notFound(ALERTE_INTROUVABLE, "Alerte introuvable");
     }
 
     private static EvaluationMetierException validation(String message) {

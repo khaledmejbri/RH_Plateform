@@ -4,12 +4,13 @@ import {
   FAMILLES_METIER_SEED,
   NIVEAUX_SENIORITE,
   libelleNiveauSeniorite,
-  profilMetierLabel,
+  libelleFamilleMetier, profilMetierLabel,
   type FamilleMetier,
 } from '../api/evaluationCatalog';
 import { getFamillesMetier } from '../api/rhClient';
 import TemplateBuilder from '../components/TemplateBuilder';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatDate } from '../utils/format';
 import { currentUserId } from '../auth/jwtRoles';
 
 interface EnhancedTemplatesTabProps {
@@ -267,7 +268,7 @@ export default function EnhancedTemplatesTab({
                   ) : (
                     <>
                       {template.familleMetierCode && (
-                        <div><strong>Famille :</strong> {template.familleMetierCode}</div>
+                        <div><strong>Famille :</strong> {libelleFamilleMetier(template.familleMetierCode, familles)}</div>
                       )}
                       {template.niveauSeniorite && (
                         <div>
@@ -285,7 +286,7 @@ export default function EnhancedTemplatesTab({
                   Version {template.version} · {template.questions?.length || 0} questions
                 </div>
                 <div className="text-sm text-muted">
-                  Créé le {new Date(template.creeLe).toLocaleDateString('fr-FR')}
+                  Créé le {formatDate(template.creeLe)}
                 </div>
               </div>
 

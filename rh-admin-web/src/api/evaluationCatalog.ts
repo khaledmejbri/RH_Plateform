@@ -42,13 +42,13 @@ export function normalizeNiveauSeniorite(raw?: string | null): string | undefine
 
 export function libelleFamilleMetier(code?: string | null, catalogue: FamilleMetier[] = FAMILLES_METIER_SEED): string {
   if (!code) return '';
-  return catalogue.find(f => f.code === code)?.libelle ?? code;
+  return catalogue.find(f => f.code === code)?.libelle ?? 'Famille non reconnue';
 }
 
 export function libelleNiveauSeniorite(code?: string | null): string {
   const normalized = normalizeNiveauSeniorite(code);
   if (!normalized) return '';
-  return NIVEAUX_SENIORITE.find(n => n.code === normalized)?.libelle ?? normalized;
+  return NIVEAUX_SENIORITE.find(n => n.code === normalized)?.libelle ?? 'Niveau non reconnu';
 }
 
 export function profilMetierLabel(

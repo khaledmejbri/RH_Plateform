@@ -1,4 +1,6 @@
+import '../../../core/libelles/libelles.dart';
 import 'package:flutter/material.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
@@ -44,32 +46,7 @@ class OrganigrammeScreen extends ConsumerWidget {
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Impossible de charger l\'organigramme.',
-                  style: Theme.of(context).textTheme.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '$e',
-                  style: Theme.of(context).textTheme.bodySmall,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => ref.invalidate(_organigrammeProvider),
-                  child: const Text('Réessayer'),
-                ),
-              ],
-            ),
-          ),
-        ),
+        error: (e, _) => RhErrorState.depuis(e, onRetry: () => ref.invalidate(_organigrammeProvider)),
         data: (org) {
           if (org.racines.isEmpty) {
             return const Center(
@@ -191,7 +168,7 @@ class _NoeudCardState extends State<_NoeudCard> {
                       children: [
                         Expanded(
                           child: Text(
-                            noeud.typeNoeud.toUpperCase(),
+                            Libelles.typeNoeud(noeud.typeNoeud),
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
@@ -216,10 +193,6 @@ class _NoeudCardState extends State<_NoeudCard> {
                             fontWeight: FontWeight.w700,
                           ),
                     ),
-                    if (noeud.titrePoste != null && noeud.titrePoste!.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(noeud.titrePoste!, style: Theme.of(context).textTheme.bodySmall),
-                    ],
                     if (noeud.manager != null) ...[
                       const SizedBox(height: 10),
                       Row(
@@ -238,9 +211,20 @@ class _NoeudCardState extends State<_NoeudCard> {
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              noeud.manager!.displayName,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  noeud.manager!.displayName,
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                // D-H06 : intitulé dérivé du type du nœud managé, jamais le profil d'accès.
+                                if (_intitule(noeud).isNotEmpty)
+                                  Text(
+                                    _intitule(noeud),
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                              ],
                             ),
                           ),
                         ],
@@ -277,6 +261,13 @@ class _NoeudCardState extends State<_NoeudCard> {
         ],
       ),
     );
+  }
+
+  /// Intitulé du responsable du nœud : `titre_poste` du nœud, sinon dérivé du type (D-H06), sinon son poste.
+  static String _intitule(OrganigrammeNoeud noeud) {
+    final derive = Libelles.intituleResponsable(noeud.typeNoeud, titrePoste: noeud.titrePoste);
+    if (derive.isNotEmpty) return derive;
+    return noeud.manager?.posteLibelle ?? '';
   }
 
   static String _initials(String name) {

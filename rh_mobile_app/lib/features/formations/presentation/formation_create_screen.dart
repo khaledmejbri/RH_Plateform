@@ -405,7 +405,7 @@ class _UnitePicker extends ConsumerWidget {
           (items) => DropdownButtonFormField<String>(
             value: value,
             decoration: InputDecoration(
-              labelText: 'Unite cible',
+              labelText: 'Unité cible',
               prefixIcon: const Icon(Icons.account_tree_outlined),
               filled: true,
               fillColor: AppTheme.background,

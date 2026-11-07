@@ -12,6 +12,10 @@ public class DemandeDocumentAdministratifRhResponse {
 	@JsonProperty("identifiant")
 	private UUID identifiant;
 
+	/** D-L02 : numéro lisible (DEM-/DOC-/FOR-AAAAMM-NNNN). */
+	@JsonProperty("numero")
+	private String numero;
+
 	@JsonProperty("demandeur_identifiant")
 	private UUID demandeurIdentifiant;
 
@@ -100,6 +104,14 @@ public class DemandeDocumentAdministratifRhResponse {
 		this.estProchaineFifo = estProchaineFifo;
 		this.justificationDerogationFifo = justificationDerogationFifo;
 		this.derogationFifoPar = derogationFifoPar;
+	}
+
+	public String getNumero() {
+		return numero;
+	}
+
+	public void setNumero(String numero) {
+		this.numero = numero;
 	}
 
 	public UUID getIdentifiant() {

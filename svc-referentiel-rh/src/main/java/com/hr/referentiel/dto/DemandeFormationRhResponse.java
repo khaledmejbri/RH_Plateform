@@ -16,6 +16,10 @@ public class DemandeFormationRhResponse {
 	@JsonProperty("identifiant")
 	private UUID identifiant;
 
+	/** D-L02 : numéro lisible (DEM-/DOC-/FOR-AAAAMM-NNNN). */
+	@JsonProperty("numero")
+	private String numero;
+
 	@JsonProperty("demandeur_identifiant")
 	private UUID demandeurIdentifiant;
 
@@ -72,6 +76,14 @@ public class DemandeFormationRhResponse {
 
 	@JsonProperty("modifie_le")
 	private Instant modifieLe;
+
+	public String getNumero() {
+		return numero;
+	}
+
+	public void setNumero(String numero) {
+		this.numero = numero;
+	}
 
 	public UUID getIdentifiant() { return identifiant; }
 	public void setIdentifiant(UUID identifiant) { this.identifiant = identifiant; }

@@ -1,5 +1,9 @@
 import { FormEvent, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { formatDateCourteTunis, formatDateTunis } from '../api/presenceApi';
+import { SaisieDate } from '../components/ChampsFr';
+import { useConfirm } from '../components/ConfirmDialog';
+import { ressembleAUnIdentifiant, COLLABORATEUR_INTROUVABLE } from '../utils/format';
+import { libelle } from '../utils/libelles';
 import {
   codeErreurFaciale,
   ENROLEMENT_STATUTS_FILTRE,
@@ -166,9 +170,8 @@ function ReglageSection({
     <section className="mb-lg">
       <h3 className="section-title">Réglage de la vérification faciale</h3>
       <div className="alert alert--warning" role="note">
-        Avant toute activation (C-L-07) : la formalité auprès de l’INPDP et la licence du modèle de reconnaissance
-        doivent être validées par le juriste. Tant que le réglage est inactif, aucune donnée faciale n’est
-        traitée.
+        Activation possible après validation juridique par votre société (déclaration à l’autorité de protection
+        des données). Tant que le réglage est inactif, aucune donnée faciale n’est traitée.
       </div>
 
       {loading ? <p className="muted">Chargement du réglage…</p> : null}
@@ -204,13 +207,13 @@ function ReglageSection({
           {reglage.cadreLegalConfirmeLe ? (
             <p className="muted small">
               Cadre légal confirmé le {formatDateTunis(reglage.cadreLegalConfirmeLe)}
-              {reglage.cadreLegalConfirmePar ? ` par ${reglage.cadreLegalConfirmePar}` : ''}.
+              {reglage.cadreLegalConfirmePar && !ressembleAUnIdentifiant(reglage.cadreLegalConfirmePar) ? ` par ${reglage.cadreLegalConfirmePar}` : ''}.
             </p>
           ) : null}
           {reglage.modifieLe ? (
             <p className="muted small">
               Dernière modification le {formatDateTunis(reglage.modifieLe)}
-              {reglage.modifiePar ? ` par ${reglage.modifiePar}` : ''}.
+              {reglage.modifiePar && !ressembleAUnIdentifiant(reglage.modifiePar) ? ` par ${reglage.modifiePar}` : ''}.
             </p>
           ) : null}
 
@@ -231,20 +234,14 @@ function ReglageSection({
             </label>
             <label>
               Date de mise en service {statut === 'ACTIVE' ? '*' : ''}
-              <input
-                type="date"
-                value={date}
-                disabled={lectureSeule || busy}
-                aria-invalid={fieldErrors.date ? true : undefined}
-                onChange={(e) => setDate(e.target.value)}
-              />
+              <SaisieDate valeur={date} disabled={lectureSeule || busy} onChange={setDate} />
               {fieldErrors.date ? <span className="text-danger small">{fieldErrors.date}</span> : null}
               <span className="muted small">
                 Avant cette date, les collaborateurs peuvent s’enrôler mais aucun contrôle n’est exigé.
               </span>
             </label>
             <label>
-              Seuil de reconnaissance ({SEUIL_MIN} à {SEUIL_MAX})
+              Seuil de ressemblance ({SEUIL_MIN} à {SEUIL_MAX} %)
               <input
                 type="number"
                 min={SEUIL_MIN}
@@ -255,6 +252,7 @@ function ReglageSection({
                 onChange={(e) => setSeuil(e.target.value)}
               />
               {fieldErrors.seuil ? <span className="text-danger small">{fieldErrors.seuil}</span> : null}
+              <span className="muted small">Plus le seuil est élevé, plus la vérification est stricte.</span>
             </label>
             <div>
               <label className="checkbox-row">
@@ -264,7 +262,7 @@ function ReglageSection({
                   disabled={lectureSeule || busy}
                   onChange={(e) => setCadre(e.target.checked)}
                 />
-                Cadre légal validé (INPDP, texte, durées, licence du modèle) {statut === 'ACTIVE' ? '*' : ''}
+                Validation juridique effectuée (déclaration à l’autorité de protection des données, texte de consentement, durées de conservation) {statut === 'ACTIVE' ? '*' : ''}
               </label>
               {fieldErrors.cadre ? <span className="text-danger small">{fieldErrors.cadre}</span> : null}
             </div>
@@ -399,7 +397,7 @@ function ConsentementsSection({
                 <tr key={v.version}>
                   <td className="mono">{v.version}</td>
                   <td>{formatDateTunis(v.publieLe)}</td>
-                  <td>{v.publiePar ?? '—'}</td>
+                  <td>{v.publiePar && !ressembleAUnIdentifiant(v.publiePar) ? v.publiePar : '—'}</td>
                   <td>
                     {v.courante ? (
                       <span className="badge badge--success">Courante</span>
@@ -499,6 +497,7 @@ function EnrolementDetail({
   const [data, setData] = useState<Enrolement | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const confirm = useConfirm();
   const [modal, setModal] = useState(false);
   const [motif, setMotif] = useState('');
   const [busy, setBusy] = useState(false);
@@ -524,6 +523,12 @@ function EnrolementDetail({
 
   async function debloquer(e: FormEvent) {
     e.preventDefault();
+    const ok = await confirm({
+      message: `Autoriser le ré-enrôlement de ${data?.collaborateurNom ?? COLLABORATEUR_INTROUVABLE} ? L’appareil actuel sera invalidé.`,
+      confirmLabel: 'Autoriser',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setActionErr(null);
     try {
@@ -563,7 +568,7 @@ function EnrolementDetail({
 
       {data && !loading ? (
         <>
-          <h3 className="section-title">{data.collaborateurNom ?? 'Collaborateur'}</h3>
+          <h3 className="section-title">{data.collaborateurNom ?? COLLABORATEUR_INTROUVABLE}</h3>
           <dl className="detail-dl mb-md">
             <div>
               <dt>Statut</dt>
@@ -585,12 +590,12 @@ function EnrolementDetail({
             </div>
             <div>
               <dt>Appareil enrôlé</dt>
-              <dd className="mono">{data.deviceIdMasque ? `…${data.deviceIdMasque}` : '—'}</dd>
+              <dd>{data.deviceIdMasque ? 'Appareil enregistré' : '—'}</dd>
             </div>
             {data.statut === 'A_REENROLER' ? (
               <div>
                 <dt>Nouvel appareil demandé</dt>
-                <dd className="mono">{data.deviceIdDemandeMasque ? `…${data.deviceIdDemandeMasque}` : '—'}</dd>
+                <dd>{data.deviceIdDemandeMasque ? 'Nouvel appareil enregistré' : '—'}</dd>
               </div>
             ) : null}
             <div>
@@ -650,7 +655,7 @@ function EnrolementDetail({
                   {data.historique.map((h, i) => (
                     <tr key={`${h.horodatage ?? ''}-${i}`}>
                       <td>{formatDateTunis(h.horodatage)}</td>
-                      <td>{LIBELLES_AUDIT_ACTION[h.action] ?? h.action.replaceAll('_', ' ')}</td>
+                      <td>{LIBELLES_AUDIT_ACTION[h.action] ?? 'Valeur non reconnue'}</td>
                       <td className="small">
                         {h.statutAvant || h.statutApres
                           ? `${LIBELLES_ENROLEMENT_STATUT[h.statutAvant ?? ''] ?? h.statutAvant ?? '—'} → ${
@@ -659,8 +664,8 @@ function EnrolementDetail({
                           : '—'}
                       </td>
                       <td>
-                        {h.acteur ?? '—'}
-                        {h.acteurRole ? <span className="muted small"> ({h.acteurRole})</span> : null}
+                        {h.acteur && !ressembleAUnIdentifiant(h.acteur) ? h.acteur : '—'}
+                        {h.acteurRole ? <span className="muted small"> ({libelle('profilAcces', h.acteurRole)})</span> : null}
                       </td>
                       <td className="muted">{h.version ?? '—'}</td>
                       <td className="muted small">{h.motif ?? '—'}</td>
@@ -867,13 +872,13 @@ function EnrolementsSection({
                   <th>Enrôlé le</th>
                   <th>Appareil</th>
                   <th>Échecs</th>
-                  <th>Actions</th>
+                  <th><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 {lignes.map((l) => (
                   <tr key={l.id}>
-                    <td>{l.collaborateurNom ?? '—'}</td>
+                    <td>{l.collaborateurNom ?? COLLABORATEUR_INTROUVABLE}</td>
                     <td>
                       <StatutBadge statut={l.statut} />
                       {l.appareilIncompatible ? (
@@ -884,7 +889,7 @@ function EnrolementsSection({
                     </td>
                     <td className="muted">{l.versionConsentement ?? '—'}</td>
                     <td className="muted">{l.enroleLe ? formatDateCourteTunis(l.enroleLe) : '—'}</td>
-                    <td className="mono muted small">{l.deviceIdMasque ? `…${l.deviceIdMasque}` : '—'}</td>
+                    <td className="muted small">{l.deviceIdMasque ? 'Enregistré' : '—'}</td>
                     <td className="muted">
                       {l.echecsConsecutifs}
                       {l.bloqueJusqua ? ' (bloqué)' : ''}
@@ -906,10 +911,10 @@ function EnrolementsSection({
               disabled={page <= 0}
               onClick={() => setPage((p) => p - 1)}
             >
-              Préc.
+              Précédent
             </button>
             <span className="muted small">
-              {page + 1} / {totalPages}
+              Page {page + 1} sur {totalPages}
             </span>
             <button
               type="button"
@@ -917,7 +922,7 @@ function EnrolementsSection({
               disabled={page + 1 >= totalPages}
               onClick={() => setPage((p) => p + 1)}
             >
-              Suiv.
+              Suivant
             </button>
           </div>
         </>

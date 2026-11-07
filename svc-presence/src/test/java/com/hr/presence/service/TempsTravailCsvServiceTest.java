@@ -35,7 +35,7 @@ class TempsTravailCsvServiceTest {
 
 		assertThat(csv).startsWith("﻿");
 		assertThat(csv).isEqualTo("﻿\"Matricule\";\"Nom\";\"Direction\";\"Département\";\"Service\";\"Site\";\"Date\";"
-				+ "\"Paires\";\"Nombre de paires\";\"Première entrée\";\"Dernière sortie\";\"Total (hh:mm)\";"
+				+ "\"Entrées / sorties\";\"Nombre d'entrées / sorties\";\"Première entrée\";\"Dernière sortie\";\"Total (hh:mm)\";"
 				+ "\"Total (minutes)\";\"État\";\"Pointage manuel\"\r\n");
 	}
 
@@ -51,7 +51,7 @@ class TempsTravailCsvServiceTest {
 		String[] lignes = csv.split("\r\n");
 		assertThat(lignes).hasSize(2);
 		assertThat(lignes[1]).isEqualTo("\"COL-WEB\";\"Sarra Khemiri\";\"Direction Technique\";\"Logiciel\";\"Web\";\"Siège\";"
-				+ "\"2026-11-03\";\"08:02-12:01 | 13:00-17:05\";\"2\";\"08:02\";\"17:05\";\"08:04\";\"484\";\"COMPLET\";\"oui\"");
+				+ "\"03/11/2026\";\"08:02-12:01 | 13:00-17:05\";\"2\";\"08:02\";\"17:05\";\"08:04\";\"484\";\"Complet\";\"oui\"");
 	}
 
 	@Test
@@ -69,6 +69,6 @@ class TempsTravailCsvServiceTest {
 				ligne("=CMD(\"x\")", List.of(), List.of(new OrphelinDto("ENTREE", "2026-11-03T08:02:00+01:00", false)),
 						0, EtatJourHeuresSup.INCOMPLET, false, null))));
 
-		assertThat(csv).contains("\"'=CMD(\"\"x\"\")\"").contains("\"INCOMPLET\"").contains("\"00:00\"");
+		assertThat(csv).contains("\"'=CMD(\"\"x\"\")\"").contains("\"Incomplet\"").contains("\"00:00\"");
 	}
 }

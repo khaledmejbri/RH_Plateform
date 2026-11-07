@@ -3,7 +3,6 @@ import {
   deleteOrganigrammeManager,
   getCollaborateursPage,
   getOrganigramme,
-  libelleProfilAcces,
   nomCollaborateur,
   postOrganigrammeManager,
   postOrganigrammeNoeud,
@@ -12,6 +11,8 @@ import {
   type OrganigrammeNoeud,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { formatPersonne } from '../utils/format';
+import { intituleResponsable, libelleTypeNoeud } from '../utils/libelles';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useDialogA11y } from '../components/useDialogA11y';
 import { Icon } from '../components/ui';
@@ -24,7 +25,8 @@ const TYPES_NOEUD = ['Direction Générale', 'Direction', 'Département', 'Servi
 const NIVEAU_DG = 0;
 const NIVEAU_DIRECTION = 1;
 const SUCCESS_DISMISS_MS = 4000;
-const COLLAPSE_DEPTH_DEFAULT = 3;
+/** Arbre replié à l'ouverture : la Direction générale et ses directions seulement (ORG-4). */
+const COLLAPSE_DEPTH_DEFAULT = 1;
 const DND_MIME = 'application/x-sirh-noeud';
 
 function normaliserType(t: string): string {
@@ -293,7 +295,7 @@ function OrgNodeCard({
     >
       <button type="button" className="org-node__body" onClick={onSelect}>
         <div className="org-node__meta">
-          <span className="org-node__type">{noeud.type_noeud || 'Service'}</span>
+          <span className="org-node__type">{libelleTypeNoeud(noeud.type_noeud)}</span>
           {!noeud.actif ? <span className="badge badge--default">Inactif</span> : null}
           {emptyMgr ? <span className="badge badge--warning">Sans responsable</span> : null}
         </div>
@@ -308,9 +310,7 @@ function OrgNodeCard({
               <span className="org-node__manager-name">
                 {mgr.prenom} {mgr.nom}
               </span>
-              {mgr.profil_acces ? (
-                <span className="text-muted text-sm">{libelleProfilAcces(mgr.profil_acces)}</span>
-              ) : null}
+              <span className="text-muted text-sm">{intituleResponsable(noeud.type_noeud, noeud.titre_poste)}</span>
             </>
           ) : (
             <span className="org-node__manager-empty">Sans responsable</span>
@@ -448,7 +448,7 @@ function ParentPickerList({
       if (!matchIds || matchIds.has(n.identifiant)) {
         rows.push({
           id: n.identifiant,
-          label: `${n.type_noeud} · ${n.libelle}`,
+          label: `${libelleTypeNoeud(n.type_noeud)} · ${n.libelle}`,
           depth,
           disabled: excludeIds.has(n.identifiant) || !peutRattacher(noeud, n),
         });
@@ -636,8 +636,8 @@ export default function OrganigrammePage() {
     if (!peutRattacher(noeud, target)) {
       setErr(
         target
-          ? `Impossible : un(e) ${noeud.type_noeud} ne peut pas être placé(e) sous ${target.type_noeud} « ${target.libelle} ».`
-          : `Impossible : un(e) ${noeud.type_noeud} doit rester rattaché(e).`,
+          ? `Impossible : un élément de type « ${libelleTypeNoeud(noeud.type_noeud)} » ne peut pas être placé sous « ${target.libelle} » (${libelleTypeNoeud(target.type_noeud)}).`
+          : `Impossible : un élément de type « ${libelleTypeNoeud(noeud.type_noeud)} » doit rester rattaché.`,
       );
       return;
     }
@@ -645,7 +645,7 @@ export default function OrganigrammePage() {
     const nouveau = target ? target.libelle : 'À rattacher';
     const ok = await confirm({
       title: `Rattacher « ${noeud.libelle} »`,
-      message: `${noeud.type_noeud} « ${noeud.libelle} » : ${ancien} → ${nouveau}. Ses sous-éléments suivent ; ses membres et son responsable ne changent pas. Continuer ?`,
+      message: `${libelleTypeNoeud(noeud.type_noeud)} « ${noeud.libelle} » : ${ancien} → ${nouveau}. Ses sous-éléments suivent ; ses membres et son responsable ne changent pas. Continuer ?`,
       confirmLabel: 'Rattacher',
     });
     if (!ok) return;
@@ -830,6 +830,12 @@ export default function OrganigrammePage() {
 
   async function handleRetirerManager() {
     if (!selected) return;
+    const ok = await confirm({
+      message: `Retirer le responsable de « ${selected.libelle} » ? Les demandes de cette unité pourront être traitées directement par la RH s’il n’y a plus de responsable actif.`,
+      confirmLabel: 'Retirer',
+      danger: true,
+    });
+    if (!ok) return;
     setSaving(true);
     setErr(null);
     try {
@@ -877,7 +883,8 @@ export default function OrganigrammePage() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Unité, responsable, membre…"
+              placeholder="Unité, responsable, membre"
+              style={{ minWidth: 300 }}
               aria-label="Rechercher une unité, un responsable ou un membre"
             />
           </label>
@@ -908,7 +915,7 @@ export default function OrganigrammePage() {
               title={
                 selected
                   ? typesCreables(selected, dgExiste).length === 0
-                    ? `Un(e) ${selected.type_noeud} ne contient pas de sous-élément`
+                    ? `Un élément de type « ${libelleTypeNoeud(selected.type_noeud)} » ne contient pas de sous-élément`
                     : `Créer sous « ${selected.libelle} » : ${typesCreables(selected, dgExiste).join(', ')}`
                   : 'Créer une direction (rattachée à la DG), un département ou un service à rattacher'
               }
@@ -1086,7 +1093,7 @@ export default function OrganigrammePage() {
           {selected ? (
             <>
               <div className="org-panel__eyebrow">
-                <span className="org-panel__type">{selected.type_noeud}</span>
+                <span className="org-panel__type">{libelleTypeNoeud(selected.type_noeud)}</span>
                 {!selected.actif ? <span className="badge badge--default">Inactif</span> : null}
                 {sansResponsable(selected) ? (
                   <span className="badge badge--warning">Sans responsable</span>
@@ -1110,10 +1117,7 @@ export default function OrganigrammePage() {
                         {selected.manager.prenom} {selected.manager.nom}
                       </div>
                       <div className="text-muted text-sm">
-                        Mat. {selected.manager.matricule}
-                        {selected.manager.profil_acces
-                          ? ` · ${libelleProfilAcces(selected.manager.profil_acces)}`
-                          : ''}
+                        {intituleResponsable(selected.type_noeud, selected.titre_poste)} · {selected.manager.matricule}
                       </div>
                     </div>
                   </div>
@@ -1121,7 +1125,7 @@ export default function OrganigrammePage() {
                   <div className="org-panel__manager-empty">
                     <span className="badge badge--warning">Sans responsable</span>
                     <p className="text-muted text-sm" style={{ margin: '0.5rem 0 0' }}>
-                      Les demandes M01 de cette unité pourront aller directement à la RRH.
+                      Les demandes M01 de cette unité pourront aller directement à la RH.
                     </p>
                   </div>
                 )}
@@ -1161,7 +1165,7 @@ export default function OrganigrammePage() {
                   <ul className="org-panel__list">
                     {selected.membres.map((m) => (
                       <li key={m.identifiant}>
-                        {m.prenom} {m.nom}
+                        {formatPersonne(`${m.prenom} ${m.nom}`, m.matricule)}
                         {m.poste_libelle ? ` — ${m.poste_libelle}` : ''}
                       </li>
                     ))}
@@ -1288,7 +1292,7 @@ export default function OrganigrammePage() {
                 readOnly
                 value={
                   parentPourCreation
-                    ? `${parentPourCreation.type_noeud} · ${parentPourCreation.libelle}`
+                    ? `${libelleTypeNoeud(parentPourCreation.type_noeud)} · ${parentPourCreation.libelle}`
                     : niveauType(typeNoeud) === NIVEAU_DIRECTION
                       ? `Direction Générale (rattachement automatique)`
                       : niveauType(typeNoeud) === NIVEAU_DG
@@ -1462,7 +1466,7 @@ export default function OrganigrammePage() {
                 type="button"
                 className="btn btn--danger btn--sm"
                 disabled={saving}
-                onClick={() => setModal('confirm-retrait')}
+                onClick={() => void handleRetirerManager()}
               >
                 Retirer
               </button>
@@ -1483,27 +1487,6 @@ export default function OrganigrammePage() {
         </Modal>
       )}
 
-      {modal === 'confirm-retrait' && selected && (
-        <Modal title="Retirer le responsable ?" onClose={() => setModal('manager')}>
-          <p>
-            Retirer le responsable de « {selected.libelle} » ? Les demandes de cette unité pourront
-            être traitées directement par la RRH s’il n’y a plus de responsable actif.
-          </p>
-          <div className="form-actions">
-            <button type="button" className="btn btn--ghost" onClick={() => setModal('manager')}>
-              Annuler
-            </button>
-            <button
-              type="button"
-              className="btn btn--danger"
-              disabled={saving}
-              onClick={() => void handleRetirerManager()}
-            >
-              Retirer
-            </button>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }

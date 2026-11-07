@@ -1,3 +1,5 @@
+import '../../../core/libelles/libelles.dart';
+
 class FormationItem {
   FormationItem({
     required this.id,
@@ -12,6 +14,7 @@ class FormationItem {
     this.justification,
     this.commentaireRh,
     this.creeLe,
+    this.numero,
   });
 
   final String id;
@@ -27,6 +30,11 @@ class FormationItem {
   final String? commentaireRh;
   final String? creeLe;
 
+  /// Numéro lisible `FOR-AAAAMM-NNNN` (D-L02), si le serveur l'envoie.
+  final String? numero;
+
+  String get statutLibelle => Libelles.statutFormation(statut);
+
   factory FormationItem.fromJson(Map<String, dynamic> json) {
     return FormationItem(
       id: json['identifiant']?.toString() ?? '',
@@ -41,6 +49,7 @@ class FormationItem {
       justification: json['justification'] as String?,
       commentaireRh: json['commentaire_rh'] as String?,
       creeLe: json['cree_le'] as String?,
+      numero: json['numero'] as String?,
     );
   }
 }
@@ -110,22 +119,7 @@ class WorkflowHistoryItem {
     );
   }
 
-  String get actionLabel {
-    switch (action) {
-      case 'CREATION_DEMANDE':
-        return 'Demande créée';
-      case 'SOUMISE_A_RH':
-        return 'Soumise au RH';
-      case 'NOTIFICATION_ENVOYEE':
-        return 'Notification envoyée';
-      case 'INTEGRATION_PLAN':
-        return 'Intégrée au plan';
-      case 'REFUS_RRH':
-        return 'Refusée par RH';
-      case 'ANNULATION_DEMANDEUR':
-        return 'Annulée';
-      default:
-        return action.replaceAll('_', ' ').toLowerCase();
-    }
-  }
+  String get actionLabel => Libelles.actionHistorique(action);
+
+  String? get commentaireAffiche => Libelles.commentaireHistorique(commentaire);
 }

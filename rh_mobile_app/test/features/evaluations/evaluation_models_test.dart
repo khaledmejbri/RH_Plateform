@@ -40,7 +40,7 @@ void main() {
         'niveau_seniorite': 'SENIOR',
       });
       expect(item.profilSnapshotLabel, contains('Développement'));
-      expect(item.profilSnapshotLabel, contains('Senior'));
+      expect(item.profilSnapshotLabel, contains('Sénior'));
     });
 
     test('filters archived action', () {

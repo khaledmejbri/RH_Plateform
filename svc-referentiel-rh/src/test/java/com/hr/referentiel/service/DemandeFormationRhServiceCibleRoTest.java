@@ -51,6 +51,9 @@ class DemandeFormationRhServiceCibleRoTest {
 	@Mock
 	private FormationWorkflowHistoryRepository workflowHistoryRepository;
 
+	@Mock
+	private NumeroLisibleService numeroLisibleService;
+
 	@InjectMocks
 	private DemandeFormationRhService service;
 

@@ -237,7 +237,7 @@ public class PresencePointageService {
 		if (request.accuracyMetres() == null || request.accuracyMetres() > precisionMax) {
 			String detail = request.accuracyMetres() == null
 					? "précision non fournie"
-					: String.format(Locale.ROOT, "±%.0f m > %.0f m", request.accuracyMetres(), precisionMax);
+					: String.format(Locale.FRANCE, "±%.0f m > %.0f m", request.accuracyMetres(), precisionMax);
 			return persistRejet(collaborateurId, type, request, serverTs,
 					PointageStatut.REJETE_PRECISION_GPS,
 					"Signal GPS trop faible (" + detail + "), placez-vous à découvert et réessayez",
@@ -251,7 +251,7 @@ public class PresencePointageService {
 		if (!haversineService.withinRadius(distance, rayon)) {
 			return persistRejet(collaborateurId, type, request, serverTs,
 					PointageStatut.REJETE_HORS_ZONE,
-					"Hors zone de pointage (" + String.format(Locale.ROOT, "%.1f", distance) + " m > " + rayon + " m)",
+					"Hors zone de pointage (" + String.format(Locale.FRANCE, "%.1f", distance) + " m > " + rayon + " m)",
 					site.getId(), credentialId, distance);
 		}
 

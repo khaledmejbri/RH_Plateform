@@ -71,7 +71,7 @@ public class EvaluationAnalyseAdminService {
     @Transactional(readOnly = true)
     public EvaluationAnalyticsResponse analyser(UUID evaluationId) {
         Evaluation evaluation = evaluationRepository.findByIdWithCampaign(evaluationId)
-                .orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable: " + evaluationId));
+                .orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable"));
         return scoringService.analyser(
                 answerRepository.findWithQuestionByEvaluationId(evaluationId),
                 skillAnswerRepository.findByEvaluationIdOrderByQuestionTechniqueOrdreAsc(evaluationId),

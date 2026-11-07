@@ -1,7 +1,7 @@
+import '../../../core/format/formats.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../data/document_models.dart';
 import '../data/document_repository.dart';
@@ -37,6 +37,7 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
         centerTitle: true,
         actions: [
           IconButton(
+            tooltip: 'Actualiser la liste',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
               setState(() => _currentPage = 0);
@@ -60,7 +61,7 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
               action: FilledButton.icon(
                 onPressed: () => context.push('/documents/nouveau'),
                 icon: const Icon(Icons.add, size: 18),
-                label: const Text('Nouvelle demande'),
+                label: const Text('Nouveau document'),
                 style: FilledButton.styleFrom(minimumSize: const Size(200, AppTheme.minTouch)),
               ),
             );
@@ -105,6 +106,7 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         IconButton(
+                          tooltip: 'Page précédente',
                           icon: const Icon(Icons.chevron_left, size: 20),
                           onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
                           color: _currentPage > 0 ? AppTheme.primaryDark : AppTheme.border,
@@ -116,6 +118,7 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
                         ),
                         const SizedBox(width: 8),
                         IconButton(
+                          tooltip: 'Page suivante',
                           icon: const Icon(Icons.chevron_right, size: 20),
                           onPressed: _currentPage < totalPages - 1 ? () => setState(() => _currentPage++) : null,
                           color: _currentPage < totalPages - 1 ? AppTheme.primaryDark : AppTheme.border,
@@ -128,11 +131,13 @@ class _DocumentsListScreenState extends ConsumerState<DocumentsListScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/documents/nouveau'),
         backgroundColor: AppTheme.primaryDark,
+        foregroundColor: Colors.white,
         elevation: 4,
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
+        icon: const Icon(Icons.add),
+        label: const Text('Nouveau document'),
       ),
     );
   }
@@ -143,38 +148,27 @@ class _DocumentCard extends StatelessWidget {
 
   const _DocumentCard({required this.document});
 
-  String _formatTypeDocument(String type) {
-    return type.replaceAll('_', ' ').toLowerCase().split(' ').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1);
-    }).join(' ');
-  }
-
   @override
   Widget build(BuildContext context) {
-    String statusLabel;
+    final statusLabel = document.statutLibelle;
     Color statusColor;
     IconData statusIcon;
 
     switch (document.statut) {
       case 'DISPONIBLE':
-        statusLabel = 'Prêt';
         statusColor = AppTheme.success;
         statusIcon = Icons.check_circle_rounded;
         break;
       case 'REJETEE':
-        statusLabel = 'Refusé';
         statusColor = AppTheme.error;
         statusIcon = Icons.cancel_rounded;
         break;
       case 'EN_TRAITEMENT_RH':
       case 'EN_ATTENTE_FILE':
-        statusLabel = 'En cours';
         statusColor = AppTheme.warning;
         statusIcon = Icons.access_time_filled_rounded;
         break;
       default:
-        statusLabel = 'Envoyé';
         statusColor = AppTheme.primaryLight;
         statusIcon = Icons.send_rounded;
     }
@@ -222,14 +216,17 @@ class _DocumentCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _formatTypeDocument(document.typeDocument),
+                            document.typeLibelle,
                             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: AppTheme.textPrimary),
                           ),
-                          if (document.dateCreation != null)
+                          if (document.dateCreation != null || (document.numero ?? '').isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 2),
                               child: Text(
-                                DateFormat('dd MMM yyyy', 'fr_FR').format(document.dateCreation!),
+                                [
+                                  if ((document.numero ?? '').isNotEmpty) document.numero!,
+                                  document.dateCreation != null ? formatDate(document.dateCreation!) : '',
+                                ].join(' · '),
                                 style: TextStyle(color: AppTheme.textTertiary, fontSize: 12),
                               ),
                             ),

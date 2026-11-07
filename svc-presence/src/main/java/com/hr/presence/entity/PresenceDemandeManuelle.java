@@ -22,7 +22,10 @@ import java.util.UUID;
 @Entity
 @Table(
 		name = "presence_demande_manuelle",
-		uniqueConstraints = @UniqueConstraint(name = "uk_demande_manuelle_rejet", columnNames = "pointage_rejete_id"),
+		uniqueConstraints = {
+				@UniqueConstraint(name = "uk_demande_manuelle_rejet", columnNames = "pointage_rejete_id"),
+				@UniqueConstraint(name = "uk_demande_manuelle_numero", columnNames = "numero")
+		},
 		indexes = {
 				@Index(name = "idx_demande_manuelle_collab", columnList = "collaborateur_id,cree_le"),
 				@Index(name = "idx_demande_manuelle_valideur", columnList = "valideur_id,statut"),
@@ -34,6 +37,10 @@ public class PresenceDemandeManuelle {
 	@Id
 	@Column(nullable = false, updatable = false)
 	private UUID id;
+
+	/** Numéro lisible PM-AAAAMM-NNNN (D-L02) : attribué à la création, unique, immuable. Nul avant la reprise. */
+	@Column(name = "numero", length = 32, updatable = false)
+	private String numero;
 
 	@Column(name = "pointage_rejete_id", nullable = false)
 	private UUID pointageRejeteId;
@@ -105,6 +112,14 @@ public class PresenceDemandeManuelle {
 
 	public UUID getId() { return id; }
 	public void setId(UUID id) { this.id = id; }
+
+	public String getNumero() { return numero; }
+	public void setNumero(String numero) {
+		if (this.numero != null && !this.numero.equals(numero)) {
+			throw new IllegalStateException("Le numéro d'une demande est immuable");
+		}
+		this.numero = numero;
+	}
 
 	public UUID getPointageRejeteId() { return pointageRejeteId; }
 	public void setPointageRejeteId(UUID pointageRejeteId) { this.pointageRejeteId = pointageRejeteId; }

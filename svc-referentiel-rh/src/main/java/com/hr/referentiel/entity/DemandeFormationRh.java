@@ -31,7 +31,8 @@ import java.util.UUID;
 @Table(name = "rh_demande_formation", indexes = {
 		@Index(name = "idx_demande_formation_demandeur", columnList = "demandeur_identifiant"),
 		@Index(name = "idx_demande_formation_statut", columnList = "statut"),
-		@Index(name = "idx_demande_formation_origine", columnList = "origine")
+		@Index(name = "idx_demande_formation_origine", columnList = "origine"),
+		@Index(name = "idx_demande_formation_numero", columnList = "numero", unique = true)
 })
 public class DemandeFormationRh {
 
@@ -39,6 +40,10 @@ public class DemandeFormationRh {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	@Column(name = "identifiant", nullable = false, updatable = false)
 	private UUID id;
+
+	/** D-L02 : numéro lisible attribué à la création, unique et immuable. Null le temps de la reprise des anciennes lignes. */
+	@Column(name = "numero", updatable = false, length = 24)
+	private String numero;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "demandeur_identifiant", nullable = false)
@@ -110,6 +115,14 @@ public class DemandeFormationRh {
 	@PreUpdate
 	public void preUpdate() {
 		modifieLe = Instant.now();
+	}
+
+	public String getNumero() {
+		return numero;
+	}
+
+	public void setNumero(String numero) {
+		this.numero = numero;
 	}
 
 	public UUID getId() { return id; }

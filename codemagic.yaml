@@ -7,7 +7,10 @@
 # avec Sideloadly + Apple ID gratuit (re-signature, valable 7 jours).
 # Avec un compte Apple Developer : certificat + profil dans Codemagic, puis
 # lancer manuellement « RH Connect iOS (signé) ».
-# API : modifiable dans l'app (écran de connexion → « Serveur »), ex. URL de tunnel.
+# API : les builds de recette (iOS non signé / signé) sont compilés avec SERVEUR_EDITABLE=true : le champ
+# « Serveur » de l'écran de connexion est visible (URL de tunnel). Le build Android l'a aussi (APK testé
+# via un tunnel dont l'adresse change). SUPPORT_RH_EMAIL (adresse du support RH, dialogue
+# « Mot de passe oublié ») reste à définir quand le client la donne.
 #
 # Artefacts : chemins absolus via $CM_BUILD_DIR (racine du clone). Avec
 # working_directory, un chemin relatif « rh_mobile_app/... » n'est pas trouvé
@@ -25,7 +28,7 @@ workflows:
       cocoapods: default
       vars:
         BUNDLE_ID: tn.agua.rhconnect
-        # Tunnel Cloudflare courant (change à chaque redémarrage : modifiable dans l'app)
+        # Tunnel Cloudflare courant (change à chaque redémarrage : modifiable dans l'app grâce à SERVEUR_EDITABLE)
         API_BASE_URL: https://possible-interactions-rubber-doctors.trycloudflare.com
     cache:
       cache_paths:
@@ -84,7 +87,8 @@ workflows:
             --obfuscate --split-debug-info=build/symboles \
             --build-name=1.0.0 \
             --build-number=${BUILD_NUMBER:-$PROJECT_BUILD_NUMBER} \
-            --dart-define="API_BASE_URL=$API_BASE_URL"
+            --dart-define="API_BASE_URL=$API_BASE_URL" \
+            --dart-define=SERVEUR_EDITABLE=true
       - name: Package unsigned IPA (Sideloadly / AltStore)
         script: |
           cd build/ios/iphoneos
@@ -153,7 +157,8 @@ workflows:
             --build-name=1.0.0 \
             --build-number=${BUILD_NUMBER:-$PROJECT_BUILD_NUMBER} \
             --export-options-plist=/Users/builder/export_options.plist \
-            --dart-define="API_BASE_URL=$API_BASE_URL"
+            --dart-define="API_BASE_URL=$API_BASE_URL" \
+            --dart-define=SERVEUR_EDITABLE=true
     artifacts:
       - $CM_BUILD_DIR/rh_mobile_app/build/ios/ipa/*.ipa
       - $CM_BUILD_DIR/rh_mobile_app/build/symboles/*
@@ -169,7 +174,7 @@ workflows:
       java: 17
       vars:
         # Adresse du serveur de démonstration (deploy/GUIDE_DEPLOIEMENT.md) ; modifiable au lancement du build
-        # et depuis l'écran de connexion de l'appli.
+        # (le champ « Serveur » de la connexion est visible : SERVEUR_EDITABLE, tunnel dont l'adresse change).
         API_BASE_URL: https://sirh-demo.duckdns.org
     scripts:
       - name: Set up local.properties
@@ -208,7 +213,8 @@ workflows:
         script: |
           flutter build apk --release \
             --obfuscate --split-debug-info=build/symboles \
-            --dart-define="API_BASE_URL=$API_BASE_URL"
+            --dart-define="API_BASE_URL=$API_BASE_URL" \
+            --dart-define=SERVEUR_EDITABLE=true
     artifacts:
       - $CM_BUILD_DIR/rh_mobile_app/build/**/outputs/**/*.apk
       - $CM_BUILD_DIR/rh_mobile_app/build/symboles/*

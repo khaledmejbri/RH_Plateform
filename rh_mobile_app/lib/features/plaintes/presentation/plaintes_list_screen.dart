@@ -1,4 +1,4 @@
-import 'package:dio/dio.dart';
+import '../../../core/libelles/libelles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -37,6 +37,7 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
         centerTitle: true,
         actions: [
           IconButton(
+            tooltip: 'Actualiser la liste',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
               setState(() => _currentPage = 0);
@@ -47,10 +48,7 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => _ErrorPlaintes(
-          message: e is DioException ? _dioMsg(e) : '$e',
-          onRetry: () => ref.invalidate(plaintesListProvider),
-        ),
+        error: (e, _) => RhErrorState.depuis(e, onRetry: () => ref.invalidate(plaintesListProvider)),
         data: (items) {
           if (items.isEmpty) {
             return RhEmptyState(
@@ -109,6 +107,7 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         IconButton(
+                          tooltip: 'Page précédente',
                           icon: const Icon(Icons.chevron_left, size: 20),
                           onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
                           color: _currentPage > 0 ? AppTheme.primaryDark : AppTheme.border,
@@ -120,6 +119,7 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
                         ),
                         const SizedBox(width: 8),
                         IconButton(
+                          tooltip: 'Page suivante',
                           icon: const Icon(Icons.chevron_right, size: 20),
                           onPressed: _currentPage < totalPages - 1 ? () => setState(() => _currentPage++) : null,
                           color: _currentPage < totalPages - 1 ? AppTheme.primaryDark : AppTheme.border,
@@ -132,20 +132,16 @@ class _PlaintesListScreenState extends ConsumerState<PlaintesListScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/plaintes/nouveau'),
         backgroundColor: AppTheme.primaryDark,
+        foregroundColor: Colors.white,
         elevation: 4,
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
+        icon: const Icon(Icons.add),
+        label: const Text('Nouvelle plainte'),
       ),
     );
   }
-}
-
-String _dioMsg(DioException e) {
-  if (e.response?.statusCode == 401) return 'Session invalide ou expirée.';
-  if (e.type == DioExceptionType.connectionError) return 'Serveur injoignable.';
-  return e.message ?? 'Erreur';
 }
 
 class _PlainteCard extends StatelessWidget {
@@ -153,27 +149,18 @@ class _PlainteCard extends StatelessWidget {
 
   const _PlainteCard({required this.plainte});
 
-  String _formatStatut(String statut) {
-    switch (statut.toUpperCase()) {
-      case 'EN_COURS':
-      case 'EN_ATTENTE':
-        return 'En cours';
-      case 'RESOLUE':
-      case 'TRAITEE':
-        return 'Résolue';
-      case 'REJETEE':
-      case 'REFUSEE':
-        return 'Rejetée';
-      default:
-        return statut;
-    }
-  }
+  String _formatStatut(String statut) => Libelles.statutPlainte(statut);
 
   Color _getStatutColor(String statut) {
     switch (statut.toUpperCase()) {
+      case 'NOUVEAU':
+      case 'EN_ANALYSE':
+      case 'EN_TRAITEMENT':
       case 'EN_COURS':
       case 'EN_ATTENTE':
         return AppTheme.warning;
+      case 'RESOLU':
+      case 'FERME':
       case 'RESOLUE':
       case 'TRAITEE':
         return AppTheme.success;
@@ -240,7 +227,7 @@ class _PlainteCard extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(
-                          _formatTypePlainte(plainte.typePlainte),
+                          Libelles.typePlainte(plainte.typePlainte),
                           style: TextStyle(color: AppTheme.textTertiary, fontSize: 12),
                         ),
                       ),
@@ -271,36 +258,5 @@ class _PlainteCard extends StatelessWidget {
     );
   }
 
-  String _formatTypePlainte(String type) {
-    return type.replaceAll('_', ' ').toLowerCase().split(' ').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1);
-    }).join(' ');
-  }
 }
 
-class _ErrorPlaintes extends StatelessWidget {
-  const _ErrorPlaintes({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, size: 56, color: Theme.of(context).colorScheme.error),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 20),
-            FilledButton(onPressed: onRetry, child: const Text('Réessayer')),
-          ],
-        ),
-      ),
-    );
-  }
-}

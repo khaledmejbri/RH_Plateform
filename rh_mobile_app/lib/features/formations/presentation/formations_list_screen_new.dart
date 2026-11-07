@@ -1,3 +1,4 @@
+import '../../../core/libelles/libelles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -76,6 +77,7 @@ class _FormationsListScreenState extends ConsumerState<FormationsListScreen>
         ),
         actions: [
           IconButton(
+            tooltip: 'Actualiser la liste',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
               switch (_selectedTab) {
@@ -269,11 +271,12 @@ class _FormationCard extends StatelessWidget {
   }
 
   (String, Color, Color) _statusMeta(String statut) {
+    final libelle = Libelles.statutFormation(statut);
     return switch (statut) {
-      'INTEGREE_PLAN' => ('Planifiée', AppTheme.successSurface, AppTheme.success),
-      'REFUSEE' => ('Refusée', AppTheme.errorSurface, AppTheme.errorDark),
-      'ANNULEE' => ('Annulée', AppTheme.surfaceMuted, AppTheme.textSecondary),
-      _ => ('En attente RH', AppTheme.primarySurface, AppTheme.primaryDark),
+      'INTEGREE_PLAN' => (libelle, AppTheme.successSurface, AppTheme.success),
+      'REFUSEE' => (libelle, AppTheme.errorSurface, AppTheme.errorDark),
+      'ANNULEE' => (libelle, AppTheme.surfaceMuted, AppTheme.textSecondary),
+      _ => (libelle, AppTheme.primarySurface, AppTheme.primaryDark),
     };
   }
 }

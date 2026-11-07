@@ -15,7 +15,8 @@ import {
 import { campaignApi, type EvaluationCampaign } from '../api/evaluationApi';
 import { getUnites, type Unite } from '../api/rhClient';
 import { AlerteEcartBadge, StatutAlerteBadge } from '../components/AlerteEcartBadge';
-import { EmptyState, LoadingState, formatDate } from '../components/ui';
+import { EmptyState, LoadingState } from '../components/ui';
+import { formatDate, formatPersonne } from '../utils/format';
 import { routeAlerteEcart } from '../api/notificationContenu';
 import BarreFiltres, { AucunResultat, ChampSelect } from '../components/BarreFiltres';
 import { correspond, useFiltresUrl } from '../utils/filtres';
@@ -194,7 +195,7 @@ export default function AlertesEcartTab() {
       ) : (
         <>
           <div className="table-container">
-            <table className="table">
+            <div className="table-wrap"><table className="table">
               <thead>
                 <tr>
                   <th scope="col">Niveau</th>
@@ -217,10 +218,8 @@ export default function AlertesEcartTab() {
                       <AlerteEcartBadge niveau={a.niveau} />
                     </td>
                     <td>
-                      <div>{a.collaborateurNom ?? '—'}</div>
-                      <div className="text-muted text-sm">
-                        {[a.collaborateurMatricule, a.collaborateurUniteLibelle].filter(Boolean).join(' · ')}
-                      </div>
+                      <div>{formatPersonne(a.collaborateurNom, a.collaborateurMatricule)}</div>
+                      <div className="text-muted text-sm">{a.collaborateurUniteLibelle ?? ''}</div>
                     </td>
                     <td>{a.campagneNom ?? '—'}</td>
                     <td>{a.superieurNom ?? '—'}</td>
@@ -243,7 +242,7 @@ export default function AlertesEcartTab() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </div>
           {totalPages > 1 ? (
             <div className="pager">
@@ -251,7 +250,7 @@ export default function AlertesEcartTab() {
                 Précédent
               </button>
               <span className="small">
-                Page {page + 1} / {totalPages} ({data.total} alertes)
+                Page {page + 1} sur {totalPages} ({data.total} alertes)
               </span>
               <button
                 type="button"

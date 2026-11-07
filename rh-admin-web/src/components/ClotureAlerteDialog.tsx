@@ -7,13 +7,15 @@ const MAX = 1000;
 
 type Props = {
   onClose: () => void;
+  /** Confirmation « Êtes-vous sûr ? » demandée avant l'envoi ; false = abandon. */
+  confirmer?: () => Promise<boolean>;
   /** Envoie la clôture ; rejette avec AlerteEcartApiError en cas d'échec. */
   onSubmit: (conclusion: ConclusionAlerteEcart, commentaire: string) => Promise<void>;
   /** Erreur qui impose de quitter la fenêtre (403, 404, 409) : le parent affiche le message et recharge. */
   onErreurBloquante: (e: AlerteEcartApiError) => void;
 };
 
-export function ClotureAlerteDialog({ onClose, onSubmit, onErreurBloquante }: Props) {
+export function ClotureAlerteDialog({ onClose, onSubmit, onErreurBloquante, confirmer }: Props) {
   const [conclusion, setConclusion] = useState<ConclusionAlerteEcart | ''>('');
   const [commentaire, setCommentaire] = useState('');
   const [toucheConclusion, setToucheConclusion] = useState(false);
@@ -40,6 +42,10 @@ export function ClotureAlerteDialog({ onClose, onSubmit, onErreurBloquante }: Pr
     setToucheCommentaire(true);
     if (!valide || !conclusion || envoiEnCours.current) return;
     envoiEnCours.current = true;
+    if (confirmer && !(await confirmer())) {
+      envoiEnCours.current = false;
+      return;
+    }
     setBusy(true);
     setErreur(null);
     try {

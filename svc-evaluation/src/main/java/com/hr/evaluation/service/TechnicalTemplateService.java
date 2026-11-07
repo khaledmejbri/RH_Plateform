@@ -99,6 +99,6 @@ public class TechnicalTemplateService {
     private TechnicalTemplate chargerTemplate(UUID id) {
         return templateRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "Template technique introuvable: " + id));
+                        "Questionnaire technique introuvable"));
     }
 }

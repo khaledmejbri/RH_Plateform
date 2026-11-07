@@ -68,14 +68,15 @@ public class DemandeAdministrativeRhController {
 				demandeAdministrativeRhService.demandesEnAttenteRo(principal.getToken()));
 	}
 
-	/** Liste RH complète avec filtres. */
+	/** Liste RH complète avec filtres ; {@code q} = numéro lisible exact (D-L02), insensible à la casse. */
 	@GetMapping("/liste")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<List<DemandeAdministrativeRhResponse>> listerPourRh(
 			@RequestParam(name = "type_demande", required = false) TypeDemandeAdministrativeRh typeDemande,
 			@RequestParam(name = "couvre_jour", required = false) LocalDate couvreJour,
-			@RequestParam(name = "statut", required = false) StatutDemandeAdministrativeRh statut) {
-		return ResponseEntity.ok(demandeAdministrativeRhService.listerToutPourRh(typeDemande, couvreJour, statut));
+			@RequestParam(name = "statut", required = false) StatutDemandeAdministrativeRh statut,
+			@RequestParam(name = "q", required = false) String q) {
+		return ResponseEntity.ok(demandeAdministrativeRhService.listerToutPourRh(typeDemande, couvreJour, statut, q));
 	}
 
 	/** Validation par le manager ACTIF du nœud d'unité du demandeur (403 si autre nœud / inactif). */

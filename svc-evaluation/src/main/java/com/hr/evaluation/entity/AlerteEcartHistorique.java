@@ -23,6 +23,9 @@ public class AlerteEcartHistorique {
     /** Libellé d'auteur des événements automatiques. */
     public static final String AUTEUR_SYSTEME = "SYSTEME";
 
+    /** Libellé exposé pour un acteur automatique (D-L01.e) ; le code stocké reste {@link #AUTEUR_SYSTEME}. */
+    public static final String LIBELLE_AUTEUR_SYSTEME = "Système (automatique)";
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "identifiant", nullable = false, updatable = false)

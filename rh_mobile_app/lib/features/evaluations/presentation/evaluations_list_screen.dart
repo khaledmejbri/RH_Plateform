@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
+import '../../../core/format/formats.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/evaluation_models.dart';
 import '../data/evaluation_repository.dart';
@@ -116,10 +116,7 @@ class _CollabListBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => _ErrorView(
-        message: rhErrorMessage(e),
-        onRetry: () => ref.invalidate(evaluationsListProvider),
-      ),
+      error: (e, _) => RhErrorState.depuis(e, onRetry: () => ref.invalidate(evaluationsListProvider)),
       data: (evaluations) {
         if (evaluations.isEmpty) {
           return const _HorsCampagneView();
@@ -186,10 +183,7 @@ class _ManagerListBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => _ErrorView(
-        message: rhErrorMessage(e),
-        onRetry: () => ref.invalidate(managerEvaluationsProvider),
-      ),
+      error: (e, _) => RhErrorState.depuis(e, onRetry: () => ref.invalidate(managerEvaluationsProvider)),
       data: (items) {
         final aNoter = items.where((e) => e.actionManagerRequise).toList();
         final suivi = items.where((e) => !e.actionManagerRequise).toList();
@@ -333,46 +327,6 @@ class _HorsCampagneView extends StatelessWidget {
   }
 }
 
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final is403 = message.toLowerCase().contains('accès refusé') ||
-        message.contains('403');
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              is403 ? Icons.lock_outline_rounded : Icons.wifi_off_rounded,
-              size: 48,
-              color: AppTheme.textSecondary,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              is403
-                  ? 'Accès refusé. Cette évaluation ne vous est pas destinée.'
-                  : message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: onRetry,
-              child: const Text('Réessayer'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _EvaluationCard extends StatelessWidget {
   const _EvaluationCard({required this.item, required this.asManager});
@@ -382,7 +336,7 @@ class _EvaluationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, bgColor, fgColor) = _statusMeta(item.statut);
+    final (label, bgColor, fgColor) = _statusMeta(item.statut, item.statutLibelle(asManager: asManager));
     final personne = asManager
         ? item.collaborateurLibelle
         : (item.superieurNom != null
@@ -424,7 +378,7 @@ class _EvaluationCard extends StatelessWidget {
                   ),
                   const Spacer(),
                   Text(
-                    DateFormat('dd MMM yyyy', 'fr_FR').format(item.creeLe),
+                    formatDate(item.creeLe),
                     style: const TextStyle(
                       fontSize: 12,
                       color: AppTheme.textSecondary,
@@ -496,8 +450,8 @@ class _EvaluationCard extends StatelessWidget {
                   ),
                 ),
               ],
-              if (item.scoreSur20 != null) ...[
-                const SizedBox(height: 8),
+              const SizedBox(height: 8),
+              if (item.aUneNote)
                 Row(
                   children: [
                     const Icon(
@@ -507,7 +461,7 @@ class _EvaluationCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      '${item.scoreSur20}/20'
+                      '${item.scoreSur20} / 20'
                       '${EvaluationLabels.appreciation(item.scoreSur20).isNotEmpty ? ' · ${EvaluationLabels.appreciation(item.scoreSur20)}' : ''}',
                       style: const TextStyle(
                         fontSize: 13,
@@ -516,8 +470,12 @@ class _EvaluationCard extends StatelessWidget {
                       ),
                     ),
                   ],
+                )
+              else
+                const Text(
+                  'Non évaluée',
+                  style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
                 ),
-              ],
             ],
           ),
         ),
@@ -525,25 +483,25 @@ class _EvaluationCard extends StatelessWidget {
     );
   }
 
-  (String, Color, Color) _statusMeta(String statut) {
+  (String, Color, Color) _statusMeta(String statut, String libelle) {
     return switch (statut) {
       'VALIDEE' => (
-          EvaluationLabels.statut(statut),
+          libelle,
           AppTheme.successSurface,
           AppTheme.success,
         ),
       'VALIDEE_COLLABORATEUR' => (
-          EvaluationLabels.statut(statut),
+          libelle,
           AppTheme.primarySurface,
           AppTheme.primaryDark,
         ),
       'VALIDEE_SUPERIEUR' => (
-          EvaluationLabels.statut(statut),
+          libelle,
           AppTheme.warningSurface,
           AppTheme.warning,
         ),
       _ => (
-          EvaluationLabels.statut(statut),
+          libelle,
           AppTheme.surfaceMuted,
           AppTheme.textSecondary,
         ),

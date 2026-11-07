@@ -147,6 +147,8 @@ class PresencePointageServiceTest {
 
 		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_HORS_ZONE);
 		assertThat(resp.distanceMetres()).isGreaterThan(50.0);
+		// D-L01.c : virgule décimale française
+		assertThat(resp.motifRejet()).matches("Hors zone de pointage \\(\\d+,\\d m > \\d+ m\\)");
 	}
 
 	@Test

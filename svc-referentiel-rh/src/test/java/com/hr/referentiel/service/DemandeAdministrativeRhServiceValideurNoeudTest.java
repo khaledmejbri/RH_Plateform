@@ -22,6 +22,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -47,6 +49,9 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 	private RhNotificationPublisher notificationPublisher;
 	@Mock
 	private DemandeAdminWorkflowHistoryRepository workflowHistoryRepository;
+
+	@Mock
+	private NumeroLisibleService numeroLisibleService;
 
 	@InjectMocks
 	private DemandeAdministrativeRhService service;
@@ -107,7 +112,7 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 		DemandeAdministrativeRhResponse response = service.validerSuperieur(demandeId, jwt);
 
 		assertThat(response.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
-		verify(notificationPublisher).notifierValidationRo(demandeur, "CONGE", managerActif);
+		verify(notificationPublisher).notifierValidationRo(demandeur, "CONGE", managerActif, null);
 	}
 
 	@Test
@@ -252,7 +257,7 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 
 		assertThat(suivi.isEtapeSuperieurRequise()).isFalse();
 		assertThat(suivi.getValideurAttenduIdentifiant()).isNull();
-		assertThat(suivi.getMessageExplication()).contains("directement en validation RRH");
+		assertThat(suivi.getMessageExplication()).contains("directement en validation RH");
 		assertThat(suivi.getEtapes()).noneMatch(e -> "RO".equals(e.getCode()));
 	}
 
@@ -294,6 +299,89 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 	}
 
 	// ─── D-H03 : personne ne valide sa propre demande (SCRUM-23 / SCRUM-24) ──────────
+
+	@Test
+	@DisplayName("D-L02 / D-L01.b : numéro attribué, exposé, commentaire d'historique sans code")
+	void creer_numeroEtCommentaireSansCode() {
+		when(numeroLisibleService.attribuer(eq(PrefixeNumero.DEM), any())).thenReturn("DEM-202611-0001");
+		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(demandeur);
+		when(collaborateurRepository.findDetailById(demandeur.getId())).thenReturn(Optional.of(demandeur));
+		when(demandeRepo.save(any())).thenAnswer(inv -> {
+			DemandeAdministrativeRh d = inv.getArgument(0);
+			d.setId(UUID.randomUUID());
+			return d;
+		});
+		when(workflowHistoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		var req = new com.hr.referentiel.dto.DemandeAdministrativeRhCreationRequest();
+		req.setTypeDemande(TypeDemandeAdministrativeRh.CONGE);
+		req.setContenu(Map.of("date_debut", "2026-09-01", "date_fin", "2026-09-05", "type_conge", "ANNUEL"));
+
+		DemandeAdministrativeRhResponse r = service.creer(req, jwt);
+
+		assertThat(r.getNumero()).isEqualTo("DEM-202611-0001");
+		var captor = org.mockito.ArgumentCaptor.forClass(com.hr.referentiel.entity.DemandeAdminWorkflowHistory.class);
+		verify(workflowHistoryRepository, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
+		assertThat(captor.getAllValues()).allSatisfy(h -> {
+			assertThat(h.getCommentaire()).doesNotContainPattern("[A-Z]{3,}_[A-Z_]+").doesNotContain("CONGE");
+			assertThat(h.getActeurNom()).isEqualTo("Bob Martin");
+		});
+		assertThat(captor.getAllValues().get(0).getCommentaire()).isEqualTo("Demande de congé annuel créée");
+		verify(notificationPublisher).notifierDemandeRecue(demandeur, "CONGE", "DEM-202611-0001", managerActif);
+	}
+
+	@Test
+	@DisplayName("D-L01.b : commentaires de création pour chaque type")
+	void commentaireCreationParType() {
+		assertThat(DemandeAdministrativeRhService.commentaireCreation(TypeDemandeAdministrativeRh.AUTORISATION_SORTIE, Map.of()))
+				.isEqualTo("Demande d'autorisation de sortie créée");
+		assertThat(DemandeAdministrativeRhService.commentaireCreation(TypeDemandeAdministrativeRh.ORDRE_MISSION, Map.of()))
+				.isEqualTo("Demande d'ordre de mission créée");
+		assertThat(DemandeAdministrativeRhService.commentaireCreation(TypeDemandeAdministrativeRh.CONGE, Map.of("type_conge", "MALADIE")))
+				.isEqualTo("Demande de congé maladie créée");
+	}
+
+	@Test
+	@DisplayName("D-L02 : recherche q insensible à la casse, combinée aux filtres, aucune requête hors numéro")
+	void listerRh_rechercheParNumero() {
+		demande.setNumero("DEM-202611-0001");
+		when(demandeRepo.findPourRhByNumero("DEM-202611-0001")).thenReturn(List.of(demande));
+
+		assertThat(service.listerToutPourRh(null, null, null, " dem-202611-0001 "))
+				.extracting(DemandeAdministrativeRhResponse::getNumero).containsExactly("DEM-202611-0001");
+		assertThat(service.listerToutPourRh(TypeDemandeAdministrativeRh.ORDRE_MISSION, null, null, "dem-202611-0001")).isEmpty();
+		verify(demandeRepo, org.mockito.Mockito.never()).findAllPourRhOrderByCreeLeDesc();
+	}
+
+	@Test
+	@DisplayName("Suivi : demande annulée avant le responsable → étapes responsable et RH non atteintes")
+	void suivi_annuleeAvantResponsable_etapesNonAtteintes() {
+		demande.setStatut(StatutDemandeAdministrativeRh.ANNULEE);
+		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
+		when(workflowHistoryRepository.findByDemandeAdministrativeIdOrderByDateActionAsc(demandeId)).thenReturn(List.of());
+
+		var etapes = service.suivi(demandeId, jwt, true).getEtapes();
+
+		assertThat(etapes).extracting(com.hr.referentiel.dto.WorkflowEtapeResponse::getCode)
+				.containsExactly("DEPOT", "RO", "RRH", "CLOTURE");
+		assertThat(etapes.get(1).isTerminee()).isFalse();
+		assertThat(etapes.get(2).isTerminee()).isFalse();
+		assertThat(etapes.get(3).getLibelle()).isEqualTo("Annulée par le demandeur");
+		assertThat(etapes.get(3).isTerminee()).isTrue();
+	}
+
+	@Test
+	@DisplayName("Approuver une demande déjà approuvée → 409 DEMANDE_DEJA_DECIDEE avec le libellé du statut")
+	void validerRrh_dejaApprouvee_409() {
+		demande.setStatut(StatutDemandeAdministrativeRh.APPROUVEE);
+		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
+
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.validerRrh(demandeId, jwt))
+				.isInstanceOfSatisfying(com.hr.referentiel.web.ReferentielMetierException.class, e -> {
+					assertThat(e.getHttpStatus()).isEqualTo(409);
+					assertThat(e.getCode()).isEqualTo("DEMANDE_DEJA_DECIDEE");
+					assertThat(e.getMessage()).contains("Approuvée").doesNotContain("APPROUVEE");
+				});
+	}
 
 	private DemandeAdministrativeRh creerPour(Collaborateur auteur) {
 		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(auteur);

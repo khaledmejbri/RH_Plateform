@@ -87,7 +87,7 @@ public class EvaluationAccessService {
 			return;
 		}
 		EvaluationRh evaluation = evaluationRhRepository.findById(evaluationId)
-				.orElseThrow(() -> new IllegalArgumentException("Evaluation introuvable : " + evaluationId));
+				.orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable"));
 		assertParticipantOf(evaluation.getCollaborateurIdentifiant(), evaluation.getSuperieurIdentifiant());
 	}
 
@@ -138,7 +138,7 @@ public class EvaluationAccessService {
 
 	public void assertIsCollaborateurOfRh(UUID evaluationId) {
 		EvaluationRh evaluation = evaluationRhRepository.findById(evaluationId)
-				.orElseThrow(() -> new IllegalArgumentException("Evaluation introuvable : " + evaluationId));
+				.orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable"));
 		if (!actorMatches(evaluation.getCollaborateurIdentifiant())) {
 			throw new SecurityException("Seul le collaborateur évalué peut valider cette évaluation");
 		}
@@ -146,7 +146,7 @@ public class EvaluationAccessService {
 
 	public void assertIsSuperieurOfRh(UUID evaluationId) {
 		EvaluationRh evaluation = evaluationRhRepository.findById(evaluationId)
-				.orElseThrow(() -> new IllegalArgumentException("Evaluation introuvable : " + evaluationId));
+				.orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable"));
 		if (!actorMatches(evaluation.getSuperieurIdentifiant())) {
 			throw new SecurityException("Seul le supérieur renseigné peut valider cette évaluation");
 		}
@@ -173,7 +173,7 @@ public class EvaluationAccessService {
 
 	private Evaluation loadEvaluation(UUID evaluationId) {
 		return evaluationRepository.findByIdWithCampaign(evaluationId)
-				.orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable: " + evaluationId));
+				.orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable"));
 	}
 
 	/**

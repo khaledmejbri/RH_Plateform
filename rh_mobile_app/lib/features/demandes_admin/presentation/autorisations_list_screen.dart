@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/format/formats.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/demande_admin_repository.dart';
 import '../data/demande_admin_models.dart';
@@ -23,7 +24,7 @@ class _AutorisationsListScreenState
     extends ConsumerState<AutorisationsListScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController =
-      TabController(length: 3, vsync: this);
+      TabController(length: 4, vsync: this);
 
   @override
   void dispose() {
@@ -39,7 +40,7 @@ class _AutorisationsListScreenState
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: AppTheme.surface,
-        title: const Text('Mes Autorisations'),
+        title: const Text('Mes autorisations'),
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppTheme.primary,
@@ -47,35 +48,19 @@ class _AutorisationsListScreenState
           labelColor: AppTheme.primary,
           unselectedLabelColor: AppTheme.textSecondary,
           labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
           tabs: const [
             Tab(text: 'En cours'),
             Tab(text: 'Approuvées'),
             Tab(text: 'Refusées'),
+            Tab(text: 'Annulées'),
           ],
         ),
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.wifi_off_rounded,
-                  size: 48, color: AppTheme.textSecondary),
-              const SizedBox(height: 12),
-              Text(rhErrorMessage(e),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppTheme.textSecondary)),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () {
-                  ref.invalidate(autorisationsListProvider);
-                },
-                child: const Text('Réessayer'),
-              ),
-            ],
-          ),
-        ),
+        error: (e, _) => RhErrorState.depuis(e, onRetry: () => ref.invalidate(autorisationsListProvider)),
         data: (items) {
           final enCours = items
               .where((i) =>
@@ -87,7 +72,10 @@ class _AutorisationsListScreenState
               .where((i) => i.statut == 'APPROUVEE')
               .toList();
           final refusees = items
-              .where((i) => i.statut == 'REFUSEE' || i.statut == 'ANNULEE')
+              .where((i) => i.statut == 'REFUSEE')
+              .toList();
+          final annulees = items
+              .where((i) => i.statut == 'ANNULEE')
               .toList();
 
           return TabBarView(
@@ -100,6 +88,9 @@ class _AutorisationsListScreenState
                 ref.invalidate(autorisationsListProvider);
               }),
               _AutorisationList(items: refusees, onRefresh: () async {
+                ref.invalidate(autorisationsListProvider);
+              }),
+              _AutorisationList(items: annulees, onRefresh: () async {
                 ref.invalidate(autorisationsListProvider);
               }),
             ],
@@ -149,7 +140,7 @@ class _AutorisationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final couleurStatut = _getCouleurStatut(item.statut);
-    final libelleStatut = _getLibelleStatut(item.statut);
+    final libelleStatut = item.statutLibelle;
 
     return Card(
       elevation: 0,
@@ -170,7 +161,9 @@ class _AutorisationCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      'Autorisation de sortie',
+                      item.referenceAffichee == null
+                          ? 'Autorisation de sortie'
+                          : 'Autorisation de sortie · ${item.referenceAffichee}',
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -202,7 +195,7 @@ class _AutorisationCard extends StatelessWidget {
                       size: 16, color: AppTheme.textSecondary),
                   const SizedBox(width: 6),
                   Text(
-                    item.contenu?['date_jour'] ?? '-',
+                    formatDateIso(item.contenu?['date_jour'] ?? item.periodeDebut),
                     style: const TextStyle(
                       fontSize: 13,
                       color: AppTheme.textSecondary,
@@ -258,25 +251,6 @@ class _AutorisationCard extends StatelessWidget {
         return AppTheme.warning;
       default:
         return AppTheme.textSecondary;
-    }
-  }
-
-  String _getLibelleStatut(String statut) {
-    switch (statut) {
-      case 'APPROUVEE':
-        return 'Approuvée';
-      case 'REFUSEE':
-        return 'Refusée';
-      case 'ANNULEE':
-        return 'Annulée';
-      case 'EN_VALIDATION_SUPERIEUR':
-        return 'Validation RO';
-      case 'EN_VALIDATION_RRH':
-        return 'Validation RH';
-      case 'SOUMISE':
-        return 'Soumise';
-      default:
-        return statut;
     }
   }
 }

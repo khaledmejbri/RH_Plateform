@@ -54,7 +54,7 @@ export default function HomePage() {
     {
       to: '/app/demandes-administratives?statut=EN_VALIDATION_RRH',
       value: n(demandes),
-      label: lectureSeule ? 'Demandes en attente RH' : 'Demandes à décider',
+      label: 'Demandes à décider',
       sub: 'Congés et autorisations',
       icon: <IconFile />,
       accent: '#0f766e',
@@ -86,7 +86,7 @@ export default function HomePage() {
         <h2>Tableau de bord</h2>
         <p>
           {lectureSeule
-            ? 'Vue d’ensemble — consultation Direction (compteurs et listes).'
+            ? 'Vue d’ensemble en consultation (compteurs et listes).'
             : 'Vue d’ensemble de l’activité RH.'}
         </p>
       </header>
@@ -109,18 +109,13 @@ export default function HomePage() {
       <section className="panel" aria-labelledby="quick-title">
         <h3 id="quick-title" className="panel__title">Accès rapide</h3>
         <div className="quick-actions">
-          {(lectureSeule
-            ? [
-                { to: '/app/documents-administratifs', label: 'File documents (consultation)', icon: <IconDoc /> },
-                { to: '/app/collaborateurs', label: 'Collaborateurs', icon: <IconUsers /> },
-                { to: '/app/organigramme', label: 'Organigramme', icon: <IconTree /> },
-              ]
-            : [
-                { to: '/app/unites', label: 'Unités organisationnelles', icon: <IconBuilding /> },
-                { to: '/app/documents-administratifs', label: 'Traiter une demande de document', icon: <IconDoc /> },
-                { to: '/app/collaborateurs', label: 'Créer un collaborateur', icon: <IconUserPlus /> },
-              ]
-          ).map((l) => (
+          {[
+            { to: '/app/demandes-administratives?statut=EN_VALIDATION_RRH', label: lectureSeule ? 'Demandes en attente de décision' : 'Demandes à traiter', icon: <IconFile /> },
+            { to: '/app/documents-administratifs?statut=A_TRAITER', label: lectureSeule ? 'File des documents' : 'Documents à traiter', icon: <IconDoc /> },
+            { to: '/app/pointage?onglet=manuels', label: lectureSeule ? 'Pointages manuels' : 'Pointages manuels à valider', icon: <IconClock /> },
+            { to: '/app/evaluations?onglet=alertes', label: 'Alertes d’écart', icon: <IconAlert /> },
+            { to: '/app/heures-sup', label: lectureSeule ? 'Heures supplémentaires' : 'Heures supplémentaires à valider', icon: <IconClock /> },
+          ].map((l) => (
             <Link key={l.to} to={l.to} className="quick-action">
               <span aria-hidden>{l.icon}</span>
               {l.label}
@@ -135,14 +130,11 @@ export default function HomePage() {
   );
 }
 
-function IconTree() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 3v6M6 15v-3h12v3M12 9v3" strokeLinecap="round" strokeLinejoin="round" /><rect x="9" y="3" width="6" height="5" rx="1" /><rect x="3" y="15" width="6" height="5" rx="1" /><rect x="15" y="15" width="6" height="5" rx="1" /></svg>;
+function IconClock() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 7v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
-function IconBuilding() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 13v.01M9 17v.01" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-function IconUserPlus() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+function IconAlert() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function IconChat() {

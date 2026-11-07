@@ -5,12 +5,12 @@ package com.hr.evaluation.domain;
  */
 public enum SensEcart {
     RO_INFERIEUR(
-            "Note du responsable plus basse : manque d'effort ou surestimation, à clarifier",
+            "Note du responsable plus basse : surestimation possible, à clarifier",
             "Vérifier avec le collaborateur et son responsable si le collaborateur surestime son niveau "
-                    + "ou si le responsable ne suit pas assez son travail."),
+                    + "ou si l'appréciation du responsable doit être précisée."),
     RO_SUPERIEUR(
             "Note du responsable plus haute : incohérence, à clarifier",
-            "Vérifier si le collaborateur sous-estime son travail ou si le responsable a gonflé la note.");
+            "Vérifier si le collaborateur sous-estime son travail ou si la note du responsable doit être justifiée.");
 
     /** Sens global d'une alerte dont les lignes en écart vont dans les deux sens (valeur calculée, non stockée). */
     public static final String DEUX_SENS = "DEUX_SENS";

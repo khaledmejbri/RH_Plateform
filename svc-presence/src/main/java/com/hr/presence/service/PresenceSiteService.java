@@ -129,7 +129,7 @@ public class PresenceSiteService {
 		}
 		double precisionRequise = properties.getGeofence().anchorAccuracy(site.getTypeLieu());
 		if (request.precisionMetres() > precisionRequise) {
-			throw PresenceMetierException.unprocessable("PRECISION_ANCRAGE_INSUFFISANTE", String.format(Locale.ROOT,
+			throw PresenceMetierException.unprocessable("PRECISION_ANCRAGE_INSUFFISANTE", String.format(Locale.FRANCE,
 					"Signal GPS trop faible (±%.0f m, %.0f m maximum) : placez-vous à découvert et réessayez",
 					request.precisionMetres(), precisionRequise));
 		}

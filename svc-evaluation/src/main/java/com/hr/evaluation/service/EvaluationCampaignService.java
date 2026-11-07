@@ -241,7 +241,7 @@ public class EvaluationCampaignService {
 
         if (campaign.getStatut() != EvaluationCampaignStatus.ACTIVE) {
             throw EvaluationMetierException.unprocessable("CAMPAGNE_STATUT_INVALIDE",
-                    "Seule une campagne active peut etre terminee. Statut actuel: " + campaign.getStatut());
+                    "Seule une campagne active peut être terminée. Statut actuel : " + libelleStatut(campaign.getStatut()));
         }
 
         campaign.setStatut(EvaluationCampaignStatus.TERMINEE);
@@ -268,10 +268,10 @@ public class EvaluationCampaignService {
         if (templateGeneralId != null) {
             EvaluationTemplate templateGeneral = templateRepository.findById(templateGeneralId)
                     .orElseThrow(() -> new IllegalArgumentException(
-                            "Template general introuvable: " + templateGeneralId));
+                            "Questionnaire général introuvable"));
 
             if (!templateGeneral.isActif() || templateGeneral.getType() != TemplateType.GENERIC) {
-                throw new IllegalStateException("Le template general doit etre actif et de type GENERIC");
+                throw new IllegalStateException("Le template général doit être actif et de type général");
             }
 
             campaign.setTemplateGeneral(templateGeneral);
@@ -281,16 +281,16 @@ public class EvaluationCampaignService {
             technicalTemplateRepository.findById(templateTechniqueId)
                     .ifPresentOrElse(templateTechnique -> {
                         if (!templateTechnique.isActif()) {
-                            throw new IllegalStateException("Le template technique doit etre actif");
+                            throw new IllegalStateException("Le questionnaire technique doit être actif");
                         }
                         campaign.setTemplateTechnique(templateTechnique);
                         campaign.setTemplateCompetence(null);
                     }, () -> {
                         EvaluationTemplate templateCompetence = templateRepository.findById(templateTechniqueId)
                                 .orElseThrow(() -> new IllegalArgumentException(
-                                        "Template de competences introuvable: " + templateTechniqueId));
+                                        "Questionnaire de compétences introuvable"));
                         if (!templateCompetence.isActif() || templateCompetence.getType() != TemplateType.TECHNICAL) {
-                            throw new IllegalStateException("Le template de competences doit etre actif et de type TECHNICAL");
+                            throw new IllegalStateException("Le template de compétences doit être actif et de type technique");
                         }
                         campaign.setTemplateCompetence(templateCompetence);
                         campaign.setTemplateTechnique(null);
@@ -342,9 +342,18 @@ public class EvaluationCampaignService {
         }
     }
 
+    private static String libelleStatut(EvaluationCampaignStatus statut) {
+        return switch (statut) {
+            case PLANIFIEE -> "planifiée";
+            case ACTIVE -> "active";
+            case TERMINEE -> "terminée";
+            case ANNULEE -> "annulée";
+        };
+    }
+
     private EvaluationCampaign chargerCampagne(UUID id) {
         return campaignRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "Campagne d'evaluation introuvable: " + id));
+                        "Campagne d'évaluation introuvable"));
     }
 }

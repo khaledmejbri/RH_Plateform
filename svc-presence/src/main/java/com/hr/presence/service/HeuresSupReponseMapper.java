@@ -67,7 +67,7 @@ public class HeuresSupReponseMapper {
 				.map(b -> new BeneficiaireResponse(b.getCollaborateurId(), b.getMatricule(), b.getNom()))
 				.toList();
 		return new DemandeHeuresSupResponse(
-				d.getId(), d.getReference(), d.getStatut(), d.getSiteId(), site != null ? site.getLibelle() : null,
+				d.getId(), d.getReference(), d.getNumero(), d.getStatut(), d.getSiteId(), site != null ? site.getLibelle() : null,
 				d.getDateDebut(), d.getDateFin(), joursOuverts,
 				d.getOuvertureAvantMinutes(), d.getOuvertureApresMinutes(), d.getDebutPlageTs(),
 				d.getMotif(), d.getDemandeurNom(), benefs, d.isCreeeValidee(),

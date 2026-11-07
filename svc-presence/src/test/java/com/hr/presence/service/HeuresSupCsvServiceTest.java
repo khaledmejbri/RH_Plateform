@@ -33,9 +33,9 @@ class HeuresSupCsvServiceTest {
 		assertThat(csv).startsWith("﻿");
 		String[] lignes = csv.substring(1).split("\r\n");
 		assertThat(lignes[0]).isEqualTo("\"Matricule\";\"Nom\";\"Site\";\"Date\";\"Horaire du jour\";\"Plage validée\";"
-				+ "\"ENTREE\";\"SORTIE\";\"Heures comptées (hh:mm)\";\"Référence de la demande\";\"État\"");
-		assertThat(lignes[1]).startsWith("\"M001\";\"Sarra Khemiri\";\"Siège\";\"2026-11-03\";\"06:00-15:00\";\"04:00-06:00\";"
-				+ "\"04:10\";\"15:40\";\"01:45\";\"HS-0000ABCD\";\"COMPLET\"");
+				+ "\"Entrée\";\"Sortie\";\"Heures comptées (hh:mm)\";\"Référence de la demande\";\"État\"");
+		assertThat(lignes[1]).startsWith("\"M001\";\"Sarra Khemiri\";\"Siège\";\"03/11/2026\";\"06:00-15:00\";\"04:00-06:00\";"
+				+ "\"04:10\";\"15:40\";\"01:45\";\"HS-0000ABCD\";\"Complet\"");
 	}
 
 	@Test

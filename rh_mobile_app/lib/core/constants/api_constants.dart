@@ -3,6 +3,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'default_api_host.dart';
 
+/// Vrai si le build est lancé avec `--dart-define=SERVEUR_EDITABLE=true` (recette, démo par tunnel) :
+/// le champ « Serveur » de la connexion est visible et l'adresse enregistrée est prise en compte.
+/// Absent des builds de production.
+const bool serveurEditable = bool.fromEnvironment('SERVEUR_EDITABLE', defaultValue: false);
+
 /// Base URL de la gateway.
 /// — URL saisie dans l'app (écran de connexion), persistée (prioritaire)
 /// — `API_BASE_URL` en `--dart-define`
@@ -22,12 +27,22 @@ class ApiConstants {
 
   static String _runtimeBase = getPlatformDefaultGatewayBaseUrl();
 
+  /// L'adresse enregistrée dans l'appli n'est utilisée que si l'utilisateur peut la modifier
+  /// (build `SERVEUR_EDITABLE` ou débogage). Sinon elle est ignorée et supprimée : un APK mis à jour
+  /// ne doit pas rester sur une ancienne adresse sans moyen de la corriger.
+  static bool surchargeAutorisee({bool editable = serveurEditable, bool debug = kDebugMode}) =>
+      editable || debug;
+
   static Future<void> init() async {
     try {
-      final saved = await _storage.read(key: _keyOverride);
-      if (saved != null && saved.isNotEmpty) {
-        _runtimeBase = saved;
-        return;
+      if (surchargeAutorisee()) {
+        final saved = await _storage.read(key: _keyOverride);
+        if (saved != null && saved.isNotEmpty) {
+          _runtimeBase = saved;
+          return;
+        }
+      } else {
+        await _storage.delete(key: _keyOverride);
       }
     } catch (_) {}
     if (_apiBaseFromDefine.isNotEmpty) {

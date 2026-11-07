@@ -4,7 +4,9 @@ import {
   AlerteEcartApiError,
   getAlerteEcart,
   libelleConclusion,
+  LECTURE_NEUTRE,
   LIBELLES_EVENEMENT,
+  LIBELLES_SENS_ECART,
   LIBELLES_SENS_GLOBAL,
   LIBELLES_STATUT_ALERTE,
   messageErreurAction,
@@ -12,10 +14,14 @@ import {
   postPriseEnChargeAlerte,
   type AlerteEcartDetail,
   type ConclusionAlerteEcart,
+  type SensEcart,
 } from '../api/alertesEcartApi';
 import { AlerteEcartBadge, StatutAlerteBadge } from '../components/AlerteEcartBadge';
 import { ClotureAlerteDialog } from '../components/ClotureAlerteDialog';
-import { EmptyState, LoadingState, formatDateTime } from '../components/ui';
+import { EmptyState, LoadingState } from '../components/ui';
+import { COLLABORATEUR_INTROUVABLE, formatDateHeure, formatPersonne } from '../utils/format';
+import { VALEUR_NON_RECONNUE } from '../utils/libelles';
+import { useConfirm } from '../components/ConfirmDialog';
 import { useLectureSeule } from '../auth/useLectureSeule';
 
 const RETOUR_LISTE_DEFAUT = '/app/evaluations?onglet=alertes';
@@ -31,6 +37,7 @@ export default function AlerteEcartDetailPage() {
   const navigate = useNavigate();
   const lienRetour = retourListe(useLocation().state);
   const lectureSeule = useLectureSeule();
+  const confirm = useConfirm();
   const [alerte, setAlerte] = useState<AlerteEcartDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [introuvable, setIntrouvable] = useState(false);
@@ -76,8 +83,11 @@ export default function AlerteEcartDetailPage() {
     }
   }
 
+  const nomAlerte = () => formatPersonne(alerte?.collaborateurNom, alerte?.collaborateurMatricule);
+
   async function prendreEnCharge() {
     if (busy) return;
+    if (!(await confirm({ message: `Prendre en charge l’alerte d’écart de ${nomAlerte()} ?`, confirmLabel: 'Prendre en charge' }))) return;
     setBusy(true);
     setMessage(null);
     try {
@@ -128,6 +138,13 @@ export default function AlerteEcartDetailPage() {
     );
   }
 
+  // Lecture neutre : une phrase par sens présent, affichée une fois (et non répétée par compétence).
+  const lecturesDistinctes = Array.from(new Set(
+    alerte.lignes
+      .map((l) => l.sensActuel ?? l.sensDetection)
+      .filter((s): s is SensEcart => !!s)
+      .map((s) => LECTURE_NEUTRE[s]),
+  ));
   const peutAgir = !lectureSeule && alerte.peutTraiter;
   const concerne = !lectureSeule && !alerte.peutTraiter && alerte.motifNonTraitable === 'CONCERNE';
   const peutPrendre = peutAgir && alerte.statut === 'OUVERTE';
@@ -140,10 +157,10 @@ export default function AlerteEcartDetailPage() {
       </p>
       <div className="page__header">
         <h1 className="page__title">
-          Alerte d’écart — {alerte.collaborateurNom ?? 'collaborateur'}
+          Alerte d’écart — {alerte.collaborateurNom ?? COLLABORATEUR_INTROUVABLE}
         </h1>
         <p className="page__subtitle">
-          {alerte.campagneNom ?? 'Campagne'} · détectée le {formatDateTime(alerte.detecteeLe)}
+          {alerte.campagneNom ?? 'Campagne'} · détectée le {formatDateHeure(alerte.detecteeLe)}
         </p>
       </div>
 
@@ -172,15 +189,14 @@ export default function AlerteEcartDetailPage() {
           ) : null}
         </div>
         <dl className="detail-dl mt-md">
-          <div><dt>Collaborateur</dt><dd>{alerte.collaborateurNom ?? '—'}{alerte.collaborateurMatricule ? ` (${alerte.collaborateurMatricule})` : ''}</dd></div>
+          <div><dt>Collaborateur</dt><dd>{formatPersonne(alerte.collaborateurNom, alerte.collaborateurMatricule)}</dd></div>
           <div><dt>Unité</dt><dd>{alerte.collaborateurUniteLibelle ?? '—'}</dd></div>
           <div><dt>Responsable</dt><dd>{alerte.superieurNom ?? '—'}</dd></div>
           <div><dt>Niveau à la détection</dt><dd><AlerteEcartBadge niveau={alerte.niveauDetection} /></dd></div>
           <div>
             <dt>Sens</dt>
             <dd>
-              {alerte.sensGlobal ? (alerte.libelleSensGlobal ?? LIBELLES_SENS_GLOBAL[alerte.sensGlobal]) : '—'}
-              {alerte.aideSensGlobal ? <div className="text-muted text-sm">{alerte.aideSensGlobal}</div> : null}
+              {alerte.sensGlobal ? LIBELLES_SENS_GLOBAL[alerte.sensGlobal] : '—'}
             </dd>
           </div>
           {alerte.conclusion ? (
@@ -213,7 +229,7 @@ export default function AlerteEcartDetailPage() {
               <th scope="col">À la détection</th>
               <th scope="col">Actuellement</th>
               <th scope="col">Niveau</th>
-              <th scope="col">Lecture</th>
+              <th scope="col">Note du responsable</th>
             </tr>
           </thead>
           <tbody>
@@ -232,16 +248,20 @@ export default function AlerteEcartDetailPage() {
                     {modifiee ? <div className="text-muted text-sm">Modifiée depuis la détection</div> : null}
                   </td>
                   <td><AlerteEcartBadge niveau={l.niveauActuel} /></td>
-                  <td>
-                    {l.libelleSens ?? '—'}
-                    {l.aideSens ? <div className="text-muted text-sm">{l.aideSens}</div> : null}
-                  </td>
+                  <td>{sensCourt(l.sensActuel ?? l.sensDetection)}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+
+      {lecturesDistinctes.length > 0 ? (
+        <div className="callout mt-sm">
+          <p className="callout__title">Lecture</p>
+          {lecturesDistinctes.map((t) => <p key={t}>{t}</p>)}
+        </div>
+      ) : null}
 
       <h2 className="section-title mt-md">Historique</h2>
       {alerte.historique.length === 0 ? (
@@ -251,14 +271,16 @@ export default function AlerteEcartDetailPage() {
           {alerte.historique.map((h) => (
             <li key={h.identifiant}>
               <div>
-                <strong>{LIBELLES_EVENEMENT[h.typeEvenement] ?? h.typeEvenement}</strong>
+                <strong>{h.typeEvenementLibelle ?? LIBELLES_EVENEMENT[h.typeEvenement] ?? VALEUR_NON_RECONNUE}</strong>
                 {' — '}
-                {h.auteurSysteme ? 'SYSTEME' : (h.auteurLibelle ?? '—')}
-                <span className="text-muted"> · {formatDateTime(h.le)}</span>
+                {h.auteurSysteme ? 'Système (automatique)' : (h.auteurLibelle ?? '—')}
+                <span className="text-muted"> · {formatDateHeure(h.le)}</span>
               </div>
               {h.statutAvant !== h.statutApres && h.statutApres ? (
                 <div className="text-sm">
-                  Statut : {h.statutAvant ? LIBELLES_STATUT_ALERTE[h.statutAvant] : '—'} → {LIBELLES_STATUT_ALERTE[h.statutApres]}
+                  {h.statutAvant
+                    ? <>Statut : {h.statutAvantLibelle ?? LIBELLES_STATUT_ALERTE[h.statutAvant]} → {h.statutApresLibelle ?? LIBELLES_STATUT_ALERTE[h.statutApres]}</>
+                    : <>Création : {h.statutApresLibelle ?? LIBELLES_STATUT_ALERTE[h.statutApres]}</>}
                 </div>
               ) : null}
               {h.niveauApres && h.niveauAvant !== h.niveauApres ? (
@@ -277,6 +299,7 @@ export default function AlerteEcartDetailPage() {
 
       {cloture ? (
         <ClotureAlerteDialog
+          confirmer={() => confirm({ message: `Clore l’alerte d’écart de ${nomAlerte()} ? Cette action est définitive.`, confirmLabel: 'Clore l’alerte', danger: true })}
           onClose={() => setCloture(false)}
           onSubmit={clore}
           onErreurBloquante={gererErreurBloquante}
@@ -284,4 +307,8 @@ export default function AlerteEcartDetailPage() {
       ) : null}
     </div>
   );
+}
+
+function sensCourt(sens: SensEcart | null | undefined): string {
+  return sens ? LIBELLES_SENS_ECART[sens] : '—';
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { clearToken, getToken } from '../api/auth';
 import { canWriteBackoffice, isDirectionOnly } from '../auth/jwtRoles';
@@ -17,16 +17,16 @@ type NavItem = {
 const navAll: NavItem[] = [
   { to: '/app/accueil',                   label: 'Accueil',                    icon: IconHome,     desc: 'Tableau de bord' },
   { to: '/app/plaintes',                  label: 'Plaintes',                   icon: IconChat,     desc: 'Suivi' },
-  { to: '/app/demandes-administratives',  label: 'Demandes administratives',   icon: IconFile,     desc: 'Congés, autorisations' },
-  { to: '/app/documents-administratifs',  label: 'Documents administratifs',   icon: IconDoc,      desc: 'Attestations, bulletins' },
-  { to: '/app/formations',                label: 'Formations',                 icon: IconSchool,   desc: 'Plan annuel' },
-  { to: '/app/evaluations',               label: 'Évaluations',                icon: IconStar,     desc: 'Campagnes & suivi' },
-  { to: '/app/collaborateurs',            label: 'Collaborateurs',             icon: IconUsers,    desc: 'Fiches' },
-  { to: '/app/organigramme',              label: 'Organigramme',               icon: IconTree,     desc: 'Hiérarchie visuelle' },
-  { to: '/app/pointage',                  label: 'Sites de pointage',          icon: IconQr,       desc: 'Pointage QR' },
-  { to: '/app/heures-sup',                label: 'Heures supplémentaires',     icon: IconQr,       desc: 'Demandes & heures comptées' },
-  { to: '/app/structure',                 label: 'Structure RH',               icon: IconBuilding, desc: 'Départements & unités', writeOnly: true },
-  { to: '/app/unites',                    label: 'Unités (référentiel)',        icon: IconBuilding, desc: 'Référentiel brut', writeOnly: true },
+  { to: '/app/demandes-administratives',  label: 'Demandes administratives',   icon: IconFile,     desc: 'Congés, sorties, missions' },
+  { to: '/app/documents-administratifs',  label: 'Documents administratifs',   icon: IconDoc,      desc: 'Attestations et autres documents' },
+  { to: '/app/formations',                label: 'Formations',                 icon: IconSchool,   desc: 'Demandes de formation' },
+  { to: '/app/evaluations',               label: 'Évaluations',                icon: IconStar,     desc: 'Campagnes et suivi' },
+  { to: '/app/collaborateurs',            label: 'Collaborateurs',             icon: IconUsers,    desc: 'Fiches et comptes' },
+  { to: '/app/organigramme',              label: 'Organigramme',               icon: IconTree,     desc: 'Hiérarchie de la société' },
+  { to: '/app/pointage',                  label: 'Sites de pointage',          icon: IconQr,       desc: 'QR, pointages et temps de travail' },
+  { to: '/app/heures-sup',                label: 'Heures supplémentaires',     icon: IconClock,    desc: 'Demandes et heures comptées' },
+  { to: '/app/structure',                 label: 'Structure RH',               icon: IconBuilding, desc: 'Départements et services', writeOnly: true },
+  { to: '/app/unites',                    label: 'Organisation',               icon: IconBuilding, desc: 'Unités', writeOnly: true },
 ];
 
 export default function AppShell() {
@@ -36,6 +36,13 @@ export default function AppShell() {
   const token = getToken();
   const direction = isDirectionOnly(token);
   const canWrite = canWriteBackoffice(token);
+
+  // Titre d'onglet propre à chaque page (R10).
+  useEffect(() => {
+    const item = navAll.find((i) => location.pathname === i.to || location.pathname.startsWith(`${i.to}/`));
+    const titre = location.pathname.includes('/alertes-ecart/') ? 'Alerte d’écart' : item?.label ?? 'Accueil';
+    document.title = `${titre} — RH-Évènement`;
+  }, [location.pathname]);
 
   const nav = useMemo(
     () => navAll.filter((item) => !item.writeOnly || canWrite),
@@ -49,7 +56,8 @@ export default function AppShell() {
 
   return (
     <div className="shell">
-      <button type="button" className="shell__menu-btn" aria-label="Menu"
+      <a className="skip-link" href="#contenu">Aller au contenu</a>
+      <button type="button" className="shell__menu-btn" aria-label="Ouvrir le menu" aria-expanded={sidebarOpen}
         onClick={() => setSidebarOpen(v => !v)}>
         <span /><span /><span />
       </button>
@@ -102,7 +110,7 @@ export default function AppShell() {
             Consultation uniquement — vous ne pouvez pas modifier les données.
           </div>
         ) : null}
-        <main className="shell__content anim-fade-in">
+        <main id="contenu" tabIndex={-1} className="shell__content anim-fade-in">
           <ErrorBoundary resetKey={location.pathname}>
             <Outlet context={{ lectureSeule: direction }} />
           </ErrorBoundary>
@@ -138,6 +146,9 @@ function IconTree({ className }: { className?: string }) {
 }
 function IconStar({ className }: { className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+function IconClock({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 7v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 function IconQr({ className }: { className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 2h2v2h-2v-2zm4-2h2v6h-6v-2h2v-2h2v-2zm-4 4h2v2h-2v-2z" strokeLinecap="round" strokeLinejoin="round" /></svg>;

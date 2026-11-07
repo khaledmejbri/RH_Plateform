@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/format/formats.dart';
+import '../../../core/libelles/libelles.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/collaborateur_notifier.dart';
 import '../data/evaluation_models.dart';
 import '../data/evaluation_repository.dart';
 import 'evaluations_list_screen.dart';
 import 'skill_star_rating.dart';
+import 'package:rh_mobile_app/core/widgets/confirmation_action.dart';
 import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final evaluationDetailProvider =
@@ -135,11 +138,13 @@ class _EvaluationDetailScreenState
               color: AppTheme.textSecondary,
             ),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Votre manager notera après votre validation.',
-            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-          ),
+          if (!alreadyValidated) ...[
+            const SizedBox(height: 4),
+            const Text(
+              'Votre responsable notera après votre validation.',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+          ],
           if (_inlineError != null) ...[
             const SizedBox(height: 12),
             _InlineAlert(message: _inlineError!),
@@ -251,7 +256,7 @@ class _EvaluationDetailScreenState
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Text(
-              'Vous notez en tant que manager',
+              'Vous notez en tant que responsable',
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 color: AppTheme.primary,
@@ -274,7 +279,7 @@ class _EvaluationDetailScreenState
             const _InlineAlert(
               message:
                   'Le collaborateur n’a pas encore validé son auto-évaluation. '
-                  'Les notes manager restent indisponibles.',
+                  'Les notes du responsable restent indisponibles.',
             ),
           ],
           const SizedBox(height: 12),
@@ -474,27 +479,17 @@ class _EvaluationDetailScreenState
   }
 
   Future<void> _confirmerValidationSuperieur() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Valider l’évaluation ?'),
-        content: const Text(
-          'Une fois validée, l’évaluation ne pourra plus être modifiée '
-          'par vous. Confirmez-vous la validation ?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Valider'),
-          ),
-        ],
-      ),
+    final ev = ref.read(evaluationDetailProvider(widget.id)).valueOrNull;
+    final ok = await confirmerAction(
+      context,
+      action: 'Valider cette évaluation ?',
+      element: ev == null
+          ? 'Évaluation'
+          : [ev.campaignNom, if (ev.collaborateurNom != null) ev.collaborateurNom!].join(' — '),
+      detail: 'Une fois validée, l’évaluation ne pourra plus être modifiée par vous.',
+      libelleConfirmer: 'Valider',
     );
-    if (ok != true || !mounted) return;
+    if (!ok || !mounted) return;
     setState(() {
       _saving = true;
       _inlineError = null;
@@ -738,7 +733,7 @@ class _ManagerGeneralSection extends ConsumerWidget {
                 children: [
                   Text(
                     hasAnswer
-                        ? 'Réponse collab. : ${collabAnswer ?? q.noteExistante}'
+                        ? 'Réponse du collaborateur : ${collabAnswer ?? q.noteExistante}'
                         : 'Le collaborateur n’a pas encore répondu à cette question.',
                     style: TextStyle(
                       color: hasAnswer
@@ -758,7 +753,8 @@ class _ManagerGeneralSection extends ConsumerWidget {
                       final value = i + 1;
                       final active = note == value;
                       return ChoiceChip(
-                        label: Text('$value'),
+                        label: Text(Libelles.noteAvecNiveau(value)),
+                        tooltip: Libelles.noteAvecNiveau(value),
                         selected: active,
                         onSelected: (!enabled || !hasAnswer)
                             ? null
@@ -1033,7 +1029,7 @@ class _HeaderCard extends StatelessWidget {
                 style: const TextStyle(color: AppTheme.textSecondary),
               ),
             Text(
-              'Statut : ${EvaluationLabels.statut(item.statut)}',
+              'Statut : ${item.statutLibelle(asManager: managerMode)}',
               style: const TextStyle(color: AppTheme.textSecondary),
             ),
             if (item.profilSnapshotLabel != null) ...[
@@ -1061,6 +1057,9 @@ class _AnalyticsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // R8 : aucun score factice. Sans aucune note (API à 0), la carte n'est pas affichée.
+    final aucuneNote = scoreSur20 == null && analytics.selfAverage == 0 && analytics.finalScore == 0;
+    if (aucuneNote) return const SizedBox.shrink();
     final appreciation = EvaluationLabels.appreciation(scoreSur20);
     return Card(
       elevation: 0,
@@ -1074,15 +1073,18 @@ class _AnalyticsCard extends StatelessWidget {
             Row(
               children: [
                 _Metric(
-                  label: 'Auto-éval.',
-                  value: '${analytics.selfAverage}/5',
+                  label: 'Auto-évaluation',
+                  value: formatNote(analytics.selfAverage, 5, decimales: 2),
                 ),
-                _Metric(label: 'Final', value: '${analytics.finalScore}/5'),
+                _Metric(
+                  label: 'Note finale',
+                  value: formatNote(analytics.finalScore, 5, decimales: 2),
+                ),
                 _Metric(
                   label: 'Sur 20',
                   value: scoreSur20 != null
-                      ? '$scoreSur20/20'
-                      : '${(analytics.finalScore * 4).round()}/20',
+                      ? '$scoreSur20 / 20'
+                      : '${(analytics.finalScore * 4).round()} / 20',
                 ),
               ],
             ),

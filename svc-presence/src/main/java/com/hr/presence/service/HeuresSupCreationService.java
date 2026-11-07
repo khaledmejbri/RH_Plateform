@@ -8,6 +8,8 @@ import com.hr.presence.dto.HeuresSupDtos.CreationHeuresSupRequest;
 import com.hr.presence.dto.HeuresSupDtos.DemandeHeuresSupResponse;
 import com.hr.presence.entity.PresenceHeuresSupBeneficiaire;
 import com.hr.presence.entity.PresenceHeuresSupDemande;
+import com.hr.presence.numero.NumeroDemandeService;
+import com.hr.presence.numero.PrefixeNumero;
 import com.hr.presence.entity.PresenceHeuresSupJour;
 import com.hr.presence.entity.PresenceSite;
 import com.hr.presence.repository.PresenceHeuresSupBeneficiaireRepository;
@@ -66,6 +68,7 @@ public class HeuresSupCreationService {
 	private final HeuresSupNotifier notifier;
 	private final HeuresSupReponseMapper mapper;
 	private final Clock clock;
+	private final NumeroDemandeService numeroService;
 
 	public HeuresSupCreationService(
 			PresenceHeuresSupDemandeRepository demandeRepository,
@@ -78,7 +81,8 @@ public class HeuresSupCreationService {
 			ActeurResolver acteurResolver,
 			HeuresSupNotifier notifier,
 			HeuresSupReponseMapper mapper,
-			Clock clock) {
+			Clock clock,
+			NumeroDemandeService numeroService) {
 		this.demandeRepository = demandeRepository;
 		this.beneficiaireRepository = beneficiaireRepository;
 		this.jourRepository = jourRepository;
@@ -90,6 +94,7 @@ public class HeuresSupCreationService {
 		this.notifier = notifier;
 		this.mapper = mapper;
 		this.clock = clock;
+		this.numeroService = numeroService;
 	}
 
 	/** Demande d'un RO / chef de département : EN_ATTENTE, bénéficiaires dans son périmètre D-H03. */
@@ -158,7 +163,7 @@ public class HeuresSupCreationService {
 			CollaborateurResolu c = resolus.get(id);
 			if (c == null || !c.actif()) {
 				throw PresenceMetierException.unprocessable("COLLABORATEUR_INVALIDE",
-						"Collaborateur introuvable ou inactif : " + id);
+						"Collaborateur introuvable ou inactif");
 			}
 		}
 
@@ -211,6 +216,7 @@ public class HeuresSupCreationService {
 			d.setStatut(StatutHeuresSup.EN_ATTENTE);
 		}
 		try {
+			d.setNumero(numeroService.attribuer(PrefixeNumero.HS, maintenant));
 			PresenceHeuresSupDemande saved = demandeRepository.saveAndFlush(d);
 			List<PresenceHeuresSupBeneficiaire> beneficiaires = new ArrayList<>();
 			for (UUID id : ids) {

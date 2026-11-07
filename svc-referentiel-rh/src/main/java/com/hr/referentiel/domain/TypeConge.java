@@ -8,11 +8,22 @@ import java.util.Locale;
  */
 public enum TypeConge {
 
-	ANNUEL,
-	MALADIE,
-	MATERNITE,
-	SANS_SOLDE,
-	AUTRE;
+	ANNUEL("congé annuel"),
+	MALADIE("congé maladie"),
+	MATERNITE("congé maternité"),
+	SANS_SOLDE("congé sans solde"),
+	AUTRE("congé");
+
+	private final String libelle;
+
+	TypeConge(String libelle) {
+		this.libelle = libelle;
+	}
+
+	/** Libellé français sans code, pour les textes rédigés par le serveur. */
+	public String getLibelle() {
+		return libelle;
+	}
 
 	public static final String VALEURS_ACCEPTEES =
 			"ANNUEL, MALADIE, MATERNITE, SANS_SOLDE, AUTRE";
@@ -21,7 +32,7 @@ public enum TypeConge {
 			"type_conge invalide : " + VALEURS_ACCEPTEES + ".";
 
 	public static final String MESSAGE_CERTIFICAT_OBLIGATOIRE =
-			"Un certificat / pièce jointe est obligatoire pour un congé MALADIE ou MATERNITE.";
+			"Un certificat / pièce jointe est obligatoire pour un congé maladie ou maternité.";
 
 	/** {@code true} si une pièce jointe (certificat médical / maternité) est exigée. */
 	public boolean exigePieceJointe() {

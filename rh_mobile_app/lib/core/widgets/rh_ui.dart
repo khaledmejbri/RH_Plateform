@@ -134,16 +134,27 @@ class RhEmptyState extends StatelessWidget {
 
 /// État d'erreur avec bouton « Réessayer ».
 class RhErrorState extends StatelessWidget {
-  const RhErrorState({super.key, required this.message, this.onRetry});
+  const RhErrorState({super.key, required this.message, this.onRetry, this.accesRefuse = false});
+
+  /// État d'erreur construit depuis l'exception : pas de « Réessayer » sur un 403 (inutile),
+  /// titre « Accès refusé » dans ce cas.
+  factory RhErrorState.depuis(Object? error, {VoidCallback? onRetry}) {
+    return RhErrorState(
+      message: rhErrorMessage(error),
+      onRetry: rhEstAccesRefuse(error) ? null : onRetry,
+      accesRefuse: rhEstAccesRefuse(error),
+    );
+  }
 
   final String message;
   final VoidCallback? onRetry;
+  final bool accesRefuse;
 
   @override
   Widget build(BuildContext context) {
     return RhEmptyState(
-      icon: Icons.cloud_off_rounded,
-      title: 'Chargement impossible',
+      icon: accesRefuse ? Icons.lock_outline_rounded : Icons.cloud_off_rounded,
+      title: accesRefuse ? 'Accès refusé' : 'Chargement impossible',
       message: message,
       action: onRetry == null
           ? null
@@ -157,7 +168,25 @@ class RhErrorState extends StatelessWidget {
   }
 }
 
-/// Message lisible pour l'utilisateur à partir d'une erreur technique.
+/// Vrai si l'erreur est un refus d'accès (403) : « Réessayer » n'y changerait rien.
+bool rhEstAccesRefuse(Object? error) =>
+    error is DioException && error.response?.statusCode == 403;
+
+/// Vrai si le serveur est injoignable (réseau coupé, délai dépassé, serveur éteint).
+bool rhEstHorsLigne(Object? error) {
+  if (error is! DioException || error.response != null) return false;
+  switch (error.type) {
+    case DioExceptionType.connectionTimeout:
+    case DioExceptionType.sendTimeout:
+    case DioExceptionType.receiveTimeout:
+    case DioExceptionType.connectionError:
+      return true;
+    default:
+      return false;
+  }
+}
+
+/// Message lisible pour l'utilisateur à partir d'une erreur technique (jamais un code HTTP).
 String rhErrorMessage(Object? error) {
   if (error is DioException) {
     final code = error.response?.statusCode;
@@ -167,19 +196,10 @@ String rhErrorMessage(Object? error) {
       if (msg is String && msg.trim().isNotEmpty && code != null && code < 500) return msg;
     }
     if (code == 401) return 'Votre session a expiré. Reconnectez-vous.';
-    if (code == 403) return 'Vous n’avez pas les droits pour cette action.';
+    if (code == 403) return 'Vous n’avez pas accès à cet écran.';
     if (code == 404) return 'Élément introuvable.';
     if (code != null && code >= 500) return 'Le serveur rencontre un problème. Réessayez dans un instant.';
-    switch (error.type) {
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
-        return 'Le serveur met trop de temps à répondre. Vérifiez votre connexion.';
-      case DioExceptionType.connectionError:
-        return 'Serveur injoignable. Vérifiez votre connexion ou l’adresse du serveur.';
-      default:
-        break;
-    }
+    if (rhEstHorsLigne(error)) return 'Impossible de joindre le serveur. Vérifiez votre connexion.';
     return 'Une erreur réseau est survenue.';
   }
   final text = '${error ?? ''}'.replaceFirst('Exception: ', '').trim();

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/format/formats.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/demande_admin_repository.dart';
 import '../data/demande_admin_models.dart';
@@ -26,12 +27,24 @@ class _DemandesAdminListScreenState
     with SingleTickerProviderStateMixin {
   int _currentPage = 0;
   late final TabController _tabController =
-      TabController(length: 3, vsync: this);
+      TabController(length: 4, vsync: this);
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  static bool _enCours(DemandeAdminItem i) =>
+      i.statut == 'EN_VALIDATION_SUPERIEUR' || i.statut == 'EN_VALIDATION_RRH' || i.statut == 'SOUMISE';
+  static bool _approuvees(DemandeAdminItem i) => i.statut == 'APPROUVEE';
+  static bool _refusees(DemandeAdminItem i) => i.statut == 'REFUSEE';
+  static bool _annulees(DemandeAdminItem i) => i.statut == 'ANNULEE';
+
+  /// Compteur d'onglet = nombre de cartes de l'onglet (vide tant que la liste n'est pas chargée).
+  static String _compteur(AsyncValue<List<DemandeAdminItem>> async, bool Function(DemandeAdminItem) filtre) {
+    final items = async.valueOrNull;
+    return items == null ? '' : ' (${items.where(filtre).length})';
   }
 
   @override
@@ -42,61 +55,40 @@ class _DemandesAdminListScreenState
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: AppTheme.surface,
-        title: const Text('Mes Demandes'),
+        title: const Text('Mes demandes'),
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
           indicatorColor: AppTheme.primary,
           indicatorWeight: 2,
           labelColor: AppTheme.primary,
           unselectedLabelColor: AppTheme.textSecondary,
           labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-          tabs: const [
-            Tab(text: 'En cours'),
-            Tab(text: 'Approuvées'),
-            Tab(text: 'Refusées'),
+          tabs: [
+            Tab(text: 'En cours${_compteur(async, _enCours)}'),
+            Tab(text: 'Approuvées${_compteur(async, _approuvees)}'),
+            Tab(text: 'Refusées${_compteur(async, _refusees)}'),
+            Tab(text: 'Annulées${_compteur(async, _annulees)}'),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showNouvelleDemandeDialog(context),
-        child: const Icon(Icons.add_rounded),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => afficherChoixDemande(context),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Nouvelle demande'),
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.wifi_off_rounded,
-                  size: 48, color: AppTheme.textSecondary),
-              const SizedBox(height: 12),
-              Text(rhErrorMessage(e),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppTheme.textSecondary)),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () {
+        error: (e, _) => RhErrorState.depuis(e, onRetry: () {
                   setState(() => _currentPage = 0);
                   ref.invalidate(demandesAdminListProvider);
-                },
-                child: const Text('Réessayer'),
-              ),
-            ],
-          ),
-        ),
+                }),
         data: (items) {
-          final enCours = items
-              .where((i) =>
-                  i.statut == 'EN_VALIDATION_SUPERIEUR' ||
-                  i.statut == 'EN_VALIDATION_RRH' ||
-                  i.statut == 'SOUMISE')
-              .toList();
-          final approuvees = items
-              .where((i) => i.statut == 'APPROUVEE')
-              .toList();
-          final refusees = items
-              .where((i) => i.statut == 'REFUSEE' || i.statut == 'ANNULEE')
-              .toList();
+          final enCours = items.where(_enCours).toList();
+          final approuvees = items.where(_approuvees).toList();
+          final refusees = items.where(_refusees).toList();
+          final annulees = items.where(_annulees).toList();
 
           return TabBarView(
             controller: _tabController,
@@ -111,14 +103,20 @@ class _DemandesAdminListScreenState
               _DemandeList(items: refusees, onRefresh: () async {
                 ref.invalidate(demandesAdminListProvider);
               }),
+              _DemandeList(items: annulees, onRefresh: () async {
+                ref.invalidate(demandesAdminListProvider);
+              }),
             ],
           );
         },
       ),
     );
   }
+}
 
-  void _showNouvelleDemandeDialog(BuildContext context) {
+/// Feuille unique de choix d'une nouvelle demande (congé, sortie, mission, document) ; réutilisée par l'accueil.
+/// Avec [avecListe], la première ligne ouvre la liste de mes demandes (tuile « Mes demandes »).
+void afficherChoixDemande(BuildContext context, {bool avecListe = false}) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -131,11 +129,31 @@ class _DemandesAdminListScreenState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Nouvelle demande',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Text(
+                avecListe ? 'Mes demandes' : 'Nouvelle demande',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
+              if (avecListe) ...[
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceMuted,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.list_alt_rounded, color: AppTheme.textSecondary),
+                  ),
+                  title: const Text('Voir mes demandes', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Suivre l’état de mes demandes'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    context.push('/demandes-admin');
+                  },
+                ),
+                const Divider(height: 8),
+              ],
               ListTile(
                 leading: Container(
                   padding: const EdgeInsets.all(10),
@@ -164,7 +182,7 @@ class _DemandesAdminListScreenState
                   child: const Icon(Icons.access_time_rounded, color: AppTheme.primaryLight),
                 ),
                 title: const Text('Autorisation de sortie', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Sortie courte (max 2h)'),
+                subtitle: const Text('Sortie courte (2 h au maximum)'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () {
                   Navigator.pop(ctx);
@@ -189,13 +207,30 @@ class _DemandesAdminListScreenState
                   context.push('/demandes-admin/mission/nouveau');
                 },
               ),
+              const Divider(height: 8),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.successSurface,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.description_rounded, color: AppTheme.success),
+                ),
+                title: const Text('Document administratif', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Attestation ou autre document'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/documents/nouveau');
+                },
+              ),
               const SizedBox(height: 8),
             ],
           ),
         ),
       ),
     );
-  }
 }
 
 class _DemandeList extends StatelessWidget {
@@ -268,11 +303,7 @@ class _DemandeCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          d.isAutorisationSortie
-                              ? 'Autorisation de sortie'
-                              : d.typeDemande == 'CONGE'
-                                  ? 'Congé'
-                                  : d.typeDemande,
+                          d.titre,
                           style: const TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 14,
@@ -281,11 +312,19 @@ class _DemandeCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           d.isAutorisationSortie
-                            ? '${d.periodeDebut ?? "N/A"} · ${d.heureDebut ?? "--:--"} → ${d.heureFin ?? "--:--"}'
-                            : '${d.periodeDebut ?? "N/A"} → ${d.periodeFin ?? "N/A"}',
+                              ? '${formatDateIso(d.periodeDebut)} · ${d.heureDebut ?? "--:--"} → ${d.heureFin ?? "--:--"}'
+                              : formatPeriode(d.periodeDebut, d.periodeFin),
                           style: const TextStyle(
                               fontSize: 12, color: AppTheme.textSecondary),
                         ),
+                        if (_sousTitre(d) != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            _sousTitre(d)!,
+                            style: const TextStyle(
+                                fontSize: 12, color: AppTheme.textSecondary),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -339,10 +378,25 @@ class _DemandeCard extends StatelessWidget {
     );
   }
 
+  /// « DEM-202611-0003 · déposée le 06/11/2026 », puis « Validation par Omar Belhadj » si connu.
+  static String? _sousTitre(DemandeAdminItem d) {
+    final parts = <String>[
+      if (d.referenceAffichee != null) d.referenceAffichee!,
+      if (d.creeLe != null) 'déposée le ${formatDateIso(d.creeLe)}',
+    ];
+    final enValidation = d.statut == 'EN_VALIDATION_SUPERIEUR' ||
+        d.statut == 'EN_VALIDATION_RRH' ||
+        d.statut == 'SOUMISE';
+    if (enValidation && (d.valideurNom ?? '').trim().isNotEmpty) {
+      parts.add('Validation par ${d.valideurNom!.trim()}');
+    }
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
   (String, Color, Color, Color, Color, IconData) _statusMeta(String statut) {
     if (statut == 'EN_VALIDATION_SUPERIEUR') {
       return (
-        'En attente RO',
+        d.statutLibelle,
         AppTheme.warningSurface,
         AppTheme.warning,
         AppTheme.accentSurface,
@@ -351,7 +405,7 @@ class _DemandeCard extends StatelessWidget {
       );
     } else if (statut == 'EN_VALIDATION_RRH' || statut == 'SOUMISE') {
       return (
-        'En attente RRH',
+        d.statutLibelle,
         AppTheme.primarySurface,
         AppTheme.primaryDark,
         AppTheme.primarySurface,
@@ -360,7 +414,7 @@ class _DemandeCard extends StatelessWidget {
       );
     } else if (statut == 'APPROUVEE') {
       return (
-        'Approuvée',
+        d.statutLibelle,
         AppTheme.successSurface,
         AppTheme.success,
         AppTheme.successSurface,
@@ -369,7 +423,7 @@ class _DemandeCard extends StatelessWidget {
       );
     } else if (statut == 'ANNULEE') {
       return (
-        'Annulée',
+        d.statutLibelle,
         AppTheme.surfaceMuted,
         AppTheme.textSecondary,
         AppTheme.background,
@@ -378,7 +432,7 @@ class _DemandeCard extends StatelessWidget {
       );
     } else {
       return (
-        'Refusée',
+        d.statutLibelle,
         AppTheme.errorSurface,
         AppTheme.errorDark,
         AppTheme.errorSurface,

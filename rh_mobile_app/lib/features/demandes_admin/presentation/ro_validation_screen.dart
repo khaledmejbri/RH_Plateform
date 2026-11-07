@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
+import '../../../core/format/formats.dart';
 import '../data/demande_admin_models.dart';
 import '../data/demande_admin_repository.dart';
 import '../data/demande_admin_errors.dart';
 import '../data/type_conge.dart';
 import 'package:rh_mobile_app/core/theme/app_theme.dart';
+import 'package:rh_mobile_app/core/widgets/confirmation_action.dart';
 import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 // ─── Provider ────────────────────────────────────────────────────────────────
@@ -39,6 +40,7 @@ class RoValidationScreen extends ConsumerWidget {
         ),
         actions: [
           IconButton(
+            tooltip: 'Actualiser la liste',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () => ref.invalidate(roDemandesEnAttenteProvider),
           ),
@@ -46,9 +48,10 @@ class RoValidationScreen extends ConsumerWidget {
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => _ErrorView(
+        error: (e, _) => RhErrorState(
           message: messageErreurDemandeAdmin(e, fallback: rhErrorMessage(e)),
-          onRetry: () => ref.invalidate(roDemandesEnAttenteProvider),
+          accesRefuse: rhEstAccesRefuse(e),
+          onRetry: rhEstAccesRefuse(e) ? null : () => ref.invalidate(roDemandesEnAttenteProvider),
         ),
         data: (items) => items.isEmpty
             ? const _EmptyView()
@@ -126,15 +129,16 @@ class _DemandeCard extends ConsumerWidget {
                               color: AppTheme.textPrimary,
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Réf. ${item.id.substring(0, 8).toUpperCase()}',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppTheme.textTertiary,
-                              fontFamily: 'monospace',
+                          if (_reference(item) != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              _reference(item)!,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textTertiary,
+                              ),
                             ),
-                          ),
+                          ],
                           // SCRUM-30 : statut sous le titre, pour ne plus couper le libellé en plein mot.
                           const SizedBox(height: 6),
                           _StatusPill(statut: item.statut),
@@ -279,30 +283,17 @@ class _DemandeCard extends ConsumerWidget {
 
   Future<void> _confirmerValidation(
       BuildContext context, WidgetRef ref) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Confirmer la validation'),
-        content: Text(
-          '${_questionValidation(item.typeDemande)} '
-          'Elle sera transmise au RRH pour approbation finale.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.success,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Valider'),
-          ),
-        ],
-      ),
+    final qui = (item.demandeurNom ?? '').trim();
+    final confirm = await confirmerAction(
+      context,
+      action: _questionValidation(item.typeDemande),
+      element: [
+        item.titre,
+        if (qui.isNotEmpty) qui,
+        if (item.referenceAffichee != null) item.referenceAffichee!,
+      ].join(' — '),
+      detail: 'Elle sera transmise à la RH pour approbation finale.',
+      libelleConfirmer: 'Valider',
     );
     if (confirm != true || !context.mounted) return;
 
@@ -314,7 +305,7 @@ class _DemandeCard extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Demande validée — transmise au RRH ✓'),
+            content: Text('Demande validée — transmise à la RH ✓'),
             backgroundColor: AppTheme.success,
           ),
         );
@@ -343,6 +334,17 @@ class _DemandeCard extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const Text('Êtes-vous sûr ?', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(
+              [
+                item.titre,
+                if ((item.demandeurNom ?? '').trim().isNotEmpty) item.demandeurNom!.trim(),
+                if (item.referenceAffichee != null) item.referenceAffichee!,
+              ].join(' — '),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 10),
             const Text(
               'Veuillez indiquer le motif de refus. '
               'Il sera communiqué au collaborateur.',
@@ -411,6 +413,15 @@ class _DemandeCard extends ConsumerWidget {
   }
 }
 
+/// « DEM-202611-0003 · déposée le 06/11/2026 » ; jamais l'identifiant technique (D-L01.a).
+String? _reference(DemandeAdminItem item) {
+  final parts = <String>[
+    if (item.referenceAffichee != null) item.referenceAffichee!,
+    if (item.creeLe != null) 'déposée le ${formatDateIso(item.creeLe)}',
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
 // ─── Period row ───────────────────────────────────────────────────────────────
 
 class _PeriodRow extends StatelessWidget {
@@ -423,24 +434,21 @@ class _PeriodRow extends StatelessWidget {
     IconData icon;
 
     if (item.isAutorisationSortie) {
-      final date = item.contenu?['date_jour'] as String? ?? '—';
+      final date = formatDateIso(item.contenu?['date_jour'] ?? item.periodeDebut);
       final debut = item.heureDebut ?? '--:--';
       final fin = item.heureFin ?? '--:--';
       label = '$date  ·  $debut → $fin';
       icon = Icons.access_time_rounded;
     } else if (item.typeDemande == 'ORDRE_MISSION') {
       final lieu = item.contenu?['lieu'] as String? ?? '';
-      final debut = item.periodeDebut ?? '—';
-      final fin = item.periodeFin ?? '—';
-      label = lieu.isNotEmpty ? '$lieu  ·  $debut → $fin' : '$debut → $fin';
+      final periode = formatPeriode(item.periodeDebut, item.periodeFin);
+      label = lieu.isNotEmpty ? '$lieu  ·  $periode' : periode;
       icon = Icons.business_center_rounded;
     } else {
       // CONGE
-      final debut = item.periodeDebut ?? '—';
-      final fin = item.periodeFin ?? '—';
+      final periode = formatPeriode(item.periodeDebut, item.periodeFin);
       final typeCode = item.contenu?['type_conge'] as String? ?? '';
-      final typeLabel = libelleTypeConge(typeCode);
-      label = typeLabel.isNotEmpty ? '$typeLabel  ·  $debut → $fin' : '$debut → $fin';
+      label = typeCode.isNotEmpty ? '${libelleTypeConge(typeCode)}  ·  $periode' : periode;
       icon = Icons.calendar_month_rounded;
     }
 
@@ -572,38 +580,3 @@ class _EmptyView extends StatelessWidget {
   }
 }
 
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-  const _ErrorView({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline_rounded,
-                size: 48, color: AppTheme.error),
-            const SizedBox(height: 16),
-            const Text('Erreur de chargement',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 12, color: AppTheme.textTertiary)),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Réessayer'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

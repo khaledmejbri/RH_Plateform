@@ -34,7 +34,7 @@ public class DemandeDocumentAdministratifRhService {
 	/** Message retourné lorsque le traitement viole l'ordre FIFO sans justification. */
 	public static final String MSG_VIOLATION_FIFO =
 			"Des demandes antérieures sont encore en attente. "
-					+ "Pour traiter cette demande hors ordre FIFO, veuillez fournir une justification obligatoire "
+					+ "Pour traiter cette demande hors ordre d'arrivée, veuillez fournir une justification obligatoire "
 					+ "(champ justification_derogation_fifo).";
 
 	/** D-F06.a : demandes « ouvertes » qui bloquent une nouvelle demande du même type. */
@@ -49,16 +49,18 @@ public class DemandeDocumentAdministratifRhService {
 	private final CollaborateurConnecteService collaborateurConnecteService;
 	private final ReferentielEvenementsProperties evenementsProperties;
 	private final RhNotificationPublisher notificationPublisher;
-
+	private final NumeroLisibleService numeroLisibleService;
 
 	public DemandeDocumentAdministratifRhService(DemandeDocumentAdministratifRhRepository repository,
 			CollaborateurConnecteService collaborateurConnecteService,
 			ReferentielEvenementsProperties evenementsProperties,
-			RhNotificationPublisher notificationPublisher) {
+			RhNotificationPublisher notificationPublisher,
+			NumeroLisibleService numeroLisibleService) {
 		this.repository = repository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
 		this.evenementsProperties = evenementsProperties;
 		this.notificationPublisher = notificationPublisher;
+		this.numeroLisibleService = numeroLisibleService;
 	}
 
 	@Transactional
@@ -74,9 +76,13 @@ public class DemandeDocumentAdministratifRhService {
 							messageDoublon(ouverte));
 				});
 		int sla = evenementsProperties.delaiSlaHeuresPourDocument(type.name(), type.getDelaiSlaHeuresDefaut());
-		Instant echeance = Instant.now().plus(sla, ChronoUnit.HOURS);
+		// D-L02 : numéro attribué dans la transaction de création, rang du mois de l'instant de création
+		Instant creation = Instant.now();
+		Instant echeance = creation.plus(sla, ChronoUnit.HOURS);
 
 		DemandeDocumentAdministratifRh d = new DemandeDocumentAdministratifRh();
+		d.setCreeLe(creation);
+		d.setNumero(numeroLisibleService.attribuer(PrefixeNumero.DOC, creation));
 		d.setDemandeur(demandeur);
 		d.setTypeDocument(type);
 		d.setStatut(StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE);
@@ -88,7 +94,7 @@ public class DemandeDocumentAdministratifRhService {
 		d = repository.save(d);
 
 		try {
-			notificationPublisher.notifierDemandeDocumentRecue(demandeur, type.name());
+			notificationPublisher.notifierDemandeDocumentRecue(demandeur, type.name(), d.getNumero());
 		} catch (Exception e) {
 			log.error("Erreur lors de l'envoi de la notification Kafka (Nouvelle demande)", e);
 		}
@@ -134,11 +140,14 @@ public class DemandeDocumentAdministratifRhService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<DemandeDocumentAdministratifRhResponse> fileAttentePourRh() {
-		return repository.findByStatutInOrderByCreeLeAsc(List.of(
-				StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE,
-				StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
-		)).stream()
+	public List<DemandeDocumentAdministratifRhResponse> fileAttentePourRh(String q) {
+		String numero = NumeroLisibleService.normaliserRecherche(q);
+		List<DemandeDocumentAdministratifRh> lignes = repository.findByStatutInOrderByCreeLeAsc(STATUTS_OUVERTS);
+		if (numero != null) {
+			// D-L02 : recherche par numéro exact dans la file (les demandes clôturées n'y figurent pas)
+			lignes = lignes.stream().filter(d -> numero.equals(d.getNumero())).collect(Collectors.toList());
+		}
+		return lignes.stream()
 				.map(this::toResponse)
 				.collect(Collectors.toList());
 	}
@@ -146,11 +155,11 @@ public class DemandeDocumentAdministratifRhService {
 	@Transactional(readOnly = true)
 	public DemandeDocumentAdministratifRhResponse obtenir(UUID id, Jwt jwt, boolean rh) {
 		DemandeDocumentAdministratifRh d = repository.findById(id)
-				.orElseThrow(() -> new IllegalArgumentException("Demande introuvable."));
+				.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable."));
 		if (!rh) {
 			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
 			if (!d.getDemandeur().getId().equals(c.getId())) {
-				throw new IllegalArgumentException("Accès refusé.");
+				throw new org.springframework.security.access.AccessDeniedException("Accès refusé.");
 			}
 		}
 		return toResponse(d);
@@ -159,11 +168,11 @@ public class DemandeDocumentAdministratifRhService {
 	@Transactional(readOnly = true)
 	public DemandeDocumentSuiviResponse suivi(UUID id, Jwt jwt, boolean rh) {
 		DemandeDocumentAdministratifRh d = repository.findById(id)
-				.orElseThrow(() -> new IllegalArgumentException("Demande introuvable."));
+				.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable."));
 		if (!rh) {
 			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
 			if (!d.getDemandeur().getId().equals(c.getId())) {
-				throw new IllegalArgumentException("Accès refusé.");
+				throw new org.springframework.security.access.AccessDeniedException("Accès refusé.");
 			}
 		}
 		Integer rang = rangDansFile(d);
@@ -171,7 +180,7 @@ public class DemandeDocumentAdministratifRhService {
 		boolean enRetard = d.getStatut() != StatutDocumentAdministratifDemandeRh.DISPONIBLE
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.REJETEE
 				&& Instant.now().isAfter(d.getDateEcheanceTraitement());
-		return new DemandeDocumentSuiviResponse(
+		DemandeDocumentSuiviResponse suivi = new DemandeDocumentSuiviResponse(
 				d.getId(),
 				d.getTypeDocument(),
 				d.getStatut(),
@@ -182,6 +191,8 @@ public class DemandeDocumentAdministratifRhService {
 				d.getDateEcheanceTraitement(),
 				enRetard,
 				etapesDocument(d.getStatut()));
+		suivi.setNumero(d.getNumero());
+		return suivi;
 	}
 
 	@Transactional
@@ -204,10 +215,11 @@ public class DemandeDocumentAdministratifRhService {
 	public DemandeDocumentAdministratifRhResponse marquerDisponible(UUID id, DemandeDocumentDisponibleRequest req, Jwt jwt) {
 
 		DemandeDocumentAdministratifRh d = repository.findById(id)
-				.orElseThrow(() -> new IllegalArgumentException("Demande introuvable."));
+				.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable."));
 		if (d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
-			throw new IllegalArgumentException("La demande doit être en traitement RH ou en file d'attente.");
+			throw ReferentielMetierException.conflict("DEMANDE_DEJA_DECIDEE",
+					"Cette demande est déjà décidée : statut « " + d.getStatut().getLibelle() + " ».");
 		}
 
 		// ── Validation FIFO ──────────────────────────────────────────────────
@@ -221,7 +233,8 @@ public class DemandeDocumentAdministratifRhService {
 		DemandeDocumentAdministratifRh saved = repository.save(d);
 
 		try {
-			notificationPublisher.notifierDocumentDisponible(d.getDemandeur(), d.getTypeDocument().name(), req.getReferenceLivrable());
+			notificationPublisher.notifierDocumentDisponible(d.getDemandeur(), d.getTypeDocument().name(),
+					req.getReferenceLivrable(), d.getNumero());
 		} catch (Exception e) {
 			log.error("Erreur lors de l'envoi de la notification Kafka (Document disponible)", e);
 		}
@@ -232,10 +245,11 @@ public class DemandeDocumentAdministratifRhService {
 	@Transactional
 	public DemandeDocumentAdministratifRhResponse rejeter(UUID id, DocumentRejetRhRequest req, Jwt jwt) {
 		DemandeDocumentAdministratifRh d = repository.findById(id)
-				.orElseThrow(() -> new IllegalArgumentException("Demande introuvable."));
+				.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable."));
 		if (d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
-			throw new IllegalArgumentException("Impossible de rejeter cette demande dans son état actuel.");
+			throw ReferentielMetierException.conflict("DEMANDE_DEJA_DECIDEE",
+					"Cette demande est déjà décidée : statut « " + d.getStatut().getLibelle() + " ».");
 		}
 
 		// ── Validation FIFO ──────────────────────────────────────────────────
@@ -311,7 +325,8 @@ public class DemandeDocumentAdministratifRhService {
 						rhActeur, 
 						demande.getTypeDocument().name(), 
 						justificationDerogation.trim(), 
-						demande.getDemandeur()
+						demande.getDemandeur(),
+						demande.getNumero()
 				);
 			} catch (Exception e) {
 				log.error("Erreur lors de l'envoi de la notification au DRH pour dérogation FIFO", e);
@@ -323,7 +338,7 @@ public class DemandeDocumentAdministratifRhService {
 
 	private static List<WorkflowEtapeResponse> etapesDocument(StatutDocumentAdministratifDemandeRh s) {
 		List<WorkflowEtapeResponse> list = new ArrayList<>();
-		list.add(new WorkflowEtapeResponse("TRANSMISE_RRH", "Demande transmise au RRH (file unique)", true, false));
+		list.add(new WorkflowEtapeResponse("TRANSMISE_RRH", "Demande transmise à la RH (file unique)", true, false));
 
 		boolean fileTerminee = s == StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
 				|| s == StatutDocumentAdministratifDemandeRh.DISPONIBLE
@@ -335,12 +350,12 @@ public class DemandeDocumentAdministratifRhService {
 		boolean traitTerminee = s == StatutDocumentAdministratifDemandeRh.DISPONIBLE
 				|| s == StatutDocumentAdministratifDemandeRh.REJETEE;
 		boolean traitEnCours = s == StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH;
-		list.add(new WorkflowEtapeResponse("TRAITEMENT_RH", "Traitement par le RRH", traitTerminee, traitEnCours));
+		list.add(new WorkflowEtapeResponse("TRAITEMENT_RH", "Traitement par la RH", traitTerminee, traitEnCours));
 
 		boolean cloture = s == StatutDocumentAdministratifDemandeRh.DISPONIBLE
 				|| s == StatutDocumentAdministratifDemandeRh.REJETEE;
 		String libelle = s == StatutDocumentAdministratifDemandeRh.DISPONIBLE ? "Document disponible"
-				: s == StatutDocumentAdministratifDemandeRh.REJETEE ? "Demande refusée par le RRH" : "Clôture";
+				: s == StatutDocumentAdministratifDemandeRh.REJETEE ? "Demande refusée par la RH" : "Clôture";
 		list.add(new WorkflowEtapeResponse("CLOTURE", libelle, cloture, false));
 
 		return list;
@@ -395,6 +410,7 @@ public class DemandeDocumentAdministratifRhService {
 				estProchaineFifo,
 				d.getJustificationDerogationFifo(),
 				d.getDerogationFifoPar());
+		r.setNumero(d.getNumero());
 		Collaborateur demandeur = d.getDemandeur();
 		r.setDemandeurNom((demandeur.getPrenom() + " " + demandeur.getNom()).trim());
 		r.setDemandeurMatricule(demandeur.getMatricule());

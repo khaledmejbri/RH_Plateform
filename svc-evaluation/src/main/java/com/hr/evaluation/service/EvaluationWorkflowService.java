@@ -202,7 +202,7 @@ public class EvaluationWorkflowService {
         verifyCollaboratorCanAnswer(evaluation);
 
         EvaluationQuestion question = questionRepository.findById(questionId)
-                .orElseThrow(() -> new IllegalArgumentException("Question introuvable: " + questionId));
+                .orElseThrow(() -> new IllegalArgumentException("Question introuvable"));
 
         EvaluationAnswer answer = answerRepository
                 .findByEvaluationIdAndQuestionId(evaluationId, questionId)
@@ -235,7 +235,7 @@ public class EvaluationWorkflowService {
         verifyManagerCanAnswer(evaluation);
 
         EvaluationQuestion question = questionRepository.findById(questionId)
-                .orElseThrow(() -> new IllegalArgumentException("Question introuvable: " + questionId));
+                .orElseThrow(() -> new IllegalArgumentException("Question introuvable"));
 
         EvaluationAnswer answer = answerRepository
                 .findByEvaluationIdAndQuestionId(evaluationId, questionId)
@@ -262,7 +262,7 @@ public class EvaluationWorkflowService {
         verifyCollaboratorCanAnswer(evaluation);
 
         TechnicalQuestion question = technicalQuestionRepository.findById(questionTechniqueId)
-                .orElseThrow(() -> new IllegalArgumentException("Question technique introuvable: " + questionTechniqueId));
+                .orElseThrow(() -> new IllegalArgumentException("Question technique introuvable"));
 
         SkillAnswer answer = skillAnswerRepository
                 .findByEvaluationIdAndQuestionTechniqueId(evaluationId, questionTechniqueId)
@@ -400,7 +400,7 @@ public class EvaluationWorkflowService {
 
     private Evaluation chargerEvaluation(UUID id) {
         return evaluationRepository.findByIdWithCampaign(id)
-                .orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable: " + id));
+                .orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable"));
     }
 
     /**
@@ -414,7 +414,7 @@ public class EvaluationWorkflowService {
 
     private EvaluationCampaign chargerCampaign(UUID id) {
         return campaignRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Campagne introuvable: " + id));
+                .orElseThrow(() -> new IllegalArgumentException("Campagne introuvable"));
     }
 
     private static String trimToNull(String s) {

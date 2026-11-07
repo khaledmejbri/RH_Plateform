@@ -14,7 +14,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "rh_demande_document_administratif", indexes = {
 		@Index(name = "idx_doc_dem_collab", columnList = "demandeur_identifiant"),
-		@Index(name = "idx_doc_dem_statut_cree", columnList = "statut,cree_le")
+		@Index(name = "idx_doc_dem_statut_cree", columnList = "statut,cree_le"),
+		@Index(name = "idx_doc_dem_numero", columnList = "numero", unique = true)
 })
 public class DemandeDocumentAdministratifRh {
 
@@ -22,6 +23,10 @@ public class DemandeDocumentAdministratifRh {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	@Column(name = "identifiant", nullable = false, updatable = false)
 	private UUID id;
+
+	/** D-L02 : numéro lisible attribué à la création, unique et immuable. Null le temps de la reprise des anciennes lignes. */
+	@Column(name = "numero", updatable = false, length = 24)
+	private String numero;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "demandeur_identifiant", nullable = false)
@@ -77,6 +82,14 @@ public class DemandeDocumentAdministratifRh {
 	@PreUpdate
 	public void preUpdate() {
 		modifieLe = Instant.now();
+	}
+
+	public String getNumero() {
+		return numero;
+	}
+
+	public void setNumero(String numero) {
+		this.numero = numero;
 	}
 
 	public UUID getId() {

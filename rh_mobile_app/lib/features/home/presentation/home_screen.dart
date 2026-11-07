@@ -61,6 +61,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           const NotificationActionBadge(),
           // Profile menu
           PopupMenuButton<String>(
+            tooltip: 'Mon compte',
             offset: const Offset(0, 45),
             child: Container(
               padding: const EdgeInsets.all(2),
@@ -102,30 +103,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         const SizedBox(width: 12),
                         const Text(
                           'Mon profil',
-                          style: TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'settings',
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surfaceMuted,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.settings_outlined,
-                            size: 20,
-                            color: AppTheme.textTertiary,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Paramètres',
                           style: TextStyle(fontWeight: FontWeight.w500),
                         ),
                       ],
@@ -602,12 +579,12 @@ class _DashboardPage extends ConsumerWidget {
                     error: (_, __) => const <Widget>[],
                   ),
                   _ServiceCard(
-                    title: 'Congés',
-                    subtitle: 'Demander',
+                    title: 'Mes demandes',
+                    subtitle: 'Congé, sortie, mission',
                     icon: Icons.calendar_month_rounded,
                     iconBg: AppTheme.accentSurface,
                     iconColor: AppTheme.accent,
-                    onTap: () => context.push('/demandes-admin'),
+                    onTap: () => afficherChoixDemande(context, avecListe: true),
                   ),
                   _ServiceCard(
                     title: 'Documents',
@@ -619,7 +596,7 @@ class _DashboardPage extends ConsumerWidget {
                   ),
                   _ServiceCard(
                     title: 'Formations',
-                    subtitle: 'Plan annuel',
+                    subtitle: 'Mes demandes',
                     icon: Icons.school_rounded,
                     iconBg: AppTheme.primarySurface,
                     iconColor: AppTheme.primary,
@@ -659,17 +636,6 @@ class _DashboardPage extends ConsumerWidget {
                     iconBg: AppTheme.successSurface,
                     iconColor: AppTheme.success,
                     onTap: () => context.push('/organigramme'),
-                  ),
-                  _ServiceCard(
-                    title: 'Autorisation',
-                    subtitle: 'Sortie',
-                    icon: Icons.vpn_key_rounded,
-                    iconBg: AppTheme.primarySurface,
-                    iconColor: AppTheme.primaryLight,
-                    onTap:
-                        () => context.push(
-                          '/demandes-admin/autorisation/nouveau',
-                        ),
                   ),
                 ],
               ),

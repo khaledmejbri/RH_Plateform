@@ -92,7 +92,7 @@ export default function BornePage() {
           </div>
           <p className="borne__aide">
             Scannez avec RH Connect. Nouveau code dans {restant} s.
-            {erreur ? ' Connexion instable, nouvel essai en cours.' : ''}
+            {erreur ? ' Connexion instable, nouvelle tentative en cours.' : ''}
           </p>
         </div>
       )}

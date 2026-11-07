@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 public class TempsTravailCsvService {
 
 	private static final String[] ENTETES = {"Matricule", "Nom", "Direction", "Département", "Service", "Site", "Date",
-			"Paires", "Nombre de paires", "Première entrée", "Dernière sortie", "Total (hh:mm)", "Total (minutes)",
+			"Entrées / sorties", "Nombre d'entrées / sorties", "Première entrée", "Dernière sortie", "Total (hh:mm)", "Total (minutes)",
 			"État", "Pointage manuel"};
 
 	private final TempsTravailService tempsTravailService;
@@ -43,13 +43,13 @@ public class TempsTravailCsvService {
 			LigneTempsTravail l = d.ligne();
 			sb.append(HeuresSupCsvService.ligne(
 					l.collaborateurMatricule(), l.collaborateurNom(), d.direction(), d.departement(), d.service(),
-					l.siteLibelle(), l.jour().toString(),
+					l.siteLibelle(), HeuresSupCsvService.DATE.format(l.jour()),
 					l.paires().stream().map(pa -> paire(pa, l.jour())).collect(Collectors.joining(" | ")),
 					String.valueOf(l.paires().size()),
 					heure(l.premiereEntree(), l.jour()), heure(l.derniereSortie(), l.jour()),
 					CalculHeuresSupService.formaterHeures(l.minutesTravaillees()),
 					String.valueOf(l.minutesTravaillees()),
-					l.etat().name(),
+					l.etat().libelle(),
 					d.manuel() ? "oui" : "non")).append("\r\n");
 		}
 		return sb.toString().getBytes(StandardCharsets.UTF_8);

@@ -42,8 +42,20 @@ public record EvaluationItemResponse(
     @JsonProperty("familleMetierCode")
     String familleMetierCode,
 
+    /** Libellé lisible de la famille (null si aucune famille). */
+    @JsonProperty("familleMetierLibelle")
+    String familleMetierLibelle,
+
     @JsonProperty("niveauSeniorite")
     String niveauSeniorite,
+
+    /** Libellé lisible du niveau (null si aucun niveau). */
+    @JsonProperty("niveauSenioriteLibelle")
+    String niveauSenioriteLibelle,
+
+    /** Alias de {@code niveauSenioriteLibelle}. */
+    @JsonProperty("niveauLibelle")
+    String niveauLibelle,
 
     @JsonProperty("validationCollaborateurLe")
     Instant validationCollaborateurLe,

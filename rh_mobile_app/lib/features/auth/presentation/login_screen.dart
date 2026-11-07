@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/api_constants.dart';
@@ -8,6 +10,9 @@ import '../providers/auth_notifier.dart';
 
 /// Vrai uniquement si le build est lancé avec `--dart-define=DEMO_MODE=true` (absent par défaut, donc de Codemagic).
 const bool modeDemoActif = bool.fromEnvironment('DEMO_MODE', defaultValue: false);
+
+/// Adresse du support RH, fournie à la compilation (`--dart-define=SUPPORT_RH_EMAIL=...`), jamais en dur.
+const String contactSupportRh = String.fromEnvironment('SUPPORT_RH_EMAIL', defaultValue: '');
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -22,6 +27,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _password = TextEditingController();
   var _loading = false;
   var _obscure = true;
+  bool _serveurVisible = serveurEditable;
+
+  /// Mot de passe oublié : consigne en français avec l'adresse du support RH si elle est configurée.
+  Future<void> _motDePasseOublie() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mot de passe oublié'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Contactez votre service RH pour réinitialiser votre mot de passe.'),
+            if (contactSupportRh.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SelectableText(
+                contactSupportRh,
+                style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          if (contactSupportRh.isNotEmpty)
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(const ClipboardData(text: contactSupportRh));
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Copier l’adresse'),
+            ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fermer')),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -124,15 +165,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(20),
+                    GestureDetector(
+                      // Option cachée : en débogage seulement, un appui long affiche le champ « Serveur ».
+                      onLongPress: (kDebugMode || serveurEditable)
+                          ? () => setState(() => _serveurVisible = !_serveurVisible)
+                          : null,
+                      child: Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Icon(Icons.groups_2_rounded,
+                            size: 40, color: Colors.white, semanticLabel: 'RH Connect'),
                       ),
-                      child: const Icon(Icons.groups_2_rounded,
-                          size: 40, color: Colors.white, semanticLabel: 'RH Connect'),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -183,6 +230,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         'Accédez à votre espace RH',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
+                      if (_serveurVisible) ...[
                       const SizedBox(height: 4),
                       InkWell(
                         onTap: _loading ? null : _editServer,
@@ -204,6 +252,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         ),
                       ),
+                      ],
                       const SizedBox(height: 24),
 
                       // Email
@@ -250,13 +299,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text(
-                                      'Contactez le support RH ou l\'administrateur.')),
-                            );
-                          },
+                          onPressed: _motDePasseOublie,
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                           ),

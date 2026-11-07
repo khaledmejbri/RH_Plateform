@@ -29,9 +29,12 @@ import BarreFiltres, { ChampDate, ChampSelect } from '../components/BarreFiltres
 import FiltreCollaborateur from '../components/FiltreCollaborateur';
 import { useFiltresUrl } from '../utils/filtres';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { useConfirm } from '../components/ConfirmDialog';
+import { SaisieDate } from '../components/ChampsFr';
+import { formatDuree, formatHeure, formatPeriode, formatPersonne, jourIso, ressembleAUnIdentifiant } from '../utils/format';
+import { VALEUR_NON_RECONNUE } from '../utils/libelles';
 
 type Onglet = 'a-valider' | 'historique' | 'comptees';
-type Decision = { genre: 'refuser' | 'annuler'; demande: DemandeHeuresSup };
 
 const PAGE_SIZE = 20;
 const ONGLETS: Onglet[] = ['a-valider', 'historique', 'comptees'];
@@ -39,10 +42,25 @@ const FILTRES_DEFAUT = { du: '', au: '', site: '', collab: '', direction: '', st
 const DUREES_OUVERTURE = [0, 30, 60, 90, 120, 150, 180, 210, 240];
 
 function libelleDuree(min: number): string {
-  if (min <= 0) return 'Aucune';
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return h > 0 ? `${h} h${m ? ` ${String(m).padStart(2, '0')}` : ''}` : `${m} min`;
+  return min <= 0 ? 'Aucune' : formatDuree(min);
+}
+
+/** Numéro lisible de la demande ; jamais un identifiant technique. */
+function numeroDemande(d: DemandeHeuresSup): string {
+  if (d.numero) return d.numero;
+  return d.reference && !ressembleAUnIdentifiant(d.reference) ? d.reference : '';
+}
+
+/** « la demande HS-202611-0001 (Sarra Khemiri) » pour les messages et confirmations. */
+function intituleDemande(d: DemandeHeuresSup): string {
+  const num = numeroDemande(d);
+  const noms = (d.beneficiaires ?? []).map((b) => formatPersonne(b.nom, b.matricule)).join(', ');
+  return `la demande d’heures supplémentaires${num ? ` ${num}` : ''}${noms ? ` (${noms})` : ''}`;
+}
+
+/** Auteur d'une décision : le nom fourni par le serveur, jamais un identifiant. */
+function auteur(v: string | null): string {
+  return v && !ressembleAUnIdentifiant(v) ? v : 'Personne introuvable';
 }
 
 function nomCollaborateur(c: CollaborateurRow): string {
@@ -51,10 +69,6 @@ function nomCollaborateur(c: CollaborateurRow): string {
 
 function sansAccent(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
-}
-
-function dateIso(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -97,7 +111,7 @@ function StatutBadge({ statut }: { statut: StatutHeuresSup }) {
         : statut === 'REFUSEE'
           ? 'badge badge--warning'
           : 'badge badge--default';
-  return <span className={cls}>{LIBELLES_STATUT_HEURES_SUP[statut] ?? statut}</span>;
+  return <span className={cls}>{LIBELLES_STATUT_HEURES_SUP[statut] ?? VALEUR_NON_RECONNUE}</span>;
 }
 
 function Pager({
@@ -116,7 +130,7 @@ function Pager({
         Précédent
       </button>
       <span className="small">
-        Page {page + 1} / {totalPages}
+        Page {page + 1} sur {totalPages}
       </span>
       <button
         type="button"
@@ -139,10 +153,7 @@ function annulable(d: DemandeHeuresSup): boolean {
 }
 
 function plageTexte(d: DemandeHeuresSup): string {
-  const dates =
-    d.date_debut === d.date_fin
-      ? formatDateCourteTunis(d.date_debut)
-      : `${formatDateCourteTunis(d.date_debut)} → ${formatDateCourteTunis(d.date_fin)}`;
+  const dates = formatPeriode(d.date_debut, d.date_fin);
   const parts: string[] = [];
   if (d.ouverture_avant_minutes > 0) parts.push(`${libelleDuree(d.ouverture_avant_minutes)} avant`);
   if (d.ouverture_apres_minutes > 0) parts.push(`${libelleDuree(d.ouverture_apres_minutes)} après`);
@@ -151,6 +162,7 @@ function plageTexte(d: DemandeHeuresSup): string {
 
 export default function HeuresSupPage() {
   const lectureSeule = useLectureSeule();
+  const confirm = useConfirm();
   const [params, setParams] = useSearchParams();
   const ongletUrl = params.get('onglet') as Onglet | null;
   const [onglet, setOngletEtat] = useState<Onglet>(ongletUrl && ONGLETS.includes(ongletUrl) ? ongletUrl : 'a-valider');
@@ -188,7 +200,6 @@ export default function HeuresSupPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
 
-  const [decision, setDecision] = useState<Decision | null>(null);
   const [creerOuvert, setCreerOuvert] = useState(false);
 
   useEffect(() => {
@@ -278,19 +289,55 @@ export default function HeuresSupPage() {
   }
 
   async function valider(d: DemandeHeuresSup) {
+    if (!(await confirm({ message: `Valider ${intituleDemande(d)} ?`, confirmLabel: 'Valider' }))) return;
     setBusyId(d.id);
     setErr(null);
     setMsg(null);
     try {
       await postValiderHeuresSup(d.id);
-      setMsg(`Demande ${d.reference} validée.`);
+      setMsg(`La demande${numeroDemande(d) ? ` ${numeroDemande(d)}` : ''} est validée.`);
       await charger();
     } catch (e) {
-      setErr(messageErreurCode(e));
+      const message = messageErreurCode(e);
+      // charger() remet l'erreur à zéro : le message est posé après le rechargement.
       if (codeErreur(e) === 'STATUT_INCOMPATIBLE') await charger();
+      setErr(message);
     } finally {
       setBusyId(null);
     }
+  }
+
+  /** Refus (motif obligatoire) ou annulation (motif facultatif) : une seule fenêtre porte motif, envoi et erreur. */
+  async function decider(genre: 'refuser' | 'annuler', d: DemandeHeuresSup) {
+    const refus = genre === 'refuser';
+    let conflit: string | null = null;
+    const ok = await confirm({
+      message: `${refus ? 'Refuser' : 'Annuler'} ${intituleDemande(d)} ?`,
+      confirmLabel: refus ? 'Refuser' : 'Annuler la demande',
+      danger: true,
+      motif: { label: refus ? 'Motif du refus' : 'Motif de l’annulation', obligatoire: refus },
+      envoyer: async (motif) => {
+        try {
+          if (refus) await postRefuserHeuresSup(d.id, motif);
+          else await postAnnulerHeuresSup(d.id, motif);
+        } catch (e) {
+          const message = messageErreurCode(e);
+          if (codeErreur(e) === 'STATUT_INCOMPATIBLE') conflit = message;
+          throw new Error(message);
+        }
+      },
+      echecDefinitif: () => conflit !== null,
+    });
+    if (conflit) {
+      // La demande a changé entre-temps : fenêtre fermée, erreur affichée, liste rechargée.
+      // charger() remet l'erreur à zéro : le message est posé après le rechargement.
+      await charger();
+      setErr(conflit);
+      return;
+    }
+    if (!ok) return;
+    setMsg(refus ? 'La demande a été refusée.' : 'La demande a été annulée. Les bénéficiaires sont notifiés.');
+    await charger();
   }
 
   async function exporter() {
@@ -317,7 +364,7 @@ export default function HeuresSupPage() {
         <div>
           <h2 className="page__title">Heures supplémentaires</h2>
           <p className="page__lead">
-            Demandes d’ouverture du pointage hors horaire, validation RH et heures comptées par collaborateur.
+            Demandes d’ouverture du pointage hors horaire, validation par la RH et heures comptées par collaborateur.
           </p>
         </div>
         <div className="tabs">
@@ -340,7 +387,7 @@ export default function HeuresSupPage() {
 
       {lectureSeule ? (
         <div className="alert alert--info" role="status">
-          Profil Direction — consultation et export uniquement.
+          Consultation uniquement : vous pouvez lire les demandes et exporter les heures comptées.
         </div>
       ) : null}
       {refsErr ? (
@@ -375,7 +422,6 @@ export default function HeuresSupPage() {
             id="hs-site"
             libelle="Site"
             valeur={siteId}
-            toutesLibelle="Tous les sites"
             options={sites.map((x) => ({ valeur: x.id, libelle: x.libelle }))}
             onChange={(v) => changerFiltre(() => filtres.definir({ site: v }))}
           />
@@ -389,7 +435,6 @@ export default function HeuresSupPage() {
             id="hs-direction"
             libelle="Direction"
             valeur={directionId}
-            toutesLibelle="Toutes les directions"
             options={directions.map((d) => ({ valeur: d.id, libelle: d.libelle }))}
             onChange={(v) => changerFiltre(() => filtres.definir({ direction: v }))}
           />
@@ -448,7 +493,7 @@ export default function HeuresSupPage() {
                         <th>Entrée</th>
                         <th>Sortie</th>
                         <th>Heures comptées</th>
-                        <th>Demande</th>
+                        <th>Numéro de la demande</th>
                         <th>État</th>
                       </tr>
                     </thead>
@@ -456,13 +501,12 @@ export default function HeuresSupPage() {
                       {comptees.contenu.map((h, i) => (
                         <tr key={`${h.collaborateur_id}-${h.site_id}-${h.journee}-${i}`}>
                           <td>
-                            {h.nom ?? '—'}
-                            {h.matricule ? <div className="muted small mono">{h.matricule}</div> : null}
+                            {formatPersonne(h.nom, h.matricule)}
                           </td>
                           <td>{h.site_libelle ?? '—'}</td>
                           <td>{formatDateCourteTunis(h.journee)}</td>
                           <td className="small">
-                            {h.horaire_debut && h.horaire_fin ? `${h.horaire_debut}–${h.horaire_fin}` : '—'}
+                            {h.horaire_debut && h.horaire_fin ? `${formatHeure(h.horaire_debut)} – ${formatHeure(h.horaire_fin)}` : '—'}
                           </td>
                           <td className="small">
                             {h.plage_avant ? <div>Avant : {h.plage_avant}</div> : null}
@@ -472,7 +516,7 @@ export default function HeuresSupPage() {
                           <td className="small">{h.entree ? formatDateTunis(h.entree) : '—'}</td>
                           <td className="small">{h.sortie ? formatDateTunis(h.sortie) : '—'}</td>
                           <td className="mono">{h.heures_comptees}</td>
-                          <td className="mono small">{h.reference_demande ?? '—'}</td>
+                          <td className="mono small">{h.reference_demande && !ressembleAUnIdentifiant(h.reference_demande) ? h.reference_demande : '—'}</td>
                           <td>
                             <span
                               className={
@@ -483,7 +527,7 @@ export default function HeuresSupPage() {
                                     : 'badge badge--info'
                               }
                             >
-                              {LIBELLES_ETAT_COMPTEES[h.etat] ?? h.etat}
+                              {LIBELLES_ETAT_COMPTEES[h.etat] ?? VALEUR_NON_RECONNUE}
                             </span>
                           </td>
                         </tr>
@@ -508,7 +552,7 @@ export default function HeuresSupPage() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Référence</th>
+                    <th>Numéro</th>
                     <th>Site</th>
                     <th>Plage demandée</th>
                     <th>Bénéficiaires</th>
@@ -522,26 +566,26 @@ export default function HeuresSupPage() {
                   {demandes.contenu.map((d) => (
                     <tr key={d.id}>
                       <td className="mono small">
-                        {d.reference}
+                        {numeroDemande(d)}
                         {d.creee_validee ? <div className="muted">créée validée</div> : null}
                       </td>
                       <td>{d.site_libelle ?? '—'}</td>
                       <td className="small">
                         {plageTexte(d)}
-                        {d.jours?.length ? <div className="muted">{d.jours.length} jour(s) ouvert(s)</div> : null}
+                        {d.jours?.length ? <div className="muted">{d.jours.length} jour{d.jours.length > 1 ? 's' : ''} ouvert{d.jours.length > 1 ? 's' : ''}</div> : null}
                       </td>
                       <td className="small">
-                        {(d.beneficiaires ?? []).map((b) => b.nom ?? b.matricule ?? b.collaborateur_id).join(', ') || '—'}
-                        {d.demandeur_nom ? <div className="muted">Demandeur : {d.demandeur_nom}</div> : null}
+                        {(d.beneficiaires ?? []).map((b) => formatPersonne(b.nom, b.matricule)).join(', ') || '—'}
+                        {d.demandeur_nom ? <div className="muted">Demandeur : {auteur(d.demandeur_nom)}</div> : null}
                       </td>
                       <td className="small">{d.motif}</td>
                       <td>
                         <StatutBadge statut={d.statut} />
                       </td>
                       <td className="small muted">
-                        {d.decide_par ? <div>Décidé par {d.decide_par} · {formatDateTunis(d.decide_le)}</div> : null}
+                        {d.decide_par ? <div>Décidé par {auteur(d.decide_par)} · {formatDateTunis(d.decide_le)}</div> : null}
                         {d.motif_refus ? <div>Motif du refus : {d.motif_refus}</div> : null}
-                        {d.annule_par ? <div>Annulé par {d.annule_par} · {formatDateTunis(d.annule_le)}</div> : null}
+                        {d.annule_par ? <div>Annulé par {auteur(d.annule_par)} · {formatDateTunis(d.annule_le)}</div> : null}
                         {d.motif_annulation ? <div>Motif : {d.motif_annulation}</div> : null}
                         {!d.decide_par && !d.annule_par ? formatDateTunis(d.cree_le) : null}
                       </td>
@@ -561,7 +605,7 @@ export default function HeuresSupPage() {
                                 type="button"
                                 className="btn btn--secondary btn--sm"
                                 disabled={busyId === d.id}
-                                onClick={() => setDecision({ genre: 'refuser', demande: d })}
+                                onClick={() => void decider('refuser', d)}
                               >
                                 Refuser
                               </button>
@@ -571,7 +615,7 @@ export default function HeuresSupPage() {
                               type="button"
                               className="btn btn--danger btn--sm"
                               disabled={busyId === d.id}
-                              onClick={() => setDecision({ genre: 'annuler', demande: d })}
+                              onClick={() => void decider('annuler', d)}
                             >
                               Annuler
                             </button>
@@ -595,113 +639,19 @@ export default function HeuresSupPage() {
         ) : null}
       </div>
 
-      {decision ? (
-        <DecisionModal
-          decision={decision}
-          onClose={() => setDecision(null)}
-          onDone={async (texte) => {
-            setDecision(null);
-            setMsg(texte);
-            await charger();
-          }}
-        />
-      ) : null}
-
       {creerOuvert && !lectureSeule ? (
         <CreationModal
           sites={sites}
           collaborateurs={collaborateurs}
           onClose={() => setCreerOuvert(false)}
-          onCreated={async (reference) => {
+          onCreated={async (numero) => {
             setCreerOuvert(false);
-            setMsg(`Demande ${reference} créée et validée. Les bénéficiaires sont notifiés.`);
+            setMsg(`Demande${numero ? ` ${numero}` : ''} créée et validée. Les bénéficiaires sont notifiés.`);
             await charger();
           }}
         />
       ) : null}
     </div>
-  );
-}
-
-/* ─── Refus (motif obligatoire) et annulation (motif facultatif) ───────── */
-
-function DecisionModal({
-  decision,
-  onClose,
-  onDone,
-}: {
-  decision: Decision;
-  onClose: () => void;
-  onDone: (message: string) => Promise<void>;
-}) {
-  const refus = decision.genre === 'refuser';
-  const [motif, setMotif] = useState('');
-  const [champErr, setChampErr] = useState<string | null>(null);
-  const [erreur, setErreur] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function soumettre(e: FormEvent) {
-    e.preventDefault();
-    setErreur(null);
-    if (refus && !motif.trim()) {
-      setChampErr('Le motif est obligatoire.');
-      return;
-    }
-    setChampErr(null);
-    setBusy(true);
-    try {
-      if (refus) {
-        await postRefuserHeuresSup(decision.demande.id, motif.trim());
-        await onDone(`Demande ${decision.demande.reference} refusée.`);
-      } else {
-        await postAnnulerHeuresSup(decision.demande.id, motif);
-        await onDone(`Demande ${decision.demande.reference} annulée. Les bénéficiaires sont notifiés.`);
-      }
-    } catch (er) {
-      if (codeErreur(er) === 'MOTIF_OBLIGATOIRE') setChampErr(messageErreurCode(er));
-      else setErreur(messageErreurCode(er));
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal title={refus ? `Refuser la demande ${decision.demande.reference}` : `Annuler la demande ${decision.demande.reference}`} onClose={onClose}>
-      <form onSubmit={soumettre}>
-        {erreur ? (
-          <div className="alert alert--error" role="alert">
-            {erreur}
-          </div>
-        ) : null}
-        {!refus ? (
-          <p className="small">
-            La demande validée sera annulée pour tous les bénéficiaires, qui seront notifiés. La plage ne doit pas avoir
-            commencé.
-          </p>
-        ) : null}
-        <label>
-          {refus ? 'Motif du refus (obligatoire)' : 'Motif de l’annulation (facultatif)'}
-          <textarea
-            value={motif}
-            rows={3}
-            maxLength={500}
-            aria-invalid={champErr ? true : undefined}
-            onChange={(e) => {
-              setMotif(e.target.value);
-              setChampErr(null);
-            }}
-          />
-        </label>
-        {champErr ? <span className="text-danger small">{champErr}</span> : null}
-        <div className="modal__actions mt-md">
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Retour
-          </button>
-          <button type="submit" className={refus ? 'btn btn--primary' : 'btn btn--danger'} disabled={busy}>
-            {busy ? 'Envoi…' : refus ? 'Refuser la demande' : 'Annuler la demande'}
-          </button>
-        </div>
-      </form>
-    </Modal>
   );
 }
 
@@ -745,12 +695,13 @@ function CreationModal({
   sites: PresenceSite[];
   collaborateurs: CollaborateurRow[];
   onClose: () => void;
-  onCreated: (reference: string) => Promise<void>;
+  onCreated: (numero: string) => Promise<void>;
 }) {
   const [site, setSite] = useState('');
   const [choisis, setChoisis] = useState<Set<string>>(new Set());
   const [recherche, setRecherche] = useState('');
-  const [dateDebut, setDateDebut] = useState(dateIso(new Date()));
+  const confirm = useConfirm();
+  const [dateDebut, setDateDebut] = useState(jourIso());
   const [dateFin, setDateFin] = useState('');
   const [avant, setAvant] = useState(0);
   const [apres, setApres] = useState(0);
@@ -791,6 +742,11 @@ function CreationModal({
       return;
     }
     setChamps({});
+    const ok = await confirm({
+      message: `Créer et valider une demande d’heures supplémentaires pour ${choisis.size} collaborateur${choisis.size > 1 ? 's' : ''} ? Les bénéficiaires seront notifiés.`,
+      confirmLabel: 'Créer et valider',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const d = await postCreerDemandeHeuresSup({
@@ -802,7 +758,7 @@ function CreationModal({
         ouverture_apres_minutes: apres || undefined,
         motif: motif.trim(),
       });
-      await onCreated(d?.reference ?? '');
+      await onCreated(d ? numeroDemande(d) : '');
     } catch (er) {
       const champ = champDuCode(codeErreur(er));
       if (champ) setChamps({ [champ]: messageErreurCode(er) });
@@ -847,25 +803,21 @@ function CreationModal({
           </label>
           <label>
             Date de début
-            <input
-              type="date"
-              value={dateDebut}
-              aria-invalid={champs.dates ? true : undefined}
-              onChange={(e) => {
-                setDateDebut(e.target.value);
+            <SaisieDate
+              valeur={dateDebut}
+              onChange={(v) => {
+                setDateDebut(v);
                 setChamps((c) => ({ ...c, dates: undefined }));
               }}
             />
           </label>
           <label>
             Date de fin (facultative, 31 jours max)
-            <input
-              type="date"
-              value={dateFin}
+            <SaisieDate
+              valeur={dateFin}
               min={dateDebut || undefined}
-              aria-invalid={champs.dates ? true : undefined}
-              onChange={(e) => {
-                setDateFin(e.target.value);
+              onChange={(v) => {
+                setDateFin(v);
                 setChamps((c) => ({ ...c, dates: undefined }));
               }}
             />
@@ -930,7 +882,7 @@ function CreationModal({
                 <label key={c.identifiant} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input type="checkbox" checked={choisis.has(c.identifiant)} onChange={() => basculer(c.identifiant)} />
                   <span className="small">
-                    {nomCollaborateur(c)} <span className="muted mono">({c.matricule})</span>
+                    {formatPersonne(nomCollaborateur(c), c.matricule)}
                   </span>
                 </label>
               ))

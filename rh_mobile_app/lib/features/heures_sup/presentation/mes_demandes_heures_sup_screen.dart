@@ -1,3 +1,4 @@
+import '../../../core/widgets/confirmation_action.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -32,18 +33,14 @@ class _MesDemandesHeuresSupScreenState extends ConsumerState<MesDemandesHeuresSu
   }
 
   Future<void> _annuler(DemandeHeuresSup d) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Annuler la demande ?'),
-        content: Text('La demande ${d.reference} sera annulée.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Non')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Oui, annuler')),
-        ],
-      ),
+    final ok = await confirmerAction(
+      context,
+      action: 'Annuler cette demande d’heures supplémentaires ?',
+      element: d.numeroAffiche.isEmpty ? 'Demande d’heures supplémentaires' : d.numeroAffiche,
+      libelleConfirmer: 'Oui, annuler',
+      destructive: true,
     );
-    if (ok != true || !mounted) return;
+    if (!ok || !mounted) return;
     setState(() => _annulationEnCours = d.id);
     try {
       await ref.read(heuresSupRepositoryProvider).annulerDemande(d.id);
@@ -174,7 +171,7 @@ class _CarteDemande extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    d.reference.isEmpty ? 'Demande' : d.reference,
+                    d.numeroAffiche.isEmpty ? 'Demande' : d.numeroAffiche,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),

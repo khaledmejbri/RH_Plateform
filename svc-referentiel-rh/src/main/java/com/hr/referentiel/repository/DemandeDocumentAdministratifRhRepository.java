@@ -14,6 +14,9 @@ import java.util.UUID;
 
 public interface DemandeDocumentAdministratifRhRepository extends JpaRepository<DemandeDocumentAdministratifRh, UUID> {
 
+	/** D-L02 : recherche RH par numéro lisible (stocké en majuscules ; correspondance exacte). */
+	List<DemandeDocumentAdministratifRh> findByNumero(String numero);
+
 	List<DemandeDocumentAdministratifRh> findByDemandeurIdOrderByCreeLeDesc(UUID demandeurId);
 
 	List<DemandeDocumentAdministratifRh> findByStatutOrderByCreeLeAsc(StatutDocumentAdministratifDemandeRh statut);

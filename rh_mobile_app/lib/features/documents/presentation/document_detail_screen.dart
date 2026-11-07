@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
-
 import '../../../core/constants/api_constants.dart';
+import '../../../core/format/formats.dart';
+import '../../../core/libelles/libelles.dart';
 import '../../../core/network/api_client.dart';
 import '../data/document_models.dart';
 import 'package:rh_mobile_app/core/theme/app_theme.dart';
@@ -25,18 +25,11 @@ class DocumentDetailScreen extends ConsumerWidget {
 
   final String id;
 
-  String _formatTypeDocument(String type) {
-    return type.replaceAll('_', ' ').toLowerCase().split(' ').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1);
-    }).join(' ');
-  }
-
   /// « Échéance : 28/10/2026 à 14:00 (SLA 24 h) — reste 5 h », ou « en retard » si l'échéance est passée.
   static String _libelleDelai(DateTime? echeance, int? slaHeures, bool enRetard) {
     if (echeance == null) return '';
     final sla = slaHeures != null ? ' (SLA $slaHeures h)' : '';
-    final date = DateFormat("dd/MM/yyyy 'à' HH:mm", 'fr_FR').format(echeance);
+    final date = '${formatDate(echeance)} à ${formatHeure(echeance)}';
     if (enRetard || echeance.isBefore(DateTime.now())) {
       return 'Échéance dépassée depuis le $date$sla.';
     }
@@ -87,7 +80,7 @@ class DocumentDetailScreen extends ConsumerWidget {
                 final enRetard = j['en_retard'] == true;
                 final delai = _libelleDelai(echeance, slaHeures, enRetard);
 
-                String statusLabel = 'Envoyé';
+                String statusLabel = Libelles.statutDocument(j['statut']?.toString());
                 String statusDescription = 'Votre demande a été envoyée et sera traitée prochainement.';
                 if (j['statut'] == 'EN_ATTENTE_FILE') {
                   final rang = j['rang_dans_file'];
@@ -157,18 +150,21 @@ class DocumentDetailScreen extends ConsumerWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      _formatTypeDocument(j['type_document'] ?? ''),
+                                      Libelles.typeDocument(j['type_document']?.toString()),
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 18,
                                         color: AppTheme.textPrimary,
                                       ),
                                     ),
-                                    if (j['date_creation'] != null)
+                                    if (j['numero'] != null || j['date_creation'] != null)
                                       Padding(
                                         padding: const EdgeInsets.only(top: 4),
                                         child: Text(
-                                          'Demandé le ${DateFormat('dd MMM yyyy', 'fr_FR').format(DateTime.parse(j['date_creation']))}',
+                                          [
+                                            if ((j['numero']?.toString() ?? '').isNotEmpty) j['numero'].toString(),
+                                            if (j['date_creation'] != null) 'demandé le ${formatDateIso(j['date_creation'])}',
+                                          ].join(' · '),
                                           style: TextStyle(color: AppTheme.textTertiary, fontSize: 13),
                                         ),
                                       ),
@@ -400,18 +396,11 @@ class DocumentDetailScreen extends ConsumerWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '${e['libelle']}',
+                                  Libelles.etapeSuivi('${e['code']}', '${e['libelle']}'),
                                   style: TextStyle(
                                     fontWeight: term || cours ? FontWeight.w600 : FontWeight.w500,
                                     fontSize: 14,
                                     color: term || cours ? AppTheme.textPrimary : AppTheme.textSecondary,
-                                  ),
-                                ),
-                                Text(
-                                  '${e['code']}',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.textTertiary,
                                   ),
                                 ),
                               ],

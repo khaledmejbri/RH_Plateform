@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -50,29 +51,7 @@ class _PresenceSitesAdminScreenState
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  messageErreurPresence(
-                    e,
-                    fallback: 'Impossible de charger les sites.',
-                  ),
-                  style: Theme.of(context).textTheme.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => ref.invalidate(_presenceSitesProvider),
-                  child: const Text('Réessayer'),
-                ),
-              ],
-            ),
-          ),
-        ),
+        error: (e, _) => RhErrorState.depuis(e, onRetry: () => ref.invalidate(_presenceSitesProvider)),
         data: (sites) {
           if (sites.isEmpty) {
             return const Center(

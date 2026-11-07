@@ -101,7 +101,7 @@ void main() {
 
     test('statuts', () {
       expect(StatutHeuresSup.libelle('EXPIREE'), 'Expirée');
-      expect(StatutHeuresSup.libelle('AUTRE'), 'AUTRE');
+      expect(StatutHeuresSup.libelle('AUTRE'), 'Valeur non reconnue');
     });
 
     test('requête : ouverture à 0 omise, date_fin omise si même jour', () {

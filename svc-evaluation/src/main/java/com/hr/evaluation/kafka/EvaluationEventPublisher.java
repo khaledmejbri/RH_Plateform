@@ -33,7 +33,7 @@ public class EvaluationEventPublisher {
 		}
 		String message = evaluation.getCouleurAlerte() == CouleurAlerteEvaluationRh.ROUGE
 				? "Plan d'action obligatoire et escalade DG."
-				: "Alerte RH: deux criteres sont sous le seuil.";
+				: "Alerte RH : deux critères sont sous le seuil.";
 		publier(RhEvaluationTopics.EVALUATION_ALERTE, evaluation.getId().toString(),
 				new EvaluationAlerteEvent(
 						evaluation.getId(),

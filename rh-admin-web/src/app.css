@@ -117,7 +117,7 @@ textarea {
   transform: translateX(0);
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1100px) {
   .shell__sidebar {
     transform: none;
     position: relative;
@@ -263,7 +263,7 @@ textarea {
   margin-left: 0;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1100px) {
   .shell__main {
     margin-left: 0;
   }
@@ -279,7 +279,7 @@ textarea {
   padding-left: calc(1.25rem + 52px);
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1100px) {
   .shell__header {
     padding-left: 1.5rem;
   }
@@ -313,7 +313,7 @@ textarea {
   padding-left: calc(1.25rem + 52px);
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1100px) {
   .shell__content {
     padding: 0 1.75rem 2.5rem;
     padding-left: 1.75rem;
@@ -445,6 +445,8 @@ textarea {
 /* —— Tables —— */
 .table-wrap {
   overflow-x: auto;
+  /* Bloc conteneur des éléments .sr-only (absolus) : sans lui, ils échappent au défilement et élargissent la page. */
+  position: relative;
 }
 
 .data-table {
@@ -1121,7 +1123,7 @@ textarea {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 .table {
@@ -2255,3 +2257,44 @@ textarea {
 .historique-alerte { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
 .historique-alerte li { border-left: 3px solid var(--border); padding-left: 0.75rem; }
 .historique-alerte__commentaire { white-space: pre-wrap; }
+
+/* Mise en page 1024 px : jamais de défilement horizontal de la page (TRV-5, TPS-5, PTG-5) */
+.shell__content,
+.page,
+.panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.table-wrap,
+.table-container {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Lien d'évitement : visible uniquement au clavier */
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: -4rem;
+  z-index: 100;
+  padding: 0.6rem 1rem;
+  background: var(--surface, #fff);
+  border: 2px solid var(--primary, #1d4ed8);
+  border-radius: 8px;
+  color: inherit;
+}
+
+.skip-link:focus {
+  top: 0.5rem;
+}
+
+/* Alertes d'écart à 1024 px : onglets qui passent à la ligne, aucun débordement de la page (recette lot 1) */
+.tabs {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.shell__content {
+  overflow-x: clip;
+}

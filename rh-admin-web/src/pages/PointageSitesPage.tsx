@@ -28,6 +28,9 @@ import {
   type TypeLieu,
 } from '../api/presenceApi';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { useConfirm } from '../components/ConfirmDialog';
+import { formatNombre, SITE_INTROUVABLE, COLLABORATEUR_INTROUVABLE } from '../utils/format';
+import { VALEUR_NON_RECONNUE } from '../utils/libelles';
 import { Icon } from '../components/ui';
 import { useSearchParams } from 'react-router-dom';
 import BarreFiltres, { AucunResultat, ChampDate, ChampSelect } from '../components/BarreFiltres';
@@ -117,8 +120,18 @@ function QrExpiryBadge({ site }: { site: PresenceSite }) {
   return <span className="muted small">Aucun</span>;
 }
 
+function libelleStatutPointage(statut: string): string {
+  return LIBELLES_POINTAGE_STATUT[statut] ?? VALEUR_NON_RECONNUE;
+}
+
+/** Motif en clair pour la RH ; le détail technique du serveur reste dans l'info-bulle (PTG-3). */
+function MotifPointage({ p }: { p: PresencePointage }) {
+  if (!p.statut.startsWith('REJETE_')) return <>—</>;
+  return <span title={p.motifRejet ?? undefined}>{libelleStatutPointage(p.statut)}</span>;
+}
+
 function PointageStatutBadge({ statut }: { statut: string }) {
-  const label = LIBELLES_POINTAGE_STATUT[statut] ?? statut.replaceAll('_', ' ');
+  const label = libelleStatutPointage(statut);
   const cls =
     statut === 'VALIDE' || statut === 'VALIDE_MANUEL'
       ? 'badge badge--success'
@@ -136,6 +149,7 @@ function PointageStatutBadge({ statut }: { statut: string }) {
 
 export default function PointageSitesPage() {
   const lectureSeule = useLectureSeule();
+  const confirm = useConfirm();
   const [params, setParams] = useSearchParams();
   const ongletUrl = params.get('onglet') as Tab | null;
   const [tab, setTabEtat] = useState<Tab>(ongletUrl && ONGLETS.includes(ongletUrl) ? ongletUrl : 'sites');
@@ -322,11 +336,11 @@ export default function PointageSitesPage() {
     if (p.collaborateurNom) return p.collaborateurMatricule ? `${p.collaborateurNom} (${p.collaborateurMatricule})` : p.collaborateurNom;
     const c = collabParId.get(p.collaborateurId);
     if (c) return libelleCollaborateur(c);
-    return 'Collaborateur inconnu';
+    return COLLABORATEUR_INTROUVABLE;
   }
 
   const siteOptions = useMemo(
-    () => sites.map((s) => ({ id: s.id, label: `${s.code} — ${s.libelle}` })),
+    () => sites.map((s) => ({ id: s.id, label: s.libelle })),
     [sites],
   );
 
@@ -395,6 +409,13 @@ export default function PointageSitesPage() {
 
   async function genererBorne() {
     if (!detail || lectureSeule) return;
+    const ok = await confirm({
+      message: detail.borneActive
+        ? `Remplacer la borne écran du site « ${detail.libelle} » ? L’ancien lien cessera de fonctionner.`
+        : `Créer une borne écran pour le site « ${detail.libelle} » ?`,
+      confirmLabel: detail.borneActive ? 'Remplacer' : 'Créer',
+    });
+    if (!ok) return;
     setBusy(true);
     setActionErr(null);
     try {
@@ -411,6 +432,12 @@ export default function PointageSitesPage() {
 
   async function revoquerBorne() {
     if (!detail || lectureSeule) return;
+    const ok = await confirm({
+      message: `Désactiver la borne écran du site « ${detail.libelle} » ? Son lien et ses QR cesseront de fonctionner.`,
+      confirmLabel: 'Désactiver',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setActionErr(null);
     try {
@@ -427,6 +454,8 @@ export default function PointageSitesPage() {
 
   async function passerEnModePapier() {
     if (!detail || lectureSeule) return;
+    const ok = await confirm({ message: `Repasser le site « ${detail.libelle} » au QR papier ?`, confirmLabel: 'Confirmer' });
+    if (!ok) return;
     setBusy(true);
     setActionErr(null);
     try {
@@ -442,6 +471,14 @@ export default function PointageSitesPage() {
 
   async function toggleActif() {
     if (!detail || lectureSeule) return;
+    const ok = await confirm({
+      message: detail.actif
+        ? `Désactiver le site « ${detail.libelle} » ? Les collaborateurs ne pourront plus y pointer.`
+        : `Activer le site « ${detail.libelle} » ?`,
+      confirmLabel: detail.actif ? 'Désactiver' : 'Activer',
+      danger: detail.actif,
+    });
+    if (!ok) return;
     setBusy(true);
     setActionErr(null);
     try {
@@ -458,6 +495,21 @@ export default function PointageSitesPage() {
 
   async function doGenerate(isRegen: boolean) {
     if (!detail || lectureSeule) return;
+    if (!isRegen) {
+      const ok = await confirm({
+        message: `Générer un QR pour le site « ${detail.libelle} » ? Il sera valable 90 jours.`,
+        confirmLabel: 'Générer',
+      });
+      if (!ok) return;
+    }
+    if (isRegen) {
+      const ok = await confirm({
+        message: `Régénérer le QR du site « ${detail.libelle} » ? L’ancien QR sera immédiatement invalide : réimprimez et remplacez l’affichage sur place.`,
+        confirmLabel: 'Régénérer',
+        danger: true,
+      });
+      if (!ok) return;
+    }
     setBusy(true);
     setActionErr(null);
     setMsg(null);
@@ -494,6 +546,12 @@ export default function PointageSitesPage() {
 
   async function doRevoke() {
     if (!detail || lectureSeule) return;
+    const ok = await confirm({
+      message: `Révoquer le QR du site « ${detail.libelle} » ? Aucun collaborateur ne pourra pointer tant qu’un nouveau QR n’aura pas été généré.`,
+      confirmLabel: 'Révoquer',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setActionErr(null);
     try {
@@ -533,14 +591,14 @@ export default function PointageSitesPage() {
             {showDetail
               ? `Code ${detail?.code ?? '…'} · zone de ${detail?.rayonMetres ?? '…'} m`
               : tab === 'pointages'
-                ? 'Consultation des essais VALIDÉ / REJETÉ (support et anti-fraude).'
+                ? 'Toutes les tentatives de pointage, acceptées ou refusées.'
                 : tab === 'temps'
                   ? 'Heures travaillées par collaborateur, jour et site, d’après les pointages validés.'
                   : tab === 'manuels'
                   ? 'Pointages demandés après un refus, validés par le responsable ou les RH.'
                   : tab === 'facial'
                     ? 'Réglage, consentement et enrôlement des collaborateurs. Aucune image n’est conservée ni affichée.'
-                    : 'Emplacements QR et zone de pointage par site'}
+                    : 'Emplacements, codes QR et zone de pointage par site.'}
           </p>
         </div>
         <div className="tabs">
@@ -604,7 +662,7 @@ export default function PointageSitesPage() {
 
       {deployBanner ? (
         <div className="alert alert--info" role="status">
-          Module pointage en cours de déploiement — le service présence peut être temporairement indisponible.
+          Le module de pointage est momentanément indisponible. Réessayez dans quelques instants.
         </div>
       ) : null}
       {lectureSeule && (showList || showDetail || tab === 'pointages' || tab === 'temps') ? (
@@ -651,7 +709,7 @@ export default function PointageSitesPage() {
                 checked={filtreExpire}
                 onChange={(e) => filtresSites.definir({ expire: e.target.checked ? '1' : '' })}
               />
-              QR expire ≤ 30 j
+              QR expirant dans moins de 30 jours
             </label>
           </BarreFiltres>
 
@@ -692,7 +750,7 @@ export default function PointageSitesPage() {
                       <th>Emplacement</th>
                       <th>QR</th>
                       <th>Expiration</th>
-                      <th>Actions</th>
+                      <th><span className="sr-only">Actions</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -709,17 +767,17 @@ export default function PointageSitesPage() {
                         </td>
                         <td>
                           {s.latitude != null && s.longitude != null ? (
-                            <span className="small">Posé</span>
+                            <span className="small">Enregistré</span>
                           ) : (
-                            <span className="muted small" title="Configurer via mobile RH">
-                              Non posé
+                            <span className="muted small" title="À enregistrer depuis l’application mobile RH Connect">
+                              Non enregistré
                             </span>
                           )}
                         </td>
                         <td>
                           {s.hasQrActif ? (
                             <span className="small">
-                              Actif{s.qrVersion != null ? ` v${s.qrVersion}` : ''}
+                              QR actif{s.qrVersion != null ? ` (version ${s.qrVersion})` : ''}
                             </span>
                           ) : (
                             <span className="muted small">Aucun</span>
@@ -745,10 +803,10 @@ export default function PointageSitesPage() {
                   disabled={sitesPage <= 0}
                   onClick={() => setSitesPage((p) => p - 1)}
                 >
-                  Préc.
+                  Précédent
                 </button>
                 <span className="muted small">
-                  {sitesPage + 1} / {sitesTotalPages} ({sitesTotal})
+                  Page {sitesPage + 1} sur {sitesTotalPages} ({sitesTotal} sites)
                 </span>
                 <button
                   type="button"
@@ -756,7 +814,7 @@ export default function PointageSitesPage() {
                   disabled={sitesPage + 1 >= sitesTotalPages}
                   onClick={() => setSitesPage((p) => p + 1)}
                 >
-                  Suiv.
+                  Suivant
                 </button>
               </div>
             </>
@@ -888,7 +946,7 @@ export default function PointageSitesPage() {
                     {detail.actif ? 'Désactiver le site' : 'Activer le site'}
                   </button>
                 ) : (
-                  <p className="muted small">Lecture seule</p>
+                  <p className="muted small">Consultation uniquement</p>
                 )}
               </section>
 
@@ -897,15 +955,15 @@ export default function PointageSitesPage() {
                 {detail.latitude != null && detail.longitude != null ? (
                   <>
                     <p className="mono small">
-                      {detail.latitude.toFixed(6)}, {detail.longitude.toFixed(6)}
+                      {formatNombre(detail.latitude, 6)}, {formatNombre(detail.longitude, 6)}
                     </p>
                     <p className="small">
                       {detail.precisionAncrageMetres != null
-                        ? `Précision de la pose : ±${detail.precisionAncrageMetres.toFixed(1)} m` +
+                        ? `Précision de l’enregistrement : ±${formatNombre(detail.precisionAncrageMetres, 1)} m` +
                           (detail.nbMesuresAncrage ? ` (${detail.nbMesuresAncrage} mesures)` : '')
-                        : 'Précision de la pose inconnue : reposez l’emplacement depuis RH Connect.'}
+                        : 'Précision de l’enregistrement inconnue : enregistrez à nouveau l’emplacement depuis RH Connect.'}
                       {detail.emplacementUpdatedAt
-                        ? ` · posé le ${formatDateTunis(detail.emplacementUpdatedAt)}` +
+                        ? ` · enregistré le ${formatDateTunis(detail.emplacementUpdatedAt)}` +
                           // L'auteur est stocké sous forme d'identifiant technique : on ne l'affiche que s'il est lisible
                           (detail.emplacementUpdatedBy && !/^[0-9a-f-]{36}$/i.test(detail.emplacementUpdatedBy)
                             ? ` par ${detail.emplacementUpdatedBy}`
@@ -914,11 +972,11 @@ export default function PointageSitesPage() {
                     </p>
                   </>
                 ) : (
-                  <p className="muted">Non posé</p>
+                  <p className="muted">Non enregistré</p>
                 )}
                 <p className="muted small">
-                  Posez l’emplacement depuis RH Connect (mobile) sur le lieu d’affichage du QR : l’appareil mesure
-                  pendant 15 s et exige une précision de{' '}
+                  Enregistrez l’emplacement depuis RH Connect (mobile) sur le lieu d’affichage du QR : l’appareil mesure
+                  pendant 15 secondes et exige une précision de{' '}
                   {TYPES_LIEU.find((t) => t.value === detail.typeLieu)?.precisionPose ?? 10} m.
                 </p>
               </section>
@@ -985,8 +1043,8 @@ export default function PointageSitesPage() {
                 <h3 className="section-title">Code QR</h3>
                 {detail.hasQrActif ? (
                   <p className="small">
-                    Version {detail.qrVersion ?? '—'} · valide du {formatDateTunis(detail.validFrom)} au{' '}
-                    {formatDateTunis(detail.validUntil)} (90 jours)
+                    QR actif (version {detail.qrVersion ?? '—'}) · valide du {formatDateCourteTunis(detail.validFrom)} au{' '}
+                    {formatDateCourteTunis(detail.validUntil)} (90 jours)
                   </p>
                 ) : (
                   <p className="muted small">Aucun QR actif — générez un code pour l’afficher sur site.</p>
@@ -1029,7 +1087,7 @@ export default function PointageSitesPage() {
                         type="button"
                         className="btn btn--warning"
                         disabled={busy}
-                        onClick={() => setModal('regenerer')}
+                        onClick={() => void doGenerate(true)}
                       >
                         Régénérer
                       </button>
@@ -1037,7 +1095,7 @@ export default function PointageSitesPage() {
                         type="button"
                         className="btn btn--danger"
                         disabled={busy}
-                        onClick={() => setModal('revoquer')}
+                        onClick={() => void doRevoke()}
                       >
                         Révoquer
                       </button>
@@ -1163,7 +1221,7 @@ export default function PointageSitesPage() {
             ) : (
               <div className="empty-state">
                 <h3>Aucun pointage</h3>
-                <p>Les essais validés et rejetés apparaîtront ici dès que le service sera actif.</p>
+                <p>Les pointages acceptés ou refusés apparaîtront ici.</p>
               </div>
             )
           ) : pointages.length > 0 ? (
@@ -1177,7 +1235,7 @@ export default function PointageSitesPage() {
                       <th>Site</th>
                       <th>Type</th>
                       <th>Statut</th>
-                      <th>Vérif. faciale</th>
+                      <th>Vérification faciale</th>
                       <th>Distance</th>
                       <th>Précision GPS</th>
                       <th>Motif</th>
@@ -1188,17 +1246,17 @@ export default function PointageSitesPage() {
                       <tr key={p.id}>
                         <td>{formatDateTunis(p.serverTs, minutesPartagees.has(p.id))}</td>
                         <td>{libelleCollabPointage(p)}</td>
-                        <td>{p.siteLibelle ?? p.siteCode ?? 'Site inconnu'}</td>
-                        <td>{p.type === 'ENTREE' ? 'Entrée' : p.type === 'SORTIE' ? 'Sortie' : p.type}</td>
+                        <td>{p.siteLibelle ?? SITE_INTROUVABLE}</td>
+                        <td>{p.type === 'ENTREE' ? 'Entrée' : p.type === 'SORTIE' ? 'Sortie' : VALEUR_NON_RECONNUE}</td>
                         <td>
                           <PointageStatutBadge statut={p.statut} />
                           <PastilleSequence etat={p.etatSequence} statut={p.statut} />
                         </td>
                         <td className="small">
                           {p.verificationFaciale
-                            ? (LIBELLES_VERIFICATION_FACIALE[p.verificationFaciale] ?? p.verificationFaciale)
+                            ? (LIBELLES_VERIFICATION_FACIALE[p.verificationFaciale] ?? VALEUR_NON_RECONNUE)
                             : '—'}
-                          {p.scoreFacial != null ? <span className="muted"> · score {p.scoreFacial}</span> : null}
+                          {p.scoreFacial != null ? <span className="muted"> · score {formatNombre(p.scoreFacial, 2)}</span> : null}
                         </td>
                         <td className="muted">
                           {p.distanceMetres != null ? `${Math.round(p.distanceMetres)} m` : '—'}
@@ -1206,7 +1264,7 @@ export default function PointageSitesPage() {
                         <td className="muted">
                           {p.accuracyMetres != null ? `±${Math.round(p.accuracyMetres)} m` : '—'}
                         </td>
-                        <td className="muted small">{p.motifRejet ?? '—'}</td>
+                        <td className="muted small"><MotifPointage p={p} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -1219,10 +1277,10 @@ export default function PointageSitesPage() {
                   disabled={ptPage <= 0}
                   onClick={() => setPtPage((p) => p - 1)}
                 >
-                  Préc.
+                  Précédent
                 </button>
                 <span className="muted small">
-                  {ptPage + 1} / {ptTotalPages} ({ptTotal})
+                  Page {ptPage + 1} sur {ptTotalPages} ({ptTotal} pointages)
                 </span>
                 <button
                   type="button"
@@ -1230,7 +1288,7 @@ export default function PointageSitesPage() {
                   disabled={ptPage + 1 >= ptTotalPages}
                   onClick={() => setPtPage((p) => p + 1)}
                 >
-                  Suiv.
+                  Suivant
                 </button>
               </div>
             </>
@@ -1301,44 +1359,6 @@ export default function PointageSitesPage() {
         </Modal>
       ) : null}
 
-      {modal === 'regenerer' ? (
-        <Modal title="Remplacer le QR ?" onClose={() => !busy && setModal(null)}>
-          <p>
-            L’ancien QR sera <strong>immédiatement</strong> invalide. Réimprimez et remplacez l’affichage sur
-            site avant de communiquer.
-          </p>
-          <div className="page__head-actions mt-md">
-            <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setModal(null)}>
-              Annuler
-            </button>
-            <button
-              type="button"
-              className="btn btn--warning"
-              disabled={busy}
-              onClick={() => void doGenerate(true)}
-            >
-              Régénérer
-            </button>
-          </div>
-        </Modal>
-      ) : null}
-
-      {modal === 'revoquer' ? (
-        <Modal title="Révoquer le QR ?" onClose={() => !busy && setModal(null)}>
-          <p>
-            Le QR actif sera révoqué immédiatement. Aucun collaborateur ne pourra pointer sur ce site tant
-            qu’un nouveau QR n’aura pas été généré.
-          </p>
-          <div className="page__head-actions mt-md">
-            <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setModal(null)}>
-              Annuler
-            </button>
-            <button type="button" className="btn btn--danger" disabled={busy} onClick={() => void doRevoke()}>
-              Révoquer
-            </button>
-          </div>
-        </Modal>
-      ) : null}
     </div>
   );
 }

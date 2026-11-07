@@ -14,6 +14,10 @@ public class DemandeAdministrativeRhResponse {
 	@JsonProperty("identifiant")
 	private UUID identifiant;
 
+	/** D-L02 : numéro lisible (DEM-/DOC-/FOR-AAAAMM-NNNN). */
+	@JsonProperty("numero")
+	private String numero;
+
 	@JsonProperty("type_demande")
 	private TypeDemandeAdministrativeRh typeDemande;
 
@@ -74,6 +78,14 @@ public class DemandeAdministrativeRhResponse {
 		this.motifRefus = motifRefus;
 		this.creeLe = creeLe;
 		this.modifieLe = modifieLe;
+	}
+
+	public String getNumero() {
+		return numero;
+	}
+
+	public void setNumero(String numero) {
+		this.numero = numero;
 	}
 
 	public UUID getIdentifiant() {

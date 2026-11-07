@@ -3,13 +3,17 @@ package com.hr.referentiel.service;
 import com.hr.referentiel.dto.FamilleMetierCreationRequest;
 import com.hr.referentiel.dto.FamilleMetierMiseAJourRequest;
 import com.hr.referentiel.dto.FamilleMetierResponse;
+import com.hr.referentiel.dto.LibellesProfilResponse;
+import com.hr.referentiel.domain.NiveauSeniorite;
 import com.hr.referentiel.entity.FamilleMetier;
 import com.hr.referentiel.repository.FamilleMetierRepository;
 import com.hr.referentiel.web.ReferentielMetierException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 
 @Service
@@ -29,6 +33,16 @@ public class FamilleMetierService {
 				? familleMetierRepository.findByActifTrueOrderByCodeAsc()
 				: familleMetierRepository.findAllByOrderByCodeAsc();
 		return rows.stream().map(this::toResponse).toList();
+	}
+
+	/** Familles (actives et inactives, libellé saisi) et niveaux du catalogue : code → libellé français. */
+	@Transactional(readOnly = true)
+	public LibellesProfilResponse libellesProfil() {
+		Map<String, String> familles = new LinkedHashMap<>();
+		familleMetierRepository.findAllByOrderByCodeAsc().forEach(f -> familles.put(f.getCode(), f.getLibelle()));
+		Map<String, String> niveaux = new LinkedHashMap<>();
+		NiveauSeniorite.catalogue().forEach(n -> niveaux.put(n.name(), n.getLibelle()));
+		return new LibellesProfilResponse(familles, niveaux);
 	}
 
 	@Transactional

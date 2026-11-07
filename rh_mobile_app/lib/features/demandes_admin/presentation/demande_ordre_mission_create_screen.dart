@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../core/format/formats.dart';
 
 import '../data/demande_admin_errors.dart';
 import '../data/demande_admin_repository.dart';
@@ -92,7 +93,6 @@ class _DemandeOrdreMissionCreateScreenState
 
   @override
   Widget build(BuildContext context) {
-    final fmtDate = DateFormat.yMMMd('fr_FR');
     final nbJours = (_dateDebut != null && _dateFin != null && !_dateFin!.isBefore(_dateDebut!))
         ? _dateFin!.difference(_dateDebut!).inDays + 1
         : null;
@@ -118,7 +118,7 @@ class _DemandeOrdreMissionCreateScreenState
           Row(children: [
             Expanded(child: _DateTile(
               label: 'Début',
-              value: _dateDebut == null ? 'Sélectionner' : fmtDate.format(_dateDebut!),
+              value: _dateDebut == null ? 'Sélectionner' : formatDate(_dateDebut!),
               selected: _dateDebut != null,
               color: _violet,
               onTap: () => _pickDate(true),
@@ -126,7 +126,7 @@ class _DemandeOrdreMissionCreateScreenState
             const SizedBox(width: 12),
             Expanded(child: _DateTile(
               label: 'Fin',
-              value: _dateFin == null ? 'Sélectionner' : fmtDate.format(_dateFin!),
+              value: _dateFin == null ? 'Sélectionner' : formatDate(_dateFin!),
               selected: _dateFin != null,
               color: _violet,
               onTap: () => _pickDate(false),

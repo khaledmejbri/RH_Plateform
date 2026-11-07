@@ -48,8 +48,9 @@ public class DemandeFormationRhController {
 	@GetMapping("/liste")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<List<DemandeFormationRhResponse>> listerPourRh(
-			@RequestParam(name = "statut", required = false) StatutDemandeFormationRh statut) {
-		return ResponseEntity.ok(demandeFormationRhService.listerPourRh(statut));
+			@RequestParam(name = "statut", required = false) StatutDemandeFormationRh statut,
+			@RequestParam(name = "q", required = false) String q) {
+		return ResponseEntity.ok(demandeFormationRhService.listerPourRh(statut, q));
 	}
 
 	@GetMapping("/cibles/unites")
@@ -69,16 +70,18 @@ public class DemandeFormationRhController {
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<DemandeFormationRhResponse> integrerPlan(
 			@PathVariable UUID identifiant,
-			@RequestBody(required = false) DemandeFormationIntegrationRequest requete) {
-		return ResponseEntity.ok(demandeFormationRhService.integrerPlan(identifiant, requete));
+			@RequestBody(required = false) DemandeFormationIntegrationRequest requete,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(demandeFormationRhService.integrerPlan(identifiant, requete, principal.getToken()));
 	}
 
 	@PostMapping("/{identifiant}/refuser")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<DemandeFormationRhResponse> refuser(
 			@PathVariable UUID identifiant,
-			@Valid @RequestBody DemandeRefusRequest requete) {
-		return ResponseEntity.ok(demandeFormationRhService.refuser(identifiant, requete));
+			@Valid @RequestBody DemandeRefusRequest requete,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(demandeFormationRhService.refuser(identifiant, requete, principal.getToken()));
 	}
 
 	@PostMapping("/{identifiant}/annuler")

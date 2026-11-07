@@ -68,10 +68,13 @@ class PresenceDemandeManuelleServiceTest {
 	private final UUID compteRo = UUID.randomUUID();
 	private PresencePointage rejet;
 
+	private final java.util.Map<String, Long> rangs = new java.util.HashMap<>();
+
 	@BeforeEach
 	void setUp() {
 		service = new PresenceDemandeManuelleService(demandeRepository, pointageRepository, referentielClient,
-				accessService, new FacialIdentiteService(accessService, referentielClient), eventPublisher, new PresenceProperties(), siteRepository, fenetreHoraire);
+				accessService, new FacialIdentiteService(accessService, referentielClient), eventPublisher, new PresenceProperties(), siteRepository, fenetreHoraire,
+				new com.hr.presence.numero.NumeroDemandeService(cle -> rangs.merge(cle, 1L, Long::sum)));
 		rejet = new PresencePointage();
 		rejet.setId(UUID.randomUUID());
 		rejet.setCollaborateurId(ficheCollab.toString());
@@ -110,6 +113,7 @@ class PresenceDemandeManuelleServiceTest {
 	private PresenceDemandeManuelle demandeEnAttente() {
 		PresenceDemandeManuelle d = new PresenceDemandeManuelle();
 		d.setId(UUID.randomUUID());
+		d.setNumero("PM-202611-0007");
 		d.setPointageRejeteId(rejet.getId());
 		d.setCollaborateurId(ficheCollab.toString());
 		d.setCollaborateurCompteId(compteCollab.toString());
@@ -132,6 +136,8 @@ class PresenceDemandeManuelleServiceTest {
 
 		assertThat(r.statut()).isEqualTo(StatutDemandeManuelle.EN_ATTENTE);
 		assertThat(r.valideurNom()).isEqualTo("Omar Belhadj");
+		assertThat(r.numero()).matches("PM-\\d{6}-0001");
+		verify(eventPublisher).notifier(eq(compteRo.toString()), org.mockito.ArgumentMatchers.contains(r.numero()), anyString());
 		assertThat(r.heureDeclaree()).isEqualTo(rejet.getServerTs());
 		verify(eventPublisher).notifier(eq(compteRo.toString()), startsWith("Pointage manuel à valider"), anyString());
 	}
@@ -238,7 +244,7 @@ class PresenceDemandeManuelleServiceTest {
 		assertThat(p.getValue().getStatut()).isEqualTo(PointageStatut.VALIDE_MANUEL);
 		assertThat(p.getValue().getServerTs()).isEqualTo(d.getHeureDeclaree());
 		assertThat(p.getValue().getDemandeManuelleId()).isEqualTo(d.getId());
-		verify(eventPublisher).notifier(eq(compteCollab.toString()), eq("Pointage manuel validé"), anyString());
+		verify(eventPublisher).notifier(eq(compteCollab.toString()), eq("Pointage manuel validé — PM-202611-0007"), anyString());
 	}
 
 	@Test
@@ -314,7 +320,7 @@ class PresenceDemandeManuelleServiceTest {
 
 		assertThat(r.statut()).isEqualTo(StatutDemandeManuelle.REFUSEE);
 		assertThat(r.motifRefus()).isEqualTo("Absent ce matin-là");
-		verify(eventPublisher).notifier(eq(compteCollab.toString()), eq("Pointage manuel refusé"), anyString());
+		verify(eventPublisher).notifier(eq(compteCollab.toString()), eq("Pointage manuel refusé — PM-202611-0007"), anyString());
 		verify(pointageRepository, never()).save(any());
 	}
 

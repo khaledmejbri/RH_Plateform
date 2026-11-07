@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getPlaintesRh, getTousCollaborateurs, getUnites, patchPlainteStatut, type CollaborateurRow, type PlainteRh, type Unite } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { useConfirm } from '../components/ConfirmDialog';
+
 import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
 import { appartientSelection, correspond, indexerUnites, selectionActive, useFiltresUrl } from '../utils/filtres';
 import { DialogPanel } from '../components/useDialogA11y';
-import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, formatDateTime } from '../components/ui';
+import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge } from '../components/ui';
+import { formatDateHeure, formatPersonne } from '../utils/format';
+import { libelle, libelleConnu } from '../utils/libelles';
 
 /**
  * CDC v2 §M04 corrections :
@@ -31,6 +35,7 @@ const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', typ
 
 export default function PlaintesSuiviPage() {
   const lectureSeule = useLectureSeule();
+  const confirm = useConfirm();
   const [rows, setRows]         = useState<PlainteRh[]>([]);
   const [loading, setLoading]   = useState(true);
   const [err, setErr]           = useState<string | null>(null);
@@ -100,6 +105,11 @@ export default function PlaintesSuiviPage() {
       setSaveErr('Un commentaire RH est obligatoire pour ce statut.');
       return;
     }
+    const ok = await confirm({
+      message: `Passer la plainte ${edit.numero_ticket} (« ${edit.titre} ») au statut « ${libelle('statut', newStatut)} » ?`,
+      confirmLabel: 'Confirmer',
+    });
+    if (!ok) return;
     setSaving(true);
     setSaveErr(null);
     try {
@@ -116,16 +126,13 @@ export default function PlaintesSuiviPage() {
     }
   }
 
-  const STATUT_LABELS: Record<string, string> = {
-    NOUVEAU: 'Nouveau', EN_ANALYSE: 'En analyse',
-    EN_TRAITEMENT: 'En traitement', RESOLU: 'Résolu', FERME: 'Fermé',
-  };
+  const STATUTS_PLAINTE = ['NOUVEAU', 'EN_ANALYSE', 'EN_TRAITEMENT', 'RESOLU', 'FERME'];
 
   return (
     <div className="page">
       <PageHeader
         title="Suivi des plaintes"
-        lead="Interne → RH uniquement · Externe → RH, Services techniques et Direction E&S."
+        lead="Interne → RH uniquement · Externe → RH et services concernés."
         actions={
           <button type="button" className="btn btn--secondary" onClick={() => void load()} disabled={loading}>
             <Icon name="refresh" />
@@ -141,7 +148,7 @@ export default function PlaintesSuiviPage() {
         recherche={f.q}
         onRecherche={(v) => filtres.definir({ q: v })}
         libelleRecherche="Auteur ou plainte"
-        placeholder="Nom, matricule, ticket, titre…"
+        placeholder="Nom, matricule, numéro, titre…"
         nbResultats={affichees.length}
         nbTotal={rows.length}
         nbActifs={filtres.nbActifs}
@@ -162,7 +169,7 @@ export default function PlaintesSuiviPage() {
           toutesLibelle="Tous les statuts"
           options={[
             { valeur: 'OUVERTES', libelle: 'Ouvertes (non fermées)' },
-            ...Object.entries(STATUT_LABELS).map(([v, l]) => ({ valeur: v, libelle: l })),
+            ...STATUTS_PLAINTE.map((v) => ({ valeur: v, libelle: libelle('statut', v) })),
           ]}
           onChange={(v) => filtres.definir({ statut: v })}
         />
@@ -187,12 +194,12 @@ export default function PlaintesSuiviPage() {
               <caption className="sr-only">Plaintes</caption>
               <thead>
                 <tr>
-                  <th scope="col">Ticket</th>
+                  <th scope="col">Numéro</th>
                   <th scope="col">Date</th>
                   <th scope="col">Type</th>
                   <th scope="col">Auteur</th>
                   <th scope="col">Titre</th>
-                  <th scope="col">PJ</th>
+                  <th scope="col">Pièces jointes</th>
                   <th scope="col">Statut</th>
                   <th scope="col"><span className="sr-only">Actions</span></th>
                 </tr>
@@ -200,12 +207,11 @@ export default function PlaintesSuiviPage() {
               <tbody>
                 {affichees.map((p) => (
                   <tr key={p.identifiant}>
-                    <td data-label="Ticket"><code className="cell-code">{p.numero_ticket}</code></td>
-                    <td data-label="Date" className="cell-meta">{formatDateTime(p.cree_le)}</td>
+                    <td data-label="Numéro"><span className="cell-meta">{p.numero_ticket}</span></td>
+                    <td data-label="Date" className="cell-meta">{formatDateHeure(p.cree_le)}</td>
                     <td data-label="Type"><TypeChip type={p.type_plainte} /></td>
                     <td data-label="Auteur">
-                      <div>{p.auteur_nom ?? '—'}</div>
-                      {p.auteur_matricule ? <div className="cell-meta">{p.auteur_matricule}</div> : null}
+                      <div>{formatPersonne(p.auteur_nom, p.auteur_matricule)}</div>
                     </td>
                     <td data-label="Titre" className="cell-main">
                       <div className="cell-main__title">{p.titre}</div>
@@ -213,7 +219,7 @@ export default function PlaintesSuiviPage() {
                     </td>
                     <td data-label="PJ">
                       {(p.pieces_jointes?.length ?? 0) > 0 ? (
-                        <span className="cell-meta" title={`${p.pieces_jointes.length} fichier(s)`}>
+                        <span className="cell-meta" title={`${p.pieces_jointes.length} fichier${p.pieces_jointes.length > 1 ? 's' : ''}`}>
                           <Icon name="paperclip" size={14} /> {p.pieces_jointes.length}
                         </span>
                       ) : (
@@ -241,7 +247,7 @@ export default function PlaintesSuiviPage() {
             <div className="modal__head">
               <div>
                 <h3 className="modal__title" style={{ margin: 0 }}>{edit.titre}</h3>
-                <code className="cell-code">{edit.numero_ticket}</code>
+                <span className="cell-meta">{edit.numero_ticket}</span>
               </div>
               <button type="button" className="modal__close" aria-label="Fermer" onClick={() => setEdit(null)}>
                 <Icon name="x" size={18} />
@@ -257,12 +263,12 @@ export default function PlaintesSuiviPage() {
               <dl className="detail-grid">
                 <div>
                   <dt>Auteur</dt>
-                  <dd>{edit.auteur_nom ?? '—'}{edit.auteur_matricule ? ` (${edit.auteur_matricule})` : ''}</dd>
+                  <dd>{formatPersonne(edit.auteur_nom, edit.auteur_matricule)}</dd>
                 </div>
-                <div><dt>Déposée le</dt><dd>{formatDateTime(edit.cree_le)}</dd></div>
+                <div><dt>Déposée le</dt><dd>{formatDateHeure(edit.cree_le)}</dd></div>
                 {edit.type_plainte === 'EXTERNE' ? (
                   <div>
-                    <dt>Validation RO</dt>
+                    <dt>Validation du responsable</dt>
                     <dd><StatusBadge statut={VALIDATION_RO[edit.validation_ro ?? '']?.statut ?? 'EN_ATTENTE_VALIDATION'}
                       label={VALIDATION_RO[edit.validation_ro ?? '']?.label ?? '—'} /></dd>
                   </div>
@@ -297,11 +303,11 @@ export default function PlaintesSuiviPage() {
               <select id="plaintessuivi-f3" className="field-input" value={newStatut} onChange={(e) => setNewStatut(e.target.value)}
                 aria-describedby="plainte-transition-help">
                 {(TRANSITIONS[edit.statut] ?? []).map((s) => (
-                  <option key={s} value={s}>{STATUT_LABELS[s] ?? s}</option>
+                  <option key={s} value={s}>{libelle('statut', s)}</option>
                 ))}
               </select>
               <p id="plainte-transition-help" className="cell-meta" style={{ marginTop: -8, marginBottom: 14 }}>
-                Transition : {STATUT_LABELS[edit.statut]} → {STATUT_LABELS[newStatut] ?? newStatut}
+                Transition : {libelle('statut', edit.statut)} → {libelle('statut', newStatut)}
               </p>
 
               <label htmlFor="plaintessuivi-f4" className="field-label">
@@ -326,17 +332,17 @@ export default function PlaintesSuiviPage() {
                 <ol className="timeline">
                   <li>
                     <strong>Dépôt de la plainte</strong>
-                    <span className="timeline__meta">{formatDateTime(edit.cree_le)}{edit.auteur_nom ? ` · ${edit.auteur_nom}` : ''}</span>
+                    <span className="timeline__meta">{formatDateHeure(edit.cree_le)}{edit.auteur_nom ? ` · ${edit.auteur_nom}` : ''}</span>
                   </li>
                   {(edit.log_actions ?? []).map((log, i) => (
                     <li key={i}>
                       <strong>
-                        {log.action === 'VALIDATION_RO' ? 'Validation RO · ' : ''}
-                        {STATUT_LABELS[log.ancien_statut ?? ''] ?? log.ancien_statut} → {STATUT_LABELS[log.nouveau_statut ?? ''] ?? log.nouveau_statut}
+                        {log.action === 'VALIDATION_RO' ? 'Validation du responsable · ' : ''}
+                        {log.ancien_statut ? libelle('statut', log.ancien_statut) : 'Création'} → {libelle('statut', log.nouveau_statut)}
                       </strong>
                       <span className="timeline__meta">
-                        {log.horodatage ? formatDateTime(log.horodatage) : ''}
-                        {' · '}{log.acteur_nom ?? (log.acteur_id === 'SYSTEME' || !log.acteur_id ? 'Acteur non tracé' : log.acteur_id)}
+                        {log.horodatage ? formatDateHeure(log.horodatage) : ''}
+                        {' · '}{log.acteur_nom ?? libelleConnu('acteur', log.acteur_id) ?? 'Acteur non tracé'}
                       </span>
                       {log.commentaire && <div className="muted">{log.commentaire}</div>}
                     </li>
@@ -363,8 +369,8 @@ export default function PlaintesSuiviPage() {
 }
 
 const VALIDATION_RO: Record<string, { statut: string; label: string }> = {
-  EN_ATTENTE: { statut: 'EN_ATTENTE_VALIDATION', label: 'En attente du RO' },
-  VALIDEE: { statut: 'VALIDE', label: 'Validée par le RO' },
+  EN_ATTENTE: { statut: 'EN_ATTENTE_VALIDATION', label: 'En attente du responsable' },
+  VALIDEE: { statut: 'VALIDE', label: 'Validée par le responsable' },
   NON_REQUISE: { statut: 'TERMINEE', label: 'Prise en charge directe RH' },
 };
 

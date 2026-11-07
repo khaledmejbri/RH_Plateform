@@ -95,7 +95,7 @@ class _DemandeHeuresSupScreenState extends ConsumerState<DemandeHeuresSupScreen>
       if (!mounted) return;
       ref.invalidate(mesDemandesHeuresSupProvider);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Demande ${demande.reference} envoyée aux RH pour validation.')),
+        SnackBar(content: Text((demande.numeroAffiche.isEmpty ? 'Demande envoyée aux RH pour validation.' : 'Demande ${demande.numeroAffiche} envoyée aux RH pour validation.'))),
       );
       if (context.canPop()) {
         context.pop();

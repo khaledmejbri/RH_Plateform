@@ -14,6 +14,7 @@ class NotificationActionBadge extends ConsumerWidget {
       isLabelVisible: unreadCount > 0,
       offset: const Offset(-4, 4),
       child: IconButton(
+        tooltip: 'Notifications',
         icon: const Icon(Icons.notifications_none_rounded),
         onPressed: () => context.push('/notifications'),
       ),

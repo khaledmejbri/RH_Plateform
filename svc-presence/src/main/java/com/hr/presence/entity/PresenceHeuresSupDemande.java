@@ -9,6 +9,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
 import java.time.Instant;
@@ -20,7 +21,7 @@ import java.util.UUID;
  * avant et / ou après l'horaire. Décision globale ; {@code version} protège les transitions concurrentes.
  */
 @Entity
-@Table(name = "presence_heures_sup_demande", indexes = {
+@Table(name = "presence_heures_sup_demande", uniqueConstraints = @UniqueConstraint(name = "uk_presence_hs_demande_numero", columnNames = "numero"), indexes = {
 		@Index(name = "idx_presence_hs_demande_statut_debut", columnList = "statut,debut_plage_ts"),
 		@Index(name = "idx_presence_hs_demande_site", columnList = "site_id"),
 		@Index(name = "idx_presence_hs_demande_demandeur", columnList = "demandeur_compte_id")
@@ -33,6 +34,10 @@ public class PresenceHeuresSupDemande {
 
 	@Column(nullable = false, length = 16)
 	private String reference;
+
+	/** Numéro lisible HS-AAAAMM-NNNN (D-L02) : attribué à la création, unique, immuable. Nul avant la reprise. */
+	@Column(name = "numero", length = 32, updatable = false)
+	private String numero;
 
 	@Column(name = "site_id", nullable = false)
 	private UUID siteId;
@@ -114,6 +119,19 @@ public class PresenceHeuresSupDemande {
 		if (creeLe == null) {
 			creeLe = Instant.now();
 		}
+	}
+
+	public String getNumero() {
+		return numero;
+	}
+
+	/** Attribue le numéro (une seule fois) et aligne l'ancienne référence dessus. */
+	public void setNumero(String numero) {
+		if (this.numero != null && !this.numero.equals(numero)) {
+			throw new IllegalStateException("Le numéro d'une demande est immuable");
+		}
+		this.numero = numero;
+		this.reference = numero;
 	}
 
 	public UUID getId() {

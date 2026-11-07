@@ -65,14 +65,22 @@ public record AlerteEcartDetail(
             String aideSens) {
     }
 
+    /**
+     * Événement d'historique. {@code auteurLibelle} est lisible (« Système (automatique) » pour un événement
+     * automatique, le code stocké reste SYSTEME) ; {@code statutAvantLibelle} vaut « Création » quand il n'y a
+     * pas de statut avant.
+     */
     public record Evenement(
             UUID identifiant,
             EvenementAlerteEcart typeEvenement,
+            String typeEvenementLibelle,
             String auteurLibelle,
             boolean auteurSysteme,
             Instant le,
             StatutAlerteEcart statutAvant,
+            String statutAvantLibelle,
             StatutAlerteEcart statutApres,
+            String statutApresLibelle,
             NiveauEcart niveauAvant,
             NiveauEcart niveauApres,
             ConclusionAlerteEcart conclusion,

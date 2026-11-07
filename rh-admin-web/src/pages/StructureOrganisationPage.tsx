@@ -211,7 +211,7 @@ function ModalCreerDept({
                 <input id="structureorganisation-f6" className="field-input" value={cNom} onChange={(e) => setCNom(e.target.value)} required />
               </div>
               <div>
-                <label htmlFor="structureorganisation-f7" className="field-label">Email</label>
+                <label htmlFor="structureorganisation-f7" className="field-label">Courriel</label>
                 <input id="structureorganisation-f7" className="field-input" type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} required />
               </div>
               <div className="form-grid__full">
@@ -452,7 +452,7 @@ function ModalCreerUnite({
                 <input id="structureorganisation-f17" className="field-input" value={cNom} onChange={(e) => setCNom(e.target.value)} required />
               </div>
               <div>
-                <label htmlFor="structureorganisation-f18" className="field-label">Email</label>
+                <label htmlFor="structureorganisation-f18" className="field-label">Courriel</label>
                 <input id="structureorganisation-f18" className="field-input" type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} required />
               </div>
               <div className="form-grid__full">
@@ -594,13 +594,13 @@ function UniteCard({
               </div>
             ) : (
               <div className="struct-missing struct-missing--warn">
-                <Icon name="alert" size={14} /> Sans responsable — les demandes iront directement à la RRH
+                <Icon name="alert" size={14} /> Sans responsable — les demandes iront directement à la RH
               </div>
             )}
           </div>
 
           <div className="struct-actions">
-            <span className="cell-meta">{travailleurs.length} travailleur{travailleurs.length !== 1 ? 's' : ''}</span>
+            <span className="cell-meta">{travailleurs.length} collaborateur{travailleurs.length !== 1 ? 's' : ''}</span>
             <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEditOpen(true)}>
               <Icon name="edit" size={14} />
               Modifier
@@ -610,7 +610,7 @@ function UniteCard({
               className="btn btn--ghost btn--sm struct-toggle"
               aria-expanded={expanded}
               aria-controls={listId}
-              aria-label={`${expanded ? 'Masquer' : 'Afficher'} les travailleurs de ${unite.libelle}`}
+              aria-label={`${expanded ? 'Masquer' : 'Afficher'} les collaborateurs de ${unite.libelle}`}
               onClick={() => setExpanded((v) => !v)}
             >
               <Icon name="chevronRight" size={16} />
@@ -620,9 +620,9 @@ function UniteCard({
 
         {expanded && (
           <div className="struct-unit__body" id={listId}>
-            <p className="section-title">Travailleurs ({travailleurs.length})</p>
+            <p className="section-title">Collaborateurs ({travailleurs.length})</p>
             {travailleurs.length === 0 ? (
-              <p className="cell-meta">Aucun travailleur dans cette unité.</p>
+              <p className="cell-meta">Aucun collaborateur dans cette unité.</p>
             ) : (
               <ul className="struct-members">
                 {travailleurs.map((t) => (
@@ -825,7 +825,7 @@ export default function StructureOrganisationPage() {
   const nbARattacher = actives.filter(
     (u) => !u.parent_identifiant && (niveauUnite(u) === 'departement' || niveauUnite(u) === 'service'),
   ).length;
-  // Unités sans responsable : tous types (signal de routage M01 vers la RRH).
+  // Unités sans responsable : tous types (signal de routage M01 vers la RH).
   const totalSansResponsable = actives.filter((u) => !managers.has(u.identifiant)).length;
   const totalTravailleurs = collaborateurs.filter((c) => c.statut === 'ACTIF').length;
 

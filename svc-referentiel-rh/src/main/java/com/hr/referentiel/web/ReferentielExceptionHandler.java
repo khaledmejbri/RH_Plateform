@@ -8,6 +8,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -49,6 +50,13 @@ public class ReferentielExceptionHandler {
 	@ExceptionHandler(AccessDeniedException.class)
 	public ResponseEntity<Map<String, String>> accessDenied(AccessDeniedException ex) {
 		return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("erreur", ex.getMessage()));
+	}
+
+	/** Route inconnue : 404 (sans ce handler, l'erreur remontait en 500). */
+	@ExceptionHandler(NoResourceFoundException.class)
+	public ResponseEntity<Map<String, String>> routeInconnue(NoResourceFoundException ex) {
+		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+				"code", "ROUTE_INCONNUE", "erreur", "Ressource introuvable."));
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)

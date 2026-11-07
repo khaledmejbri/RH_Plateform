@@ -1,3 +1,5 @@
+import '../../../core/libelles/libelles.dart';
+
 /// Catalogue fermé M01 — types de congé (story 7).
 class TypeCongeOption {
   const TypeCongeOption({required this.code, required this.label});
@@ -17,9 +19,4 @@ const List<TypeCongeOption> kTypesConge = [
 bool typeCongeExigePieceJointe(String code) =>
     code == 'MALADIE' || code == 'MATERNITE';
 
-String libelleTypeConge(String code) {
-  for (final t in kTypesConge) {
-    if (t.code == code) return t.label;
-  }
-  return code;
-}
+String libelleTypeConge(String code) => Libelles.typeConge(code);

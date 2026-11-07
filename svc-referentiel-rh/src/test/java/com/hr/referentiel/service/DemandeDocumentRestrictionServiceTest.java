@@ -47,6 +47,9 @@ class DemandeDocumentRestrictionServiceTest {
 	private ReferentielEvenementsProperties evenementsProperties;
 	@Mock
 	private RhNotificationPublisher notificationPublisher;
+	@Mock
+	private NumeroLisibleService numeroLisibleService;
+
 	@InjectMocks
 	private DemandeDocumentAdministratifRhService service;
 

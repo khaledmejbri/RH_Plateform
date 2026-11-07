@@ -12,6 +12,10 @@ import java.util.UUID;
 
 public interface DemandeFormationRhRepository extends JpaRepository<DemandeFormationRh, UUID> {
 
+	/** D-L02 : recherche RH par numéro lisible (stocké en majuscules ; correspondance exacte). */
+	@EntityGraph(attributePaths = {"demandeur", "demandeur.unite", "uniteCible", "collaborateursCibles"})
+	List<DemandeFormationRh> findByNumero(String numero);
+
 	@EntityGraph(attributePaths = {"demandeur", "demandeur.unite", "uniteCible", "collaborateursCibles"})
 	List<DemandeFormationRh> findByDemandeurIdOrderByCreeLeDesc(UUID demandeurId);
 

@@ -1,3 +1,5 @@
+import '../../../core/libelles/libelles.dart';
+
 /// Modèles M07 — évaluations mobile (E5).
 class EvaluationItem {
   final String id;
@@ -15,6 +17,9 @@ class EvaluationItem {
   final String? familleMetierCode;
   final String? familleMetierLibelle;
   final String? niveauSeniorite;
+
+  /// Libellé du niveau fourni par l'API (`niveau_seniorite_libelle`), prioritaire sur la table.
+  final String? niveauSenioriteLibelle;
   final String? couleurAlerte;
   final DateTime creeLe;
   final DateTime? validationCollaborateurLe;
@@ -35,6 +40,7 @@ class EvaluationItem {
     this.familleMetierCode,
     this.familleMetierLibelle,
     this.niveauSeniorite,
+    this.niveauSenioriteLibelle,
     this.couleurAlerte,
     required this.creeLe,
     this.validationCollaborateurLe,
@@ -68,19 +74,42 @@ class EvaluationItem {
       (statut == 'VALIDEE_COLLABORATEUR' ||
           statut == 'EN_ATTENTE_VALIDATION_CROISEE');
 
+  /// Vrai si l'évaluation a une note finale : validée par le responsable. Avant, l'API renvoie 0
+  /// par défaut : ne jamais l'afficher comme une note (D-L01.f, R8).
+  bool get aUneNote =>
+      scoreSur20 != null && (statut == 'VALIDEE' || validationSuperieurLe != null);
+
+  /// « Développement backend · Confirmé » : libellé de l'API, sinon table, jamais le code brut.
   String? get profilSnapshotLabel {
     final parts = <String>[];
-    final famille = familleMetierLibelle?.trim().isNotEmpty == true
-        ? familleMetierLibelle
-        : familleMetierCode;
-    if (famille != null && famille.trim().isNotEmpty) {
-      parts.add(EvaluationLabels.familleMetier(famille));
+    final code = familleMetierCode?.trim() ?? '';
+    final lib = familleMetierLibelle?.trim() ?? '';
+    if (code.isNotEmpty || lib.isNotEmpty) {
+      parts.add(Libelles.familleMetier(code.isEmpty ? null : code, lib.isEmpty ? null : lib));
     }
-    if (niveauSeniorite != null && niveauSeniorite!.trim().isNotEmpty) {
-      parts.add(EvaluationLabels.niveauSeniorite(niveauSeniorite!));
+    if ((niveauSeniorite ?? '').trim().isNotEmpty || (niveauSenioriteLibelle ?? '').trim().isNotEmpty) {
+      parts.add(Libelles.avecRepli(
+        niveauSenioriteLibelle,
+        niveauSeniorite,
+        (c) => Libelles.niveauSeniorite(c),
+      ));
     }
     if (parts.isEmpty) return null;
     return parts.join(' · ');
+  }
+
+  /// Statut lisible. Vu par le responsable, une évaluation dont le collaborateur n'a pas encore
+  /// validé est « En attente du collaborateur » (M-74), pas « En cours ».
+  String statutLibelle({bool asManager = false}) {
+    if (asManager &&
+        validationCollaborateurLe == null &&
+        statut != 'VALIDEE' &&
+        statut != 'VALIDEE_COLLABORATEUR' &&
+        statut != 'VALIDEE_SUPERIEUR' &&
+        statut != 'ARCHIVEE') {
+      return Libelles.statutEvaluation('EN_ATTENTE_COLLABORATEUR');
+    }
+    return EvaluationLabels.statut(statut);
   }
 
   factory EvaluationItem.fromJson(Map<String, dynamic> json) {
@@ -108,6 +137,8 @@ class EvaluationItem {
           json['famille_metier_libelle'] as String?,
       niveauSeniorite: json['niveauSeniorite'] as String? ??
           json['niveau_seniorite'] as String?,
+      niveauSenioriteLibelle: json['niveauSenioriteLibelle'] as String? ??
+          json['niveau_seniorite_libelle'] as String?,
       couleurAlerte: json['couleurAlerte'] as String? ?? json['couleur_alerte'] as String?,
       creeLe: DateTime.parse(
         json['creeLe'] as String? ?? DateTime.now().toIso8601String(),
@@ -400,56 +431,31 @@ class EvaluationAnalytics {
 
 /// Libellés FR métier (microcopy E5 / UX § 5.2).
 class EvaluationLabels {
-  static String statut(String statut) {
-    return switch (statut) {
-      'VALIDEE' => 'Validée',
-      'VALIDEE_COLLABORATEUR' => 'Validée (collaborateur)',
-      'VALIDEE_SUPERIEUR' => 'Validée (manager)',
-      'ARCHIVEE' => 'Archivée',
-      'EN_ATTENTE_VALIDATION_CROISEE' => 'En cours',
-      _ => 'En cours',
-    };
-  }
+  static String statut(String statut) => Libelles.statutEvaluation(statut);
 
   static String etape(String? etape) {
     return switch (etape) {
-      'EVALUATION_GENERALE' => 'Étape 1 sur 2 — Générale',
+      'EVALUATION_GENERALE' => 'Étape 1 sur 2 — Questions générales',
       'EVALUATION_TECHNIQUE' => 'Étape 2 sur 2 — Compétences',
-      _ => etape ?? '',
+      null || '' => '',
+      _ => Libelles.valeurNonReconnue,
     };
   }
 
   static String etapeCourt(String? etape) {
     return switch (etape) {
-      'EVALUATION_GENERALE' => 'Étape 1 sur 2 · Générale',
+      'EVALUATION_GENERALE' => 'Étape 1 sur 2 · Questions générales',
       'EVALUATION_TECHNIQUE' => 'Étape 2 sur 2 · Compétences',
-      _ => etape ?? '',
+      null || '' => '',
+      _ => Libelles.valeurNonReconnue,
     };
   }
 
-  static String niveauSeniorite(String code) {
-    return switch (code.trim().toUpperCase()) {
-      'JUNIOR' => 'Junior',
-      'CONFIRME' || 'CONFIRMED' => 'Confirmé',
-      'SENIOR' => 'Senior',
-      'TEAM_LEAD' => 'Team lead',
-      'MID' => 'Confirmé',
-      'EXPERT' => 'Expert',
-      _ => code,
-    };
-  }
+  static String niveauSeniorite(String code) => Libelles.niveauSeniorite(code);
 
-  static String familleMetier(String codeOrLabel) {
-    return switch (codeOrLabel.trim().toUpperCase()) {
-      'EXPLOITATION' => 'Exploitation / terrain assainissement',
-      'GENIE_CIVIL' => 'Génie civil / travaux',
-      'DEV_LOGICIEL' => 'Développement logiciel / SI',
-      'SUPPORT_ADMIN' => 'Support administratif',
-      'MAINTENANCE' => 'Maintenance technique',
-      'HSE_QUALITE' => 'HSE / qualité',
-      _ => codeOrLabel,
-    };
-  }
+  /// Famille métier : libellé de l'API en priorité (voir [Libelles.familleMetier]).
+  static String familleMetier(String codeOrLabel, [String? libelleApi]) =>
+      Libelles.familleMetier(codeOrLabel, libelleApi);
 
   static String appreciation(int? scoreSur20) {
     if (scoreSur20 == null) return '';

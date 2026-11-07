@@ -14,6 +14,10 @@ public class DemandeAdminWorkflowHistoryResponse {
 	@JsonProperty("action")
 	private ActionWorkflowAdministratif action;
 
+	/** D-L01.b : libellé français de l'étape (le code {@code action} reste exposé). */
+	@JsonProperty("etape_libelle")
+	private String etapeLibelle;
+
 	@JsonProperty("acteur_identifiant")
 	private UUID acteurIdentifiant;
 
@@ -30,6 +34,8 @@ public class DemandeAdminWorkflowHistoryResponse {
 	public void setIdentifiant(UUID identifiant) { this.identifiant = identifiant; }
 	public ActionWorkflowAdministratif getAction() { return action; }
 	public void setAction(ActionWorkflowAdministratif action) { this.action = action; }
+	public String getEtapeLibelle() { return etapeLibelle; }
+	public void setEtapeLibelle(String etapeLibelle) { this.etapeLibelle = etapeLibelle; }
 	public UUID getActeurIdentifiant() { return acteurIdentifiant; }
 	public void setActeurIdentifiant(UUID acteurIdentifiant) { this.acteurIdentifiant = acteurIdentifiant; }
 	public String getActeurNom() { return acteurNom; }

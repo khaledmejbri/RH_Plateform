@@ -1,10 +1,10 @@
+import 'package:rh_mobile_app/core/format/formats.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/notifications/notification_model.dart';
-import '../../../core/notifications/notification_provider.dart';
+import 'package:rh_mobile_app/core/notifications/notification_model.dart';
+import 'package:rh_mobile_app/core/notifications/notification_provider.dart';
 import '../auth/providers/collaborateur_notifier.dart';
 import '../evaluations/data/evaluation_models.dart';
 import 'package:rh_mobile_app/core/theme/app_theme.dart';
@@ -115,8 +115,7 @@ class _NotificationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final timeStr =
-        DateFormat('dd/MM • HH:mm', 'fr').format(notif.receivedAt);
+    final timeStr = formatDateHeure(notif.receivedAt);
 
     return Material(
       color: Colors.transparent,

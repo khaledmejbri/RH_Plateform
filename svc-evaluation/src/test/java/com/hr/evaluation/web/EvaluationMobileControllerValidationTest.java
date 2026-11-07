@@ -14,6 +14,7 @@ import com.hr.evaluation.security.IdentiteAppelantResolver;
 import com.hr.evaluation.service.EvaluationAnalyseAdminService;
 import com.hr.evaluation.service.EvaluationValidationSuperieurService;
 import com.hr.evaluation.service.EvaluationWorkflowService;
+import com.hr.evaluation.service.LibellesProfilService;
 import com.hr.evaluation.service.TemplateTechniqueEvaluation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -66,6 +67,8 @@ class EvaluationMobileControllerValidationTest {
 	private EvaluationValidationSuperieurService validationService;
 	@MockitoBean
 	private IdentiteAppelantResolver identiteResolver;
+	@MockitoBean
+	private LibellesProfilService libellesProfil;
 	@MockitoBean
 	private JwtDecoder jwtDecoder;
 

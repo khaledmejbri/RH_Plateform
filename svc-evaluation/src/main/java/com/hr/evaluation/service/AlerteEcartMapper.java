@@ -33,10 +33,21 @@ final class AlerteEcartMapper {
         return base.stream().mapToInt(AlerteEcartLigne::getEcartActuel).max().orElse(0);
     }
 
+    /** D-L01.a : l'écran ne dépend jamais d'un nom absent, et n'affiche jamais d'identifiant à la place. */
+    static String collaborateurNom(AlerteEcart a) {
+        return a.getCollaborateurNom() != null && !a.getCollaborateurNom().isBlank()
+                ? a.getCollaborateurNom() : "Collaborateur introuvable";
+    }
+
+    static String campagneNom(AlerteEcart a) {
+        return a.getCampagneNom() != null && !a.getCampagneNom().isBlank()
+                ? a.getCampagneNom() : "Campagne introuvable";
+    }
+
     static AlerteEcartResume resume(AlerteEcart a) {
         return new AlerteEcartResume(
-                a.getId(), a.getEvaluationId(), a.getCampagneIdentifiant(), a.getCampagneNom(),
-                a.getCollaborateurNom(), a.getCollaborateurMatricule(),
+                a.getId(), a.getEvaluationId(), a.getCampagneIdentifiant(), campagneNom(a),
+                collaborateurNom(a), a.getCollaborateurMatricule(),
                 a.getCollaborateurUniteId(), a.getCollaborateurUniteLibelle(), a.getSuperieurNom(),
                 a.getNiveauCourant(), a.getNiveauDetection(), a.getStatut(), sensGlobal(a),
                 lignesEnEcart(a).size(), ecartMax(a), a.getDetecteeLe(), a.isNotesModifieesApresDetection());
@@ -57,8 +68,8 @@ final class AlerteEcartMapper {
         List<AlerteEcartDetail.Evenement> historique = a.getHistorique().stream()
                 .map(AlerteEcartMapper::evenement).toList();
         return new AlerteEcartDetail(
-                a.getId(), a.getEvaluationId(), a.getCampagneIdentifiant(), a.getCampagneNom(),
-                a.getCollaborateurNom(), a.getCollaborateurMatricule(),
+                a.getId(), a.getEvaluationId(), a.getCampagneIdentifiant(), campagneNom(a),
+                collaborateurNom(a), a.getCollaborateurMatricule(),
                 a.getCollaborateurUniteId(), a.getCollaborateurUniteLibelle(), a.getSuperieurNom(),
                 a.getNiveauCourant(), a.getNiveauDetection(), a.getStatut(), sens,
                 lignesEnEcart(a).size(), ecartMax(a), a.getDetecteeLe(), a.isNotesModifieesApresDetection(),
@@ -78,11 +89,17 @@ final class AlerteEcartMapper {
                 sens != null ? sens.libelleSens() : null, sens != null ? sens.aideSens() : null);
     }
 
+    static final String LIBELLE_CREATION = "Création";
+
     private static AlerteEcartDetail.Evenement evenement(AlerteEcartHistorique h) {
+        boolean systeme = h.getAuteurCompteId() == null;
         return new AlerteEcartDetail.Evenement(
-                h.getId(), h.getTypeEvenement(), h.getAuteurLibelle(),
-                h.getAuteurCompteId() == null, h.getCreeLe(),
-                h.getStatutAvant(), h.getStatutApres(), h.getNiveauAvant(), h.getNiveauApres(),
+                h.getId(), h.getTypeEvenement(), h.getTypeEvenement().libelle(),
+                systeme ? AlerteEcartHistorique.LIBELLE_AUTEUR_SYSTEME : h.getAuteurLibelle(),
+                systeme, h.getCreeLe(),
+                h.getStatutAvant(), h.getStatutAvant() != null ? h.getStatutAvant().libelle() : LIBELLE_CREATION,
+                h.getStatutApres(), h.getStatutApres() != null ? h.getStatutApres().libelle() : null,
+                h.getNiveauAvant(), h.getNiveauApres(),
                 h.getConclusion(), h.getConclusion() != null ? h.getConclusion().libelle() : null,
                 h.getCommentaire());
     }

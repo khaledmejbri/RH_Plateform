@@ -176,3 +176,16 @@ export function humanizeCode(code: string | null | undefined): string {
   const s = code.replaceAll('_', ' ').toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/** « Direction Technique › Département Software » : chemin d'une unité depuis la racine (sans la DG). */
+export function cheminUnite(index: Map<string, Unite>, uniteId: string | null | undefined): string {
+  const noms: string[] = [];
+  const vus = new Set<string>();
+  let courant = uniteId ? index.get(uniteId) : undefined;
+  while (courant && !vus.has(courant.identifiant)) {
+    vus.add(courant.identifiant);
+    noms.unshift(courant.libelle);
+    courant = courant.parent_identifiant ? index.get(courant.parent_identifiant) : undefined;
+  }
+  return noms.join(' › ');
+}

@@ -26,6 +26,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -41,6 +42,7 @@ public class DemandeFormationRhService {
 	private final CollaborateurConnecteService collaborateurConnecteService;
 	private final RhNotificationPublisher notificationPublisher;
 	private final FormationWorkflowHistoryRepository workflowHistoryRepository;
+	private final NumeroLisibleService numeroLisibleService;
 
 	public DemandeFormationRhService(
 			DemandeFormationRhRepository demandeFormationRepository,
@@ -48,13 +50,15 @@ public class DemandeFormationRhService {
 			UniteOrganisationRepository uniteRepository,
 			CollaborateurConnecteService collaborateurConnecteService,
 			RhNotificationPublisher notificationPublisher,
-			FormationWorkflowHistoryRepository workflowHistoryRepository) {
+			FormationWorkflowHistoryRepository workflowHistoryRepository,
+			NumeroLisibleService numeroLisibleService) {
 		this.demandeFormationRepository = demandeFormationRepository;
 		this.collaborateurRepository = collaborateurRepository;
 		this.uniteRepository = uniteRepository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
 		this.notificationPublisher = notificationPublisher;
 		this.workflowHistoryRepository = workflowHistoryRepository;
+		this.numeroLisibleService = numeroLisibleService;
 	}
 
 	@Transactional
@@ -63,6 +67,10 @@ public class DemandeFormationRhService {
 		validerDates(req);
 
 		DemandeFormationRh demande = new DemandeFormationRh();
+		// D-L02 : numéro attribué dans la transaction de création, rang du mois de l'instant de création
+		Instant creation = Instant.now();
+		demande.setCreeLe(creation);
+		demande.setNumero(numeroLisibleService.attribuer(PrefixeNumero.FOR, creation));
 		demande.setDemandeur(demandeur);
 		demande.setTypeFormation(trim(req.getTypeFormation()));
 		demande.setOrganisme(trim(req.getOrganisme()));
@@ -85,7 +93,7 @@ public class DemandeFormationRhService {
 				"Demande soumise au RH pour validation");
 		
 		// Notifier le RH et les collaborateurs cibles si RO
-		notificationPublisher.notifierDemandeFormationSoumise(saved.getDemandeur(), saved.getTypeFormation());
+		notificationPublisher.notifierDemandeFormationSoumise(saved.getDemandeur(), saved.getTypeFormation(), saved.getNumero());
 		if (saved.getOrigine() == OrigineDemandeFormationRh.RESPONSABLE_OPERATIONNEL 
 				&& saved.getCollaborateursCibles() != null && !saved.getCollaborateursCibles().isEmpty()) {
 			notifierCollaborateursCibles(saved);
@@ -103,10 +111,19 @@ public class DemandeFormationRhService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<DemandeFormationRhResponse> listerPourRh(StatutDemandeFormationRh statut) {
-		List<DemandeFormationRh> lignes = statut == null
-				? demandeFormationRepository.findAllByOrderByCreeLeDesc()
-				: demandeFormationRepository.findByStatutOrderByCreeLeDesc(statut);
+	public List<DemandeFormationRhResponse> listerPourRh(StatutDemandeFormationRh statut, String q) {
+		String numero = NumeroLisibleService.normaliserRecherche(q);
+		List<DemandeFormationRh> lignes;
+		if (numero != null) {
+			// D-L02 : recherche par numéro exact, combinable avec le filtre de statut
+			lignes = demandeFormationRepository.findByNumero(numero).stream()
+					.filter(d -> statut == null || d.getStatut() == statut)
+					.collect(Collectors.toList());
+		} else {
+			lignes = statut == null
+					? demandeFormationRepository.findAllByOrderByCreeLeDesc()
+					: demandeFormationRepository.findByStatutOrderByCreeLeDesc(statut);
+		}
 		return lignes.stream().map(this::toResponse).collect(Collectors.toList());
 	}
 
@@ -116,7 +133,7 @@ public class DemandeFormationRhService {
 		if (!rh) {
 			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
 			if (!demande.getDemandeur().getId().equals(c.getId())) {
-				throw new IllegalArgumentException("Acces refuse.");
+				throw new org.springframework.security.access.AccessDeniedException("Accès refusé.");
 			}
 		}
 		return toResponse(demande);
@@ -130,7 +147,7 @@ public class DemandeFormationRhService {
 			return List.of(toUniteResponse(demandeur.getUnite()));
 		}
 		if (!estChefDepartement(demandeur)) {
-			throw new IllegalArgumentException("Seul un chef de departement ou un responsable operationnel peut cibler une unite.");
+			throw new IllegalArgumentException("Seul un chef de département ou un responsable opérationnel peut cibler une unité.");
 		}
 		UUID uniteChefId = demandeur.getUnite().getId();
 		return uniteRepository.findByActifTrueOrderByCodeAsc().stream()
@@ -144,7 +161,7 @@ public class DemandeFormationRhService {
 	public List<FormationCollaborateurCibleResponse> collaborateursCibles(Jwt jwt) {
 		Collaborateur demandeur = exigerCollaborateurDetail(jwt);
 		if (!estResponsableOperationnel(demandeur)) {
-			throw new IllegalArgumentException("Seul un responsable operationnel peut cibler des collaborateurs.");
+			throw new IllegalArgumentException("Seul un responsable opérationnel peut cibler des collaborateurs.");
 		}
 		return collaborateurRepository.findByUniteId(demandeur.getUnite().getId()).stream()
 				.filter(c -> !c.getId().equals(demandeur.getId()))
@@ -155,7 +172,7 @@ public class DemandeFormationRhService {
 	}
 
 	@Transactional
-	public DemandeFormationRhResponse integrerPlan(UUID id, DemandeFormationIntegrationRequest req) {
+	public DemandeFormationRhResponse integrerPlan(UUID id, DemandeFormationIntegrationRequest req, Jwt jwt) {
 		DemandeFormationRh demande = charger(id);
 		verifierStatut(demande, StatutDemandeFormationRh.EN_VALIDATION_RRH,
 				"Cette demande de formation n'est pas en attente RH.");
@@ -164,15 +181,18 @@ public class DemandeFormationRhService {
 		demandeFormationRepository.save(demande);
 		
 		// Enregistrer l'historique
+		Collaborateur rh = collaborateurConnecteService.resoudre(jwt).orElse(null);
 		enregistrerWorkflow(demande, ActionWorkflowFormation.INTEGRATION_PLAN,
-				null, "RH", "Intégrée au plan annuel" + (req != null && req.getCommentaireRh() != null ? ": " + req.getCommentaireRh() : ""));
+				rh != null ? rh.getId() : null, nomActeurRh(rh),
+				"Intégrée au plan annuel" + (demande.getCommentaireRh() != null ? " : " + demande.getCommentaireRh() : ""));
 		
-		notificationPublisher.notifierDemandeFormationIntegree(demande.getDemandeur(), demande.getTypeFormation());
+		notificationPublisher.notifierDemandeFormationIntegree(demande.getDemandeur(), demande.getTypeFormation(),
+				demande.getNumero());
 		return toResponse(demande);
 	}
 
 	@Transactional
-	public DemandeFormationRhResponse refuser(UUID id, DemandeRefusRequest req) {
+	public DemandeFormationRhResponse refuser(UUID id, DemandeRefusRequest req, Jwt jwt) {
 		DemandeFormationRh demande = charger(id);
 		verifierStatut(demande, StatutDemandeFormationRh.EN_VALIDATION_RRH,
 				"Cette demande de formation n'est pas en attente RH.");
@@ -181,11 +201,12 @@ public class DemandeFormationRhService {
 		demandeFormationRepository.save(demande);
 		
 		// Enregistrer l'historique
+		Collaborateur rh = collaborateurConnecteService.resoudre(jwt).orElse(null);
 		enregistrerWorkflow(demande, ActionWorkflowFormation.REFUS_RRH,
-				null, "RH", "Refusée: " + req.getMotifRefus());
+				rh != null ? rh.getId() : null, nomActeurRh(rh), "Refusée par la RH : " + req.getMotifRefus().trim());
 		
 		notificationPublisher.notifierDemandeFormationRefusee(demande.getDemandeur(), demande.getTypeFormation(),
-				req.getMotifRefus());
+				req.getMotifRefus(), demande.getNumero());
 		return toResponse(demande);
 	}
 
@@ -205,7 +226,7 @@ public class DemandeFormationRhService {
 		enregistrerWorkflow(demande, ActionWorkflowFormation.ANNULATION_DEMANDEUR,
 				c.getId(), c.getPrenom() + " " + c.getNom(), "Annulée par le demandeur");
 		
-		notificationPublisher.notifierDemandeFormationAnnulee(demande.getDemandeur(), demande.getTypeFormation());
+		notificationPublisher.notifierDemandeFormationAnnulee(demande.getDemandeur(), demande.getTypeFormation(), demande.getNumero());
 		return toResponse(demande);
 	}
 
@@ -218,7 +239,7 @@ public class DemandeFormationRhService {
 			boolean estCible = demande.getCollaborateursCibles() != null 
 				&& demande.getCollaborateursCibles().contains(c.getId());
 			if (!demande.getDemandeur().getId().equals(c.getId()) && !estCible) {
-				throw new IllegalArgumentException("Acces refuse.");
+				throw new org.springframework.security.access.AccessDeniedException("Accès refusé.");
 			}
 		}
 		return workflowHistoryRepository.findByDemandeFormationIdOrderByDateActionAsc(id).stream()
@@ -230,7 +251,7 @@ public class DemandeFormationRhService {
 	public List<DemandeFormationRhResponse> mesDemandesEnTantQueRo(Jwt jwt) {
 		Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
 		if (!estResponsableOperationnel(c)) {
-			throw new IllegalArgumentException("Seul un responsable operationnel peut acceder a cette liste.");
+			throw new IllegalArgumentException("Seul un responsable opérationnel peut accéder à cette liste.");
 		}
 		return demandeFormationRepository.findByDemandeurIdOrderByCreeLeDesc(c.getId()).stream()
 				.filter(d -> d.getOrigine() == OrigineDemandeFormationRh.RESPONSABLE_OPERATIONNEL)
@@ -258,11 +279,12 @@ public class DemandeFormationRhService {
 				demande.getTypeFormation(),
 				demande.getOrganisme(),
 				demande.getDateSouhaiteeDebut(),
-				demande.getDateSouhaiteeFin()
+				demande.getDateSouhaiteeFin(),
+				demande.getNumero()
 			);
 			enregistrerWorkflow(demande, ActionWorkflowFormation.NOTIFICATION_ENVOYEE,
 				collab.getId(), collab.getPrenom() + " " + collab.getNom(),
-				"Notification d'invitation envoyée");
+				"Invitation à la formation envoyée");
 		}
 	}
 
@@ -281,6 +303,7 @@ public class DemandeFormationRhService {
 		FormationWorkflowHistoryResponse r = new FormationWorkflowHistoryResponse();
 		r.setIdentifiant(h.getId());
 		r.setAction(h.getAction());
+		r.setEtapeLibelle(h.getAction() != null ? h.getAction().getLibelle() : null);
 		r.setActeurIdentifiant(h.getActeurIdentifiant());
 		r.setActeurNom(h.getActeurNom());
 		r.setCommentaire(h.getCommentaire());
@@ -292,12 +315,12 @@ public class DemandeFormationRhService {
 			DemandeFormationRh demande) {
 		if (estChefDepartement(demandeur)) {
 			if (req.getUniteCibleIdentifiant() == null) {
-				throw new IllegalArgumentException("L'unite cible est obligatoire pour un chef de departement.");
+				throw new IllegalArgumentException("L'unité cible est obligatoire pour un chef de département.");
 			}
 			UniteOrganisation uniteCible = uniteRepository.findById(req.getUniteCibleIdentifiant())
-					.orElseThrow(() -> new IllegalArgumentException("Unite cible introuvable."));
+					.orElseThrow(() -> new IllegalArgumentException("Unité cible introuvable."));
 			if (!uniteAppartientAuDepartement(uniteCible, demandeur.getUnite())) {
-				throw new IllegalArgumentException("Cette unite n'appartient pas au departement du demandeur.");
+				throw new IllegalArgumentException("Cette unité n'appartient pas au département du demandeur.");
 			}
 			demande.setOrigine(OrigineDemandeFormationRh.CHEF_DEPARTEMENT);
 			demande.setCible(CibleDemandeFormationRh.UNITE);
@@ -310,14 +333,14 @@ public class DemandeFormationRhService {
 			Set<UUID> ids = req.getCollaborateursCiblesIdentifiants();
 			boolean cibleNominative = ids != null && !ids.isEmpty();
 			if (req.getUniteCibleIdentifiant() != null && cibleNominative) {
-				throw new IllegalArgumentException("Choisissez une seule cible : l'unite ou une liste de collaborateurs.");
+				throw new IllegalArgumentException("Choisissez une seule cible : l'unité ou une liste de collaborateurs.");
 			}
 			// § 10.1 / § 20 (RO) : un RO demande une formation « pour son unité / ses collaborateurs » (SCRUM-14).
 			if (req.getUniteCibleIdentifiant() != null) {
 				UniteOrganisation uniteRo = demandeur.getUnite();
 				if (uniteRo == null || !uniteRo.getId().equals(req.getUniteCibleIdentifiant())) {
 					throw new ReferentielMetierException("UNITE_CIBLE_HORS_PERIMETRE",
-							"Un responsable operationnel ne peut cibler que sa propre unite.", 403);
+							"Un responsable opérationnel ne peut cibler que sa propre unité.", 403);
 				}
 				demande.setOrigine(OrigineDemandeFormationRh.RESPONSABLE_OPERATIONNEL);
 				demande.setCible(CibleDemandeFormationRh.UNITE);
@@ -326,7 +349,7 @@ public class DemandeFormationRhService {
 				return;
 			}
 			if (!cibleNominative) {
-				throw new IllegalArgumentException("Choisissez une cible : votre unite ou au moins un collaborateur.");
+				throw new IllegalArgumentException("Choisissez une cible : votre unité ou au moins un collaborateur.");
 			}
 			List<Collaborateur> collaborateurs = collaborateurRepository.findAllById(ids);
 			if (collaborateurs.size() != ids.size()) {
@@ -335,7 +358,7 @@ public class DemandeFormationRhService {
 			UUID uniteRoId = demandeur.getUnite().getId();
 			for (Collaborateur c : collaborateurs) {
 				if (c.getUnite() == null || !c.getUnite().getId().equals(uniteRoId)) {
-					throw new IllegalArgumentException("Les collaborateurs cibles doivent appartenir a l'unite du RO.");
+					throw new IllegalArgumentException("Les collaborateurs cibles doivent appartenir à l'unité du responsable.");
 				}
 			}
 			demande.setOrigine(OrigineDemandeFormationRh.RESPONSABLE_OPERATIONNEL);
@@ -345,7 +368,7 @@ public class DemandeFormationRhService {
 		}
 
 		throw new IllegalArgumentException(
-				"Seuls un chef de departement ou un responsable operationnel peuvent creer une demande de formation.");
+				"Seuls un chef de département ou un responsable opérationnel peuvent créer une demande de formation.");
 	}
 
 	private boolean uniteAppartientAuDepartement(UniteOrganisation uniteCible, UniteOrganisation uniteChef) {
@@ -362,19 +385,22 @@ public class DemandeFormationRhService {
 
 	private DemandeFormationRh charger(UUID id) {
 		return demandeFormationRepository.findDetailById(id)
-				.orElseThrow(() -> new IllegalArgumentException("Demande de formation introuvable : " + id));
+				.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande de formation introuvable."));
 	}
 
 	private static void verifierStatut(DemandeFormationRh demande, StatutDemandeFormationRh attendu, String message) {
 		if (demande.getStatut() != attendu) {
-			throw new IllegalArgumentException(message + " Statut actuel : " + demande.getStatut());
+			boolean decidee = demande.getStatut() != StatutDemandeFormationRh.EN_VALIDATION_RRH;
+			throw ReferentielMetierException.conflict(decidee ? "DEMANDE_DEJA_DECIDEE" : "ETAPE_INCORRECTE",
+					(decidee ? "Cette demande est déjà décidée." : message)
+							+ " Statut actuel : « " + demande.getStatut().getLibelle() + " ».");
 		}
 	}
 
 	private static void validerDates(DemandeFormationCreationRequest req) {
 		if (req.getDateSouhaiteeDebut() != null && req.getDateSouhaiteeFin() != null
 				&& req.getDateSouhaiteeFin().isBefore(req.getDateSouhaiteeDebut())) {
-			throw new IllegalArgumentException("La date de fin souhaitee doit etre apres la date de debut.");
+			throw new IllegalArgumentException("La date de fin souhaitée doit être postérieure à la date de début.");
 		}
 	}
 
@@ -390,6 +416,7 @@ public class DemandeFormationRhService {
 	private DemandeFormationRhResponse toResponse(DemandeFormationRh demande) {
 		DemandeFormationRhResponse r = new DemandeFormationRhResponse();
 		r.setIdentifiant(demande.getId());
+		r.setNumero(demande.getNumero());
 		r.setDemandeurIdentifiant(demande.getDemandeur().getId());
 		r.setDemandeurNom(demande.getDemandeur().getPrenom() + " " + demande.getDemandeur().getNom());
 		r.setOrigine(demande.getOrigine());
@@ -423,6 +450,11 @@ public class DemandeFormationRhService {
 				u.isActif(),
 				u.getCreeLe(),
 				u.getModifieLe());
+	}
+
+	/** D-L01.a : nom du RH qui a traité l'étape ; jamais un identifiant en repli. */
+	private static String nomActeurRh(Collaborateur rh) {
+		return rh != null ? rh.getPrenom() + " " + rh.getNom() + " (RH)" : "Ressources humaines";
 	}
 
 	private static String trim(String value) {

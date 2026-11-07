@@ -32,6 +32,8 @@ export const LIBELLES_ETAT_COMPTEES: Record<EtatHeuresComptees, string> = {
 /** `DemandeHeuresSupResponse` (ADR-M09-horaires-heures-sup § 10, statut « accepté »). */
 export type DemandeHeuresSup = {
   id: string;
+  /** Numéro lisible HS-AAAAMM-NNNN (D-L02). */
+  numero?: string;
   reference: string;
   statut: StatutHeuresSup;
   site_id: string;

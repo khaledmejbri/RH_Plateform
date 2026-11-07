@@ -24,7 +24,9 @@ import { AlerteEcartBadge } from '../components/AlerteEcartBadge';
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useDialogA11y } from '../components/useDialogA11y';
-import { EmptyState, Icon, LoadingState, StatusBadge as Status, formatDate } from '../components/ui';
+import { EmptyState, Icon, LoadingState, StatusBadge as Status } from '../components/ui';
+import { COLLABORATEUR_INTROUVABLE, formatDate, formatNombre, formatNote, formatPersonne, formatPourcentage, jourIso, TIRET } from '../utils/format';
+import { VALEUR_NON_RECONNUE } from '../utils/libelles';
 import { getTousCollaborateurs, getUnites, nomCollaborateur, type CollaborateurRow, type Unite } from '../api/rhClient';
 import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
 import { appartientSelection, correspond, indexerUnites, pluriel, selectionActive, useFiltresUrl } from '../utils/filtres';
@@ -38,16 +40,11 @@ const JOUR_DEBUT_DEFAUT = 20;
 
 const formatJour = (d: Date) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-/** AAAA-MM-JJ → jj/mm/aaaa sans passer par `Date` (pas de décalage de fuseau). */
-function jourFr(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : formatJour(new Date(iso));
-}
+const jourFr = formatDate;
 
 /** Jour courant (AAAA-MM-JJ) en Africa/Tunis, comme le serveur. Sert à l'affichage seulement : le serveur décide (422). */
 function aujourdhuiTunis(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Tunis' });
+  return jourIso();
 }
 
 /** Les mots de la sortie serveur gardent leurs accents (D-E14 : « évolution »). */
@@ -310,7 +307,7 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
         templateGeneralId: '', templateTechniqueId: '',
       });
       setActionSuccess(
-        `Campagne créée : du ${formatJour(new Date(campaign.dateDebut))} au ${formatJour(new Date(campaign.dateFin))}. `
+        `Campagne créée : du ${formatDate(campaign.dateDebut)} au ${formatDate(campaign.dateFin)}. `
         + 'Elle sera lancée automatiquement à sa date de début (template général requis).',
       );
       await loadData();
@@ -327,6 +324,11 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
       setActionError('Impossible d’activer : publiez et assignez d’abord un template général.');
       return;
     }
+    const okActiver = await confirm({
+      message: `Activer la campagne « ${campaign.nom} » ? Les évaluations seront créées pour les collaborateurs concernés.`,
+      confirmLabel: 'Activer',
+    });
+    if (!okActiver) return;
     setActionError(null);
     setActionSuccess(null);
     try {
@@ -337,7 +339,7 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
         (lireSansTemplateTechnique(result) ?? 0) > 0
           ? `${pluriel(lireSansTemplateTechnique(result) ?? 0, 'évaluation')} sans questionnaire technique`
           : null,
-        result.ignoresManagerManquant ? `${result.ignoresManagerManquant} sans manager` : null,
+        result.ignoresManagerManquant ? `${result.ignoresManagerManquant} sans responsable` : null,
       ].filter(Boolean);
       setActionSuccess(parts.length ? `Campagne activée — ${parts.join(' · ')}` : 'Campagne activée.');
       await loadData();
@@ -527,7 +529,7 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
                 )}
               </div>
               <div className="form-group">
-                <label htmlFor="camp-tech">Template technique campagne (fallback)</label>
+                <label htmlFor="camp-tech">Questionnaire technique par défaut</label>
                 <select
                   id="camp-tech"
                   value={formData.templateTechniqueId}
@@ -644,7 +646,7 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
       <div className="template-meta">
         <div><strong>Fréquence :</strong> {LIBELLES_TYPE_CAMPAGNE[campaign.type] ?? campaign.type}</div>
         <div>
-          <strong>Période :</strong> du {formatJour(new Date(campaign.dateDebut))} au {formatJour(new Date(campaign.dateFin))}
+          <strong>Période :</strong> du {formatDate(campaign.dateDebut)} au {formatDate(campaign.dateFin)}
           {campaign.dureeJours ? ` (${campaign.dureeJours} jours)` : ''}
         </div>
         {campaign.statut === 'PLANIFIEE' && (
@@ -657,13 +659,13 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
           <strong>Général :</strong>
           {campaign.templateGeneral
             ? <span className="badge badge--success">{campaign.templateGeneral.nom}</span>
-            : <span className="badge badge--default">Non assigné</span>}
+            : <span className="badge badge--default">Aucun</span>}
         </div>
         <div className="inline-row">
-          <strong>Technique (fallback) :</strong>
+          <strong>Questionnaire technique par défaut :</strong>
           {campaign.templateTechnique
             ? <span className="badge badge--success">{campaign.templateTechnique.nom}</span>
-            : <span className="badge badge--default">Non assigné</span>}
+            : <span className="badge badge--default">Aucun</span>}
         </div>
       </div>
 
@@ -675,9 +677,9 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
 
       {analytics && (
         <div className="stats-grid stats-grid--compact mt-sm">
-          <MiniStat label="Complétion" value={`${analytics.completionPercentage}%`} />
-          <MiniStat label="Score moyen" value={`${analytics.averageFinalScore || 0}/5`} />
-          <MiniStat label="Évaluations" value={String(analytics.evaluationCount)} />
+          <MiniStat label="Complétion" value={formatPourcentage(analytics.completionPercentage)} />
+          <MiniStat label="Score moyen" value={analytics.averageFinalScore ? formatNote(analytics.averageFinalScore) : 'Non évaluée'} />
+          <MiniStat label="Évaluations" value={formatNombre(analytics.evaluationCount, 0)} />
         </div>
       )}
 
@@ -686,12 +688,12 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
           <>
             {!isActive && (
               <button type="button" className="btn btn--sm" onClick={onAssignTemplates}>
-                {hasTemplates ? 'Modifier templates' : 'Assigner templates'}
+                {hasTemplates ? 'Modifier les questionnaires' : 'Assigner les questionnaires'}
               </button>
             )}
             {isActive && (
               <span className="text-muted text-sm" title="Les questionnaires des évaluations déjà créées ne changent plus (instantané conservé).">
-                Templates figés (campagne active)
+                Questionnaires verrouillés (campagne en cours)
               </span>
             )}
 
@@ -823,7 +825,7 @@ function AssignTemplatesModal({ campaign, generalTemplates, competencyTemplates,
 
           <div className="form-group mb-lg">
             <label htmlFor="assign-tech">
-              Template technique campagne (fallback)
+              Questionnaire technique par défaut
             </label>
             <select id="assign-tech" value={techniqueId} onChange={e => setTechniqueId(e.target.value)}>
               <option value="">— Aucun —</option>
@@ -1013,7 +1015,7 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
         <MiniStat label="Total évaluations" value={String(stats.total)} />
         <MiniStat label="En cours" value={String(stats.inProgress)} />
         <MiniStat label="Validées" value={String(stats.completed)} />
-        <MiniStat label="Taux complétion" value={`${stats.completion}%`} />
+        <MiniStat label="Taux de complétion" value={formatPourcentage(stats.completion)} />
         <CarteStatLien
           label="Alertes d’écart ouvertes"
           value={alertesOuvertes === 'erreur' ? '—' : totalAlertesOuvertes === null ? '…' : String(totalAlertesOuvertes)}
@@ -1048,7 +1050,7 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
         id="eval"
         recherche={f.q}
         onRecherche={(v) => filtres.definir({ q: v })}
-        libelleRecherche="Collaborateur ou manager"
+        libelleRecherche="Collaborateur ou responsable"
         placeholder="Nom, matricule, campagne…"
         nbResultats={filtered.length}
         nbTotal={evaluations.length}
@@ -1062,8 +1064,8 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
           toutesLibelle="Tous les statuts"
           options={[
             { valeur: 'EN_ATTENTE_VALIDATION_CROISEE', libelle: 'En attente' },
-            { valeur: 'VALIDEE_COLLABORATEUR', libelle: 'Validée collab.' },
-            { valeur: 'VALIDEE_SUPERIEUR', libelle: 'Validée manager' },
+            { valeur: 'VALIDEE_COLLABORATEUR', libelle: 'Validée par le collaborateur' },
+            { valeur: 'VALIDEE_SUPERIEUR', libelle: 'Validée par le responsable' },
             { valeur: 'VALIDEE', libelle: 'Validée' },
           ]}
           onChange={(v) => filtres.definir({ statut: v })}
@@ -1119,7 +1121,7 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
               <tr>
                 <th>Campagne</th>
                 <th>Collaborateur</th>
-                <th>Manager</th>
+                <th>Responsable</th>
                 <th>Étape</th>
                 <th>Statut</th>
                 <th>Score</th>
@@ -1155,14 +1157,14 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
                         </div>
                       )}
                     </td>
-                    <td>{personLabel(evaluation.collaborateurNom, evaluation.collaborateurMatricule, evaluation.collaborateurIdentifiant)}</td>
-                    <td>{personLabel(evaluation.superieurNom, undefined, evaluation.superieurIdentifiant)}</td>
+                    <td>{personLabel(evaluation.collaborateurNom, evaluation.collaborateurMatricule, COLLABORATEUR_INTROUVABLE)}</td>
+                    <td>{personLabel(evaluation.superieurNom, undefined, evaluation.superieurIdentifiant ? COLLABORATEUR_INTROUVABLE : undefined)}</td>
                     <td className="cell-meta">{etapeLabel(evaluation.etapeActuelle)}</td>
                     <td><StatusBadge status={evaluation.statut} /></td>
                     <td>
                       {evaluation.scoreSur20 != null ? (
                         <div>
-                          <strong>{evaluation.scoreSur20}/20</strong>
+                          <strong>{formatNombre(evaluation.scoreSur20)} / 20</strong>
                           {evaluation.appreciation && (
                             <div className="text-muted text-sm">{evaluation.appreciation}</div>
                           )}
@@ -1221,7 +1223,7 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
     <div className="analytics-panel">
       {aNotesResp ? (
         <p className="text-muted text-sm mt-0">
-          Score final : 70 % notes manager + 30 % auto-évaluation (si notes manager présentes).
+          Score final : 70 % notes du responsable + 30 % auto-évaluation (si le responsable a noté).
         </p>
       ) : (
         <p className="text-muted text-sm mt-0">
@@ -1229,10 +1231,10 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
         </p>
       )}
       <div className="stats-grid stats-grid--compact">
-        {aNotesCollab ? <MiniStat label="Auto-éval." value={`${analytics.selfAverage}/5`} /> : null}
-        {aNotesResp ? <MiniStat label="Manager" value={`${analytics.managerAverage}/5`} /> : null}
-        {aNotesResp ? <MiniStat label="Score final" value={`${analytics.finalScore}/5`} /> : null}
-        {aNotesResp ? <MiniStat label="Écart" value={`${analytics.discrepancyPercentage}%`} /> : null}
+        {aNotesCollab ? <MiniStat label="Auto-évaluation" value={formatNote(analytics.selfAverage)} /> : null}
+        {aNotesResp ? <MiniStat label="Responsable" value={formatNote(analytics.managerAverage)} /> : null}
+        {aNotesResp ? <MiniStat label="Score final" value={formatNote(analytics.finalScore)} /> : null}
+        {aNotesResp ? <MiniStat label="Écart" value={formatPourcentage(analytics.discrepancyPercentage)} /> : null}
       </div>
 
       <div className="grid grid--2 mt-md">
@@ -1247,9 +1249,9 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
                     <span style={{ width: `${Math.min(100, section.managerAverage * 20)}%` }} />
                   </div>
                   <div className="question-meta">
-                    <span>Self {section.selfAverage}</span>
-                    {aNotesResp ? <span>Manager {section.managerAverage}</span> : null}
-                    {aNotesResp ? <span>Écart {section.gap}</span> : null}
+                    <span>Collaborateur {formatNombre(section.selfAverage, 2)}</span>
+                    {aNotesResp ? <span>Responsable {formatNombre(section.managerAverage, 2)}</span> : null}
+                    {aNotesResp ? <span>Écart {formatNombre(section.gap, 2)}</span> : null}
                   </div>
                 </div>
               </div>
@@ -1273,7 +1275,7 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
                   .filter(g => g.competenceTechnique)
                   .map(g => (
                     <li key={g.questionId}>
-                      {g.label} : {g.selfScore ?? '—'} vs {g.managerScore ?? '—'}{' '}
+                      {g.label} : {g.selfScore ?? TIRET} contre {g.managerScore ?? TIRET}{' '}
                       <AlerteEcartBadge niveau={g.niveauEcart} />
                     </li>
                   ))}
@@ -1288,7 +1290,7 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
                   .filter(g => !g.competenceTechnique && (g.severity === 'HIGH' || g.severity === 'CRITICAL'))
                   .map(g => (
                     <li key={g.questionId}>
-                      {g.label}: {g.selfScore} vs {g.managerScore}{' '}
+                      {g.label} : {g.selfScore ?? TIRET} contre {g.managerScore ?? TIRET}{' '}
                       <DiscrepancyLabel severity={g.severity} />
                     </li>
                   ))}
@@ -1344,11 +1346,11 @@ function StatusBadge({ status, label }: { status: string; label?: string }) {
     TERMINEE: { label: 'Terminée', className: 'badge--default' },
     ANNULEE: { label: 'Annulée', className: 'badge--default' },
     EN_ATTENTE_VALIDATION_CROISEE: { label: 'En cours', className: 'badge--warning' },
-    VALIDEE_COLLABORATEUR: { label: 'Collab. validé', className: 'badge--info' },
-    VALIDEE_SUPERIEUR: { label: 'Manager validé', className: 'badge--warning' },
+    VALIDEE_COLLABORATEUR: { label: 'Validée par le collaborateur', className: 'badge--info' },
+    VALIDEE_SUPERIEUR: { label: 'Validée par le responsable', className: 'badge--warning' },
     VALIDEE: { label: 'Validée', className: 'badge--success' },
   };
-  const meta = config[status] || { label: status, className: 'badge--default' };
+  const meta = config[status] || { label: VALEUR_NON_RECONNUE, className: 'badge--default' };
   return <span className={`badge ${meta.className}`}>{label ?? meta.label}</span>;
 }
 
@@ -1359,18 +1361,15 @@ function getMonthName(month: number): string {
 
 function etapeLabel(etape?: string): string {
   if (!etape) return '—';
-  return { EVALUATION_GENERALE: '1/2 — Générale', EVALUATION_TECHNIQUE: '2/2 — Technique' }[etape] ?? etape;
+  return {
+    EVALUATION_GENERALE: 'Étape 1 sur 2 — Questions générales',
+    EVALUATION_TECHNIQUE: 'Étape 2 sur 2 — Questions techniques',
+  }[etape] ?? VALEUR_NON_RECONNUE;
 }
 
-function personLabel(nom?: string, matricule?: string, id?: string): ReactNode {
-  if (nom) {
-    return (
-      <div>
-        <div>{nom}</div>
-        {matricule && <div className="text-muted text-sm">{matricule}</div>}
-      </div>
-    );
-  }
-  if (!id) return <span className="text-muted">—</span>;
-  return <code title={id}>{id.slice(0, 8)}…</code>;
+/** Personne d'un tableau : nom (matricule) ; `repli` (jamais un identifiant) si le nom est introuvable. */
+function personLabel(nom?: string, matricule?: string, repli?: string): ReactNode {
+  if (nom) return formatPersonne(nom, matricule);
+  if (!repli) return <span className="text-muted">—</span>;
+  return <span className="text-muted">{repli}</span>;
 }

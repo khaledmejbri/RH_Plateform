@@ -12,8 +12,8 @@ public enum NiveauSeniorite {
 
 	JUNIOR("Junior"),
 	CONFIRME("Confirmé"),
-	SENIOR("Senior"),
-	TEAM_LEAD("Team lead");
+	SENIOR("Sénior"),
+	TEAM_LEAD("Chef d'équipe");
 
 	public static final String MESSAGE_INVALIDE = "NIVEAU_SENIORITE_INVALIDE";
 

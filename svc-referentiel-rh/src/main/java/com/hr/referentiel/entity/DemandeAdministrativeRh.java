@@ -22,7 +22,8 @@ import java.util.UUID;
 		@Index(name = "idx_demande_statut", columnList = "statut"),
 		@Index(name = "idx_demande_type", columnList = "type_demande"),
 		@Index(name = "idx_demande_periode", columnList = "periode_debut,periode_fin"),
-		@Index(name = "idx_demande_valideur_attendu", columnList = "valideur_attendu_identifiant")
+		@Index(name = "idx_demande_valideur_attendu", columnList = "valideur_attendu_identifiant"),
+		@Index(name = "idx_demande_numero", columnList = "numero", unique = true)
 })
 public class DemandeAdministrativeRh {
 
@@ -30,6 +31,10 @@ public class DemandeAdministrativeRh {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	@Column(name = "identifiant", nullable = false, updatable = false)
 	private UUID id;
+
+	/** D-L02 : numéro lisible attribué à la création, unique et immuable. Null le temps de la reprise des anciennes lignes. */
+	@Column(name = "numero", updatable = false, length = 24)
+	private String numero;
 
 	@Enumerated(EnumType.STRING)
 	@Column(name = "type_demande", nullable = false, length = 40)
@@ -85,6 +90,14 @@ public class DemandeAdministrativeRh {
 	@PreUpdate
 	public void preUpdate() {
 		modifieLe = Instant.now();
+	}
+
+	public String getNumero() {
+		return numero;
+	}
+
+	public void setNumero(String numero) {
+		this.numero = numero;
 	}
 
 	public UUID getId() {

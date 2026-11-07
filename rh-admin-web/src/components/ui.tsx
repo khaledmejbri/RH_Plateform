@@ -1,4 +1,5 @@
 import type { ReactNode, SVGProps } from 'react';
+import { libelle } from '../utils/libelles';
 
 /* ─── Icônes (tracé 1.75, style Lucide) ─────────────────────────────────────
    Remplacent les émojis : taille et couleur pilotées par le CSS (currentColor). */
@@ -69,36 +70,15 @@ export function Icon({
 
 export type Tone = 'success' | 'danger' | 'warning' | 'info' | 'neutral' | 'progress';
 
-const STATUS: Record<string, { label: string; tone: Tone }> = {
-  NOUVEAU: { label: 'Nouveau', tone: 'info' },
-  EN_ANALYSE: { label: 'En analyse', tone: 'progress' },
-  EN_TRAITEMENT: { label: 'En traitement', tone: 'progress' },
-  EN_TRAITEMENT_RH: { label: 'En traitement RH', tone: 'progress' },
-  EN_COURS: { label: 'En cours', tone: 'progress' },
-  EN_ATTENTE_VALIDATION: { label: 'En attente de validation', tone: 'warning' },
-  EN_ATTENTE_FILE: { label: 'En file d’attente', tone: 'warning' },
-  EN_VALIDATION_RRH: { label: 'Validation RRH', tone: 'warning' },
-  PLANIFIEE: { label: 'Planifiée', tone: 'info' },
-  INTEGREE_PLAN: { label: 'Intégrée au plan', tone: 'success' },
-  APPROUVEE: { label: 'Approuvée', tone: 'success' },
-  VALIDEE: { label: 'Validée', tone: 'success' },
-  VALIDE: { label: 'Valide', tone: 'success' },
-  CONFIRME: { label: 'Confirmé', tone: 'success' },
-  RESOLU: { label: 'Résolu', tone: 'success' },
-  TERMINEE: { label: 'Terminée', tone: 'neutral' },
-  FERME: { label: 'Fermé', tone: 'neutral' },
-  ACTIF: { label: 'Actif', tone: 'success' },
-  ACTIVE: { label: 'Active', tone: 'success' },
-  PUBLISHED: { label: 'Publié', tone: 'success' },
-  DRAFT: { label: 'Brouillon', tone: 'neutral' },
-  ARCHIVE: { label: 'Archivé', tone: 'neutral' },
-  ARCHIVED: { label: 'Archivé', tone: 'neutral' },
-  REJETEE: { label: 'Rejetée', tone: 'danger' },
-  REFUSEE: { label: 'Refusée', tone: 'danger' },
-  ANNULEE: { label: 'Annulée', tone: 'neutral' },
-  EXPIRE: { label: 'Expiré', tone: 'danger' },
-  DISPONIBLE: { label: 'Disponible', tone: 'success' },
-  REVOQUE: { label: 'Révoqué', tone: 'danger' },
+const TONES: Record<string, Tone> = {
+  NOUVEAU: 'info', EN_ANALYSE: 'progress', EN_TRAITEMENT: 'progress', EN_TRAITEMENT_RH: 'progress',
+  EN_COURS: 'progress', EN_ATTENTE: 'warning', EN_ATTENTE_VALIDATION: 'warning', EN_ATTENTE_FILE: 'warning',
+  EN_VALIDATION_SUPERIEUR: 'warning', EN_VALIDATION_RRH: 'warning', EN_VALIDATION_RH: 'warning',
+  PLANIFIEE: 'info', INTEGREE_PLAN: 'success', APPROUVEE: 'success', VALIDEE: 'success', VALIDE: 'success',
+  CONFIRME: 'success', RESOLU: 'success', TERMINEE: 'neutral', FERME: 'neutral', ACTIF: 'success',
+  ACTIVE: 'success', INACTIVE: 'neutral', SUSPENDU: 'warning', PUBLISHED: 'success', DRAFT: 'neutral',
+  ARCHIVE: 'neutral', ARCHIVED: 'neutral', REJETEE: 'danger', REFUSEE: 'danger', ANNULEE: 'neutral',
+  EXPIRE: 'danger', EXPIREE: 'danger', DISPONIBLE: 'success', REVOQUE: 'danger',
 };
 
 const TONE_ICON: Record<Tone, IconName> = {
@@ -112,9 +92,10 @@ const TONE_ICON: Record<Tone, IconName> = {
 
 export function statusInfo(statut: string | null | undefined): { label: string; tone: Tone } {
   const key = (statut ?? '').toUpperCase();
-  if (STATUS[key]) return STATUS[key];
-  if (key.startsWith('REJETE')) return { label: humanize(key), tone: 'danger' };
-  return { label: humanize(key) || '—', tone: 'neutral' };
+  if (!key) return { label: '—', tone: 'neutral' };
+  const label = libelle('statut', key);
+  if (TONES[key]) return { label, tone: TONES[key] };
+  return { label, tone: key.startsWith('REJETE') ? 'danger' : 'neutral' };
 }
 
 /** Badge de statut : couleur + icône + texte (jamais la couleur seule). */
@@ -214,16 +195,4 @@ export function Avatar({ name, size = 32 }: { name: string; size?: number }) {
   );
 }
 
-export function formatDateTime(iso?: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-export function formatDate(iso?: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
-}
+export { formatDate, formatDateHeure as formatDateTime } from '../utils/format';

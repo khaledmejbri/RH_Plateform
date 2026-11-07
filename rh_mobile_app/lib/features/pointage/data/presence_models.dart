@@ -1,5 +1,7 @@
 // Modèles M09 — présence QR + GPS (vague Must).
 
+import '../../../core/libelles/libelles.dart';
+
 enum TypePointage {
   entree('ENTREE'),
   sortie('SORTIE');
@@ -304,7 +306,7 @@ class DemandeManuelle {
         'EN_ATTENTE' => 'En attente',
         'VALIDEE' => 'Validée',
         'REFUSEE' => 'Refusée',
-        _ => statut,
+        _ => Libelles.valeurNonReconnue,
       };
 
   String get typeLibelle => type == 'SORTIE' ? 'Sortie' : 'Entrée';

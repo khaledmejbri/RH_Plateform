@@ -308,7 +308,13 @@ class AlerteEcartTraitementServiceTest {
         });
         assertThat(d.historique()).singleElement().satisfies(h -> {
             assertThat(h.auteurSysteme()).isTrue();
-            assertThat(h.auteurLibelle()).isEqualTo("SYSTEME");
+            // D-L01.e : libellé lisible exposé, le code SYSTEME reste stocké
+            assertThat(h.auteurLibelle()).isEqualTo("Système (automatique)");
+            assertThat(h.typeEvenementLibelle()).isEqualTo("Création");
+            // première ligne : statut avant vide présenté comme « Création »
+            assertThat(h.statutAvant()).isNull();
+            assertThat(h.statutAvantLibelle()).isEqualTo("Création");
+            assertThat(h.statutApresLibelle()).isEqualTo("Ouverte");
         });
     }
 

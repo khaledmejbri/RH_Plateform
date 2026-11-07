@@ -1,6 +1,7 @@
+import '../../../core/libelles/libelles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import '../../../core/format/formats.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../data/formation_models.dart';
@@ -297,14 +298,14 @@ class FormationDetailScreen extends ConsumerWidget {
               if (item.acteurNom != null) ...[
                 const SizedBox(height: 2),
                 Text(
-                  'Par: ${item.acteurNom}',
+                  'Par ${item.acteurNom}',
                   style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                 ),
               ],
-              if (item.commentaire != null && item.commentaire!.isNotEmpty) ...[
+              if (item.commentaireAffiche != null) ...[
                 const SizedBox(height: 4),
                 Text(
-                  item.commentaire!,
+                  item.commentaireAffiche!,
                   style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                 ),
               ],
@@ -320,21 +321,15 @@ class FormationDetailScreen extends ConsumerWidget {
     );
   }
 
-  String _formatDate(String dateString) {
-    try {
-      final date = DateTime.parse(dateString);
-      return DateFormat('dd/MM/yyyy à HH:mm').format(date);
-    } catch (e) {
-      return dateString;
-    }
-  }
+  String _formatDate(String dateString) => formatDateHeureIso(dateString);
 
   (String, Color, Color) _statusMeta(String statut) {
+    final libelle = Libelles.statutFormation(statut);
     return switch (statut) {
-      'INTEGREE_PLAN' => ('Planifiée', AppTheme.successSurface, AppTheme.success),
-      'REFUSEE' => ('Refusée', AppTheme.errorSurface, AppTheme.errorDark),
-      'ANNULEE' => ('Annulée', AppTheme.surfaceMuted, AppTheme.textSecondary),
-      _ => ('En attente RH', AppTheme.primarySurface, AppTheme.primaryDark),
+      'INTEGREE_PLAN' => (libelle, AppTheme.successSurface, AppTheme.success),
+      'REFUSEE' => (libelle, AppTheme.errorSurface, AppTheme.errorDark),
+      'ANNULEE' => (libelle, AppTheme.surfaceMuted, AppTheme.textSecondary),
+      _ => (libelle, AppTheme.primarySurface, AppTheme.primaryDark),
     };
   }
 }

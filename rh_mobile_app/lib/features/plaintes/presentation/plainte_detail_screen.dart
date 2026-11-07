@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/libelles/libelles.dart';
 import '../../../core/network/api_client.dart';
 import '../data/plainte_models.dart';
 import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
@@ -29,8 +30,12 @@ class PlainteDetailScreen extends ConsumerWidget {
           padding: const EdgeInsets.all(20),
           children: [
             Text(p.titre, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            if ((p.numero ?? '').isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(p.numero!, style: Theme.of(context).textTheme.bodySmall),
+            ],
             const SizedBox(height: 8),
-            Chip(label: Text(p.statut)),
+            Chip(label: Text(Libelles.statutPlainte(p.statut))),
             const SizedBox(height: 16),
             Text(p.description ?? '', style: Theme.of(context).textTheme.bodyLarge),
           ],

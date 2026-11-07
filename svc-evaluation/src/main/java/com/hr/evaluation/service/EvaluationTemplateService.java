@@ -102,6 +102,6 @@ public class EvaluationTemplateService {
     private EvaluationTemplate chargerTemplate(UUID id) {
         return templateRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "Template d'évaluation introuvable: " + id));
+                        "Questionnaire d'évaluation introuvable"));
     }
 }

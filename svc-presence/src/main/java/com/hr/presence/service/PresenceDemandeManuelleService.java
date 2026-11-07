@@ -1,6 +1,7 @@
 package com.hr.presence.service;
 
 import com.hr.presence.client.ReferentielClient;
+import com.hr.presence.client.ReferentielClient.Affectation;
 import com.hr.presence.client.ReferentielClient.ValideurPointage;
 import com.hr.presence.config.PresenceProperties;
 import com.hr.presence.domain.PointageStatut;
@@ -10,6 +11,8 @@ import com.hr.presence.dto.DemandeManuelleCreationRequest;
 import com.hr.presence.dto.DemandeManuelleResponse;
 import com.hr.presence.entity.PresenceDemandeManuelle;
 import com.hr.presence.entity.PresencePointage;
+import com.hr.presence.numero.NumeroDemandeService;
+import com.hr.presence.numero.PrefixeNumero;
 import com.hr.presence.entity.PresenceSite;
 import com.hr.presence.kafka.PresenceEventPublisher;
 import com.hr.presence.repository.PresenceDemandeManuelleRepository;
@@ -28,10 +31,13 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
 
 /**
  * Pointage manuel après un rejet (D-P04) : demande du collaborateur, validation par le responsable
@@ -53,6 +59,7 @@ public class PresenceDemandeManuelleService {
 	private final PresenceProperties properties;
 	private final PresenceSiteRepository siteRepository;
 	private final FenetreHoraireService fenetreHoraire;
+	private final NumeroDemandeService numeroService;
 
 	public PresenceDemandeManuelleService(
 			PresenceDemandeManuelleRepository demandeRepository,
@@ -63,7 +70,8 @@ public class PresenceDemandeManuelleService {
 			PresenceEventPublisher eventPublisher,
 			PresenceProperties properties,
 			PresenceSiteRepository siteRepository,
-			FenetreHoraireService fenetreHoraire) {
+			FenetreHoraireService fenetreHoraire,
+			NumeroDemandeService numeroService) {
 		this.demandeRepository = demandeRepository;
 		this.pointageRepository = pointageRepository;
 		this.referentielClient = referentielClient;
@@ -73,6 +81,7 @@ public class PresenceDemandeManuelleService {
 		this.properties = properties;
 		this.siteRepository = siteRepository;
 		this.fenetreHoraire = fenetreHoraire;
+		this.numeroService = numeroService;
 	}
 
 	@Transactional
@@ -120,26 +129,27 @@ public class PresenceDemandeManuelleService {
 		d.setValideurId(texte(moi.valideurId()));
 		d.setValideurCompteId(texte(moi.valideurCompteId()));
 		d.setValideurNom(moi.valideurNom());
+		d.setCreeLe(maintenant);
+		d.setNumero(numeroService.attribuer(PrefixeNumero.PM, maintenant));
 		PresenceDemandeManuelle saved = demandeRepository.save(d);
 
 		String libelle = libelleType(saved.getType());
 		eventPublisher.notifier(
 				saved.validationParRh() ? PresenceEventPublisher.DESTINATAIRE_RH : adresse(saved.getValideurCompteId(), saved.getValideurId()),
-				"Pointage manuel à valider — " + nom(saved),
+				"Pointage manuel à valider — " + nom(saved) + " (" + saved.getNumero() + ")",
 				nom(saved) + " demande un pointage manuel (" + libelle + " du " + HEURE.format(heure) + ") : "
 						+ saved.getJustification());
-		log.info("Demande pointage manuel {} collab={} valideur={}", saved.getId(), saved.getCollaborateurId(),
+		log.info("Demande pointage manuel {} ({}) collab={} valideur={}", saved.getNumero(), saved.getId(), saved.getCollaborateurId(),
 				saved.validationParRh() ? "RH" : saved.getValideurId());
-		return toResponse(saved, null, rejet.getMotifRejet());
+		return toResponses(List.of(saved), null, d0 -> rejet.getMotifRejet()).get(0);
 	}
 
 	@Transactional(readOnly = true)
 	public List<DemandeManuelleResponse> mesDemandes() {
 		ValideurPointage moi = referentielClient.monValideurPointage();
 		identiteService.verifierEntete(texte(moi.collaborateurId()));
-		return demandeRepository.findByCollaborateurIdOrderByCreeLeDesc(moi.collaborateurId().toString()).stream()
-				.map(d -> toResponse(d, null, null))
-				.toList();
+		return toResponses(demandeRepository.findByCollaborateurIdOrderByCreeLeDesc(moi.collaborateurId().toString()),
+				null, d -> null);
 	}
 
 	/** File du responsable : demandes dont il est le valideur attendu. */
@@ -147,10 +157,8 @@ public class PresenceDemandeManuelleService {
 	public List<DemandeManuelleResponse> aValider() {
 		ValideurPointage moi = referentielClient.monValideurPointage();
 		identiteService.verifierEntete(texte(moi.collaborateurId()));
-		return demandeRepository.findByValideurIdAndStatutOrderByCreeLeAsc(
-						moi.collaborateurId().toString(), StatutDemandeManuelle.EN_ATTENTE).stream()
-				.map(d -> toResponse(d, null, motifRejet(d)))
-				.toList();
+		return toResponses(demandeRepository.findByValideurIdAndStatutOrderByCreeLeAsc(
+				moi.collaborateurId().toString(), StatutDemandeManuelle.EN_ATTENTE), null, this::motifRejet);
 	}
 
 	/** Vue RH : toutes les demandes, avec le compteur mensuel et l'alerte de seuil. */
@@ -159,9 +167,7 @@ public class PresenceDemandeManuelleService {
 		List<PresenceDemandeManuelle> demandes = statut == null
 				? demandeRepository.findAllByOrderByCreeLeDesc()
 				: demandeRepository.findByStatutOrderByCreeLeDesc(statut);
-		return demandes.stream()
-				.map(d -> toResponse(d, manuelsDuMois(d.getCollaborateurId(), d.getHeureDeclaree()), motifRejet(d)))
-				.toList();
+		return toResponses(demandes, d -> manuelsDuMois(d.getCollaborateurId(), d.getHeureDeclaree()), this::motifRejet);
 	}
 
 	@Transactional
@@ -201,8 +207,8 @@ public class PresenceDemandeManuelleService {
 		PresenceDemandeManuelle saved = demandeRepository.save(d);
 
 		eventPublisher.notifier(adresse(saved.getCollaborateurCompteId(), saved.getCollaborateurId()),
-				"Pointage manuel validé",
-				"Votre pointage manuel (" + libelleType(saved.getType()) + " du " + HEURE.format(saved.getHeureDeclaree())
+				"Pointage manuel validé — " + saved.getNumero(),
+				"Votre pointage manuel " + saved.getNumero() + " (" + libelleType(saved.getType()) + " du " + HEURE.format(saved.getHeureDeclaree())
 						+ ") a été validé par " + decideur + ".");
 
 		long duMois = manuelsDuMois(saved.getCollaborateurId(), saved.getHeureDeclaree());
@@ -212,7 +218,7 @@ public class PresenceDemandeManuelleService {
 					"Pointages manuels fréquents — " + nom(saved),
 					nom(saved) + " a " + duMois + " pointages manuels validés ce mois-ci (seuil : " + seuil + ").");
 		}
-		return toResponse(saved, duMois, null);
+		return toResponses(List.of(saved), d0 -> duMois, d0 -> null).get(0);
 	}
 
 	@Transactional
@@ -225,10 +231,10 @@ public class PresenceDemandeManuelleService {
 		d.setMotifRefus(motif.trim());
 		PresenceDemandeManuelle saved = demandeRepository.save(d);
 		eventPublisher.notifier(adresse(saved.getCollaborateurCompteId(), saved.getCollaborateurId()),
-				"Pointage manuel refusé",
-				"Votre pointage manuel (" + libelleType(saved.getType()) + " du " + HEURE.format(saved.getHeureDeclaree())
+				"Pointage manuel refusé — " + saved.getNumero(),
+				"Votre pointage manuel " + saved.getNumero() + " (" + libelleType(saved.getType()) + " du " + HEURE.format(saved.getHeureDeclaree())
 						+ ") a été refusé par " + decideur + ". Motif : " + saved.getMotifRefus());
-		return toResponse(saved, null, null);
+		return toResponses(List.of(saved), null, d0 -> null).get(0);
 	}
 
 	/**
@@ -303,15 +309,34 @@ public class PresenceDemandeManuelleService {
 		return pointageRepository.findById(d.getPointageRejeteId()).map(PresencePointage::getMotifRejet).orElse(null);
 	}
 
-	private DemandeManuelleResponse toResponse(PresenceDemandeManuelle d, Long duMois, String motifRejet) {
+	/**
+	 * Réponses par lot : noms et matricules résolus par le serveur (D-L01.a). Référentiel injoignable : on garde les
+	 * noms figés à la création et le matricule reste absent, sans jamais exposer d'identifiant.
+	 */
+	private List<DemandeManuelleResponse> toResponses(List<PresenceDemandeManuelle> demandes,
+			Function<PresenceDemandeManuelle, Long> duMois,
+			Function<PresenceDemandeManuelle, String> motifRejet) {
+		Map<String, Affectation> identites = identites(demandes);
+		return demandes.stream()
+				.map(d -> toResponse(d, identites.get(d.getCollaborateurId()),
+						duMois == null ? null : duMois.apply(d), motifRejet.apply(d)))
+				.toList();
+	}
+
+	private DemandeManuelleResponse toResponse(PresenceDemandeManuelle d, Affectation identite, Long duMois,
+			String motifRejet) {
+		String nom = d.getCollaborateurNom() != null ? d.getCollaborateurNom()
+				: identite != null && identite.nom() != null ? identite.nom() : "Collaborateur introuvable";
 		return new DemandeManuelleResponse(
 				d.getId(),
+				d.getNumero(),
 				d.getStatut(),
 				d.getType(),
 				d.getHeureDeclaree(),
 				d.getJustification(),
 				d.getCollaborateurId(),
-				d.getCollaborateurNom(),
+				nom,
+				identite != null ? identite.matricule() : null,
 				d.getSiteId(),
 				d.getPointageRejeteId(),
 				motifRejet,
@@ -324,6 +349,37 @@ public class PresenceDemandeManuelleService {
 				d.getCreeLe(),
 				duMois,
 				duMois != null ? duMois > properties.getManuel().getSeuilAlerteMois() : null);
+	}
+
+	/** Identités (matricule, nom) des collaborateurs des demandes, indexées par l'identifiant stocké (fiche ou compte). */
+	private Map<String, Affectation> identites(List<PresenceDemandeManuelle> demandes) {
+		List<UUID> ids = demandes.stream().map(PresenceDemandeManuelle::getCollaborateurId).distinct()
+				.map(PresenceDemandeManuelleService::uuidOuNull).filter(Objects::nonNull).toList();
+		Map<String, Affectation> resultat = new HashMap<>();
+		if (ids.isEmpty()) {
+			return resultat;
+		}
+		try {
+			for (Affectation a : referentielClient.affectations(ids)) {
+				if (a.collaborateurId() != null) {
+					resultat.put(a.collaborateurId().toString(), a);
+				}
+				if (a.compteId() != null) {
+					resultat.put(a.compteId().toString(), a);
+				}
+			}
+		} catch (RuntimeException ex) {
+			log.warn("Identités des demandes manuelles non résolues : {}", ex.getMessage());
+		}
+		return resultat;
+	}
+
+	private static UUID uuidOuNull(String valeur) {
+		try {
+			return valeur == null ? null : UUID.fromString(valeur);
+		} catch (IllegalArgumentException ex) {
+			return null;
+		}
 	}
 
 	/** Le pointage a pu être enregistré sous l'identifiant de fiche (en-tête) ou de compte (JWT). */

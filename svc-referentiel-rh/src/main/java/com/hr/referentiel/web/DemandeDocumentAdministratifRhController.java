@@ -64,8 +64,9 @@ public class DemandeDocumentAdministratifRhController {
 	/** File d'attente RH triée par priorité SLA. */
 	@GetMapping("/file-attente")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
-	public ResponseEntity<List<DemandeDocumentAdministratifRhResponse>> fileAttente() {
-		return ResponseEntity.ok(demandeDocumentAdministratifRhService.fileAttentePourRh());
+	public ResponseEntity<List<DemandeDocumentAdministratifRhResponse>> fileAttente(
+			@RequestParam(name = "q", required = false) String q) {
+		return ResponseEntity.ok(demandeDocumentAdministratifRhService.fileAttentePourRh(q));
 	}
 
 	/** Prendre la prochaine demande de la file (priorité SLA). */

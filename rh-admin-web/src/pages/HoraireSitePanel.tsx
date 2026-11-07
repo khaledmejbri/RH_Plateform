@@ -16,6 +16,7 @@ import {
   type PagePresence,
 } from '../api/presenceApi';
 import { useConfirm } from '../components/ConfirmDialog';
+import { SaisieHeure } from '../components/ChampsFr';
 
 type LigneJour = { ferme: boolean; debut: string; fin: string };
 type Brouillon = Record<JourSemaine, LigneJour>;
@@ -284,23 +285,19 @@ export default function HoraireSitePanel({ siteId, lectureSeule }: { siteId: str
                         />
                       </td>
                       <td>
-                        <input
-                          type="time"
-                          value={l.debut}
+                        <SaisieHeure
+                          valeur={l.debut}
                           disabled={desactive || l.ferme}
-                          aria-label={`${label} début`}
-                          aria-invalid={erreurJour ? true : undefined}
-                          onChange={(e) => majJour(value, { debut: e.target.value })}
+                          ariaLabel={`${label} début`}
+                          onChange={(v) => majJour(value, { debut: v })}
                         />
                       </td>
                       <td>
-                        <input
-                          type="time"
-                          value={l.fin}
+                        <SaisieHeure
+                          valeur={l.fin}
                           disabled={desactive || l.ferme}
-                          aria-label={`${label} fin`}
-                          aria-invalid={erreurJour ? true : undefined}
-                          onChange={(e) => majJour(value, { fin: e.target.value })}
+                          ariaLabel={`${label} fin`}
+                          onChange={(v) => majJour(value, { fin: v })}
                         />
                       </td>
                       <td>
@@ -308,7 +305,7 @@ export default function HoraireSitePanel({ siteId, lectureSeule }: { siteId: str
                           <span className="muted small">{horaireNonDefini ? 'Non défini' : 'Site fermé'}</span>
                         ) : nuit ? (
                           <span className="badge badge--info" title="La fin tombe le lendemain">
-                            Nuit · fin +1 j
+                            Nuit · fin le lendemain
                           </span>
                         ) : null}
                         {erreurJour ? <div className="text-danger small">{erreurJour}</div> : null}

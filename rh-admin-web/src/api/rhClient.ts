@@ -1,4 +1,12 @@
 import { apiFetch, clearToken } from './auth';
+import { libelle } from '../utils/libelles';
+
+/** Erreur HTTP du service RH : conserve le statut (ex. 409 = l'élément a changé entre-temps). */
+export class RhApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
 
 export async function parseJson<T>(res: Response): Promise<T> {
   const text = await res.text();
@@ -16,7 +24,7 @@ export async function handleRhResponse<T>(res: Response): Promise<T> {
     const body = await parseJson<{ erreur?: string; message?: string }>(res).catch(
       (): { erreur?: string; message?: string } => ({}),
     );
-    throw new Error(body.erreur ?? body.message ?? res.statusText);
+    throw new RhApiError(body.erreur ?? body.message ?? res.statusText, res.status);
   }
   return parseJson<T>(res);
 }
@@ -47,14 +55,14 @@ export function getDemandesAdministrativesListe(filtres: { statut?: string; type
   );
 }
 
-/** Approbation finale RRH (M01 § 6.1) — demande en EN_VALIDATION_RRH. */
+/** Approbation finale RH (M01 § 6.1) — demande en EN_VALIDATION_RRH. */
 export function postDemandeAdministrativeValiderRrh(id: string) {
   return apiFetch(`/api/rh/v1/demandes-administratives/${id}/valider-rrh`, {
     method: 'POST',
   }).then((r) => handleRhResponse<DemandeAdministrative>(r));
 }
 
-/** Refus RRH, motif obligatoire (C-M01-03). */
+/** Refus RH, motif obligatoire (C-M01-03). */
 export function postDemandeAdministrativeRefuserRrh(id: string, motif_refus: string) {
   return apiFetch(`/api/rh/v1/demandes-administratives/${id}/refuser-rrh`, {
     method: 'POST',
@@ -234,6 +242,8 @@ export type PlainteRh = {
 
 export type DemandeAdministrative = {
   identifiant: string;
+  /** Numéro lisible (DEM-/FOR-/DOC-AAAAMM-NNNN), D-L02. */
+  numero?: string;
   type_demande: string;
   demandeur_identifiant: string;
   /** SCRUM-15 : identité lisible du demandeur. */
@@ -261,6 +271,8 @@ export type DemandeAdministrativeSuivi = {
 export type DemandeAdministrativeHistorique = {
   identifiant: string;
   action: string;
+  /** Libellé français de l'étape fourni par le serveur (prioritaire sur la table locale). */
+  etape_libelle?: string | null;
   acteur_identifiant?: string;
   acteur_nom?: string;
   commentaire?: string;
@@ -269,6 +281,8 @@ export type DemandeAdministrativeHistorique = {
 
 export type DemandeFormation = {
   identifiant: string;
+  /** Numéro lisible (DEM-/FOR-/DOC-AAAAMM-NNNN), D-L02. */
+  numero?: string;
   demandeur_identifiant: string;
   demandeur_nom?: string;
   origine: 'CHEF_DEPARTEMENT' | 'RESPONSABLE_OPERATIONNEL';
@@ -289,6 +303,8 @@ export type DemandeFormation = {
 
 export type DemandeDocument = {
   identifiant: string;
+  /** Numéro lisible (DEM-/FOR-/DOC-AAAAMM-NNNN), D-L02. */
+  numero?: string;
   type_document: string;
   demandeur_identifiant: string;
   /** SCRUM-15 : identité lisible du demandeur. */
@@ -319,19 +335,12 @@ export const PROFILS_ACCES = [
 
 export type ProfilAcces = (typeof PROFILS_ACCES)[number];
 
-export const LIBELLES_PROFIL_ACCES: Record<ProfilAcces, string> = {
-  COLLABORATEUR: 'Collaborateur',
-  RO: 'Responsable opérationnel',
-  RESPONSABLE: 'Chef de département',
-  RH: 'Responsable RH',
-  DIRECTION: 'Direction',
-  ADMIN: 'Admin technique',
-};
+export const LIBELLES_PROFIL_ACCES: Record<ProfilAcces, string> = Object.fromEntries(
+  PROFILS_ACCES.map((p) => [p, libelle('profilAcces', p)]),
+) as Record<ProfilAcces, string>;
 
 export function libelleProfilAcces(code: string | null | undefined): string {
-  if (!code) return '—';
-  const key = code.toUpperCase() as ProfilAcces;
-  return LIBELLES_PROFIL_ACCES[key] ?? code;
+  return libelle('profilAcces', code);
 }
 
 export function isProfilAcces(value: string | null | undefined): value is ProfilAcces {

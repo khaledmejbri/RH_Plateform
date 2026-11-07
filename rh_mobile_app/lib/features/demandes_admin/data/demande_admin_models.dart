@@ -1,3 +1,5 @@
+import '../../../core/libelles/libelles.dart';
+
 class DemandeAdminItem {
   DemandeAdminItem({
     required this.id,
@@ -10,6 +12,9 @@ class DemandeAdminItem {
     this.demandeurNom,
     this.demandeurMatricule,
     this.demandeurUnite,
+    this.numero,
+    this.valideurNom,
+    this.creeLe,
   });
 
   final String id;
@@ -24,6 +29,30 @@ class DemandeAdminItem {
   final String? demandeurNom;
   final String? demandeurMatricule;
   final String? demandeurUnite;
+
+  /// Numéro lisible `DEM-AAAAMM-NNNN` (D-L02), absent tant que le serveur ne l'envoie pas.
+  final String? numero;
+
+  /// Responsable qui doit valider (`valideur_attendu_nom_complet`).
+  final String? valideurNom;
+
+  /// Date de dépôt (ISO).
+  final String? creeLe;
+
+  /// Type de congé (`contenu.type_conge`), pour un congé.
+  String? get typeConge => contenu?['type_conge'] as String?;
+
+  /// Titre lisible : « Congé annuel », « Autorisation de sortie »…
+  String get titre => Libelles.titreDemande(typeDemande, typeCongeCode: typeConge);
+
+  /// Statut lisible, jamais le code.
+  String get statutLibelle => Libelles.statutDemande(statut);
+
+  /// Référence affichée : le numéro s'il existe, jamais l'identifiant technique.
+  String? get referenceAffichee {
+    final n = numero?.trim();
+    return (n == null || n.isEmpty) ? null : n;
+  }
 
   /// Pièce jointe déclarée (certificat MALADIE / MATERNITE) — référence, pas de fichier (upload = cible CDC).
   String? get certificat => contenu?['certificat'] as String?;
@@ -45,6 +74,9 @@ class DemandeAdminItem {
       demandeurNom: j['demandeur_nom'] as String?,
       demandeurMatricule: j['demandeur_matricule'] as String?,
       demandeurUnite: j['demandeur_unite'] as String?,
+      numero: j['numero'] as String?,
+      valideurNom: j['valideur_attendu_nom_complet'] as String?,
+      creeLe: (j['cree_le'] ?? j['date_creation']) as String?,
     );
   }
 }
@@ -56,6 +88,9 @@ class WorkflowEtape {
   final String libelle;
   final bool terminee;
   final bool enCours;
+
+  /// Libellé lisible de l'étape, jamais son code.
+  String get libelleAffiche => Libelles.etapeSuivi(code, libelle);
 
   factory WorkflowEtape.fromJson(Map<String, dynamic> j) {
     return WorkflowEtape(
@@ -119,24 +154,8 @@ class WorkflowHistoryItem {
     );
   }
 
-  String get actionLabel {
-    switch (action) {
-      case 'CREATION_DEMANDE':
-        return 'Demande créée';
-      case 'SOUMISE_A_RO':
-        return 'Soumise au RO';
-      case 'VALIDATION_RO':
-        return 'Validée par le RO';
-      case 'REFUS_RO':
-        return 'Refusée par le RO';
-      case 'APPROBATION_RRH':
-        return 'Approuvée par le RH';
-      case 'REFUS_RRH':
-        return 'Refusée par le RH';
-      case 'ANNULATION_DEMANDEUR':
-        return 'Annulée';
-      default:
-        return action.replaceAll('_', ' ').toLowerCase();
-    }
-  }
+  String get actionLabel => Libelles.actionHistorique(action);
+
+  /// Commentaire sans code (anciens commentaires stockés masqués).
+  String? get commentaireAffiche => Libelles.commentaireHistorique(commentaire);
 }

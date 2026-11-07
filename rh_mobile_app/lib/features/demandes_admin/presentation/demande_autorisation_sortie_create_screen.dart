@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../core/format/formats.dart';
 
 import '../data/demande_admin_repository.dart';
 import 'demandes_admin_list_screen.dart';
@@ -121,7 +122,6 @@ class _DemandeAutorisationSortieCreateScreenState
 
   @override
   Widget build(BuildContext context) {
-    final fmtDate = DateFormat.yMMMd('fr_FR');
     final duree = _dureeMinutes();
     final dureeValide = duree > 0 && duree <= _dureeMaxMinutes;
     final dureeDepasse = duree > _dureeMaxMinutes;
@@ -167,7 +167,7 @@ class _DemandeAutorisationSortieCreateScreenState
             icon: Icons.calendar_today_outlined,
             color: _blue,
             label: 'Jour',
-            value: _dateJour == null ? 'Sélectionner' : fmtDate.format(_dateJour!),
+            value: _dateJour == null ? 'Sélectionner' : formatDate(_dateJour!),
             selected: _dateJour != null,
             onTap: _pickDate,
           ),

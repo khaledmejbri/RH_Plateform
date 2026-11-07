@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Client } from '@stomp/stompjs';
 import { useNavigate } from 'react-router-dom';
 import { getToken } from '../api/auth';
-import { alerteEcartDeNotification, routeAlerteEcart } from '../api/notificationContenu';
+import { alerteEcartDeNotification, parseContenuNotification, routeAlerteEcart } from '../api/notificationContenu';
 
 /** Même origine que la page (ws/wss), surchargeable par VITE_WS_URL. */
 function resolveBrokerUrl(): string {
@@ -267,7 +267,7 @@ export default function NotificationBell() {
                         color: '#6b7280',
                         lineHeight: '1.5'
                       }}>
-                        {alerteEcartDeNotification(n.content)?.texte ?? n.content ?? JSON.stringify(n)}
+                        {parseContenuNotification(n.content)?.texte ?? (typeof n.content === 'string' ? n.content : 'Nouvelle notification')}
                       </div>
                     </div>
                   </div>
@@ -294,7 +294,7 @@ export default function NotificationBell() {
               background: status === 'connected' ? '#10b981' : status === 'connecting' ? '#f59e0b' : '#ef4444'
             }} />
             {status === 'connected' ? 'Connecté en temps réel' : 
-             status === 'connecting' ? 'Connexion...' : 'Déconnecté'}
+             status === 'connecting' ? 'Connexion en cours…' : 'Déconnecté'}
           </div>
         </div>
       )}

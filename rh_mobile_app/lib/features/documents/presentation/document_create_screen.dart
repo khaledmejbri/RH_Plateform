@@ -1,3 +1,4 @@
+import '../../../core/libelles/libelles.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -248,7 +249,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
               ),
             ),
             items: types
-                .map((t) => DropdownMenuItem(value: t, child: Text(t.replaceAll('_', ' '))))
+                .map((t) => DropdownMenuItem(value: t, child: Text(Libelles.typeDocument(t))))
                 .toList(),
             onChanged: (v) {
               if (v != null) {
@@ -345,6 +346,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                   Row(
                     children: [
                       IconButton.filledTonal(
+                        tooltip: 'Réduire le nombre de mois',
                         onPressed: _nombreMois > 1
                             ? () => setState(() => _nombreMois--)
                             : null,
@@ -359,6 +361,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                         ),
                       ),
                       IconButton.filledTonal(
+                        tooltip: 'Augmenter le nombre de mois',
                         onPressed: _nombreMois < 12
                             ? () => setState(() => _nombreMois++)
                             : null,

@@ -10,10 +10,14 @@ import {
   type Unite,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { useConfirm } from '../components/ConfirmDialog';
+
 import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
 import { appartientSelection, correspond, indexerUnites, libelleDansSelection, unitesRetenues, useFiltresUrl } from '../utils/filtres';
 import { DialogPanel } from '../components/useDialogA11y';
-import { EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, formatDateTime } from '../components/ui';
+import { EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge } from '../components/ui';
+import { formatDateHeure, formatNombre, indexerPersonnes, personneParId, COLLABORATEUR_INTROUVABLE } from '../utils/format';
+import { libelle } from '../utils/libelles';
 
 type StatutFilter = '' | 'EN_VALIDATION_RRH' | 'INTEGREE_PLAN' | 'REFUSEE' | 'ANNULEE';
 
@@ -21,6 +25,7 @@ const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', sta
 
 export default function FormationsPage() {
   const lectureSeule = useLectureSeule();
+  const confirm = useConfirm();
   const [rows, setRows] = useState<DemandeFormation[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -58,6 +63,10 @@ export default function FormationsPage() {
 
   const indexUnites = useMemo(() => indexerUnites(unites), [unites]);
   const retenues = useMemo(() => unitesRetenues(unites, f), [unites, f]);
+  const personnes = useMemo(() => indexerPersonnes(collabs), [collabs]);
+  /** Demandeur : nom fourni par l'API, sinon résolu par la liste des collaborateurs, sinon « introuvable ». */
+  const demandeur = (d: DemandeFormation) =>
+    d.demandeur_nom && d.demandeur_nom.trim() ? d.demandeur_nom : personneParId(personnes, d.demandeur_identifiant);
   const uniteDemandeur = useMemo(
     () => new Map(collabs.map((c) => [c.identifiant, c.unite?.identifiant])),
     [collabs],
@@ -68,14 +77,15 @@ export default function FormationsPage() {
       rows.filter(
         (d) =>
           correspond(
-            [d.demandeur_nom, d.type_formation, d.organisme, d.unite_cible_libelle, d.objectifs_pedagogiques],
+            [d.numero, demandeur(d), d.type_formation, d.organisme, d.unite_cible_libelle, d.objectifs_pedagogiques],
             f.q,
           ) &&
           (retenues === null ||
             appartientSelection(indexUnites, uniteDemandeur.get(d.demandeur_identifiant), f) ||
             libelleDansSelection(retenues, d.unite_cible_libelle)),
       ),
-    [rows, f, retenues, indexUnites, uniteDemandeur],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, f, retenues, indexUnites, uniteDemandeur, personnes],
   );
 
   async function confirmAction() {
@@ -85,12 +95,18 @@ export default function FormationsPage() {
       setActionErr('Le motif de refus est obligatoire.');
       return;
     }
+    const ok = await confirm({
+      message: `${action.kind === 'integrer' ? 'Accepter' : 'Refuser'} la demande de formation « ${action.demande.type_formation} » de ${demandeur(action.demande)} ?`,
+      confirmLabel: action.kind === 'integrer' ? 'Accepter' : 'Refuser',
+      danger: action.kind === 'refuser',
+    });
+    if (!ok) return;
     setActing(true);
     setActionErr(null);
     try {
       if (action.kind === 'integrer') {
         await postFormationIntegrerPlan(action.demande.identifiant, text || undefined);
-        setMsg('Demande intégrée au plan annuel.');
+        setMsg('Demande acceptée.');
       } else {
         await postFormationRefuser(action.demande.identifiant, text);
         setMsg('Demande refusée.');
@@ -121,16 +137,19 @@ export default function FormationsPage() {
     setSelectedFormation(null);
   }
 
-  const cibleLabel = (d: DemandeFormation) =>
-    d.cible === 'UNITE'
-      ? d.unite_cible_libelle ?? 'Unité'
-      : `${d.collaborateurs_cibles_identifiants?.length ?? 0} collaborateur(s)`;
+  const cibleLabel = (d: DemandeFormation) => {
+    if (d.cible === 'UNITE') return d.unite_cible_libelle ?? 'Unité';
+    const ids = d.collaborateurs_cibles_identifiants ?? [];
+    if (ids.length === 0) return 'Aucun collaborateur';
+    const noms = ids.map((id) => personnes.get(id)?.nom ?? COLLABORATEUR_INTROUVABLE);
+    return noms.length <= 2 ? noms.join(', ') : `${noms.slice(0, 2).join(', ')} et ${noms.length - 2} autre${noms.length - 2 > 1 ? 's' : ''}`;
+  };
 
   return (
     <div className="page">
       <PageHeader
         title="Formations"
-        lead="Validation RH des demandes et intégration au plan annuel."
+        lead="Demandes de formation à valider par la RH."
         actions={
           <button type="button" className="btn btn--secondary" onClick={() => void load()} disabled={loading}>
             <Icon name="refresh" />
@@ -144,7 +163,7 @@ export default function FormationsPage() {
         recherche={f.q}
         onRecherche={(v) => filtres.definir({ q: v })}
         libelleRecherche="Demandeur ou formation"
-        placeholder="Nom, formation, organisme…"
+        placeholder="Numéro, nom, formation, organisme…"
         nbResultats={affichees.length}
         nbTotal={rows.length}
         nbActifs={filtres.nbActifs}
@@ -156,8 +175,8 @@ export default function FormationsPage() {
           valeur={f.statut}
           toutesLibelle="Tous les statuts"
           options={[
-            { valeur: 'EN_VALIDATION_RRH', libelle: 'En attente RH' },
-            { valeur: 'INTEGREE_PLAN', libelle: 'Intégrées au plan' },
+            { valeur: 'EN_VALIDATION_RRH', libelle: 'En attente de validation RH' },
+            { valeur: 'INTEGREE_PLAN', libelle: 'Acceptées' },
             { valeur: 'REFUSEE', libelle: 'Refusées' },
             { valeur: 'ANNULEE', libelle: 'Annulées' },
           ]}
@@ -189,6 +208,7 @@ export default function FormationsPage() {
               <caption className="sr-only">Demandes de formation</caption>
               <thead>
                 <tr>
+                  <th scope="col">Numéro</th>
                   <th scope="col">Formation</th>
                   <th scope="col">Demandeur</th>
                   <th scope="col">Cible</th>
@@ -200,13 +220,14 @@ export default function FormationsPage() {
               <tbody>
                 {affichees.map((d) => (
                   <tr key={d.identifiant}>
+                    <td data-label="Numéro" className="cell-meta">{d.numero ?? ''}</td>
                     <td data-label="Formation" className="cell-main">
                       <div className="cell-main__title">{d.type_formation}</div>
-                      <div className="cell-main__sub">{d.organisme} · {d.duree_heures} h</div>
+                      <div className="cell-main__sub">{d.organisme} · {formatNombre(d.duree_heures)} h</div>
                     </td>
                     <td data-label="Demandeur">
-                      <div>{d.demandeur_nom ?? d.demandeur_identifiant}</div>
-                      <div className="cell-meta">{d.origine === 'CHEF_DEPARTEMENT' ? 'Chef de département' : 'Responsable opérationnel'}</div>
+                      <div>{demandeur(d)}</div>
+                      <div className="cell-meta">{libelle('origineFormation', d.origine)}</div>
                     </td>
                     <td data-label="Cible">{cibleLabel(d)}</td>
                     <td data-label="Budget" style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{formatTnd(d.cout_estime)}</td>
@@ -223,7 +244,7 @@ export default function FormationsPage() {
                               Refuser
                             </button>
                             <button type="button" className="btn btn--sm btn--primary" onClick={() => openAction('integrer', d)}>
-                              Intégrer au plan
+                              Accepter
                             </button>
                           </>
                         ) : null}
@@ -243,7 +264,7 @@ export default function FormationsPage() {
             <div className="modal__head">
               <div>
                 <h3 className="modal__title" style={{ margin: 0 }}>{selectedFormation.type_formation}</h3>
-                <span className="cell-meta">{selectedFormation.organisme}</span>
+                <span className="cell-meta">{[selectedFormation.numero, selectedFormation.organisme].filter(Boolean).join(' · ')}</span>
               </div>
               <button type="button" className="modal__close" aria-label="Fermer" onClick={closeDetailModal}>
                 <Icon name="x" size={18} />
@@ -252,13 +273,13 @@ export default function FormationsPage() {
 
             <div className="modal__scroll">
               <dl className="detail-grid">
-                <div><dt>Durée</dt><dd>{selectedFormation.duree_heures} heures</dd></div>
+                <div><dt>Durée</dt><dd>{formatNombre(selectedFormation.duree_heures)} heures</dd></div>
                 <div><dt>Budget</dt><dd>{formatTnd(selectedFormation.cout_estime)}</dd></div>
-                <div><dt>Demandeur</dt><dd>{selectedFormation.demandeur_nom ?? selectedFormation.demandeur_identifiant}</dd></div>
-                <div><dt>Origine</dt><dd>{selectedFormation.origine === 'CHEF_DEPARTEMENT' ? 'Chef de département' : 'Responsable opérationnel'}</dd></div>
+                <div><dt>Demandeur</dt><dd>{demandeur(selectedFormation)}</dd></div>
+                <div><dt>Origine</dt><dd>{libelle('origineFormation', selectedFormation.origine)}</dd></div>
                 <div><dt>Cible</dt><dd>{cibleLabel(selectedFormation)}</dd></div>
                 <div><dt>Statut</dt><dd><StatusBadge statut={selectedFormation.statut} label={labelStatut(selectedFormation.statut)} /></dd></div>
-                <div><dt>Créée le</dt><dd>{formatDateTime(selectedFormation.cree_le)}</dd></div>
+                <div><dt>Créée le</dt><dd>{formatDateHeure(selectedFormation.cree_le)}</dd></div>
               </dl>
 
               {selectedFormation.objectifs_pedagogiques && (
@@ -291,15 +312,15 @@ export default function FormationsPage() {
       {action && (
         <div className="modal-backdrop" role="presentation" onClick={() => setAction(null)}>
           <DialogPanel
-            label={action.kind === 'integrer' ? 'Intégrer au plan annuel' : 'Refuser la demande'}
+            label={action.kind === 'integrer' ? 'Accepter la demande' : 'Refuser la demande'}
             className="modal"
             onClose={() => setAction(null)}
           >
             <h3 className="modal__title">
-              {action.kind === 'integrer' ? 'Intégrer au plan annuel' : 'Refuser la demande'}
+              {action.kind === 'integrer' ? 'Accepter la demande' : 'Refuser la demande'}
             </h3>
             <p className="small muted" style={{ marginTop: 0 }}>
-              {action.demande.type_formation} · {action.demande.demandeur_nom ?? action.demande.demandeur_identifiant}
+              {action.demande.type_formation} · {demandeur(action.demande)}
             </p>
             <label htmlFor="formation-action-text" className="field-label">
               {action.kind === 'integrer' ? 'Commentaire RH (optionnel)' : 'Motif du refus (obligatoire)'}
@@ -325,7 +346,7 @@ export default function FormationsPage() {
                 aria-busy={acting}
                 onClick={() => void confirmAction()}
               >
-                {acting ? 'Envoi…' : action.kind === 'integrer' ? 'Intégrer' : 'Refuser'}
+                {acting ? 'Envoi…' : action.kind === 'integrer' ? 'Accepter' : 'Refuser'}
               </button>
             </div>
           </DialogPanel>
@@ -336,14 +357,9 @@ export default function FormationsPage() {
 }
 
 function labelStatut(statut: string) {
-  switch (statut) {
-    case 'INTEGREE_PLAN': return 'Intégrée au plan';
-    case 'REFUSEE': return 'Refusée';
-    case 'ANNULEE': return 'Annulée';
-    default: return 'En attente RH';
-  }
+  return libelle('statut', statut);
 }
 
 function formatTnd(v?: number | null) {
-  return `${(v ?? 0).toLocaleString('fr-FR')} TND`;
+  return v === null || v === undefined ? '—' : `${formatNombre(v, 2)} TND`;
 }

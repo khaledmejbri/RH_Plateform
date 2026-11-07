@@ -9,15 +9,20 @@ import {
   type Unite,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { useConfirm } from '../components/ConfirmDialog';
+
 import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
-import { correspond, humanizeCode, libelleDansSelection, unitesRetenues, useFiltresUrl } from '../utils/filtres';
+import { correspond, libelleDansSelection, unitesRetenues, useFiltresUrl } from '../utils/filtres';
 import { DialogPanel } from '../components/useDialogA11y';
-import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, formatDateTime } from '../components/ui';
+import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge } from '../components/ui';
+import { formatDateHeure, formatPersonne } from '../utils/format';
+import { libelle } from '../utils/libelles';
 
 const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', type: '', statut: '' };
 
 export default function DocumentsAdministratifsPage() {
   const lectureSeule = useLectureSeule();
+  const confirm = useConfirm();
   const [rows, setRows]                   = useState<DemandeDocument[]>([]);
   const [loading, setLoading]             = useState(true);
   const filtres = useFiltresUrl(FILTRES_DEFAUT);
@@ -44,7 +49,7 @@ export default function DocumentsAdministratifsPage() {
 
   useEffect(() => { void load(); void getUnites().then(setUnites).catch(() => {}); }, []);
 
-  /** Hors ordre FIFO = encore en attente et pas la prochaine (pas une demande déjà en traitement). */
+  /** Hors ordre d’arrivée = encore en attente et pas la prochaine (pas une demande déjà en traitement). */
   function isOutOfFifoOrder(d: DemandeDocument | null): boolean {
     if (!d) return false;
     if (d.statut === 'EN_TRAITEMENT_RH') return false;
@@ -52,8 +57,12 @@ export default function DocumentsAdministratifsPage() {
     return d.est_prochaine_fifo === false;
   }
 
+  const nomDemande = (d: DemandeDocument) =>
+    `${libelleTypeDocument(d.type_document)}${d.numero ? ` ${d.numero}` : ''} de ${formatPersonne(d.demandeur_nom, d.demandeur_matricule)}`;
+
   async function prendreProchaine() {
     setMsg(null); setErr(null);
+    if (!(await confirm({ message: 'Prendre en charge la prochaine demande de la file ?', confirmLabel: 'Prendre en charge' }))) return;
     try {
       const d = await postPrendreProchaineDocument();
       setPickedDemande(d);
@@ -64,6 +73,7 @@ export default function DocumentsAdministratifsPage() {
 
   async function marquerDisponible() {
     if (!pickedDemande || !ref.trim()) return;
+    if (!(await confirm({ message: `Marquer comme disponible : ${nomDemande(pickedDemande)} ?`, confirmLabel: 'Valider' }))) return;
     setErr(null);
     try {
       await postDocumentDisponible(
@@ -83,6 +93,7 @@ export default function DocumentsAdministratifsPage() {
       setErr('Veuillez saisir un motif de refus.');
       return;
     }
+    if (!(await confirm({ message: `Refuser la demande : ${nomDemande(pickedDemande)} ?`, confirmLabel: 'Refuser', danger: true }))) return;
     setErr(null);
     try {
       await postDocumentRejet(
@@ -130,7 +141,7 @@ export default function DocumentsAdministratifsPage() {
     () =>
       rows.filter(
         (d) =>
-          correspond([d.demandeur_nom, d.demandeur_matricule, d.demandeur_unite, d.departement_libelle, d.reference_livrable, humanizeCode(d.type_document)], f.q) &&
+          correspond([d.numero, d.demandeur_nom, d.demandeur_matricule, d.demandeur_unite, d.departement_libelle, d.reference_livrable, libelleTypeDocument(d.type_document)], f.q) &&
           libelleDansSelection(retenues, d.demandeur_unite ?? d.departement_libelle) &&
           (!f.type || d.type_document === f.type) &&
           (!f.statut
@@ -143,7 +154,7 @@ export default function DocumentsAdministratifsPage() {
     <div className="page">
       <PageHeader
         title="Documents administratifs"
-        lead="Traitement des attestations, bulletins et courriers RH."
+        lead="Traitement des attestations et autres documents demandés aux RH."
         actions={
           <>
             <button type="button" className="btn btn--secondary" onClick={() => void load()} disabled={loading}>
@@ -170,9 +181,9 @@ export default function DocumentsAdministratifsPage() {
       {msg ? <div className="alert alert--success" role="status"><Icon name="check" />{msg}</div> : null}
 
       <div className="callout" id="docs-pending-hint">
-        <p className="callout__title"><Icon name="info" size={14} /> Ordre FIFO actif</p>
+        <p className="callout__title"><Icon name="info" size={14} /> Ordre d’arrivée respecté</p>
         <p className="muted">
-          Les demandes sont traitées dans l’ordre d’arrivée : la demande marquée « Suivante » est la prochaine à prendre.
+          Les demandes sont traitées dans l’ordre d’arrivée : la demande marquée « Prochaine » est la suivante à prendre.
           {hasPendingTraitement ? ' Terminez la demande en cours avant d’en prendre une nouvelle.' : ''}
         </p>
       </div>
@@ -182,7 +193,7 @@ export default function DocumentsAdministratifsPage() {
         recherche={f.q}
         onRecherche={(v) => filtres.definir({ q: v })}
         libelleRecherche="Demandeur"
-        placeholder="Nom, matricule, unité, document…"
+        placeholder="Numéro, nom, matricule, unité, document…"
         nbResultats={affichees.length}
         nbTotal={rows.length}
         nbActifs={filtres.nbActifs}
@@ -192,7 +203,7 @@ export default function DocumentsAdministratifsPage() {
           id="docs-type"
           libelle="Type de document"
           valeur={f.type}
-          options={typesDoc.map((t) => ({ valeur: t, libelle: humanizeCode(t) }))}
+          options={typesDoc.map((t) => ({ valeur: t, libelle: libelleTypeDocument(t) }))}
           onChange={(v) => filtres.definir({ type: v })}
         />
         <ChampSelect
@@ -201,7 +212,7 @@ export default function DocumentsAdministratifsPage() {
           valeur={f.statut}
           options={[
             { valeur: 'A_TRAITER', libelle: 'À traiter (en attente + en traitement)' },
-            ...statutsDoc.map((t) => ({ valeur: t, libelle: docStatusLabel(t) ?? humanizeCode(t) })),
+            ...statutsDoc.map((t) => ({ valeur: t, libelle: docStatusLabel(t) })),
           ]}
           onChange={(v) => filtres.definir({ statut: v })}
         />
@@ -224,11 +235,12 @@ export default function DocumentsAdministratifsPage() {
               <thead>
                 <tr>
                   <th scope="col">Rang</th>
+                  <th scope="col">Numéro</th>
                   <th scope="col">Demandée le</th>
                   <th scope="col">Demandeur</th>
                   <th scope="col">Type de document</th>
                   <th scope="col">Statut</th>
-                  <th scope="col">SLA</th>
+                  <th scope="col">Délai (h)</th>
                   <th scope="col">Retard</th>
                   <th scope="col"><span className="sr-only">Actions</span></th>
                 </tr>
@@ -244,17 +256,15 @@ export default function DocumentsAdministratifsPage() {
                           <span className="rank">
                             <span className={`rank__num${isNext ? ' rank__num--next' : ''}`}>{d.rang_dans_file}</span>
                             {enCours ? <span className="status status--info">En cours</span> : null}
-                            {isNext ? <span className="status status--success">Suivante</span> : null}
+                            {isNext ? <span className="status status--success">Prochaine</span> : null}
                           </span>
                         ) : (
                           <span className="cell-meta">—</span>
                         )}
                       </td>
-                      <td data-label="Demandée le" className="cell-meta">{formatDateTime(d.cree_le)}</td>
-                      <td data-label="Demandeur">
-                        <div>{d.demandeur_nom ?? '—'}</div>
-                        {d.demandeur_matricule ? <div className="cell-meta">{d.demandeur_matricule}</div> : null}
-                      </td>
+                      <td data-label="Numéro" className="cell-meta">{d.numero ?? ''}</td>
+                      <td data-label="Demandée le" className="cell-meta">{formatDateHeure(d.cree_le)}</td>
+                      <td data-label="Demandeur">{formatPersonne(d.demandeur_nom, d.demandeur_matricule)}</td>
                       <td data-label="Type"><Chip tone="info" icon="file">{libelleTypeDocument(d.type_document)}</Chip></td>
                       <td data-label="Statut"><StatusBadge statut={d.statut} label={docStatusLabel(d.statut)} /></td>
                       <td data-label="SLA" className="cell-meta">{d.delai_sla_heures} h</td>
@@ -286,7 +296,7 @@ export default function DocumentsAdministratifsPage() {
                 <h3 className="modal__title" style={{ margin: 0 }}>
                   {actionMode === 'validate' ? 'Valider le document' : actionMode === 'reject' ? 'Refuser la demande' : 'Détail de la demande'}
                 </h3>
-                <code className="cell-code">{pickedDemande.identifiant.slice(0, 8)}…</code>
+                {pickedDemande.numero ? <p className="cell-meta" style={{ margin: 0 }}>{pickedDemande.numero} · {formatPersonne(pickedDemande.demandeur_nom, pickedDemande.demandeur_matricule)}</p> : null}
               </div>
               <button type="button" className="modal__close" aria-label="Fermer" onClick={closeModal}>
                 <Icon name="x" size={18} />
@@ -297,7 +307,7 @@ export default function DocumentsAdministratifsPage() {
               {showFifoWarning && (
                 <div className="alert alert--warning" role="alert" style={{ display: 'block' }}>
                   <p className="callout__title" style={{ color: 'inherit' }}>
-                    <Icon name="alert" size={14} /> Ordre FIFO non respecté
+                    <Icon name="alert" size={14} /> Ordre d’arrivée non respecté
                   </p>
                   <p style={{ margin: '0 0 10px' }}>
                     Des demandes plus anciennes attendent encore. Justifiez pourquoi celle-ci doit passer en priorité.
@@ -322,17 +332,16 @@ export default function DocumentsAdministratifsPage() {
                 <div>
                   <dt>Demandeur</dt>
                   <dd>
-                    {pickedDemande.demandeur_nom ?? '—'}
-                    {pickedDemande.demandeur_matricule ? <span className="cell-meta"> · {pickedDemande.demandeur_matricule}</span> : null}
+                    {formatPersonne(pickedDemande.demandeur_nom, pickedDemande.demandeur_matricule)}
                   </dd>
                 </div>
                 <div><dt>Département</dt><dd>{pickedDemande.departement_libelle ?? 'Non renseigné'}</dd></div>
-                <div><dt>Date de la demande</dt><dd>{formatDateTime(pickedDemande.cree_le)}</dd></div>
+                <div><dt>Date de la demande</dt><dd>{formatDateHeure(pickedDemande.cree_le)}</dd></div>
                 <div>
-                  <dt>Rang FIFO</dt>
-                  <dd>{pickedDemande.rang_dans_file != null ? `${pickedDemande.rang_dans_file}${pickedDemande.est_prochaine_fifo ? ' (suivante)' : ''}` : '—'}</dd>
+                  <dt>Rang dans la file</dt>
+                  <dd>{pickedDemande.rang_dans_file != null ? `${pickedDemande.rang_dans_file}${pickedDemande.est_prochaine_fifo ? ' (prochaine)' : ''}` : '—'}</dd>
                 </div>
-                <div><dt>SLA</dt><dd>{pickedDemande.delai_sla_heures} h</dd></div>
+                <div><dt>Délai de traitement</dt><dd>{pickedDemande.delai_sla_heures} h</dd></div>
                 <div>
                   <dt>Retard</dt>
                   <dd>{pickedDemande.en_retard ? <StatusBadge statut="REJETEE" label="En retard" /> : 'Non'}</dd>
@@ -347,7 +356,7 @@ export default function DocumentsAdministratifsPage() {
               )}
               {pickedDemande.justification_derogation_fifo && (
                 <div className="callout">
-                  <p className="callout__title">Dérogation FIFO appliquée</p>
+                  <p className="callout__title">Dérogation à l’ordre d’arrivée appliquée</p>
                   <p>{pickedDemande.justification_derogation_fifo}</p>
                 </div>
               )}
@@ -425,27 +434,10 @@ export default function DocumentsAdministratifsPage() {
   );
 }
 
-/** Libellés métier § 7.1 (SCRUM-15) — le code brut reste affiché pour un type inconnu. */
-const LIBELLES_TYPE_DOCUMENT: Record<string, string> = {
-  ATTESTATION_TRAVAIL: 'Attestation de travail',
-  ATTESTATION_SALAIRE: 'Attestation de salaire',
-  BULLETIN_PAIE: 'Bulletin de paie',
-  ATTESTATION_CNSS: 'Attestation CNSS',
-  FEUILLE_POINTAGE_MENSUELLE: 'Feuille de pointage mensuelle',
-  DOCUMENT_INTERNE: 'Document interne',
-  AUTRE: 'Autre',
-};
-
 function libelleTypeDocument(code: string): string {
-  return LIBELLES_TYPE_DOCUMENT[code] ?? code;
+  return libelle('typeDocument', code);
 }
 
-function docStatusLabel(statut: string): string | undefined {
-  switch (statut.toUpperCase()) {
-    case 'EN_TRAITEMENT_RH': return 'En traitement';
-    case 'EN_ATTENTE_FILE': return 'En attente';
-    case 'DISPONIBLE': return 'Disponible';
-    case 'REJETEE': return 'Refusée';
-    default: return undefined;
-  }
+function docStatusLabel(statut: string): string {
+  return libelle('statut', statut);
 }

@@ -11,12 +11,15 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record DemandeManuelleResponse(
 		@JsonProperty("id") UUID id,
+		/** Numéro lisible PM-AAAAMM-NNNN (D-L02). */
+		@JsonProperty("numero") String numero,
 		@JsonProperty("statut") StatutDemandeManuelle statut,
 		@JsonProperty("type") PointageType type,
 		@JsonProperty("heure_declaree") Instant heureDeclaree,
 		@JsonProperty("justification") String justification,
 		@JsonProperty("collaborateur_id") String collaborateurId,
 		@JsonProperty("collaborateur_nom") String collaborateurNom,
+		@JsonProperty("collaborateur_matricule") String collaborateurMatricule,
 		@JsonProperty("site_id") UUID siteId,
 		@JsonProperty("pointage_rejete_id") UUID pointageRejeteId,
 		@JsonProperty("motif_rejet_initial") String motifRejetInitial,

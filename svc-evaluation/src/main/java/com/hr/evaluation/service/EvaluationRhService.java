@@ -127,7 +127,7 @@ public class EvaluationRhService {
 	public EvaluationRhResponse validerCollaborateur(UUID id, UUID acteurIdentifiant) {
 		EvaluationRh evaluation = charger(id);
 		if (acteurIdentifiant == null || !acteurIdentifiant.equals(evaluation.getCollaborateurIdentifiant())) {
-			throw new SecurityException("Seul le collaborateur evalue peut valider cette evaluation.");
+			throw new SecurityException("Seul le collaborateur évalué peut valider cette évaluation.");
 		}
 		evaluation.setValidationCollaborateurLe(Instant.now());
 		actualiserStatutValidation(evaluation);
@@ -138,7 +138,7 @@ public class EvaluationRhService {
 	public EvaluationRhResponse validerSuperieur(UUID id, UUID acteurIdentifiant) {
 		EvaluationRh evaluation = charger(id);
 		if (acteurIdentifiant == null || !acteurIdentifiant.equals(evaluation.getSuperieurIdentifiant())) {
-			throw new SecurityException("Seul le superieur renseigne peut valider cette evaluation.");
+			throw new SecurityException("Seul le supérieur renseigné peut valider cette évaluation.");
 		}
 		evaluation.setValidationSuperieurLe(Instant.now());
 		actualiserStatutValidation(evaluation);
@@ -179,7 +179,7 @@ public class EvaluationRhService {
 	private void appliquerScoreEtRegles(EvaluationRh evaluation, EvaluationScore score) {
 		if (score.couleurAlerte() == CouleurAlerteEvaluationRh.ROUGE
 				&& isBlank(evaluation.getPlanActionRecommande())) {
-			throw new IllegalArgumentException("Un plan d'action est obligatoire pour une evaluation en alerte rouge.");
+			throw new IllegalArgumentException("Un plan d'action est obligatoire pour une évaluation en alerte rouge.");
 		}
 		evaluation.setScoreSur20(score.scoreSur20());
 		evaluation.setAppreciation(score.appreciation());
@@ -211,7 +211,7 @@ public class EvaluationRhService {
 
 	private EvaluationRh charger(UUID id) {
 		return repository.findById(id)
-				.orElseThrow(() -> new IllegalArgumentException("Evaluation introuvable : " + id));
+				.orElseThrow(() -> new IllegalArgumentException("Évaluation introuvable"));
 	}
 
 	private EvaluationRhResponse toResponse(EvaluationRh e) {

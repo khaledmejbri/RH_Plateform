@@ -1,5 +1,6 @@
 import { apiFetch, clearToken } from './auth';
 import { parseJson } from './rhClient';
+import { formatDate, formatDateHeure } from '../utils/format';
 
 const BASE = '/api/rh/v1/admin/presence';
 
@@ -316,36 +317,11 @@ export function minuteTunis(iso: string | null | undefined): string {
 }
 
 export function formatDateTunis(iso: string | null | undefined, avecSecondes = false): string {
-  if (!iso) return '—';
-  try {
-    // fr-TN rend l'heure en 12 h (AM/PM) selon les navigateurs : fr-FR + h23 force le format 24 h (SCRUM-16).
-    return new Intl.DateTimeFormat('fr-FR', {
-      timeZone: 'Africa/Tunis',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      ...(avecSecondes ? { second: '2-digit' as const } : {}),
-      hourCycle: 'h23',
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
+  return formatDateHeure(iso, avecSecondes);
 }
 
 export function formatDateCourteTunis(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  try {
-    return new Intl.DateTimeFormat('fr-FR', {
-      timeZone: 'Africa/Tunis',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
+  return formatDate(iso);
 }
 
 export function isServiceUnavailable(err: unknown): boolean {
@@ -551,8 +527,11 @@ export type DemandeManuelle = {
   type: PointageType | string;
   heureDeclaree: string | null;
   justification: string;
+  /** Numéro lisible PM-AAAAMM-NNNN (D-L02). */
+  numero: string | null;
   collaborateurId: string;
   collaborateurNom: string | null;
+  collaborateurMatricule: string | null;
   motifRejetInitial: string | null;
   valideurNom: string | null;
   validationParRh: boolean;
@@ -577,8 +556,10 @@ function normalizeDemandeManuelle(raw: Record<string, unknown>): DemandeManuelle
     type: String(raw.type ?? ''),
     heureDeclaree: asStr(raw.heure_declaree),
     justification: String(raw.justification ?? ''),
+    numero: asStr(raw.numero),
     collaborateurId: String(raw.collaborateur_id ?? ''),
     collaborateurNom: asStr(raw.collaborateur_nom),
+    collaborateurMatricule: asStr(raw.collaborateur_matricule),
     motifRejetInitial: asStr(raw.motif_rejet_initial),
     valideurNom: asStr(raw.valideur_nom),
     validationParRh: asBool(raw.validation_par_rh, false),
