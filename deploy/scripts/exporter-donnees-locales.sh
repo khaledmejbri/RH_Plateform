@@ -13,7 +13,18 @@ PG_PORT="${PG_PORT:-5444}"
 PG_USER="${PG_USER:-postgres}"
 PG_PASSWORD="${PG_PASSWORD:-password}"
 
-for base in authentication_db referentiel_rh_db evaluation_rh_db presence_db; do
+for base in authentication_db referentiel_rh_db evaluation_rh_db presence_db notification_db; do
+  # notification_db est facultative : base absente sur un poste antérieur aux notifications conservées
+  existe="$(docker exec -e PGPASSWORD="$PG_PASSWORD" "$PG_CONTAINER" \
+    psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d postgres -tAc \
+    "SELECT 1 FROM pg_database WHERE datname='$base'" || true)"
+  if [ "$existe" != "1" ]; then
+    [ "$base" = "notification_db" ] || { echo "Base absente : $base"; exit 1; }
+    echo "Base absente : $base, ignorée."
+    # Un ancien export ne doit pas être réimporté à la place d'une base absente
+    rm -f "donnees/$base.sql"
+    continue
+  fi
   echo "Export de $base…"
   docker exec -e PGPASSWORD="$PG_PASSWORD" "$PG_CONTAINER" \
     pg_dump -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" --no-owner --no-privileges "$base" \

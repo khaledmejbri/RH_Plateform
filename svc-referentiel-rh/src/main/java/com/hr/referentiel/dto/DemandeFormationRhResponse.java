@@ -26,6 +26,29 @@ public class DemandeFormationRhResponse {
 	@JsonProperty("demandeur_nom")
 	private String demandeurNom;
 
+	/** Lot 2 : matricule et unité du demandeur, noms des collaborateurs ciblés (aucun identifiant nécessaire à l'affichage). */
+	@JsonProperty("demandeur_matricule")
+	private String demandeurMatricule;
+
+	@JsonProperty("demandeur_unite")
+	private String demandeurUnite;
+
+	@JsonProperty("collaborateurs_cibles")
+	private java.util.List<CollaborateurCible> collaborateursCibles;
+
+	public record CollaborateurCible(
+			@JsonProperty("identifiant") UUID identifiant,
+			@JsonProperty("nom") String nom,
+			@JsonProperty("matricule") String matricule) {
+	}
+
+	public String getDemandeurMatricule() { return demandeurMatricule; }
+	public void setDemandeurMatricule(String v) { this.demandeurMatricule = v; }
+	public String getDemandeurUnite() { return demandeurUnite; }
+	public void setDemandeurUnite(String v) { this.demandeurUnite = v; }
+	public java.util.List<CollaborateurCible> getCollaborateursCibles() { return collaborateursCibles; }
+	public void setCollaborateursCibles(java.util.List<CollaborateurCible> v) { this.collaborateursCibles = v; }
+
 	@JsonProperty("origine")
 	private OrigineDemandeFormationRh origine;
 

@@ -75,8 +75,11 @@ public class DemandeAdministrativeRhController {
 			@RequestParam(name = "type_demande", required = false) TypeDemandeAdministrativeRh typeDemande,
 			@RequestParam(name = "couvre_jour", required = false) LocalDate couvreJour,
 			@RequestParam(name = "statut", required = false) StatutDemandeAdministrativeRh statut,
-			@RequestParam(name = "q", required = false) String q) {
-		return ResponseEntity.ok(demandeAdministrativeRhService.listerToutPourRh(typeDemande, couvreJour, statut, q));
+			@RequestParam(name = "q", required = false) String q,
+			@RequestParam(name = "collaborateur_id", required = false) UUID collaborateurId,
+			@RequestParam(name = "unite_id", required = false) UUID uniteId) {
+		return ResponseEntity.ok(demandeAdministrativeRhService.listerToutPourRh(
+				typeDemande, couvreJour, statut, q, collaborateurId, uniteId));
 	}
 
 	/** Validation par le manager ACTIF du nœud d'unité du demandeur (403 si autre nœud / inactif). */

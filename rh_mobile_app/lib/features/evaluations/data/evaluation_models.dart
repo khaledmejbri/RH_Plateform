@@ -129,7 +129,7 @@ class EvaluationItem {
       superieurId: superieurRaw,
       superieurNom: _displayName(json['superieurNom'] as String?),
       etapeActuelle: json['etapeActuelle'] as String?,
-      scoreSur20: json['scoreSur20'] as int?,
+      scoreSur20: (json['scoreSur20'] as num?)?.toInt(),
       familleMetierCode: json['familleMetierCode'] as String? ??
           json['famille_metier_code'] as String? ??
           json['roleMetier'] as String?,
@@ -392,24 +392,29 @@ extension SkillLevelExtension on SkillLevel {
 
 class EvaluationAnalytics {
   final num selfAverage;
-  final num managerAverage;
-  final num finalScore;
-  final num averageGap;
-  final num discrepancyPercentage;
+
+  /// D-E15 : absents tant que l'évaluation n'est pas validée (collaborateur évalué).
+  final num? managerAverage;
+  final num? finalScore;
+  final num? averageGap;
+  final num? discrepancyPercentage;
   final List<String> strengths;
   final List<String> improvementAreas;
   final List<String> recommendations;
 
   EvaluationAnalytics({
     required this.selfAverage,
-    required this.managerAverage,
-    required this.finalScore,
-    required this.averageGap,
-    required this.discrepancyPercentage,
+    this.managerAverage,
+    this.finalScore,
+    this.averageGap,
+    this.discrepancyPercentage,
     required this.strengths,
     required this.improvementAreas,
     required this.recommendations,
   });
+
+  /// Vrai si une note finale existe (jamais affichée à 0 par défaut, D-E15, R8).
+  bool get aNoteFinale => finalScore != null;
 
   factory EvaluationAnalytics.fromJson(Map<String, dynamic> json) {
     List<String> readList(String key) => json[key] is List
@@ -418,15 +423,124 @@ class EvaluationAnalytics {
 
     return EvaluationAnalytics(
       selfAverage: json['selfAverage'] as num? ?? 0,
-      managerAverage: json['managerAverage'] as num? ?? 0,
-      finalScore: json['finalScore'] as num? ?? 0,
-      averageGap: json['averageGap'] as num? ?? 0,
-      discrepancyPercentage: json['discrepancyPercentage'] as num? ?? 0,
+      managerAverage: json['managerAverage'] as num?,
+      finalScore: json['finalScore'] as num?,
+      averageGap: json['averageGap'] as num?,
+      discrepancyPercentage: json['discrepancyPercentage'] as num?,
       strengths: readList('strengths'),
       improvementAreas: readList('improvementAreas'),
       recommendations: readList('recommendations'),
     );
   }
+}
+
+/// Question du détail mobile (B7). D-E15 : `reponseResponsable`, `noteResponsable` et
+/// `commentaireResponsable` sont absents pour le collaborateur évalué avant la validation.
+class QuestionDetailMobile {
+  final String questionId;
+  final String libelle;
+  final String? section;
+  final String? type;
+  final String? reponseCollaborateur;
+  final int? noteCollaborateur;
+  final String? reponseResponsable;
+  final int? noteResponsable;
+  final String? commentaireResponsable;
+
+  const QuestionDetailMobile({
+    required this.questionId,
+    required this.libelle,
+    this.section,
+    this.type,
+    this.reponseCollaborateur,
+    this.noteCollaborateur,
+    this.reponseResponsable,
+    this.noteResponsable,
+    this.commentaireResponsable,
+  });
+
+  factory QuestionDetailMobile.fromJson(Map<String, dynamic> json) {
+    String? texte(Object? v) {
+      final t = v?.toString().trim();
+      return (t == null || t.isEmpty) ? null : t;
+    }
+
+    int? entier(Object? v) => v is num ? v.toInt() : null;
+    return QuestionDetailMobile(
+      questionId: texte(json['questionId']) ?? '',
+      libelle: texte(json['libelle']) ?? '',
+      section: texte(json['section']),
+      type: texte(json['type']),
+      reponseCollaborateur: texte(json['reponseCollaborateur']),
+      noteCollaborateur: entier(json['noteCollaborateur']),
+      reponseResponsable: texte(json['reponseResponsable']),
+      noteResponsable: entier(json['noteResponsable']),
+      commentaireResponsable: texte(json['commentaireResponsable']),
+    );
+  }
+
+  /// Vrai si le serveur a fourni une donnée du responsable pour cette question.
+  bool get aDonneesResponsable =>
+      noteResponsable != null || reponseResponsable != null || commentaireResponsable != null;
+}
+
+/// Détail d'une évaluation pour le mobile (B7, `EvaluationDetailMobile`, champs vides absents).
+class EvaluationDetailMobile {
+  final String statut;
+  final String? monRole;
+
+  /// Texte à afficher quand les notes du responsable sont masquées (D-E15).
+  final String? messageAttente;
+  final int? scoreSur20;
+  final double? moyenneCollaborateur;
+  final double? moyenneResponsable;
+  final List<QuestionDetailMobile> questionsGenerales;
+  final List<QuestionDetailMobile> competencesTechniques;
+
+  const EvaluationDetailMobile({
+    required this.statut,
+    this.monRole,
+    this.messageAttente,
+    this.scoreSur20,
+    this.moyenneCollaborateur,
+    this.moyenneResponsable,
+    this.questionsGenerales = const [],
+    this.competencesTechniques = const [],
+  });
+
+  factory EvaluationDetailMobile.fromJson(Map<String, dynamic> json) {
+    List<QuestionDetailMobile> questions(Object? brut) => brut is List
+        ? brut
+            .whereType<Map>()
+            .map((e) => QuestionDetailMobile.fromJson(Map<String, dynamic>.from(e)))
+            .toList()
+        : <QuestionDetailMobile>[];
+    final scores = json['scores'];
+    final message = json['messageAttente']?.toString().trim();
+    return EvaluationDetailMobile(
+      statut: json['statut']?.toString() ?? '',
+      monRole: json['monRole']?.toString(),
+      messageAttente: (message == null || message.isEmpty) ? null : message,
+      scoreSur20: (json['scoreSur20'] as num?)?.toInt(),
+      moyenneCollaborateur:
+          scores is Map ? (scores['moyenneCollaborateur'] as num?)?.toDouble() : null,
+      moyenneResponsable:
+          scores is Map ? (scores['moyenneResponsable'] as num?)?.toDouble() : null,
+      questionsGenerales: questions(json['questionsGenerales']),
+      competencesTechniques: questions(json['competencesTechniques']),
+    );
+  }
+
+  /// Toutes les questions (générales puis compétences) portant une donnée du responsable.
+  List<QuestionDetailMobile> get questionsAvecNotesResponsable => [
+        ...questionsGenerales,
+        ...competencesTechniques,
+      ].where((q) => q.aDonneesResponsable).toList();
+
+  /// D-E15 : les notes du responsable ne sont montrées que si le serveur les fournit et
+  /// qu'aucun message d'attente ne les masque.
+  bool get afficherNotesResponsable =>
+      messageAttente == null && questionsAvecNotesResponsable.isNotEmpty;
 }
 
 /// Libellés FR métier (microcopy E5 / UX § 5.2).

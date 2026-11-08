@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getToken } from './auth';
+import { libelleAppreciation } from '../utils/libelles';
 import {
   appreciationFromScore,
   normalizeCouleurAlerte,
@@ -213,6 +214,7 @@ export interface TechnicalQuestion {
 export interface EvaluationItem {
   identifiant: string;
   campaignNom: string;
+  campagneId?: string;
   collaborateurIdentifiant: string;
   superieurIdentifiant: string;
   collaborateurNom?: string;
@@ -339,14 +341,14 @@ function normalizeTemplate(value: any): EvaluationTemplate {
 function normalizeEvaluationItem(value: any): EvaluationItem {
   const scoreSur20 = value?.scoreSur20 != null ? Number(value.scoreSur20) : undefined;
   const appreciation =
-    value?.appreciation
-    ?? value?.appreciationLibelle
+    libelleAppreciation(value?.appreciationLibelle ?? value?.appreciation)
     ?? appreciationFromScore(scoreSur20);
   return {
     identifiant: idOf(value),
-    campaignNom: value?.campaignNom ?? value?.campagneNom ?? '',
-    collaborateurIdentifiant: String(value?.collaborateurIdentifiant ?? ''),
-    superieurIdentifiant: String(value?.superieurIdentifiant ?? ''),
+    campaignNom: value?.campagneNom ?? value?.campaignNom ?? '',
+    campagneId: value?.campagneId ? String(value.campagneId) : undefined,
+    collaborateurIdentifiant: String(value?.collaborateurId ?? value?.collaborateurIdentifiant ?? ''),
+    superieurIdentifiant: String(value?.superieurId ?? value?.superieurIdentifiant ?? ''),
     collaborateurNom: value?.collaborateurNom,
     collaborateurMatricule: value?.collaborateurMatricule,
     superieurNom: value?.superieurNom,

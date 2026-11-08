@@ -63,6 +63,12 @@ const TABLES: Record<Domaine, Table> = {
     EXPIREE: 'Expirée',
     DISPONIBLE: 'Disponible',
     REVOQUE: 'Révoqué',
+    EN_ATTENTE_VALIDATION_CROISEE: 'En cours',
+    VALIDEE_COLLABORATEUR: 'Validée par le collaborateur',
+    VALIDEE_SUPERIEUR: 'Validée par le responsable',
+    ARCHIVEE: 'Archivée',
+    OUVERTE: 'Ouverte',
+    TRAITEE: 'Traitée',
   },
   typeDemande: {
     CONGE: 'Congé',
@@ -194,4 +200,41 @@ export function intituleResponsable(typeNoeud: string | null | undefined, titreP
   if (t === 'DEPARTEMENT') return 'Chef de département';
   if (t === 'SERVICE') return 'Chef de service';
   return 'Responsable';
+}
+
+const TYPES_FORMATION: Record<string, string> = {
+  TECHNIQUE: 'Technique',
+  COMPORTEMENTALE: 'Comportementale',
+  COMPORTEMENTAL: 'Comportementale',
+  MANAGERIALE: 'Managériale',
+  MANAGEMENT: 'Management',
+  LINGUISTIQUE: 'Linguistique',
+  REGLEMENTAIRE: 'Réglementaire',
+  SECURITE: 'Sécurité',
+};
+
+/** Type de formation saisi : un code (« TECHNIQUE ») est affiché en clair, un texte libre reste tel quel. */
+export function libelleTypeFormation(valeur: string | null | undefined): string {
+  const v = (valeur ?? '').trim();
+  if (!v) return '—';
+  if (!/^[A-Z][A-Z0-9_]*$/.test(v)) return v;
+  if (TYPES_FORMATION[v]) return TYPES_FORMATION[v];
+  const t = v.replaceAll('_', ' ').toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+const APPRECIATIONS: Record<string, string> = {
+  INSUFFISANT: 'Insuffisant',
+  A_AMELIORER: 'À améliorer',
+  SATISFAISANT: 'Satisfaisant',
+  POSITIF: 'Positif',
+  EXCELLENT: 'Excellent',
+};
+
+/** Appréciation d'une évaluation : le libellé du serveur s'il existe, sinon traduction du code. */
+export function libelleAppreciation(valeur: string | null | undefined): string | undefined {
+  const v = (valeur ?? '').trim();
+  if (!v) return undefined;
+  const cle = v.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase().replace(/[\s-]/g, '_');
+  return APPRECIATIONS[cle] ?? v;
 }

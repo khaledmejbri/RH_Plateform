@@ -19,8 +19,10 @@ import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../compo
 import { correspond, libelleDansSelection, unitesRetenues, useFiltresUrl } from '../utils/filtres';
 import { DialogPanel } from '../components/useDialogA11y';
 import { Avatar, Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, type IconName, type Tone } from '../components/ui';
-import { formatDate, formatDateHeure, formatDuree, formatHeure, formatPeriode as formatPeriodeFr, formatPersonne } from '../utils/format';
+import { formatDateHeure, formatPersonne } from '../utils/format';
 import { libelle, libelleConnu, optionsDomaine } from '../utils/libelles';
+import { commentaireLisible, contenuLignes, intituleDemande, periodeDemande } from '../utils/demandes';
+import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 /** Par défaut la RH arrive sur sa file : demandes en attente de décision RH (§ 6.1). */
 type StatutFilter = '' | 'EN_VALIDATION_SUPERIEUR' | 'EN_VALIDATION_RRH' | 'APPROUVEE' | 'REFUSEE' | 'ANNULEE';
@@ -93,7 +95,7 @@ export default function DemandesAdministrativesPage() {
   async function decider(kind: 'approuver' | 'refuser') {
     if (!selected) return;
     const cible = selected;
-    const qui = `${intitule(cible)}${cible.numero ? ` ${cible.numero}` : ''} de ${formatPersonne(cible.demandeur_nom, cible.demandeur_matricule)}`;
+    const qui = `${intituleDemande(cible)}${cible.numero ? ` ${cible.numero}` : ''} de ${formatPersonne(cible.demandeur_nom, cible.demandeur_matricule)}`;
     let conflit: string | null = null;
     const ok = await confirm({
       message: kind === 'approuver' ? `Approuver la demande : ${qui} ?` : `Refuser la demande : ${qui} ?`,
@@ -136,22 +138,7 @@ export default function DemandesAdministrativesPage() {
     return code ? libelle('typeConge', code) : null;
   }
 
-  /** Intitulé de la demande : « Congé annuel », « Autorisation de sortie »… */
-  function intitule(d: DemandeAdministrative): string {
-    if (d.type_demande === 'CONGE') {
-      const c = (d.contenu as { type_conge?: string } | undefined)?.type_conge;
-      if (c) return libelle('typeConge', c);
-    }
-    return formatTypeDemande(d.type_demande);
-  }
 
-  /** Un commentaire qui n'est qu'un code ou en contient un (« Demande CONGE créée ») n'est pas affiché. */
-  function commentaireLisible(c: string | undefined): string | null {
-    const t = (c ?? '').trim();
-    if (!t) return null;
-    if (/^[A-Z0-9_ ]+$/.test(t) || /[A-Z]{3,}_[A-Z_]+/.test(t) || /\b(CONGE|RRH|RO)\b/.test(t)) return null;
-    return t;
-  }
 
   function typeChip(type: string): { tone: Tone; icon: IconName } {
     if (type === 'AUTORISATION_SORTIE') return { tone: 'info', icon: 'clock' };
@@ -159,38 +146,7 @@ export default function DemandesAdministrativesPage() {
     return { tone: 'success', icon: 'clipboard' };
   }
 
-  function formatPeriode(d: DemandeAdministrative): string {
-    if (d.type_demande === 'AUTORISATION_SORTIE') {
-      const c = d.contenu as { date_jour?: string; heure_debut?: string; heure_fin?: string } | undefined;
-      if (c?.date_jour) {
-        const heures = c.heure_debut && c.heure_fin ? ` · ${formatHeure(c.heure_debut)} → ${formatHeure(c.heure_fin)}` : '';
-        let duree = '';
-        if (c.heure_debut && c.heure_fin) {
-          const [hd, md] = c.heure_debut.split(':').map(Number);
-          const [hf, mf] = c.heure_fin.split(':').map(Number);
-          const mins = (hf * 60 + mf) - (hd * 60 + md);
-          if (mins > 0) duree = ` (${formatDuree(mins)})`;
-        }
-        return `${formatDate(c.date_jour)}${heures}${duree}`;
-      }
-    }
-    if (d.periode_debut) return formatPeriodeFr(d.periode_debut, d.periode_fin ?? d.periode_debut);
-    return '—';
-  }
 
-  /** Champs saisis par le demandeur, hors champs déjà rendus (type de congé, période). */
-  function contenuLignes(d: DemandeAdministrative): Array<[string, string]> {
-    const c = (d.contenu ?? {}) as Record<string, unknown>;
-    const libelles: Record<string, string> = {
-      motif: 'Motif',
-      lieu: 'Lieu',
-      certificat: 'Certificat',
-      pieces_jointes: 'Pièces jointes',
-    };
-    return Object.entries(libelles)
-      .filter(([cle]) => c[cle] != null && c[cle] !== '' && !(Array.isArray(c[cle]) && (c[cle] as unknown[]).length === 0))
-      .map(([cle, libelle]) => [libelle, Array.isArray(c[cle]) ? (c[cle] as unknown[]).join(', ') : String(c[cle])]);
-  }
 
   const retenues = useMemo(() => unitesRetenues(unites, f), [unites, f]);
   // Statut et type sont filtrés par le serveur ; recherche et unité côté client (liste complète renvoyée).
@@ -198,7 +154,7 @@ export default function DemandesAdministrativesPage() {
     () =>
       rows.filter(
         (d) =>
-          correspond([d.numero, d.demandeur_nom, d.demandeur_matricule, d.demandeur_unite, intitule(d)], f.q) &&
+          correspond([d.numero, d.demandeur_nom, d.demandeur_matricule, d.demandeur_unite, intituleDemande(d)], f.q) &&
           libelleDansSelection(retenues, d.demandeur_unite),
       ),
     [rows, f.q, retenues],
@@ -296,7 +252,7 @@ export default function DemandesAdministrativesPage() {
                       : null;
                   return (
                     <tr key={d.identifiant}>
-                      <td data-label="Numéro" className="cell-meta">{d.numero ?? ''}</td>
+                      <td data-label="Numéro" className="cell-meta"><DetailLink type="demande" id={d.identifiant} libelle={d.numero} /></td>
                       <td data-label="Créée le" className="cell-meta">{formatDateHeure(d.cree_le)}</td>
                       <td data-label="Type">
                         <Chip tone={chip.tone} icon={chip.icon}>
@@ -306,12 +262,12 @@ export default function DemandesAdministrativesPage() {
                       <td data-label="Statut">
                         <StatusBadge statut={d.statut} />
                       </td>
-                      <td data-label="Période" className="cell-meta">{formatPeriode(d)}</td>
+                      <td data-label="Période" className="cell-meta">{periodeDemande(d)}</td>
                       <td data-label="Demandeur">
                         <span className="cell-user">
                           <Avatar name={d.demandeur_nom ?? '?'} size={28} />
                           <span>
-                            <div>{formatPersonne(d.demandeur_nom, d.demandeur_matricule)}</div>
+                            <div><LienPersonne id={d.demandeur_identifiant} nom={d.demandeur_nom} matricule={d.demandeur_matricule} /></div>
                             <div className="cell-meta">{d.demandeur_unite ?? ''}</div>
                           </span>
                         </span>
@@ -336,7 +292,7 @@ export default function DemandesAdministrativesPage() {
           <DialogPanel label="Détail de la demande administrative" className="modal modal--md" onClose={closeDetail}>
             <div className="modal__head">
               <div>
-                <h3 className="modal__title" style={{ margin: 0 }}>{intitule(selected)}</h3>
+                <h3 className="modal__title" style={{ margin: 0 }}>{intituleDemande(selected)}</h3>
                 <p className="cell-meta" style={{ margin: 0 }}>
                   {[selected.numero, formatPersonne(selected.demandeur_nom, selected.demandeur_matricule)].filter(Boolean).join(' · ')}
                 </p>
@@ -349,7 +305,7 @@ export default function DemandesAdministrativesPage() {
             <div className="modal__scroll">
               <dl className="detail-grid">
                 <div><dt>Statut</dt><dd><StatusBadge statut={selected.statut} /></dd></div>
-                <div><dt>Période</dt><dd>{formatPeriode(selected)}</dd></div>
+                <div><dt>Période</dt><dd>{periodeDemande(selected)}</dd></div>
                 {selected.type_demande === 'CONGE' ? (
                   <div>
                     <dt>Type de congé</dt>

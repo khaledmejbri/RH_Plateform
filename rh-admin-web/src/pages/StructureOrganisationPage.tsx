@@ -16,6 +16,7 @@ import {
   type OrganigrammeNoeud,
   type Unite,
 } from '../api/rhClient';
+import DetailLink from '../detail/DetailLink';
 
 /**
  * § 5.3 / D-H02 : le responsable d'un service est le manager du nœud (valideur M01 1er niveau),
@@ -579,7 +580,7 @@ function UniteCard({
           <div className="struct-unit__main">
             <div className="struct-title">
               {chemin ? <span className="cell-meta">{chemin} ›</span> : null}
-              <span className="struct-title__name">{unite.libelle}</span>
+              <span className="struct-title__name"><DetailLink type="unite" id={unite.identifiant} libelle={unite.libelle} /></span>
               <Badge label={unite.code} color="gray" />
               {!unite.actif && <Badge label="Inactive" color="gray" />}
             </div>
@@ -587,7 +588,7 @@ function UniteCard({
               <div className="struct-person">
                 <Avatar name={`${ro.prenom} ${nomCollaborateur(ro)}`} size={28} />
                 <div>
-                  <span className="struct-person__name">{ro.prenom} {nomCollaborateur(ro)}</span>{' '}
+                  <span className="struct-person__name"><DetailLink type="collaborateur" id={ro.identifiant} libelle={`${ro.prenom} ${nomCollaborateur(ro)}`} /></span>{' '}
                   <Badge label="Responsable" color="purple" />
                   <div className="struct-person__meta">{ro.courriel_professionnel ?? ro.matricule}</div>
                 </div>
@@ -629,7 +630,7 @@ function UniteCard({
                   <li key={t.identifiant} className="struct-member">
                     <Avatar name={`${t.prenom} ${nomCollaborateur(t)}`} size={28} />
                     <div className="struct-member__text">
-                      <div className="struct-person__name struct-ellipsis">{t.prenom} {nomCollaborateur(t)}</div>
+                      <div className="struct-person__name struct-ellipsis"><DetailLink type="collaborateur" id={t.identifiant} libelle={`${t.prenom} ${nomCollaborateur(t)}`} /></div>
                       <div className="struct-person__meta">{t.poste_libelle ?? t.fonction ?? t.matricule}</div>
                     </div>
                     <StatusBadge statut={t.statut} />
@@ -689,14 +690,14 @@ function DeptCard({
 
           <div className="struct-unit__main">
             <div className="struct-title">
-              <h3 className="struct-title__name struct-title__name--lg">{dept.libelle}</h3>
+              <h3 className="struct-title__name struct-title__name--lg"><DetailLink type="unite" id={dept.identifiant} libelle={dept.libelle} /></h3>
               <Badge label={dept.code} color="blue" />
             </div>
             {chef ? (
               <div className="struct-person">
                 <Avatar name={`${chef.prenom} ${nomCollaborateur(chef)}`} size={28} />
                 <div>
-                  <span className="struct-person__name">{chef.prenom} {nomCollaborateur(chef)}</span>{' '}
+                  <span className="struct-person__name"><DetailLink type="collaborateur" id={chef.identifiant} libelle={`${chef.prenom} ${nomCollaborateur(chef)}`} /></span>{' '}
                   <Badge label="Responsable" color="blue" />
                   <div className="struct-person__meta">{chef.courriel_professionnel ?? chef.matricule}</div>
                 </div>

@@ -39,6 +39,14 @@ import '../../features/pointage/presentation/presence_sites_admin_screen.dart';
 import '../../features/pointage/presentation/presence_test_terrain_screen.dart';
 import '../../features/splash/presentation/splash_screen.dart';
 import '../../features/organigramme/presentation/organigramme_screen.dart';
+import '../../features/a_valider/presentation/a_valider_screen.dart';
+import '../../features/dossier/presentation/fiche_annuaire_screen.dart';
+import '../../features/dossier/presentation/fiche_equipe_screen.dart';
+import '../../features/dossier/presentation/mon_dossier_screen.dart';
+import '../../features/dossier/presentation/mon_equipe_screen.dart';
+import '../../features/formations/presentation/formation_detail_screen.dart';
+import '../../features/pointage/presentation/mes_pointages_screen.dart';
+import '../../features/pointage/presentation/pointage_manuel_detail_screen.dart';
 
 bool _peutConfigurerPresence(CollaborateurInfo info) => info.peutConfigurerPresence;
 bool _peutDemanderHeuresSup(CollaborateurInfo info) => info.peutDemanderHeuresSup;
@@ -92,6 +100,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
       GoRoute(path: '/pointage', builder: (_, __) => const PointageScreen()),
       GoRoute(path: '/pointage/manuel', builder: (_, __) => const PointageManuelScreen()),
+      GoRoute(path: '/pointage/mes-pointages', builder: (_, __) => const MesPointagesScreen()),
+      GoRoute(
+        path: '/pointage/manuels/:id',
+        builder: (c, s) => PointageManuelDetailScreen(id: s.pathParameters['id']!),
+      ),
+      GoRoute(path: '/dossier', builder: (_, __) => const MonDossierScreen()),
+      GoRoute(path: '/equipe', builder: (_, __) => const MonEquipeScreen()),
+      GoRoute(
+        path: '/equipe/:id',
+        builder: (c, s) => FicheEquipeScreen(collaborateurId: s.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/annuaire/:id',
+        builder: (c, s) => FicheAnnuaireScreen(collaborateurId: s.pathParameters['id']!),
+      ),
+      GoRoute(path: '/a-valider', builder: (_, __) => const AValiderScreen()),
       GoRoute(path: '/heures-sup/moi', builder: (_, __) => const MesHeuresSupScreen()),
       GoRoute(
         path: '/heures-sup/demandes',
@@ -138,6 +162,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/feed', redirect: (_, __) => '/home'),
       GoRoute(path: '/formations', builder: (_, __) => const FormationsListScreen()),
       GoRoute(path: '/formations/nouveau', builder: (_, __) => const FormationCreateScreen()),
+      GoRoute(
+        path: '/formations/:id',
+        builder: (c, s) => FormationDetailScreen(formationId: s.pathParameters['id']!),
+      ),
       GoRoute(path: '/plaintes', builder: (_, __) => const PlaintesListScreen()),
       GoRoute(path: '/plaintes/nouveau', builder: (_, __) => const PlainteCreateScreen()),
       GoRoute(

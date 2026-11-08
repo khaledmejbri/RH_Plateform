@@ -23,6 +23,10 @@ import com.hr.evaluation.service.TemplateTechniqueEvaluation;
 import com.hr.evaluation.service.EvaluationAnalyseAdminService;
 import com.hr.evaluation.service.EvaluationWorkflowService;
 import com.hr.evaluation.service.LibellesProfilService;
+import com.hr.evaluation.service.EvaluationMobileLectureService;
+import com.hr.evaluation.dto.AnalyseMobile;
+import com.hr.evaluation.dto.EvaluationDetailMobile;
+import com.hr.evaluation.dto.ReponseMobile;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -54,6 +58,7 @@ public class EvaluationMobileController {
     private final EvaluationValidationSuperieurService validationSuperieurService;
     private final IdentiteAppelantResolver identiteResolver;
     private final LibellesProfilService libellesProfil;
+    private final EvaluationMobileLectureService lectureService;
 
     public EvaluationMobileController(
             EvaluationWorkflowService workflowService,
@@ -65,7 +70,8 @@ public class EvaluationMobileController {
             TemplateTechniqueEvaluation templateTechnique,
             EvaluationValidationSuperieurService validationSuperieurService,
             IdentiteAppelantResolver identiteResolver,
-            LibellesProfilService libellesProfil) {
+            LibellesProfilService libellesProfil,
+            EvaluationMobileLectureService lectureService) {
         this.workflowService = workflowService;
         this.questionRepository = questionRepository;
         this.technicalQuestionRepository = technicalQuestionRepository;
@@ -76,6 +82,7 @@ public class EvaluationMobileController {
         this.validationSuperieurService = validationSuperieurService;
         this.identiteResolver = identiteResolver;
         this.libellesProfil = libellesProfil;
+        this.lectureService = lectureService;
     }
 
     /**
@@ -103,7 +110,7 @@ public class EvaluationMobileController {
             if (eval.getStatut() == com.hr.evaluation.domain.StatutEvaluationRh.ARCHIVEE) {
                 continue;
             }
-            response.add(toItem(eval));
+            response.add(toItem(eval, true));
         }
 
         return ResponseEntity.ok(response);
@@ -124,7 +131,7 @@ public class EvaluationMobileController {
         if (evaluation == null) {
             return ResponseEntity.noContent().build();
         }
-        return ResponseEntity.ok(toItem(evaluation));
+        return ResponseEntity.ok(toItem(evaluation, true));
     }
 
     /**
@@ -317,16 +324,25 @@ public class EvaluationMobileController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
+    /** B8 : réponses de l'évaluation ; la notation du responsable est masquée au collaborateur avant VALIDEE (D-E15). */
     @GetMapping("/{id}/reponses")
-    public ResponseEntity<List<EvaluationAnswer>> getAnswers(@PathVariable UUID id) {
+    public ResponseEntity<List<ReponseMobile>> getAnswers(@PathVariable UUID id) {
         evaluationAccess.requireParticipantEvaluation(id);
-        return ResponseEntity.ok(workflowService.obtenirReponsesEvaluation(id));
+        return ResponseEntity.ok(lectureService.reponses(id, identiteResolver.courant()));
+    }
+
+    /** B7 : détail lisible de l'évaluation (404 si inconnue, 403 si l'appelant n'est pas participant). */
+    @GetMapping("/{id}/detail")
+    public ResponseEntity<EvaluationDetailMobile> getDetail(@PathVariable UUID id) {
+        lectureService.verifierExiste(id);
+        evaluationAccess.requireParticipantEvaluation(id);
+        return ResponseEntity.ok(lectureService.detail(id, identiteResolver.courant()));
     }
 
     @GetMapping("/{id}/analytics")
-    public ResponseEntity<EvaluationAnalyticsResponse> getAnalytics(@PathVariable UUID id) {
+    public ResponseEntity<AnalyseMobile> getAnalytics(@PathVariable UUID id) {
         evaluationAccess.requireParticipantEvaluation(id);
-        return ResponseEntity.ok(analyseService.analyserPourMobile(id));
+        return ResponseEntity.ok(lectureService.analyse(id, identiteResolver.courant()));
     }
 
     @GetMapping("/manager/pending")
@@ -335,7 +351,7 @@ public class EvaluationMobileController {
         List<Evaluation> evaluations = workflowService.listerEvaluationsManager(managerId);
         List<EvaluationItemResponse> response = new ArrayList<>();
         for (Evaluation eval : evaluations) {
-            response.add(toItem(eval));
+            response.add(toItem(eval, false));
         }
         return ResponseEntity.ok(response);
     }
@@ -419,7 +435,7 @@ public class EvaluationMobileController {
     @PostMapping("/{id}/validate/manager")
     public ResponseEntity<EvaluationItemResponse> validateAsManager(@PathVariable UUID id) {
         Evaluation evaluation = validationSuperieurService.validerParSuperieur(id, identiteResolver.courant());
-        return ResponseEntity.ok(toItem(evaluation));
+        return ResponseEntity.ok(toItem(evaluation, false));
     }
 
     /**
@@ -434,10 +450,15 @@ public class EvaluationMobileController {
             throw new IllegalStateException("L'évaluation n'a pas de campagne associée");
         }
 
-        return ResponseEntity.ok(toItem(evaluation));
+        return ResponseEntity.ok(toItem(evaluation, EvaluationMobileLectureService.masquerPour(identiteResolver.courant(), evaluation)));
     }
 
-    private EvaluationItemResponse toItem(Evaluation evaluation) {
+    /**
+     * @param masquerScore D-E15 : le collaborateur ne voit pas le score consolidé (qui contient la notation du
+     *                     responsable) avant VALIDEE ; le champ est alors nul.
+     */
+    private EvaluationItemResponse toItem(Evaluation evaluation, boolean masquerScore) {
+        boolean cacher = masquerScore && !EvaluationMobileLectureService.notesResponsableVisibles(evaluation.getStatut());
         String campaignNom = evaluation.getCampaign() != null
                 ? evaluation.getCampaign().getNom()
                 : "Campagne évaluation";
@@ -453,7 +474,7 @@ public class EvaluationMobileController {
                 evaluation.getEtapeActuelle() != null
                         ? evaluation.getEtapeActuelle().name()
                         : "EVALUATION_GENERALE",
-                evaluation.getScoreSur20(),
+                cacher ? null : evaluation.getScoreSur20(),
                 evaluation.getFamilleMetierCode(),
                 libellesProfil.famille(evaluation.getFamilleMetierCode()),
                 evaluation.getNiveauSeniorite(),

@@ -15,8 +15,9 @@ import BarreFiltres, { AucunResultat, ChampDate, ChampSelect, FiltresUnite } fro
 import FiltreCollaborateur from '../components/FiltreCollaborateur';
 import { EmptyState, LoadingState } from '../components/ui';
 import { useFiltresUrl, type SelectionUnite } from '../utils/filtres';
-import { formatDate, formatDateHeure, formatHeuresMinutes, formatPeriode, formatPersonne, SITE_INTROUVABLE } from '../utils/format';
+import { formatDate, formatDateHeure, formatHeuresMinutes, formatPeriode, SITE_INTROUVABLE } from '../utils/format';
 import { VALEUR_NON_RECONNUE } from '../utils/libelles';
+import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 const TAILLE_PAGE = 50;
 const JOURS_MAX = 31;
@@ -266,7 +267,6 @@ export default function TempsTravailPanel() {
     .filter((s) => s.actif || s.id === f.site)
     .map((s) => ({ valeur: s.id, libelle: s.libelle || s.code }))
     .sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr'));
-  const nomCollab = (n: string | null, m: string | null) => formatPersonne(n, m);
 
   return (
     <div className="panel">
@@ -391,10 +391,10 @@ export default function TempsTravailPanel() {
                 {lignes.map((l) => (
                   <tr key={`${l.collaborateur_id}|${l.site_id}|${l.jour}`}>
                     <td>
-                      {nomCollab(l.collaborateur_nom, l.collaborateur_matricule)}
+                      <LienPersonne id={l.collaborateur_id} nom={l.collaborateur_nom} matricule={l.collaborateur_matricule} />
                     </td>
                     <td>{libelleUnite(l)}</td>
-                    <td>{l.site_libelle ?? SITE_INTROUVABLE}</td>
+                    <td>{l.site_libelle ? <DetailLink type="site" id={l.site_id} libelle={l.site_libelle} /> : SITE_INTROUVABLE}</td>
                     <td>{formatJour(l.jour)}</td>
                     <td>
                       <Horaires ligne={l} />
@@ -439,7 +439,7 @@ export default function TempsTravailPanel() {
                     {data.synthese.map((s) => (
                       <tr key={s.collaborateur_id}>
                         <td>
-                          {nomCollab(s.collaborateur_nom, s.collaborateur_matricule)}
+                          <LienPersonne id={s.collaborateur_id} nom={s.collaborateur_nom} matricule={s.collaborateur_matricule} />
                         </td>
                         <td>{s.nb_jours}</td>
                         <td>{s.nb_incompletes ?? 0}</td>

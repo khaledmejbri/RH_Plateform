@@ -23,11 +23,23 @@ class ReferentielClientTest {
 	private HttpServer serveur;
 	private int statut;
 	private String corps = "";
+	private long delaiMs;
+	private volatile String derniereRequete;
+	private volatile String dernierJeton;
 
 	@BeforeEach
 	void setUp() throws Exception {
 		serveur = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		serveur.createContext("/", echange -> {
+			derniereRequete = echange.getRequestURI().toString();
+			dernierJeton = echange.getRequestHeaders().getFirst("X-Internal-Token");
+			if (delaiMs > 0) {
+				try {
+					Thread.sleep(delaiMs);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+			}
 			byte[] octets = corps.getBytes(StandardCharsets.UTF_8);
 			echange.getResponseHeaders().add("Content-Type", "application/json");
 			echange.sendResponseHeaders(statut, octets.length == 0 ? -1 : octets.length);
@@ -96,5 +108,58 @@ class ReferentielClientTest {
 		statut = 404;
 
 		assertThatThrownBy(() -> client().monValideurPointage()).isInstanceOf(SecurityException.class);
+	}
+
+	@Test
+	void referentielTropLent_delaiDeLectureDepasse_503() {
+		statut = 200;
+		corps = "[]";
+		delaiMs = 600;
+		PresenceProperties props = new PresenceProperties();
+		props.getReferentiel().setBaseUrl("http://127.0.0.1:" + serveur.getAddress().getPort());
+		props.getReferentiel().setTimeoutLectureMs(150);
+		ReferentielClient lent = new ReferentielClient(props, "jeton-interne-de-test");
+
+		assertThatThrownBy(() -> lent.affectations(java.util.List.of(UUID.randomUUID())))
+				.isInstanceOfSatisfying(PresenceMetierException.class, e -> {
+					assertThat(e.getHttpStatus()).isEqualTo(503);
+					assertThat(e.getCode()).isEqualTo("REFERENTIEL_INDISPONIBLE");
+				});
+	}
+
+	@Test
+	void delaisParDefaut_2sConnexion_3sLecture() {
+		PresenceProperties props = new PresenceProperties();
+
+		assertThat(props.getReferentiel().getTimeoutConnexionMs()).isEqualTo(2000);
+		assertThat(props.getReferentiel().getTimeoutLectureMs()).isEqualTo(3000);
+	}
+
+	@Test
+	void estValideurDe_envoieLeCompteDuJwtEtLeJetonInterne_lisLaReponse() {
+		statut = 200;
+		corps = "{\"est_valideur\":true,\"collaborateur_actif\":true}";
+		UUID membre = UUID.randomUUID();
+
+		assertThat(client().estValideurDe(membre, "compte-1")).isTrue();
+		assertThat(derniereRequete).isEqualTo("/internal/referentiel/collaborateurs/" + membre + "/valideur?compte_id=compte-1");
+		assertThat(dernierJeton).isEqualTo("jeton-interne-de-test");
+	}
+
+	@Test
+	void estValideurDe_faux_oubliCollaborateurInactif_faux() {
+		statut = 200;
+		corps = "{\"est_valideur\":false}";
+		assertThat(client().estValideurDe(UUID.randomUUID(), "c")).isFalse();
+		corps = "{\"est_valideur\":true,\"collaborateur_actif\":false}";
+		assertThat(client().estValideurDe(UUID.randomUUID(), "c")).isFalse();
+	}
+
+	@Test
+	void estValideurDe_referentielEnErreur_503_echecFerme() {
+		statut = 500;
+
+		assertThatThrownBy(() -> client().estValideurDe(UUID.randomUUID(), "c"))
+				.isInstanceOfSatisfying(PresenceMetierException.class, e -> assertThat(e.getHttpStatus()).isEqualTo(503));
 	}
 }

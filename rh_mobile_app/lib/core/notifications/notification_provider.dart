@@ -9,33 +9,42 @@ import '../constants/api_constants.dart';
 import '../network/api_client.dart';
 import '../storage/secure_token_storage.dart';
 import 'notification_model.dart';
+import 'notification_repository.dart';
 import 'ws_url.dart';
 
 class NotificationState {
+  /// Notifications reçues en temps réel depuis le lancement (la liste complète vient de l'API).
   final List<AppNotification> notifications;
   final bool connected;
+
+  /// Compteur de non lues relu au serveur, +1 à chaque message temps réel.
+  final int nonLues;
 
   const NotificationState({
     this.notifications = const [],
     this.connected = false,
+    this.nonLues = 0,
   });
 
-  int get unreadCount => notifications.where((n) => !n.isRead).length;
+  int get unreadCount => nonLues;
 
   NotificationState copyWith({
     List<AppNotification>? notifications,
     bool? connected,
+    int? nonLues,
   }) {
     return NotificationState(
       notifications: notifications ?? this.notifications,
       connected: connected ?? this.connected,
+      nonLues: nonLues ?? this.nonLues,
     );
   }
 }
 
 class NotificationNotifier extends StateNotifier<NotificationState> {
-  NotificationNotifier(this._storage) : super(const NotificationState());
+  NotificationNotifier(this._storage, this._repository) : super(const NotificationState());
 
+  final NotificationRepository _repository;
   final SecureTokenStorage _storage;
   StompClient? _client;
   String? _currentUserId;
@@ -51,6 +60,8 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       return;
     }
     _connecting = true;
+    // Le compteur vient de l'API : il est correct même si le WebSocket reste indisponible.
+    unawaited(rafraichirCompteur());
     try {
       final token = await _storage.readAccessToken();
 
@@ -138,6 +149,8 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
             debugPrint('[STOMP] ✅ CONNECTED SUCCESSFULLY!');
             _tentativesReconnexion = 0;
             _timerReconnexion?.cancel();
+            // Notifications reçues pendant la coupure : on relit le compteur à chaque (re)connexion.
+            unawaited(rafraichirCompteur());
             debugPrint('[STOMP] Frame: ${frame.command}');
             // Use microtask to avoid updating state during build phase
             Future.microtask(() {
@@ -279,6 +292,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       Future.microtask(() {
         state = state.copyWith(
           notifications: [notif, ...state.notifications],
+          nonLues: state.nonLues + 1,
         );
         debugPrint('[STOMP] ✅ Notification added to state. Total: ${state.notifications.length}');
       });
@@ -298,21 +312,29 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
     _client = null;
     _currentUserId = null;
     _connecting = false;
-    state = state.copyWith(connected: false);
+    state = const NotificationState();
   }
 
-  void markAllRead() {
-    final updated = state.notifications
-        .map((n) => n.copyWith(isRead: true))
-        .toList();
-    state = state.copyWith(notifications: updated);
+  /// Relit le nombre de non lues au serveur ; en cas d'échec, le compteur affiché est conservé.
+  Future<void> rafraichirCompteur() async {
+    try {
+      final n = await _repository.compteur();
+      if (mounted) state = state.copyWith(nonLues: n);
+    } catch (e) {
+      debugPrint('[NOTIF] Compteur indisponible : $e');
+    }
   }
 
-  void markRead(String id) {
-    final updated = state.notifications
-        .map((n) => n.id == id ? n.copyWith(isRead: true) : n)
-        .toList();
-    state = state.copyWith(notifications: updated);
+  /// Marque une notification lue au serveur puis relit le compteur. Propage l'erreur réseau.
+  Future<void> markRead(String id) async {
+    await _repository.marquerLue(id);
+    await rafraichirCompteur();
+  }
+
+  /// Marque tout comme lu au serveur puis relit le compteur. Propage l'erreur réseau.
+  Future<void> markAllRead() async {
+    await _repository.toutMarquerLu();
+    await rafraichirCompteur();
   }
 
   @override
@@ -326,5 +348,8 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
 
 final notificationProvider =
     StateNotifierProvider<NotificationNotifier, NotificationState>((ref) {
-  return NotificationNotifier(ref.watch(secureTokenStorageProvider));
+  return NotificationNotifier(
+    ref.watch(secureTokenStorageProvider),
+    ref.watch(notificationRepositoryProvider),
+  );
 });

@@ -1,107 +1,96 @@
 package com.hr.notification.config;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessageDeliveryException;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Component;
 
 import java.security.Principal;
+import java.util.UUID;
 
+/**
+ * Authentifie la trame STOMP CONNECT : le jeton doit être présent, de signature valide (JWKS de
+ * svc-identite-acces), non expiré et porter un compte ({@code identifiant_utilisateur}). Sinon la connexion est
+ * refusée. Le compte devient le nom du principal : {@code /user/queue/notifications} ne sert que ce compte.
+ * Les autres trames exigent une session authentifiée ; seul l'abonnement à sa propre file est permis.
+ */
 @Component
+@RequiredArgsConstructor
 @Slf4j
 public class StompAuthInterceptor implements ChannelInterceptor {
+
+    static final String CLAIM_COMPTE = "identifiant_utilisateur";
+    static final String ATTRIBUT_COMPTE = "compte_authentifie";
+    static final String FILE_UTILISATEUR = "/user/queue/";
+
+    private final JwtDecoder jwtDecoder;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+        if (accessor == null || accessor.getCommand() == null) {
+            return message;
+        }
+        StompCommand commande = accessor.getCommand();
 
-        if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
-            String authHeader = accessor.getFirstNativeHeader("Authorization");
-            if (authHeader == null) {
-                authHeader = accessor.getFirstNativeHeader("authorization");
+        if (StompCommand.CONNECT.equals(commande) || StompCommand.STOMP.equals(commande)) {
+            Principal principal = authentifier(accessor);
+            accessor.setUser(principal);
+            if (accessor.getSessionAttributes() != null) {
+                accessor.getSessionAttributes().put(ATTRIBUT_COMPTE, principal.getName());
             }
-            
-            log.info("STOMP CONNECT received");
-            log.info("Authorization header present: {}", authHeader != null);
-            
-            if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                String token = authHeader.substring(7);
-                log.info("JWT Token found (length: {})", token.length());
-                
-                // For now, we'll extract user info from JWT without full validation
-                // In production, you should validate the JWT signature here
-                try {
-                    // Extract user ID from JWT payload
-                    String userId = extractUserIdFromToken(token);
-                    
-                    if (userId != null) {
-                        // Set the principal for user-specific messaging
-                        accessor.setUser(new Principal() {
-                            @Override
-                            public String getName() {
-                                return userId;
-                            }
-                        });
-                        log.info("✅ User authenticated via STOMP: {}", userId);
-                    } else {
-                        log.warn("⚠️ Could not extract user ID from token");
-                    }
-                } catch (Exception e) {
-                    log.error("❌ Error processing JWT token", e);
-                }
-            } else {
-                log.warn("⚠️ No valid Authorization header found in STOMP CONNECT");
+        } else if (StompCommand.SUBSCRIBE.equals(commande) || StompCommand.SEND.equals(commande)) {
+            if (accessor.getUser() == null && !sessionAuthentifiee(accessor)) {
+                throw new MessageDeliveryException("Connexion non authentifiée");
+            }
+            if (StompCommand.SEND.equals(commande)) {
+                throw new MessageDeliveryException("Envoi non autorisé");
+            }
+            String destination = accessor.getDestination();
+            if (destination == null || !destination.startsWith(FILE_UTILISATEUR)) {
+                throw new MessageDeliveryException("Abonnement non autorisé");
             }
         }
-
         return message;
     }
 
-    /**
-     * Extract user ID from JWT token without full validation
-     * In production, use proper JWT validation with signature check
-     */
-    private String extractUserIdFromToken(String token) {
-        try {
-            // JWT has 3 parts: header.payload.signature
-            String[] parts = token.split("\\.");
-            if (parts.length != 3) {
-                log.warn("Invalid JWT format");
-                return null;
-            }
+    private static boolean sessionAuthentifiee(StompHeaderAccessor accessor) {
+        return accessor.getSessionAttributes() != null && accessor.getSessionAttributes().get(ATTRIBUT_COMPTE) != null;
+    }
 
-            // Decode payload (base64url)
-            String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]));
-            
-            // Simple JSON parsing to extract user ID
-            // Look for common user ID fields
-            if (payload.contains("\"identifiant_utilisateur\"")) {
-                // Extract value after "identifiant_utilisateur":"
-                int start = payload.indexOf("\"identifiant_utilisateur\":\"") + "\"identifiant_utilisateur\":\"".length();
-                int end = payload.indexOf("\"", start);
-                if (start > 0 && end > start) {
-                    return payload.substring(start, end);
-                }
-            }
-            
-            if (payload.contains("\"sub\"")) {
-                int start = payload.indexOf("\"sub\":\"") + "\"sub\":\"".length();
-                int end = payload.indexOf("\"", start);
-                if (start > 0 && end > start) {
-                    return payload.substring(start, end);
-                }
-            }
-            
-            log.warn("Could not find user ID in JWT payload");
-            return null;
-            
-        } catch (Exception e) {
-            log.error("Error extracting user ID from JWT", e);
-            return null;
+    private Principal authentifier(StompHeaderAccessor accessor) {
+        String entete = accessor.getFirstNativeHeader("Authorization");
+        if (entete == null) {
+            entete = accessor.getFirstNativeHeader("authorization");
         }
+        if (entete == null || !entete.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            log.warn("STOMP CONNECT refusé : jeton absent");
+            throw new MessageDeliveryException("Jeton absent");
+        }
+        Jwt jwt;
+        try {
+            jwt = jwtDecoder.decode(entete.substring(7).trim());
+        } catch (JwtException e) {
+            log.warn("STOMP CONNECT refusé : jeton invalide ou expiré");
+            throw new MessageDeliveryException("Jeton invalide");
+        }
+        String compte = jwt.getClaimAsString(CLAIM_COMPTE);
+        try {
+            compte = UUID.fromString(compte).toString();
+        } catch (IllegalArgumentException | NullPointerException e) {
+            log.warn("STOMP CONNECT refusé : jeton sans compte");
+            throw new MessageDeliveryException("Jeton sans compte");
+        }
+        final String nom = compte;
+        return () -> nom;
     }
 }

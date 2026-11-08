@@ -155,6 +155,17 @@ class ProfileScreen extends ConsumerWidget {
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     const SizedBox(height: 8),
+                    _MenuSection(items: [
+                      _MenuItem(
+                          icon: Icons.folder_shared_outlined,
+                          label: 'Mon dossier',
+                          onTap: () => context.push('/dossier')),
+                      _MenuItem(
+                          icon: Icons.schedule_rounded,
+                          label: 'Mes pointages',
+                          onTap: () => context.push('/pointage/mes-pointages')),
+                    ]),
+                    const SizedBox(height: 12),
                     if (ref.watch(facialControllerProvider).afficherEntreeProfil)
                       _MenuSection(items: [
                         _MenuItem(

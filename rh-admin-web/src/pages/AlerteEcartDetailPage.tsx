@@ -69,6 +69,10 @@ export default function AlerteEcartDetailPage() {
   );
 
   useEffect(() => {
+    document.title = 'Alerte d’écart — RH-Évènement';
+  }, []);
+
+  useEffect(() => {
     void charger();
   }, [charger]);
 

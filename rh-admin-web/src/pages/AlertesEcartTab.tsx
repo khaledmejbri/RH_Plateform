@@ -20,6 +20,7 @@ import { formatDate, formatPersonne } from '../utils/format';
 import { routeAlerteEcart } from '../api/notificationContenu';
 import BarreFiltres, { AucunResultat, ChampSelect } from '../components/BarreFiltres';
 import { correspond, useFiltresUrl } from '../utils/filtres';
+import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 const TAILLE = 20;
 const FILTRES_DEFAUT = { q: '', statut: '', niveau: '', campagne: '', unite: '' };
@@ -218,11 +219,11 @@ export default function AlertesEcartTab() {
                       <AlerteEcartBadge niveau={a.niveau} />
                     </td>
                     <td>
-                      <div>{formatPersonne(a.collaborateurNom, a.collaborateurMatricule)}</div>
+                      <div>{a.collaborateurId ? <LienPersonne id={a.collaborateurId} nom={a.collaborateurNom} matricule={a.collaborateurMatricule} /> : formatPersonne(a.collaborateurNom, a.collaborateurMatricule)}{' '}<DetailLink type="alerte" id={a.identifiant} libelle={`Alerte d’écart — ${a.collaborateurNom ?? 'collaborateur'}`}>(voir l’alerte)</DetailLink></div>
                       <div className="text-muted text-sm">{a.collaborateurUniteLibelle ?? ''}</div>
                     </td>
-                    <td>{a.campagneNom ?? '—'}</td>
-                    <td>{a.superieurNom ?? '—'}</td>
+                    <td>{a.campagneNom ? <DetailLink type="campagne" id={a.campagneId} libelle={a.campagneNom} /> : '—'}</td>
+                    <td>{a.superieurNom ? (a.superieurId ? <LienPersonne id={a.superieurId} nom={a.superieurNom} /> : a.superieurNom) : '—'}</td>
                     <td>{a.sensGlobal ? LIBELLES_SENS_GLOBAL[a.sensGlobal] : '—'}</td>
                     <td>
                       {a.nbCompetencesEnEcart} en écart, max {a.ecartMax} ★

@@ -9,6 +9,7 @@ import { DialogPanel } from '../components/useDialogA11y';
 import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge } from '../components/ui';
 import { formatDateHeure, formatPersonne } from '../utils/format';
 import { libelle, libelleConnu } from '../utils/libelles';
+import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 /**
  * CDC v2 §M04 corrections :
@@ -207,11 +208,11 @@ export default function PlaintesSuiviPage() {
               <tbody>
                 {affichees.map((p) => (
                   <tr key={p.identifiant}>
-                    <td data-label="Numéro"><span className="cell-meta">{p.numero_ticket}</span></td>
+                    <td data-label="Numéro"><span className="cell-meta"><DetailLink type="plainte" id={p.identifiant} libelle={p.numero_ticket} /></span></td>
                     <td data-label="Date" className="cell-meta">{formatDateHeure(p.cree_le)}</td>
                     <td data-label="Type"><TypeChip type={p.type_plainte} /></td>
                     <td data-label="Auteur">
-                      <div>{formatPersonne(p.auteur_nom, p.auteur_matricule)}</div>
+                      <div><LienPersonne id={p.auteur_identifiant} nom={p.auteur_nom} matricule={p.auteur_matricule} /></div>
                     </td>
                     <td data-label="Titre" className="cell-main">
                       <div className="cell-main__title">{p.titre}</div>

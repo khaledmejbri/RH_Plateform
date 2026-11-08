@@ -13,7 +13,7 @@ class RestLibellesProfilClientTest {
 	@Test
 	void echecApresSuccesGardeLesDerniersLibellesValides() throws Exception {
 		AtomicInteger appels = new AtomicInteger();
-		RestLibellesProfilClient client = new RestLibellesProfilClient("http://localhost:1", "x") {
+		RestLibellesProfilClient client = new RestLibellesProfilClient("http://localhost:1", "x", 1000, 2000) {
 			@Override
 			LibellesProfil charger() {
 				if (appels.incrementAndGet() == 1) {

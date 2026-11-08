@@ -64,4 +64,21 @@ class AlerteEcartMapperLisibiliteTest {
         assertThat(AlerteEcartMapper.detail(a, false, "LECTURE_SEULE").collaborateurNom())
                 .isEqualTo("Collaborateur introuvable");
     }
+
+    @Test
+    void resumeEtDetailPortentLesFichesDuCollaborateurEtDuResponsable() {
+        AlerteEcart a = alerte();
+        UUID collaborateur = UUID.randomUUID();
+        UUID superieur = UUID.randomUUID();
+        a.setCollaborateurFicheId(collaborateur);
+        a.setSuperieurFicheId(superieur);
+
+        AlerteEcartResume r = AlerteEcartMapper.resume(a);
+        AlerteEcartDetail d = AlerteEcartMapper.detail(a, true, null);
+
+        assertThat(r.collaborateurId()).isEqualTo(collaborateur);
+        assertThat(r.superieurId()).isEqualTo(superieur);
+        assertThat(d.collaborateurId()).isEqualTo(collaborateur);
+        assertThat(d.superieurId()).isEqualTo(superieur);
+    }
 }

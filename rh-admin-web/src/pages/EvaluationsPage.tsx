@@ -30,6 +30,7 @@ import { VALEUR_NON_RECONNUE } from '../utils/libelles';
 import { getTousCollaborateurs, getUnites, nomCollaborateur, type CollaborateurRow, type Unite } from '../api/rhClient';
 import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
 import { appartientSelection, correspond, indexerUnites, pluriel, selectionActive, useFiltresUrl } from '../utils/filtres';
+import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 type Tab = 'campaigns' | 'templates' | 'evaluations' | 'alertes';
 type TemplateSubTab = 'GENERIC' | 'TECHNICAL';
@@ -632,7 +633,7 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
   return (
     <div className="card">
       <div className="card__header">
-        <h3 className="struct-title__name">{campaign.nom}</h3>
+        <h3 className="struct-title__name"><DetailLink type="campagne" id={campaign.identifiant} libelle={campaign.nom} /></h3>
         <StatusBadge
           status={campaign.statut}
           label={campaign.statut === 'PLANIFIEE' ? `Planifiée · lancement le ${jourFr(campaign.dateDebut)}` : undefined}
@@ -1134,7 +1135,8 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
                 <Fragment key={evaluation.identifiant}>
                   <tr className={selectedId === evaluation.identifiant ? 'is-selected' : undefined}>
                     <td>
-                      <strong>{evaluation.campaignNom}</strong>
+                      <strong><DetailLink type="campagne" id={evaluation.campagneId} libelle={evaluation.campaignNom} /></strong>
+                      <div className="cell-meta"><DetailLink type="evaluation" id={evaluation.identifiant} libelle={`Évaluation de ${evaluation.collaborateurNom ?? 'collaborateur'}`}>Voir l’évaluation</DetailLink></div>
                       {evaluation.profilMetierIncomplet && (
                         <div>
                           <span
@@ -1157,8 +1159,8 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
                         </div>
                       )}
                     </td>
-                    <td>{personLabel(evaluation.collaborateurNom, evaluation.collaborateurMatricule, COLLABORATEUR_INTROUVABLE)}</td>
-                    <td>{personLabel(evaluation.superieurNom, undefined, evaluation.superieurIdentifiant ? COLLABORATEUR_INTROUVABLE : undefined)}</td>
+                    <td>{evaluation.collaborateurNom ? <LienPersonne id={evaluation.collaborateurIdentifiant} nom={evaluation.collaborateurNom} matricule={evaluation.collaborateurMatricule} /> : personLabel(evaluation.collaborateurNom, evaluation.collaborateurMatricule, COLLABORATEUR_INTROUVABLE)}</td>
+                    <td>{evaluation.superieurNom ? <LienPersonne id={evaluation.superieurIdentifiant} nom={evaluation.superieurNom} /> : personLabel(evaluation.superieurNom, undefined, evaluation.superieurIdentifiant ? COLLABORATEUR_INTROUVABLE : undefined)}</td>
                     <td className="cell-meta">{etapeLabel(evaluation.etapeActuelle)}</td>
                     <td><StatusBadge status={evaluation.statut} /></td>
                     <td>

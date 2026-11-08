@@ -290,15 +290,35 @@ public class PresencePointageService {
 		return toPage(result);
 	}
 
-	@Transactional(readOnly = true)
+	// Sans transaction englobante : la page appelle le référentiel (noms, compte du collaborateur).
 	public PageResponse<PointageResponse> listerAdmin(
 			UUID siteId, PointageStatut statut, PointageType type, Instant from, Instant to,
 			List<VerificationFaciale> verificationFaciale, UUID collaborateurId, int page, int size) {
 		int pageSize = Math.clamp(size, 1, 50);
 		Page<PresencePointage> result = pointageRepository.findAll(
-				PresencePointageRepository.filtreAdmin(siteId, statut, type, from, to, verificationFaciale, collaborateurId),
+				PresencePointageRepository.filtreAdminIdentites(siteId, statut, type, from, to, verificationFaciale,
+						identitesDe(collaborateurId)),
 				PageRequest.of(Math.max(page, 0), pageSize, Sort.by(Sort.Direction.DESC, "serverTs")));
 		return enrichirIdentites(toPage(result));
+	}
+
+	/** Fiche et, si le référentiel répond, compte du collaborateur filtré ; nul sans filtre. */
+	private java.util.Set<String> identitesDe(UUID ficheId) {
+		if (ficheId == null) {
+			return null;
+		}
+		java.util.Set<String> identites = new java.util.LinkedHashSet<>();
+		identites.add(ficheId.toString());
+		try {
+			for (ReferentielClient.Affectation a : referentielClient.affectations(List.of(ficheId))) {
+				if (a.compteId() != null) {
+					identites.add(a.compteId().toString());
+				}
+			}
+		} catch (RuntimeException ex) {
+			log.warn("Filtre collaborateur sans élargissement au compte : {}", ex.getMessage());
+		}
+		return identites;
 	}
 
 	/** Ajoute noms et sites : un appel groupé au référentiel et une requête sur les sites par page. */

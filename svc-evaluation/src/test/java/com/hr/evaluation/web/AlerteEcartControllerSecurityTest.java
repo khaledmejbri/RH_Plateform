@@ -83,6 +83,8 @@ class AlerteEcartControllerSecurityTest {
 	@MockitoBean
 	private EvaluationAccessService evaluationAccess;
 	@MockitoBean
+	private com.hr.evaluation.service.EvaluationDetailService detailService;
+	@MockitoBean
 	private EvaluationAnalyseAdminService analyseAdminService;
 	@MockitoBean
 	private JwtDecoder jwtDecoder;
@@ -92,7 +94,7 @@ class AlerteEcartControllerSecurityTest {
 	@BeforeEach
 	void setUp() {
 		when(identiteResolver.courant()).thenReturn(new IdentiteAppelant(UUID.randomUUID(), "x", true, Optional::empty));
-		when(traitementService.lister(any(), any(), any(), any(), anyInt(), anyInt()))
+		when(traitementService.lister(any(), any(), any(), any(), any(), anyInt(), anyInt()))
 				.thenReturn(new AlerteEcartPage(List.of(), 0, 0, 20));
 		when(traitementService.compteur()).thenReturn(new AlerteEcartCompteur(0, 0));
 		when(traitementService.ouvertesParNiveau(any())).thenReturn(
@@ -103,7 +105,7 @@ class AlerteEcartControllerSecurityTest {
 	}
 
 	private static AlerteEcartDetail mock() {
-		return new AlerteEcartDetail(null, null, null, null, null, null, null, null, null, null, null, null, null,
+		return new AlerteEcartDetail(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
 				0, 0, null, false, null, null, List.of(), null, null, List.of(), true, null);
 	}
 
@@ -192,7 +194,18 @@ class AlerteEcartControllerSecurityTest {
 						.param("campagneId", campagne.toString()).param("taille", "50").with(avec("DIRECTION")))
 				.andExpect(status().isOk());
 		verify(traitementService).lister(eq(com.hr.evaluation.domain.StatutAlerteEcart.OUVERTE),
-				eq(com.hr.evaluation.domain.NiveauEcart.URGENTE), eq(campagne), eq(null), eq(0), eq(50));
+				eq(com.hr.evaluation.domain.NiveauEcart.URGENTE), eq(campagne), eq(null), eq(null), eq(0), eq(50));
+	}
+
+	@Test
+	void filtreCollaborateurId_transmisAuService_etIdMalFormeRefuse() throws Exception {
+		UUID collaborateur = UUID.randomUUID();
+		mockMvc.perform(get(BASE).param("collaborateurId", collaborateur.toString()).with(avec("DIRECTION")))
+				.andExpect(status().isOk());
+		verify(traitementService).lister(eq(null), eq(null), eq(null), eq(null), eq(collaborateur), eq(0), eq(20));
+
+		mockMvc.perform(get(BASE).param("collaborateurId", "pas-un-uuid").with(avec("RH")))
+				.andExpect(status().isBadRequest());
 	}
 
 	@Test
@@ -218,7 +231,7 @@ class AlerteEcartControllerSecurityTest {
 	void cheminsLitterauxNeSontPasCapturesParLeIdDeLAdmin() throws Exception {
 		// /alertes-ecart et /alertes-ecart/compteur vont au contrôleur d'alertes ; /{id} reste au contrôleur admin.
 		mockMvc.perform(get(BASE).with(avec("RH"))).andExpect(status().isOk());
-		verify(traitementService).lister(any(), any(), any(), any(), anyInt(), anyInt());
+		verify(traitementService).lister(any(), any(), any(), any(), any(), anyInt(), anyInt());
 		verifyNoInteractions(workflowService);
 
 		mockMvc.perform(get(BASE + "/compteur").with(avec("RH"))).andExpect(status().isOk());

@@ -15,6 +15,10 @@ public record AffectationCollaborateurResponse(
 		@JsonProperty("nom") String nom,
 		@JsonProperty("direction_libelle") String directionLibelle,
 		@JsonProperty("departement_libelle") String departementLibelle,
-		@JsonProperty("service_libelle") String serviceLibelle
+		@JsonProperty("service_libelle") String serviceLibelle,
+		@JsonProperty("actif") boolean actif,
+		@JsonProperty("poste_libelle") String posteLibelle,
+		@JsonProperty("unite_id") UUID uniteId,
+		@JsonProperty("unite_libelle") String uniteLibelle
 ) {
 }

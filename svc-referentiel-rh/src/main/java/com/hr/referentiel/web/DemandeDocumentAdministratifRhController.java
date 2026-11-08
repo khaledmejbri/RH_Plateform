@@ -69,6 +69,17 @@ public class DemandeDocumentAdministratifRhController {
 		return ResponseEntity.ok(demandeDocumentAdministratifRhService.fileAttentePourRh(q));
 	}
 
+	/** D-N01 : toutes les demandes de documents (tous statuts), filtrables par demandeur, statut et numéro. */
+	@GetMapping("/liste")
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
+	public ResponseEntity<List<DemandeDocumentAdministratifRhResponse>> listerPourRh(
+			@RequestParam(name = "collaborateur_id", required = false) UUID collaborateurId,
+			@RequestParam(name = "statut", required = false)
+			com.hr.referentiel.domain.StatutDocumentAdministratifDemandeRh statut,
+			@RequestParam(name = "q", required = false) String q) {
+		return ResponseEntity.ok(demandeDocumentAdministratifRhService.listerPourRh(collaborateurId, statut, q));
+	}
+
 	/** Prendre la prochaine demande de la file (priorité SLA). */
 	@PostMapping("/prendre-prochaine")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)

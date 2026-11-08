@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -36,7 +37,14 @@ public class ReferentielClient {
 	public ReferentielClient(
 			PresenceProperties properties,
 			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne) {
-		this.restClient = RestClient.builder().baseUrl(properties.getReferentiel().getBaseUrl()).build();
+		// Délais d'attente configurables : un référentiel lent ne doit pas bloquer indéfiniment une requête de présence.
+		PresenceProperties.Referentiel ref = properties.getReferentiel();
+		java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
+				.connectTimeout(java.time.Duration.ofMillis(ref.getTimeoutConnexionMs()))
+				.build();
+		JdkClientHttpRequestFactory fabrique = new JdkClientHttpRequestFactory(http);
+		fabrique.setReadTimeout(java.time.Duration.ofMillis(ref.getTimeoutLectureMs()));
+		this.restClient = RestClient.builder().baseUrl(ref.getBaseUrl()).requestFactory(fabrique).build();
 		this.jetonInterne = jetonInterne;
 	}
 
@@ -114,6 +122,25 @@ public class ReferentielClient {
 		}
 	}
 
+	/**
+	 * Décision sensible (fiche d'équipe, D-N02) : {@code compteAppelant} (lu dans le JWT) est-il le valideur D-H03 de
+	 * {@code collaborateurId} ? Jamais mis en cache ; référentiel injoignable ou trop lent : 503, aucune donnée.
+	 * Collaborateur inconnu, compte sans fiche ou collaborateur inactif : {@code est_valideur = false}.
+	 */
+	public boolean estValideurDe(UUID collaborateurId, String compteAppelant) {
+		try {
+			ValideurDe body = restClient.get()
+					.uri(uri -> uri.path("/internal/referentiel/collaborateurs/{collaborateurId}/valideur")
+							.queryParam("compte_id", compteAppelant).build(collaborateurId))
+					.header(EN_TETE_JETON_INTERNE, jetonInterne)
+					.retrieve()
+					.body(ValideurDe.class);
+			return body != null && body.estValideur() && body.collaborateurActif() != Boolean.FALSE;
+		} catch (RestClientException ex) {
+			throw referentielIndisponible(ex);
+		}
+	}
+
 	private static PresenceMetierException referentielIndisponible(RestClientException ex) {
 		log.warn("Référentiel indisponible : {}", ex.getMessage());
 		return PresenceMetierException.indisponible("REFERENTIEL_INDISPONIBLE",
@@ -174,7 +201,10 @@ public class ReferentielClient {
 	) {
 	}
 
-	/** Collaborateur avec son affectation actuelle (endpoint {@code /internal}). */
+	/**
+	 * Collaborateur avec son affectation actuelle (endpoint {@code /internal}). {@code posteLibelle} et
+	 * {@code uniteLibelle} sont renvoyés par le référentiel depuis le lot 2 (absents d'un référentiel plus ancien).
+	 */
 	@JsonIgnoreProperties(ignoreUnknown = true)
 	public record Affectation(
 			@JsonProperty("collaborateur_id") UUID collaborateurId,
@@ -183,7 +213,38 @@ public class ReferentielClient {
 			@JsonProperty("nom") String nom,
 			@JsonProperty("direction_libelle") String directionLibelle,
 			@JsonProperty("departement_libelle") String departementLibelle,
-			@JsonProperty("service_libelle") String serviceLibelle
+			@JsonProperty("service_libelle") String serviceLibelle,
+			@JsonProperty("poste_libelle") String posteLibelle,
+			@JsonProperty("unite_libelle") String uniteLibelle
+	) {
+
+		/** Sans poste ni unité (référentiel d'avant le lot 2). */
+		public Affectation(UUID collaborateurId, UUID compteId, String matricule, String nom, String directionLibelle,
+						   String departementLibelle, String serviceLibelle) {
+			this(collaborateurId, compteId, matricule, nom, directionLibelle, departementLibelle, serviceLibelle, null, null);
+		}
+
+		/** Unité la plus précise : celle fournie par le référentiel, sinon service, département, direction. */
+		public String uniteAffichee() {
+			if (uniteLibelle != null && !uniteLibelle.isBlank()) {
+				return uniteLibelle;
+			}
+			if (serviceLibelle != null && !serviceLibelle.isBlank()) {
+				return serviceLibelle;
+			}
+			if (departementLibelle != null && !departementLibelle.isBlank()) {
+				return departementLibelle;
+			}
+			return directionLibelle;
+		}
+	}
+
+	/** Réponse de {@code /internal/.../{id}/valideur?compte_id=} (ADR lot 2, § 2). */
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record ValideurDe(
+			@JsonProperty("est_valideur") boolean estValideur,
+			@JsonProperty("collaborateur_actif") Boolean collaborateurActif,
+			@JsonProperty("valideur_fiche_id") UUID valideurFicheId
 	) {
 	}
 

@@ -2,8 +2,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/format/formats.dart';
 import '../../../core/network/api_client.dart';
 import 'fenetre_du_jour.dart';
+import 'journee_models.dart';
 import 'presence_models.dart';
 
 final presenceRepositoryProvider = Provider<PresenceRepository>((ref) {
@@ -47,6 +49,48 @@ class PresenceRepository {
       queryParameters: {'page': page, 'size': size},
     );
     return _parseList(res.data, PointageHistoriqueItem.fromJson);
+  }
+
+  /// Période par défaut de « Mes pointages » : les 31 derniers jours, aujourd'hui compris (D-P17.g).
+  static Map<String, String> periode31Jours([DateTime? maintenant]) {
+    final fin = maintenant ?? DateTime.now();
+    final debut = DateTime(fin.year, fin.month, fin.day).subtract(const Duration(days: 30));
+    return {'du': formatDateApi(debut), 'au': formatDateApi(fin)};
+  }
+
+  /// Mes journées de présence (C6), plus récentes d'abord. Identité lue dans le jeton côté serveur.
+  Future<List<JourneePresence>> mesJournees() async {
+    final res = await _dio.get<dynamic>(
+      '$_mobileBase/pointages/me/journees',
+      queryParameters: periode31Jours(),
+    );
+    return _parseList(res.data, JourneePresence.fromJson);
+  }
+
+  /// Ma synthèse de présence sur la même période (C6).
+  Future<SynthesePresence> maSynthese() async {
+    final res = await _dio.get<dynamic>(
+      '$_mobileBase/pointages/me/synthese',
+      queryParameters: periode31Jours(),
+    );
+    final data = res.data;
+    return data is Map ? SynthesePresence.fromJson(Map<String, dynamic>.from(data)) : const SynthesePresence();
+  }
+
+  /// Présence d'un membre de l'équipe (C7) : 403 `HORS_PERIMETRE`, 503 `REFERENTIEL_INDISPONIBLE`.
+  Future<PresenceEquipe> presenceEquipe(String collaborateurId) async {
+    final res = await _dio.get<dynamic>(
+      '$_mobileBase/equipe/$collaborateurId',
+      queryParameters: periode31Jours(),
+    );
+    final data = res.data;
+    return data is Map ? PresenceEquipe.fromJson(Map<String, dynamic>.from(data)) : const PresenceEquipe();
+  }
+
+  /// Détail d'un pointage manuel (C5) : demandeur ou valideur seulement (403 `HORS_PERIMETRE`).
+  Future<DemandeManuelleDetail> detailDemandeManuelle(String id) async {
+    final res = await _dio.get<Map<String, dynamic>>('$_mobileBase/demandes-manuelles/$id');
+    return DemandeManuelleDetail.fromJson(res.data ?? const {});
   }
 
   /// Liste sites (RH | ADMIN | DIRECTION lecture).

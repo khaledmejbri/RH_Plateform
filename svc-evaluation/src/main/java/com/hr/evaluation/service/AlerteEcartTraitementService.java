@@ -53,7 +53,7 @@ public class AlerteEcartTraitementService {
 
     @Transactional(readOnly = true)
     public AlerteEcartPage lister(StatutAlerteEcart statut, NiveauEcart niveau, UUID campagneId, UUID uniteId,
-                                  int page, int taille) {
+                                  UUID collaborateurId, int page, int taille) {
         if (page < 0) {
             throw EvaluationMetierException.badRequest(PARAMETRE_INVALIDE, "Le paramètre page doit être positif ou nul.");
         }
@@ -73,6 +73,12 @@ public class AlerteEcartTraitementService {
         }
         if (uniteId != null) {
             filtre = filtre.and((r, q, cb) -> cb.equal(r.get("collaborateurUniteId"), uniteId));
+        }
+        if (collaborateurId != null) {
+            // D-N01 : alertes d'un collaborateur, désigné par sa fiche ou par son compte
+            filtre = filtre.and((r, q, cb) -> cb.or(
+                    cb.equal(r.get("collaborateurFicheId"), collaborateurId),
+                    cb.equal(r.get("collaborateurCompteId"), collaborateurId)));
         }
         // Filtres en base ; tri par le comparateur testé seul, pagination en mémoire (volume : quelques centaines par an)
         List<AlerteEcart> triees = alerteRepository.findAll(filtre).stream()

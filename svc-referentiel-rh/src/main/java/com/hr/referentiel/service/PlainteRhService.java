@@ -10,6 +10,7 @@ import com.hr.referentiel.repository.PlainteRhRepository;
 import com.hr.referentiel.web.ReferentielMetierException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,9 +82,9 @@ public class PlainteRhService {
 
 		// CDC §M04 : notification selon type via RhNotificationPublisher
 		if (req.getTypePlainte() == TypePlainteRh.INTERNE) {
-			notificationPublisher.notifierPlainteInterne(auteur, saved.getNumeroTicket());
+			notificationPublisher.notifierPlainteInterne(auteur, saved.getId(), saved.getNumeroTicket());
 		} else {
-			notificationPublisher.notifierPlainteExterne(auteur, saved.getNumeroTicket());
+			notificationPublisher.notifierPlainteExterne(auteur, saved.getId(), saved.getNumeroTicket());
 		}
 
 		return toResponse(saved);
@@ -99,34 +100,39 @@ public class PlainteRhService {
 
 	@Transactional(readOnly = true)
 	public List<PlainteRhResponse> listerToutPourRh(TypePlainteRh type, StatutPlainteRh statut) {
+		return listerToutPourRh(type, statut, null, null);
+	}
+
+	/**
+	 * Liste back-office (RH, ADMIN). {@code collaborateurId} = auteur (fiche) ; {@code q} = numéro {@code PLT-}
+	 * exact, insensible à la casse (D-L02). Un auteur inconnu donne une liste vide.
+	 */
+	@Transactional(readOnly = true)
+	public List<PlainteRhResponse> listerToutPourRh(TypePlainteRh type, StatutPlainteRh statut,
+			UUID collaborateurId, String q) {
+		String numero = NumeroLisibleService.normaliserRecherche(q);
 		return plainteRhRepository.findAllPourRhOrderByCreeLeDesc().stream()
 				.filter(p -> type == null || p.getTypePlainte() == type)
 				.filter(p -> statut == null || p.getStatut() == statut)
+				.filter(p -> collaborateurId == null || p.getAuteur().getId().equals(collaborateurId))
+				.filter(p -> numero == null || numero.equalsIgnoreCase(p.getNumeroTicket()))
 				.map(this::toResponse)
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Détail d'une plainte. {@code rh} = RH ou ADMIN (D-N01.a). Tout autre appelant (collaborateur, RO, DIRECTION)
+	 * n'accède qu'à ses propres plaintes ; une plainte d'autrui ou inexistante donne le même 403 : aucune
+	 * information d'existence. Pour RH / ADMIN, une plainte inexistante donne 404.
+	 */
 	@Transactional(readOnly = true)
 	public PlainteRhResponse obtenir(UUID id, Jwt jwt, boolean rh) {
-		PlainteRh p = charger(id);
-		if (!rh) {
-			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
-			if (!p.getAuteur().getId().equals(c.getId())) {
-				throw new IllegalArgumentException("Accès refusé à cette plainte.");
-			}
-		}
-		return toResponse(p);
+		return toResponse(chargerAutorisee(id, jwt, rh));
 	}
 
 	@Transactional(readOnly = true)
 	public PlainteSuiviResponse suivi(UUID id, Jwt jwt, boolean rh) {
-		PlainteRh p = charger(id);
-		if (!rh) {
-			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
-			if (!p.getAuteur().getId().equals(c.getId())) {
-				throw new IllegalArgumentException("Accès refusé à cette plainte.");
-			}
-		}
+		PlainteRh p = chargerAutorisee(id, jwt, rh);
 		return new PlainteSuiviResponse(p.getId(), p.getTypePlainte(), p.getStatut(), etapesPlainte(p.getStatut()));
 	}
 
@@ -164,7 +170,7 @@ public class PlainteRhService {
 		p.setLogActions(log);
 
 		PlainteRh saved = plainteRhRepository.save(p);
-		notificationPublisher.notifierValidationRoPlainteExterne(auteur, p.getNumeroTicket(), ro);
+		notificationPublisher.notifierValidationRoPlainteExterne(auteur, p.getId(), p.getNumeroTicket(), ro);
 		return toResponse(saved);
 	}
 
@@ -215,7 +221,7 @@ public class PlainteRhService {
 
 		// Notifier l'auteur du changement de statut
 		notificationPublisher.notifierChangementStatutPlainte(
-				p.getAuteur(), p.getNumeroTicket(),
+				p.getAuteur(), p.getId(), p.getNumeroTicket(),
 				ancienStatut.name(), nouveauStatut.name(), req.getCommentaireRh());
 
 		return toResponse(saved);
@@ -253,7 +259,17 @@ public class PlainteRhService {
 
 	private PlainteRh charger(UUID id) {
 		return plainteRhRepository.findById(id)
-				.orElseThrow(() -> new IllegalArgumentException("Plainte introuvable : " + id));
+				.orElseThrow(() -> ReferentielMetierException.notFound("PLAINTE_INTROUVABLE", "Plainte introuvable."));
+	}
+
+	private PlainteRh chargerAutorisee(UUID id, Jwt jwt, boolean rh) {
+		if (rh) {
+			return charger(id);
+		}
+		Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
+		return plainteRhRepository.findById(id)
+				.filter(p -> p.getAuteur().getId().equals(c.getId()))
+				.orElseThrow(() -> new AccessDeniedException("Accès refusé à cette plainte."));
 	}
 
 

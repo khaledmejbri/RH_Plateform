@@ -60,6 +60,17 @@ final class SuperieurHierarchieRules {
 		return null;
 	}
 
+	/** Vrai si {@code unite} est {@code uniteId} ou en descend (filtre par unité, sous-unités comprises). */
+	static boolean descendDe(UniteOrganisation unite, UUID uniteId) {
+		java.util.Set<UUID> vus = new java.util.HashSet<>();
+		for (UniteOrganisation u = unite; u != null && vus.add(u.getId()); u = u.getParent()) {
+			if (u.getId().equals(uniteId)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	static Collaborateur managerActif(UniteOrganisation unite) {
 		if (unite == null || unite.getManager() == null) {
 			return null;

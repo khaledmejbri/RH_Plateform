@@ -82,3 +82,30 @@ String initialeDe(String? nom) {
   final t = nom?.trim() ?? '';
   return t.isEmpty ? '?' : t.substring(0, 1).toUpperCase();
 }
+
+/// Date au format attendu par les API (`2026-11-05`).
+String formatDateApi(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${_deux(d.month)}-${_deux(d.day)}';
+
+/// Durée en minutes : « 8 h 02 », « 45 min », « 2 h » ; « 0 min » pour zéro ou une valeur négative.
+String formatDuree(int minutes) {
+  if (minutes <= 0) return '0 min';
+  final h = minutes ~/ 60;
+  final m = minutes % 60;
+  if (h == 0) return '$m min';
+  if (m == 0) return '$h h';
+  return '$h h ${_deux(m)}';
+}
+
+/// Retard d'une journée (D-P19.g) : [kValeurAbsente] si non calculable (`null`), « À l'heure » à 0,
+/// sinon « 12 min de retard ».
+String formatRetard(int? minutes) {
+  if (minutes == null) return kValeurAbsente;
+  if (minutes <= 0) return 'À l’heure';
+  return '$minutes min de retard';
+}
+
+/// Compteur de badge : masqué (`null`) à 0, exact jusqu'à 99, « 99+ » au-delà.
+String? libelleBadge(int nombre) {
+  if (nombre <= 0) return null;
+  return nombre > 99 ? '99+' : '$nombre';
+}

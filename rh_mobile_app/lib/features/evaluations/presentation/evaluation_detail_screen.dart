@@ -27,6 +27,12 @@ final technicalQuestionsProvider = FutureProvider.autoDispose
   return ref.watch(evaluationRepositoryProvider).obtenirQuestionsTechniques(id);
 });
 
+/// Détail mobile (B7) : message d'attente et notes du responsable selon D-E15.
+final evaluationDetailMobileProvider =
+    FutureProvider.autoDispose.family<EvaluationDetailMobile, String>((ref, id) {
+  return ref.watch(evaluationRepositoryProvider).detailMobile(id);
+});
+
 final evaluationAnalyticsProvider =
     FutureProvider.autoDispose.family<EvaluationAnalytics, String>((ref, id) {
   return ref.watch(evaluationRepositoryProvider).obtenirAnalytics(id);
@@ -118,6 +124,10 @@ class _EvaluationDetailScreenState
         children: [
           _HeaderCard(item: item, managerMode: false),
           const SizedBox(height: 12),
+          ref.watch(evaluationDetailMobileProvider(widget.id)).maybeWhen(
+                data: (detail) => ComparaisonResponsable(detail: detail),
+                orElse: () => const SizedBox.shrink(),
+              ),
           analytics.maybeWhen(
             data: (value) =>
                 _AnalyticsCard(analytics: value, scoreSur20: item.scoreSur20),
@@ -1057,10 +1067,12 @@ class _AnalyticsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // R8 : aucun score factice. Sans aucune note (API à 0), la carte n'est pas affichée.
-    final aucuneNote = scoreSur20 == null && analytics.selfAverage == 0 && analytics.finalScore == 0;
-    if (aucuneNote) return const SizedBox.shrink();
+    // R8 / D-E15 : aucun score factice. Sans note finale ni score (absents avant la validation),
+    // la carte n'est pas affichée : le message d'attente du serveur explique pourquoi.
+    final finale = analytics.finalScore;
+    if (scoreSur20 == null && finale == null) return const SizedBox.shrink();
     final appreciation = EvaluationLabels.appreciation(scoreSur20);
+    final sur20 = scoreSur20 ?? (finale == null ? null : (finale * 4).round());
     return Card(
       elevation: 0,
       child: Padding(
@@ -1076,16 +1088,12 @@ class _AnalyticsCard extends StatelessWidget {
                   label: 'Auto-évaluation',
                   value: formatNote(analytics.selfAverage, 5, decimales: 2),
                 ),
-                _Metric(
-                  label: 'Note finale',
-                  value: formatNote(analytics.finalScore, 5, decimales: 2),
-                ),
-                _Metric(
-                  label: 'Sur 20',
-                  value: scoreSur20 != null
-                      ? '$scoreSur20 / 20'
-                      : '${(analytics.finalScore * 4).round()} / 20',
-                ),
+                if (finale != null)
+                  _Metric(
+                    label: 'Note finale',
+                    value: formatNote(finale, 5, decimales: 2),
+                  ),
+                if (sur20 != null) _Metric(label: 'Sur 20', value: '$sur20 / 20'),
               ],
             ),
             if (appreciation.isNotEmpty) ...[
@@ -1099,6 +1107,71 @@ class _AnalyticsCard extends StatelessWidget {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// D-E15 : message d'attente tant que le responsable n'a pas validé ; une fois l'évaluation validée,
+/// les notes du responsable en face de celles du collaborateur. Rien d'autre n'est jamais affiché.
+class ComparaisonResponsable extends StatelessWidget {
+  const ComparaisonResponsable({super.key, required this.detail});
+
+  final EvaluationDetailMobile detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = detail.messageAttente;
+    if (message != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppTheme.primarySurface,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.hourglass_empty_rounded, size: 18, color: AppTheme.primary),
+              const SizedBox(width: 8),
+              Expanded(child: Text(message)),
+            ],
+          ),
+        ),
+      );
+    }
+    if (!detail.afficherNotesResponsable) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        elevation: 0,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Vos notes et celles de votre responsable',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              for (final q in detail.questionsAvecNotesResponsable) ...[
+                Text(q.libelle, style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(
+                  'Vous : ${q.noteCollaborateur == null ? kValeurAbsente : '${q.noteCollaborateur} / 5'}'
+                  '  ·  Responsable : ${q.noteResponsable == null ? kValeurAbsente : '${q.noteResponsable} / 5'}',
+                  style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                ),
+                if (q.commentaireResponsable != null)
+                  Text(q.commentaireResponsable!,
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                const SizedBox(height: 10),
+              ],
+            ],
+          ),
         ),
       ),
     );

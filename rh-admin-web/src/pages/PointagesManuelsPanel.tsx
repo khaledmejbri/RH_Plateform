@@ -15,6 +15,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { COLLABORATEUR_INTROUVABLE, formatPersonne, ressembleAUnIdentifiant } from '../utils/format';
 import { VALEUR_NON_RECONNUE } from '../utils/libelles';
 import { LIBELLES_POINTAGE_STATUT } from '../api/presenceApi';
+import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 /** Seuil d'alerte RH (D-P04) — l'API renvoie déjà `alerteSeuil` ; affiché pour l'explication. */
 const SEUIL_MENSUEL = 3;
@@ -204,8 +205,8 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
             <tbody>
               {affichees.map((d) => (
                 <tr key={d.id}>
-                  <td className="small">{d.numero ?? ''}</td>
-                  <td>{nomDe(d)}</td>
+                  <td className="small"><DetailLink type="pointage-manuel" id={d.id} libelle={d.numero} /></td>
+                  <td><LienPersonne id={d.collaborateurId} nom={d.collaborateurNom} matricule={d.collaborateurMatricule} /></td>
                   <td>
                     {d.type === 'SORTIE' ? 'Sortie' : 'Entrée'} · {formatDateTunis(d.heureDeclaree)}
                   </td>

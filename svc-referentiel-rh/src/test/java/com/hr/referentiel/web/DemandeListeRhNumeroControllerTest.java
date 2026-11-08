@@ -56,15 +56,15 @@ class DemandeListeRhNumeroControllerTest {
 
 	@Test
 	void rhEtDirectionLisentAvecRecherche() throws Exception {
-		when(demandeService.listerToutPourRh(any(), any(), any(), eq("dem-202611-0001"))).thenReturn(List.of());
+		when(demandeService.listerToutPourRh(any(), any(), any(), eq("dem-202611-0001"), any(), any())).thenReturn(List.of());
 		when(documentService.fileAttentePourRh("doc-202611-0001")).thenReturn(List.of());
-		when(formationService.listerPourRh(any(), eq("for-202611-0001"))).thenReturn(List.of());
+		when(formationService.listerPourRh(any(), eq("for-202611-0001"), any())).thenReturn(List.of());
 		for (String role : new String[] {"RH", "DIRECTION"}) {
 			mockMvc.perform(get(LISTES[0]).param("q", "dem-202611-0001").with(role(role))).andExpect(status().isOk());
 			mockMvc.perform(get(LISTES[1]).param("q", "doc-202611-0001").with(role(role))).andExpect(status().isOk());
 			mockMvc.perform(get(LISTES[2]).param("q", "for-202611-0001").with(role(role))).andExpect(status().isOk());
 		}
-		verify(demandeService, org.mockito.Mockito.times(2)).listerToutPourRh(any(), any(), any(), eq("dem-202611-0001"));
+		verify(demandeService, org.mockito.Mockito.times(2)).listerToutPourRh(any(), any(), any(), eq("dem-202611-0001"), any(), any());
 	}
 
 	@Test

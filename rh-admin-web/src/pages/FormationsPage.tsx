@@ -17,7 +17,8 @@ import { appartientSelection, correspond, indexerUnites, libelleDansSelection, u
 import { DialogPanel } from '../components/useDialogA11y';
 import { EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge } from '../components/ui';
 import { formatDateHeure, formatNombre, indexerPersonnes, personneParId, COLLABORATEUR_INTROUVABLE } from '../utils/format';
-import { libelle } from '../utils/libelles';
+import { libelle, libelleTypeFormation } from '../utils/libelles';
+import DetailLink from '../detail/DetailLink';
 
 type StatutFilter = '' | 'EN_VALIDATION_RRH' | 'INTEGREE_PLAN' | 'REFUSEE' | 'ANNULEE';
 
@@ -96,7 +97,7 @@ export default function FormationsPage() {
       return;
     }
     const ok = await confirm({
-      message: `${action.kind === 'integrer' ? 'Accepter' : 'Refuser'} la demande de formation « ${action.demande.type_formation} » de ${demandeur(action.demande)} ?`,
+      message: `${action.kind === 'integrer' ? 'Accepter' : 'Refuser'} la demande de formation « ${libelleTypeFormation(action.demande.type_formation)} » de ${demandeur(action.demande)} ?`,
       confirmLabel: action.kind === 'integrer' ? 'Accepter' : 'Refuser',
       danger: action.kind === 'refuser',
     });
@@ -220,16 +221,16 @@ export default function FormationsPage() {
               <tbody>
                 {affichees.map((d) => (
                   <tr key={d.identifiant}>
-                    <td data-label="Numéro" className="cell-meta">{d.numero ?? ''}</td>
+                    <td data-label="Numéro" className="cell-meta"><DetailLink type="formation" id={d.identifiant} libelle={d.numero} /></td>
                     <td data-label="Formation" className="cell-main">
-                      <div className="cell-main__title">{d.type_formation}</div>
+                      <div className="cell-main__title">{libelleTypeFormation(d.type_formation)}</div>
                       <div className="cell-main__sub">{d.organisme} · {formatNombre(d.duree_heures)} h</div>
                     </td>
                     <td data-label="Demandeur">
-                      <div>{demandeur(d)}</div>
+                      <div><DetailLink type="collaborateur" id={d.demandeur_identifiant} libelle={demandeur(d)} /></div>
                       <div className="cell-meta">{libelle('origineFormation', d.origine)}</div>
                     </td>
-                    <td data-label="Cible">{cibleLabel(d)}</td>
+                    <td data-label="Cible">{d.cible === 'UNITE' && d.unite_cible_identifiant ? <DetailLink type="unite" id={d.unite_cible_identifiant} libelle={cibleLabel(d)} /> : cibleLabel(d)}</td>
                     <td data-label="Budget" style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{formatTnd(d.cout_estime)}</td>
                     <td data-label="Statut"><StatusBadge statut={d.statut} label={labelStatut(d.statut)} /></td>
                     <td data-label="Actions">
@@ -263,7 +264,7 @@ export default function FormationsPage() {
           <DialogPanel label="Détails de la formation" className="modal modal--md" onClose={closeDetailModal}>
             <div className="modal__head">
               <div>
-                <h3 className="modal__title" style={{ margin: 0 }}>{selectedFormation.type_formation}</h3>
+                <h3 className="modal__title" style={{ margin: 0 }}>{libelleTypeFormation(selectedFormation.type_formation)}</h3>
                 <span className="cell-meta">{[selectedFormation.numero, selectedFormation.organisme].filter(Boolean).join(' · ')}</span>
               </div>
               <button type="button" className="modal__close" aria-label="Fermer" onClick={closeDetailModal}>
@@ -320,7 +321,7 @@ export default function FormationsPage() {
               {action.kind === 'integrer' ? 'Accepter la demande' : 'Refuser la demande'}
             </h3>
             <p className="small muted" style={{ marginTop: 0 }}>
-              {action.demande.type_formation} · {demandeur(action.demande)}
+              {libelleTypeFormation(action.demande.type_formation)} · {demandeur(action.demande)}
             </p>
             <label htmlFor="formation-action-text" className="field-label">
               {action.kind === 'integrer' ? 'Commentaire RH (optionnel)' : 'Motif du refus (obligatoire)'}

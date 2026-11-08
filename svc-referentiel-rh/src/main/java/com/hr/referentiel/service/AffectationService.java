@@ -73,7 +73,11 @@ public class AffectationService {
 				nomComplet(c),
 				libelleDuType(c.getUnite(), TypeNoeudOrganisation.DIRECTION),
 				libelleDuType(c.getUnite(), TypeNoeudOrganisation.DEPARTEMENT),
-				libelleDuType(c.getUnite(), TypeNoeudOrganisation.SERVICE));
+				libelleDuType(c.getUnite(), TypeNoeudOrganisation.SERVICE),
+				SuperieurHierarchieRules.estActif(c),
+				c.getPosteLibelle(),
+				c.getUnite() != null ? c.getUnite().getId() : null,
+				c.getUnite() != null ? c.getUnite().getLibelle() : null);
 	}
 
 	/** Premier nœud du type voulu en remontant depuis l'unité du collaborateur (lui compris). */

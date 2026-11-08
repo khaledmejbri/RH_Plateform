@@ -51,7 +51,12 @@ public final class TempsTravailDtos {
 			@JsonProperty("departement_libelle") String departementLibelle,
 			@JsonProperty("service_libelle") String serviceLibelle,
 			/** D-P18.d : instant (ISO, Africa/Tunis) où une journée « EN_COURS » basculera ; nul sinon. */
-			@JsonProperty("en_cours_jusqu_a") String enCoursJusquA) {
+			@JsonProperty("en_cours_jusqu_a") String enCoursJusquA,
+			/**
+			 * D-P19 : minutes de retard sur ce site ce jour-là. Nul = non calculable (site sans horaire, jour fermé,
+			 * premier pointage = SORTIE : affiché « — ») ; 0 = à l'heure.
+			 */
+			@JsonProperty("retard_minutes") Integer retardMinutes) {
 	}
 
 	/** Page de lignes, au format Spring {@code Page} attendu par le web. */
@@ -70,7 +75,10 @@ public final class TempsTravailDtos {
 			@JsonProperty("collaborateur_matricule") String collaborateurMatricule,
 			@JsonProperty("nb_jours") int nbJours,
 			@JsonProperty("minutes") long minutes,
-			@JsonProperty("nb_incompletes") int nbIncompletes) {
+			@JsonProperty("nb_incompletes") int nbIncompletes,
+			/** D-P19.g : nombre de journées en retard et cumul des minutes de retard sur le résultat filtré. */
+			@JsonProperty("retards_nombre") int retardsNombre,
+			@JsonProperty("retards_cumul_minutes") long retardsCumulMinutes) {
 	}
 
 	/** Réponse de la vue : page de lignes + totaux et synthèse calculés sur tout le résultat filtré (D-P17.h). */

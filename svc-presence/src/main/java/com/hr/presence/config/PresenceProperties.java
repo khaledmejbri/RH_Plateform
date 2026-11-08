@@ -14,6 +14,28 @@ public class PresenceProperties {
 	private final Facial facial = new Facial();
 	private final HeuresSup heuresSup = new HeuresSup();
 	private final TempsTravail tempsTravail = new TempsTravail();
+	private final Retard retard = new Retard();
+
+	public Retard getRetard() {
+		return retard;
+	}
+
+	/** Retards (D-P19) : information seulement, calculée à la volée. */
+	public static class Retard {
+		/**
+		 * Délai de grâce ajouté au début de l'horaire avant de compter un retard (D-P19.d), en minutes. 0 par défaut ;
+		 * paramétrable de 0 à 60 min au lot 3 (D-R06) : il sera alors lu dans les paramètres.
+		 */
+		private int delaiGraceMinutes = 0;
+
+		public int getDelaiGraceMinutes() {
+			return delaiGraceMinutes;
+		}
+
+		public void setDelaiGraceMinutes(int delaiGraceMinutes) {
+			this.delaiGraceMinutes = Math.clamp(delaiGraceMinutes, 0, 60);
+		}
+	}
 
 	public TempsTravail getTempsTravail() {
 		return tempsTravail;
@@ -133,6 +155,26 @@ public class PresenceProperties {
 
 	public static class Referentiel {
 		private String baseUrl = "http://localhost:8083";
+		/** Délai d'établissement de la connexion vers le référentiel (ms). */
+		private int timeoutConnexionMs = 2000;
+		/** Délai d'attente de la réponse du référentiel (ms). */
+		private int timeoutLectureMs = 3000;
+
+		public int getTimeoutConnexionMs() {
+			return timeoutConnexionMs;
+		}
+
+		public void setTimeoutConnexionMs(int timeoutConnexionMs) {
+			this.timeoutConnexionMs = timeoutConnexionMs;
+		}
+
+		public int getTimeoutLectureMs() {
+			return timeoutLectureMs;
+		}
+
+		public void setTimeoutLectureMs(int timeoutLectureMs) {
+			this.timeoutLectureMs = timeoutLectureMs;
+		}
 
 		public String getBaseUrl() {
 			return baseUrl;

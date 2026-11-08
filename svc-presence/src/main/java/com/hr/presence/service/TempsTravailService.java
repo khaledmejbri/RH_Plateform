@@ -31,9 +31,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
@@ -105,8 +105,11 @@ public class TempsTravailService {
 
 	// ---- Vue -----------------------------------------------------------------------------------------------------
 
-	/** Page de lignes ; totaux et synthèse portent sur tout le résultat filtré (D-P17.h). */
-	@Transactional(readOnly = true)
+	/**
+	 * Page de lignes ; totaux et synthèse portent sur tout le résultat filtré (D-P17.h). Pas de transaction englobante :
+	 * la vue appelle le référentiel (noms, unités) et ne doit pas garder une connexion à la base pendant ces appels ;
+	 * chaque lecture du dépôt a sa propre transaction et les entités lues n'ont aucune association paresseuse.
+	 */
 	public TempsTravailResponse consulter(LocalDate du, LocalDate au, UUID collaborateurId, UUID siteId, UUID uniteId,
 										  EtatJourHeuresSup etat, int page, int size) {
 		List<LigneDetaillee> toutes = calculer(du, au, collaborateurId, siteId, uniteId, etat);
@@ -126,7 +129,6 @@ public class TempsTravailService {
 	}
 
 	/** Toutes les lignes filtrées, dans l'ordre de la vue (export CSV). */
-	@Transactional(readOnly = true)
 	public List<LigneDetaillee> exporter(LocalDate du, LocalDate au, UUID collaborateurId, UUID siteId, UUID uniteId,
 										 EtatJourHeuresSup etat) {
 		return calculer(du, au, collaborateurId, siteId, uniteId, etat);
@@ -137,11 +139,15 @@ public class TempsTravailService {
 		Map<String, LigneTempsTravail> modeles = new HashMap<>();
 		for (LigneDetaillee l : lignes) {
 			String id = l.ligne().collaborateurId();
-			long[] c = cumuls.computeIfAbsent(id, k -> new long[3]);
+			long[] c = cumuls.computeIfAbsent(id, k -> new long[5]);
 			c[0]++;
 			c[1] += l.ligne().minutesTravaillees();
 			if (l.ligne().etat() == EtatJourHeuresSup.INCOMPLET) {
 				c[2]++;
+			}
+			if (l.ligne().retardMinutes() != null && l.ligne().retardMinutes() > 0) {
+				c[3]++;
+				c[4] += l.ligne().retardMinutes();
 			}
 			modeles.putIfAbsent(id, l.ligne());
 		}
@@ -149,7 +155,8 @@ public class TempsTravailService {
 				.map(e -> {
 					LigneTempsTravail m = modeles.get(e.getKey());
 					return new SyntheseCollaborateur(e.getKey(), m.collaborateurNom(), m.collaborateurMatricule(),
-							(int) e.getValue()[0], e.getValue()[1], (int) e.getValue()[2]);
+							(int) e.getValue()[0], e.getValue()[1], (int) e.getValue()[2],
+							(int) e.getValue()[3], e.getValue()[4]);
 				})
 				.sorted(Comparator.comparing((SyntheseCollaborateur s) -> s.collaborateurNom() == null ? "￿" : s.collaborateurNom().toLowerCase())
 						.thenComparing(SyntheseCollaborateur::collaborateurId))
@@ -160,9 +167,14 @@ public class TempsTravailService {
 
 	/** Période par défaut : 7 derniers jours ; fin avant début 400 ; au-delà du plafond 400 (D-P17.g). */
 	LocalDate[] periode(LocalDate du, LocalDate au) {
+		return periode(du, au, PERIODE_DEFAUT_JOURS);
+	}
+
+	/** Idem avec une durée par défaut choisie par l'appelant (31 jours pour les fiches de présence, D-N01.b). */
+	public LocalDate[] periode(LocalDate du, LocalDate au, int defautJours) {
 		LocalDate aujourdhui = clock.instant().atZone(ClockConfig.ZONE_TUNIS).toLocalDate();
 		LocalDate fin = au != null ? au : aujourdhui;
-		LocalDate debut = du != null ? du : fin.minusDays(PERIODE_DEFAUT_JOURS - 1L);
+		LocalDate debut = du != null ? du : fin.minusDays(defautJours - 1L);
 		if (fin.isBefore(debut)) {
 			throw PresenceMetierException.badRequest("PERIODE_INVALIDE", "La date de fin précède la date de début");
 		}
@@ -182,6 +194,19 @@ public class TempsTravailService {
 		if (identites != null && identites.isEmpty()) {
 			return List.of();
 		}
+		return calculerAvecJours(periode, identites, siteId, etatFiltre).stream().map(LigneAvecJour::detail).toList();
+	}
+
+	/** Ligne de la vue et journée de travail dont elle est issue (pointages retenus, pour la présence d'un collaborateur). */
+	public record LigneAvecJour(LigneDetaillee detail, JourTravail jour) {
+	}
+
+	/**
+	 * Lignes d'une période déjà validée pour des identités (fiche et compte) connues ; {@code null} = tout le monde.
+	 * Point d'entrée de la présence d'un collaborateur (synthèse, journées, fiche d'équipe).
+	 */
+	public List<LigneAvecJour> calculerAvecJours(LocalDate[] periode, Set<String> identites, UUID siteId,
+												 EtatJourHeuresSup etatFiltre) {
 		Instant from = periode[0].minusDays(MARGE_JOURS).atStartOfDay(ClockConfig.ZONE_TUNIS).toInstant();
 		Instant to = periode[1].plusDays(MARGE_JOURS + 1L).atStartOfDay(ClockConfig.ZONE_TUNIS).toInstant();
 		List<PresencePointage> pointages = pointageRepository.findAll(
@@ -198,7 +223,8 @@ public class TempsTravailService {
 		};
 
 		int dureeMax = properties.getTempsTravail().getDureeMaxSansHoraireHeures();
-		List<JourTravail> jours = TempsTravailCalcul.regrouper(pointages, cle, dureeMax).stream()
+		Duration delaiGrace = Duration.ofMinutes(properties.getRetard().getDelaiGraceMinutes());
+		List<JourTravail> jours = TempsTravailCalcul.regrouper(pointages, cle, dureeMax, delaiGrace).stream()
 				.filter(j -> !j.jour().isBefore(periode[0]) && !j.jour().isAfter(periode[1]))
 				.toList();
 		if (jours.isEmpty()) {
@@ -211,7 +237,7 @@ public class TempsTravailService {
 		Map<String, Integer> ouvertures = ouverturesApres(jours, parIdentifiant, cle);
 		Instant maintenant = clock.instant();
 
-		List<LigneDetaillee> lignes = new ArrayList<>();
+		List<LigneAvecJour> lignes = new ArrayList<>();
 		for (JourTravail j : jours) {
 			PresenceSite site = j.siteId() != null ? sites.get(j.siteId()) : null;
 			int tolerance = site != null ? site.getToleranceApresMinutes() : PresenceSite.TOLERANCE_DEFAUT_MINUTES;
@@ -225,12 +251,12 @@ public class TempsTravailService {
 				Instant fermeture = TempsTravailCalcul.fermetureFenetre(j, tolerance, ouverture, dureeMax);
 				enCoursJusquA = fermeture != null ? iso(fermeture) : null;
 			}
-			lignes.add(versLigne(j, etat, enCoursJusquA, site, parIdentifiant.get(j.collaborateur())));
+			lignes.add(new LigneAvecJour(versLigne(j, etat, enCoursJusquA, site, parIdentifiant.get(j.collaborateur())), j));
 		}
-		lignes.sort(Comparator.comparing((LigneDetaillee l) -> l.ligne().jour()).reversed()
-				.thenComparing(l -> l.ligne().collaborateurNom() == null ? "￿" : l.ligne().collaborateurNom().toLowerCase())
-				.thenComparing(l -> l.ligne().collaborateurId())
-				.thenComparing(l -> l.ligne().siteLibelle() == null ? "" : l.ligne().siteLibelle()));
+		lignes.sort(Comparator.comparing((LigneAvecJour l) -> l.detail().ligne().jour()).reversed()
+				.thenComparing(l -> l.detail().ligne().collaborateurNom() == null ? "￿" : l.detail().ligne().collaborateurNom().toLowerCase())
+				.thenComparing(l -> l.detail().ligne().collaborateurId())
+				.thenComparing(l -> l.detail().ligne().siteLibelle() == null ? "" : l.detail().ligne().siteLibelle()));
 		return lignes;
 	}
 
@@ -251,18 +277,7 @@ public class TempsTravailService {
 			}
 		}
 		if (collaborateurId != null) {
-			Set<String> collab = new LinkedHashSet<>();
-			collab.add(collaborateurId.toString());
-			try {
-				for (Affectation a : referentielClient.affectations(List.of(collaborateurId))) {
-					collab.add(a.collaborateurId().toString());
-					if (a.compteId() != null) {
-						collab.add(a.compteId().toString());
-					}
-				}
-			} catch (PresenceMetierException ex) {
-				log.warn("Filtre collaborateur sans élargissement au compte : {}", ex.getMessage());
-			}
+			Set<String> collab = identitesDe(collaborateurId);
 			if (identites == null) {
 				identites = collab;
 			} else {
@@ -270,6 +285,26 @@ public class TempsTravailService {
 			}
 		}
 		return identites;
+	}
+
+	/**
+	 * Fiche du collaborateur et, quand le référentiel répond, son compte (les pointages anciens portent l'un ou l'autre).
+	 * Référentiel indisponible : la fiche seule, la lecture reste servie.
+	 */
+	public Set<String> identitesDe(UUID ficheId) {
+		Set<String> collab = new LinkedHashSet<>();
+		collab.add(ficheId.toString());
+		try {
+			for (Affectation a : referentielClient.affectations(List.of(ficheId))) {
+				collab.add(a.collaborateurId().toString());
+				if (a.compteId() != null) {
+					collab.add(a.compteId().toString());
+				}
+			}
+		} catch (PresenceMetierException ex) {
+			log.warn("Filtre collaborateur sans élargissement au compte : {}", ex.getMessage());
+		}
+		return collab;
 	}
 
 	/** Affectations indexées par identifiant de fiche ET de compte. */
@@ -290,7 +325,6 @@ public class TempsTravailService {
 	 * paire à cheval sur deux pages soit jugée correctement. Seuls VALIDE et VALIDE_MANUEL portent un état ;
 	 * une ENTREE orpheline encore dans sa fenêtre (D-P17.e) est « EN_COURS », pas en anomalie.
 	 */
-	@Transactional(readOnly = true)
 	public PageResponse<PointageResponse> annoterSequences(PageResponse<PointageResponse> page) {
 		List<PointageResponse> retenus = page.content().stream()
 				.filter(p -> p.statut() != null && STATUTS_RETENUS.contains(p.statut()) && p.serverTs() != null
@@ -441,7 +475,8 @@ public class TempsTravailService {
 				j.jour(),
 				j.premiereEntree() != null ? iso(j.premiereEntree()) : null,
 				j.derniereSortie() != null ? iso(j.derniereSortie()) : null,
-				paires, orphelins, (int) j.minutes(), etat, direction, departement, service, enCoursJusquA);
+				paires, orphelins, (int) j.minutes(), etat, direction, departement, service, enCoursJusquA,
+				j.retardMinutes());
 		return new LigneDetaillee(ligne, direction, departement, service, j.manuel());
 	}
 

@@ -44,15 +44,17 @@ public class PlainteRhController {
 	}
 
 	/**
-	 * Liste RH avec filtres type et statut.
+	 * Liste RH / ADMIN (D-N01.a : DIRECTION exclue, 403) avec filtres type, statut, auteur (fiche) et numéro PLT-.
 	 * CDC §M04 : tableau de bord inter-services pour plaintes externes.
 	 */
 	@GetMapping("/liste")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
+	@PreAuthorize(PreAuthorizeExpressions.PLAINTES_LECTURE)
 	public ResponseEntity<List<PlainteRhResponse>> listerPourRh(
 			@RequestParam(name = "type_plainte", required = false) TypePlainteRh type,
-			@RequestParam(name = "statut", required = false) StatutPlainteRh statut) {
-		return ResponseEntity.ok(plainteRhService.listerToutPourRh(type, statut));
+			@RequestParam(name = "statut", required = false) StatutPlainteRh statut,
+			@RequestParam(name = "collaborateur_id", required = false) UUID collaborateurId,
+			@RequestParam(name = "q", required = false) String q) {
+		return ResponseEntity.ok(plainteRhService.listerToutPourRh(type, statut, collaborateurId, q));
 	}
 
 	/**
@@ -82,7 +84,7 @@ public class PlainteRhController {
 			@PathVariable UUID identifiant,
 			JwtAuthenticationToken principal) {
 		return ResponseEntity.ok(
-				plainteRhService.suivi(identifiant, principal.getToken(), ReferentielApiSecurity.aAutoriteRh()));
+				plainteRhService.suivi(identifiant, principal.getToken(), ReferentielApiSecurity.aAutoritePlaintes()));
 	}
 
 	@GetMapping("/{identifiant}")
@@ -91,7 +93,7 @@ public class PlainteRhController {
 			@PathVariable UUID identifiant,
 			JwtAuthenticationToken principal) {
 		return ResponseEntity.ok(
-				plainteRhService.obtenir(identifiant, principal.getToken(), ReferentielApiSecurity.aAutoriteRh()));
+				plainteRhService.obtenir(identifiant, principal.getToken(), ReferentielApiSecurity.aAutoritePlaintes()));
 	}
 
 }

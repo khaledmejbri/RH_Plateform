@@ -94,7 +94,7 @@ public class DemandeDocumentAdministratifRhService {
 		d = repository.save(d);
 
 		try {
-			notificationPublisher.notifierDemandeDocumentRecue(demandeur, type.name(), d.getNumero());
+			notificationPublisher.notifierDemandeDocumentRecue(demandeur, type.name(), d.getId(), d.getNumero());
 		} catch (Exception e) {
 			log.error("Erreur lors de l'envoi de la notification Kafka (Nouvelle demande)", e);
 		}
@@ -148,6 +148,25 @@ public class DemandeDocumentAdministratifRhService {
 			lignes = lignes.stream().filter(d -> numero.equals(d.getNumero())).collect(Collectors.toList());
 		}
 		return lignes.stream()
+				.map(this::toResponse)
+				.collect(Collectors.toList());
+	}
+
+	/**
+	 * D-N01 : liste back-office de tous les statuts (la file d'attente reste à part), filtrable par demandeur (fiche),
+	 * statut et numéro DOC- exact. Plus récentes d'abord. Un demandeur inconnu donne une liste vide.
+	 */
+	@Transactional(readOnly = true)
+	public List<DemandeDocumentAdministratifRhResponse> listerPourRh(UUID collaborateurId,
+			StatutDocumentAdministratifDemandeRh statut, String q) {
+		String numero = NumeroLisibleService.normaliserRecherche(q);
+		List<DemandeDocumentAdministratifRh> lignes = collaborateurId != null
+				? repository.findByDemandeurIdOrderByCreeLeDesc(collaborateurId)
+				: repository.findAll(org.springframework.data.domain.Sort.by(
+						org.springframework.data.domain.Sort.Direction.DESC, "creeLe"));
+		return lignes.stream()
+				.filter(d -> statut == null || d.getStatut() == statut)
+				.filter(d -> numero == null || numero.equals(d.getNumero()))
 				.map(this::toResponse)
 				.collect(Collectors.toList());
 	}
@@ -234,7 +253,7 @@ public class DemandeDocumentAdministratifRhService {
 
 		try {
 			notificationPublisher.notifierDocumentDisponible(d.getDemandeur(), d.getTypeDocument().name(),
-					req.getReferenceLivrable(), d.getNumero());
+					req.getReferenceLivrable(), d.getId(), d.getNumero());
 		} catch (Exception e) {
 			log.error("Erreur lors de l'envoi de la notification Kafka (Document disponible)", e);
 		}
@@ -326,6 +345,7 @@ public class DemandeDocumentAdministratifRhService {
 						demande.getTypeDocument().name(), 
 						justificationDerogation.trim(), 
 						demande.getDemandeur(),
+						demande.getId(),
 						demande.getNumero()
 				);
 			} catch (Exception e) {

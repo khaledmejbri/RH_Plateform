@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../data/organigramme_models.dart';
 import '../data/organigramme_repository.dart';
 import '../../auth/providers/collaborateur_notifier.dart';
+import '../../dossier/providers/dossier_providers.dart';
 
 final _organigrammeProvider = FutureProvider.autoDispose<Organigramme>((ref) {
   return ref.watch(organigrammeRepositoryProvider).fetch();
@@ -113,7 +114,7 @@ class _MonUniteCard extends StatelessWidget {
   }
 }
 
-class _NoeudCard extends StatefulWidget {
+class _NoeudCard extends ConsumerStatefulWidget {
   const _NoeudCard({
     required this.noeud,
     required this.depth,
@@ -128,10 +129,10 @@ class _NoeudCard extends StatefulWidget {
   final String moiId;
 
   @override
-  State<_NoeudCard> createState() => _NoeudCardState();
+  ConsumerState<_NoeudCard> createState() => _NoeudCardState();
 }
 
-class _NoeudCardState extends State<_NoeudCard> {
+class _NoeudCardState extends ConsumerState<_NoeudCard> {
   late bool _expanded = widget.depth < 1 || widget.cheminIds.contains(widget.noeud.identifiant);
 
   @override
@@ -195,7 +196,11 @@ class _NoeudCardState extends State<_NoeudCard> {
                     ),
                     if (noeud.manager != null) ...[
                       const SizedBox(height: 10),
-                      Row(
+                      InkWell(
+                        onTap: noeud.manager!.identifiant.isEmpty || noeud.manager!.identifiant == widget.moiId
+                            ? null
+                            : () => ouvrirPersonne(context, ref, noeud.manager!.identifiant),
+                        child: Row(
                         children: [
                           CircleAvatar(
                             radius: 14,
@@ -229,6 +234,7 @@ class _NoeudCardState extends State<_NoeudCard> {
                           ),
                         ],
                       ),
+                      ),
                     ],
                   ],
                 ),
@@ -239,8 +245,12 @@ class _NoeudCardState extends State<_NoeudCard> {
             for (final e in noeud.enfants)
               _NoeudCard(noeud: e, depth: widget.depth + 1, cheminIds: widget.cheminIds, moiId: widget.moiId),
             for (final m in noeud.membres)
-              Padding(
-                padding: EdgeInsets.only(left: (widget.depth + 1) * 12.0, top: 4, bottom: 4),
+              InkWell(
+                onTap: (m.identifiant.isEmpty || m.identifiant == widget.moiId)
+                    ? null
+                    : () => ouvrirPersonne(context, ref, m.identifiant),
+                child: Padding(
+                padding: EdgeInsets.only(left: (widget.depth + 1) * 12.0, top: 8, bottom: 8),
                 child: Row(
                   children: [
                     const Icon(Icons.person_outline, size: 18, color: AppTheme.textSecondary),
@@ -255,6 +265,7 @@ class _NoeudCardState extends State<_NoeudCard> {
                       ),
                     ),
                   ],
+                ),
                 ),
               ),
           ],

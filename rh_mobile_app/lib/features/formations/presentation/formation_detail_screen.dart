@@ -11,8 +11,10 @@ import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 final formationDetailProvider = FutureProvider.family<FormationItem, String>((ref, id) async {
   final repo = ref.watch(formationRepositoryProvider);
   final formations = await repo.mesDemandes();
-  final formation = formations.firstWhere((f) => f.id == id);
-  return formation;
+  for (final f in formations) {
+    if (f.id == id) return f;
+  }
+  throw Exception('Élément introuvable.');
 });
 
 final workflowHistoryProvider = FutureProvider.family<List<WorkflowHistoryItem>, String>((ref, id) async {
@@ -98,7 +100,10 @@ class FormationDetailScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        formation.organisme,
+                        [
+                          if ((formation.numero ?? '').isNotEmpty) formation.numero!,
+                          formation.organisme,
+                        ].join(' · '),
                         style: const TextStyle(
                           fontSize: 14,
                           color: AppTheme.textSecondary,

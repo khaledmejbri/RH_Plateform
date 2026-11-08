@@ -70,6 +70,8 @@ class EvaluationMobileControllerValidationTest {
 	@MockitoBean
 	private LibellesProfilService libellesProfil;
 	@MockitoBean
+	private com.hr.evaluation.service.EvaluationMobileLectureService lectureService;
+	@MockitoBean
 	private JwtDecoder jwtDecoder;
 
 	private final UUID id = UUID.randomUUID();

@@ -12,6 +12,12 @@ import java.util.UUID;
 public interface PresenceHeuresSupDemandeRepository extends JpaRepository<PresenceHeuresSupDemande, UUID>,
 		JpaSpecificationExecutor<PresenceHeuresSupDemande> {
 
+	/** Détail par numéro lisible HS-AAAAMM-NNNN (D-L02). */
+	java.util.Optional<PresenceHeuresSupDemande> findByNumero(String numero);
+
+	/** Anciennes demandes : référence « HS-XXXXXXXX » tant que la reprise des numéros n'est pas passée. */
+	java.util.Optional<PresenceHeuresSupDemande> findByReference(String reference);
+
 	List<PresenceHeuresSupDemande> findByStatutAndDebutPlageTsLessThanEqual(StatutHeuresSup statut, Instant limite);
 
 	List<PresenceHeuresSupDemande> findByDemandeurCompteIdOrderByCreeLeDesc(String demandeurCompteId);

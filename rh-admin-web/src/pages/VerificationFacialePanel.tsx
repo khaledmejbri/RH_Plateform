@@ -30,6 +30,7 @@ import {
   type PageEnrolements,
   type ReglageFacial,
 } from '../api/verificationFacialeApi';
+import DetailLink from '../detail/DetailLink';
 
 const PAGE_SIZE = 20;
 
@@ -878,7 +879,7 @@ function EnrolementsSection({
               <tbody>
                 {lignes.map((l) => (
                   <tr key={l.id}>
-                    <td>{l.collaborateurNom ?? COLLABORATEUR_INTROUVABLE}</td>
+                    <td>{l.collaborateurNom ? <DetailLink type="collaborateur" id={l.collaborateurId} libelle={l.collaborateurNom} /> : COLLABORATEUR_INTROUVABLE}</td>
                     <td>
                       <StatutBadge statut={l.statut} />
                       {l.appareilIncompatible ? (

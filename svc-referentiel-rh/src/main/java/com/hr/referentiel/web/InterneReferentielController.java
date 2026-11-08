@@ -6,7 +6,9 @@ import com.hr.referentiel.dto.CollaborateurPointageResponse;
 import com.hr.referentiel.dto.FicheEvaluationResponse;
 import com.hr.referentiel.dto.LibellesProfilResponse;
 import com.hr.referentiel.dto.MembreUniteResponse;
+import com.hr.referentiel.dto.ValideurControleResponse;
 import com.hr.referentiel.service.AffectationService;
+import com.hr.referentiel.service.HierarchieService;
 import com.hr.referentiel.service.FamilleMetierService;
 import com.hr.referentiel.service.PerimetreValidationService;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
@@ -42,6 +45,7 @@ public class InterneReferentielController {
 	private final PerimetreValidationService perimetreValidationService;
 	private final AffectationService affectationService;
 	private final FamilleMetierService familleMetierService;
+	private final HierarchieService hierarchieService;
 	private final String jetonInterne;
 
 	public InterneReferentielController(
@@ -49,11 +53,13 @@ public class InterneReferentielController {
 			PerimetreValidationService perimetreValidationService,
 			AffectationService affectationService,
 			FamilleMetierService familleMetierService,
+			HierarchieService hierarchieService,
 			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne) {
 		this.referentielRhService = referentielRhService;
 		this.perimetreValidationService = perimetreValidationService;
 		this.affectationService = affectationService;
 		this.familleMetierService = familleMetierService;
+		this.hierarchieService = hierarchieService;
 		this.jetonInterne = jetonInterne;
 	}
 
@@ -149,6 +155,21 @@ public class InterneReferentielController {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
 		return ResponseEntity.ok(familleMetierService.libellesProfil());
+	}
+
+	/**
+	 * D-N02 : le compte compte_id (claim du JWT, lu par svc-presence) est-il le valideur D-H03 du collaborateur ?
+	 * Aucune mise en cache ; inconnu, inactif ou compte sans fiche : est_valideur faux.
+	 */
+	@GetMapping("/collaborateurs/{collaborateurId}/valideur")
+	public ResponseEntity<ValideurControleResponse> valideur(
+			@RequestHeader(value = "X-Internal-Token", required = false) String jeton,
+			@PathVariable UUID collaborateurId,
+			@RequestParam(name = "compte_id", required = false) UUID compteId) {
+		if (!jetonValide(jeton)) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+		}
+		return ResponseEntity.ok(hierarchieService.controlerValideur(collaborateurId, compteId));
 	}
 
 	private boolean jetonValide(String jeton) {

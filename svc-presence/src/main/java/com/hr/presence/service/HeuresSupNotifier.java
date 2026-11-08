@@ -2,6 +2,7 @@ package com.hr.presence.service;
 
 import com.hr.presence.entity.PresenceHeuresSupBeneficiaire;
 import com.hr.presence.entity.PresenceHeuresSupDemande;
+import com.hr.presence.kafka.ObjetNotification;
 import com.hr.presence.kafka.PresenceEventPublisher;
 import org.springframework.stereotype.Component;
 
@@ -57,48 +58,54 @@ public class HeuresSupNotifier {
 
 	/** Demande créée EN_ATTENTE : tous les comptes RH. */
 	public void creeeEnAttente(PresenceHeuresSupDemande d, String resume) {
+		ObjetNotification objet = objet(d, "HEURES_SUP_CREEE");
 		eventPublisher.notifier(PresenceEventPublisher.DESTINATAIRE_RH,
 				"Heures supplémentaires à valider — " + d.getReference(),
-				nomDemandeur(d) + " demande des heures supplémentaires (" + resume + ") : " + d.getMotif());
+				nomDemandeur(d) + " demande des heures supplémentaires (" + resume + ") : " + d.getMotif(), objet);
 	}
 
 	/** Demande validée : demandeur et bénéficiaires. */
 	public void validee(PresenceHeuresSupDemande d, String resume, List<PresenceHeuresSupBeneficiaire> beneficiaires) {
+		ObjetNotification objet = objet(d, "HEURES_SUP_VALIDEE");
 		eventPublisher.notifier(adresse(d.getDemandeurCompteId(), d.getDemandeurFicheId()),
 				"Heures supplémentaires validées — " + d.getReference(),
-				"Votre demande d'heures supplémentaires (" + resume + ") a été validée.");
+				"Votre demande d'heures supplémentaires (" + resume + ") a été validée.", objet);
 		notifierBeneficiaires(beneficiaires, "Heures supplémentaires validées — " + d.getReference(),
-				"Des heures supplémentaires vous sont accordées (" + resume + ").");
+				"Des heures supplémentaires vous sont accordées (" + resume + ").", objet(d, "HEURES_SUP_VALIDEE"));
 	}
 
 	/** Création directe validée par RH / ADMIN : bénéficiaires seulement (ni l'auteur, ni RH). */
 	public void creeeValidee(PresenceHeuresSupDemande d, String resume, List<PresenceHeuresSupBeneficiaire> beneficiaires) {
+		ObjetNotification objet = objet(d, "HEURES_SUP_ACCORDEES");
 		notifierBeneficiaires(beneficiaires, "Heures supplémentaires validées — " + d.getReference(),
-				"Des heures supplémentaires vous sont accordées (" + resume + ").");
+				"Des heures supplémentaires vous sont accordées (" + resume + ").", objet);
 	}
 
 	/** Demande refusée : demandeur seul, avec le motif. */
 	public void refusee(PresenceHeuresSupDemande d, String resume) {
+		ObjetNotification objet = objet(d, "HEURES_SUP_REFUSEE");
 		eventPublisher.notifier(adresse(d.getDemandeurCompteId(), d.getDemandeurFicheId()),
 				"Heures supplémentaires refusées — " + d.getReference(),
-				"Votre demande d'heures supplémentaires (" + resume + ") a été refusée. Motif : " + d.getMotifRefus());
+				"Votre demande d'heures supplémentaires (" + resume + ") a été refusée. Motif : " + d.getMotifRefus(), objet);
 	}
 
 	/** Annulation par RH / ADMIN : demandeur et bénéficiaires. */
 	public void annulee(PresenceHeuresSupDemande d, String resume, List<PresenceHeuresSupBeneficiaire> beneficiaires) {
+		ObjetNotification objet = objet(d, "HEURES_SUP_ANNULEE");
 		eventPublisher.notifier(adresse(d.getDemandeurCompteId(), d.getDemandeurFicheId()),
 				"Heures supplémentaires annulées — " + d.getReference(),
-				"La demande d'heures supplémentaires (" + resume + ") a été annulée par " + d.getAnnuleParNom() + ".");
+				"La demande d'heures supplémentaires (" + resume + ") a été annulée par " + d.getAnnuleParNom() + ".", objet);
 		notifierBeneficiaires(beneficiaires, "Heures supplémentaires annulées — " + d.getReference(),
-				"Les heures supplémentaires prévues (" + resume + ") sont annulées.");
+				"Les heures supplémentaires prévues (" + resume + ") sont annulées.", objet(d, "HEURES_SUP_ANNULEE"));
 	}
 
 	/** Demande expirée : demandeur seul. */
 	public void expiree(PresenceHeuresSupDemande d, String resume) {
+		ObjetNotification objet = objet(d, "HEURES_SUP_EXPIREE");
 		eventPublisher.notifier(adresse(d.getDemandeurCompteId(), d.getDemandeurFicheId()),
 				"Heures supplémentaires expirées — " + d.getReference(),
 				"Votre demande d'heures supplémentaires (" + resume + ") n'a pas été traitée avant l'ouverture"
-						+ " de la fenêtre de pointage : elle a expiré.");
+						+ " de la fenêtre de pointage : elle a expiré.", objet);
 	}
 
 	/**
@@ -107,20 +114,27 @@ public class HeuresSupNotifier {
 	 */
 	public void joursRetires(PresenceHeuresSupDemande d, String resume, String jours, boolean totale,
 							 boolean etaitValidee, List<PresenceHeuresSupBeneficiaire> beneficiaires) {
+		ObjetNotification objet = objet(d, "HEURES_SUP_JOURS_RETIRES");
 		String sujet = (totale ? "Heures supplémentaires annulées — " : "Heures supplémentaires modifiées — ")
 				+ d.getReference();
 		String corps = "L'horaire du site a été modifié : " + (totale ? "la demande" : "les jours " + jours + " de la demande")
 				+ " d'heures supplémentaires (" + resume + ")"
 				+ (totale ? " est annulée (jours " + jours + " fermés)." : " sont retirés.");
-		eventPublisher.notifier(adresse(d.getDemandeurCompteId(), d.getDemandeurFicheId()), sujet, corps);
+		eventPublisher.notifier(adresse(d.getDemandeurCompteId(), d.getDemandeurFicheId()), sujet, corps, objet);
 		if (etaitValidee) {
-			notifierBeneficiaires(beneficiaires, sujet, corps);
+			notifierBeneficiaires(beneficiaires, sujet, corps, objet);
 		}
 	}
 
-	private void notifierBeneficiaires(List<PresenceHeuresSupBeneficiaire> beneficiaires, String sujet, String corps) {
+	/** Un seul objet (donc un seul notification_id) par événement, partagé par tous ses destinataires. */
+	private static ObjetNotification objet(PresenceHeuresSupDemande d, String evenement) {
+		return ObjetNotification.de(ObjetNotification.HEURES_SUP, evenement, d.getId(), d.getReference());
+	}
+
+	private void notifierBeneficiaires(List<PresenceHeuresSupBeneficiaire> beneficiaires, String sujet, String corps,
+									   ObjetNotification objet) {
 		for (PresenceHeuresSupBeneficiaire b : beneficiaires) {
-			eventPublisher.notifier(adresse(texte(b.getCompteId()), texte(b.getCollaborateurId())), sujet, corps);
+			eventPublisher.notifier(adresse(texte(b.getCompteId()), texte(b.getCollaborateurId())), sujet, corps, objet);
 		}
 	}
 

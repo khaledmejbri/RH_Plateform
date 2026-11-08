@@ -6,10 +6,12 @@ import com.hr.evaluation.entity.EvaluationRh;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -23,8 +25,17 @@ public class EvaluationEventPublisher {
 
 	private final ObjectProvider<KafkaTemplate<String, String>> kafkaTemplateProvider;
 
+	private final Clock clock;
+
+	@Autowired
 	public EvaluationEventPublisher(ObjectProvider<KafkaTemplate<String, String>> kafkaTemplateProvider) {
+		this(kafkaTemplateProvider, Clock.systemUTC());
+	}
+
+	/** Horloge injectable pour les tests ({@code emis_le}). */
+	EvaluationEventPublisher(ObjectProvider<KafkaTemplate<String, String>> kafkaTemplateProvider, Clock clock) {
 		this.kafkaTemplateProvider = kafkaTemplateProvider;
+		this.clock = clock;
 	}
 
 	public void publierAlerteSiNecessaire(EvaluationRh evaluation) {
@@ -65,16 +76,12 @@ public class EvaluationEventPublisher {
 		String destinataire = adresse(evaluation.getCollaborateurCompteId(), evaluation.getCollaborateurIdentifiant());
 		UUID campagneId = evaluation.getCampaign() != null ? evaluation.getCampaign().getId() : null;
 		String nom = campagneNom != null ? campagneNom : "campagne";
-		String content = "EVALUATION_CAMPAGNE_OUVERTE|campagne=" + campagneId
-				+ "|evaluation=" + evaluation.getId()
-				+ "|La campagne « " + nom + " » est active. Merci de compléter votre auto-évaluation (générale puis technique).";
-		NotificationMessage msg = new NotificationMessage(
-				"WEBSOCKET",
-				destinataire,
-				"Votre évaluation est ouverte",
-				content);
+		String content = "La campagne « " + nom + " » est active. Merci de compléter votre auto-évaluation (générale puis technique).";
+		ObjetNotification objet = ObjetNotification.de(ObjetNotification.EVALUATION,
+				"EVALUATION_CAMPAGNE_OUVERTE", evaluation.getId(), null);
 		try {
-			publier(RhEvaluationTopics.RH_NOTIFICATIONS, destinataire, msg);
+			publier(RhEvaluationTopics.RH_NOTIFICATIONS, destinataire,
+					message(destinataire, "Votre évaluation est ouverte", content, objet));
 		} catch (Exception ex) {
 			log.warn("Échec publication notif EVALUATION_CAMPAGNE_OUVERTE pour éval {}: {}",
 					evaluation.getId(), ex.getMessage());
@@ -90,15 +97,12 @@ public class EvaluationEventPublisher {
 				? evaluation.getCollaborateurNom()
 				: "Un collaborateur";
 		String campagne = evaluation.getCampaign() != null ? evaluation.getCampaign().getNom() : "la campagne";
-		String content = "EVALUATION_A_NOTER|evaluation=" + evaluation.getId()
-				+ "|" + collaborateur + " a validé son auto-évaluation (« " + campagne + " »). À vous de la noter.";
-		NotificationMessage msg = new NotificationMessage(
-				"WEBSOCKET",
-				destinataire,
-				"Évaluation à noter — " + collaborateur,
-				content);
+		String content = collaborateur + " a validé son auto-évaluation (« " + campagne + " »). À vous de la noter.";
+		ObjetNotification objet = ObjetNotification.de(ObjetNotification.EVALUATION,
+				"EVALUATION_A_NOTER", evaluation.getId(), null);
 		try {
-			publier(RhEvaluationTopics.RH_NOTIFICATIONS, destinataire, msg);
+			publier(RhEvaluationTopics.RH_NOTIFICATIONS, destinataire,
+					message(destinataire, "Évaluation à noter — " + collaborateur, content, objet));
 		} catch (Exception ex) {
 			log.warn("Échec publication notif EVALUATION_A_NOTER pour éval {}: {}",
 					evaluation.getId(), ex.getMessage());
@@ -108,14 +112,22 @@ public class EvaluationEventPublisher {
 	/** Destinataire spécial : diffusion à tous les comptes RH (svc-notification). */
 	public static final String DESTINATAIRE_RH = "RH";
 
-	/** Notification in-app libre, ex. alerte RH sur un lancement de campagne bloqué (SCRUM-42). */
-	public void notifier(String destinataire, String sujet, String corps) {
+	/**
+	 * Notification in-app sur un objet (ticket 2F), ex. alerte d'écart ou campagne non lancée (SCRUM-42). L'objet
+	 * porte l'identifiant d'événement : à réutiliser pour tous les destinataires du même événement.
+	 */
+	public void notifier(String destinataire, String sujet, String corps, ObjetNotification objet) {
 		try {
-			publier(RhEvaluationTopics.RH_NOTIFICATIONS, destinataire,
-					new NotificationMessage("WEBSOCKET", destinataire, sujet, corps));
+			publier(RhEvaluationTopics.RH_NOTIFICATIONS, destinataire, message(destinataire, sujet, corps, objet));
 		} catch (Exception ex) {
 			log.warn("Échec notification évaluation → {} : {}", destinataire, ex.getMessage());
 		}
+	}
+
+	private NotificationMessage message(String destinataire, String sujet, String corps, ObjetNotification objet) {
+		return new NotificationMessage("WEBSOCKET", destinataire, sujet, corps,
+				objet.notificationId().toString(), objet.evenement(), objet.type(),
+				objet.id() != null ? objet.id().toString() : null, objet.numero(), clock.instant().toString());
 	}
 
 	/**

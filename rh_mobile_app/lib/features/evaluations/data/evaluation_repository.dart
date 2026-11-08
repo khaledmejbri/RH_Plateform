@@ -289,6 +289,16 @@ class EvaluationRepository {
     );
   }
 
+  /// Détail mobile (B7) : notes du responsable absentes et `messageAttente` présent avant la validation (D-E15).
+  Future<EvaluationDetailMobile> detailMobile(String evaluationId) async {
+    try {
+      final response = await dio.get('/api/rh/v1/mobile/evaluations/$evaluationId/detail');
+      return EvaluationDetailMobile.fromJson(Map<String, dynamic>.from(response.data as Map));
+    } on DioException catch (e) {
+      throw _formatDioError(e, 'Impossible de charger le détail de l’évaluation');
+    }
+  }
+
   Future<List<EvaluationAnswer>> obtenirReponses(String evaluationId) async {
     try {
       final response =

@@ -39,6 +39,10 @@ spring:
               uri: lb://svc-presence
               predicates:
                 - Path=/api/rh/v1/presence/**,/api/rh/v1/admin/presence/**,/api/rh/v1/mobile/presence/**,/api/rh/v1/borne/presence/**
+            - id: svc-notification-api
+              uri: lb://svc-notification
+              predicates:
+                - Path=/api/rh/v1/notifications/**
             - id: svc-referentiel-rh-v1
               uri: lb://svc-referentiel-rh
               predicates:

@@ -3,12 +3,14 @@ package com.hr.presence.kafka;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -25,8 +27,17 @@ public class PresenceEventPublisher {
 
 	private final ObjectProvider<KafkaTemplate<String, String>> kafkaTemplateProvider;
 
+	private final Clock clock;
+
+	@Autowired
 	public PresenceEventPublisher(ObjectProvider<KafkaTemplate<String, String>> kafkaTemplateProvider) {
+		this(kafkaTemplateProvider, Clock.systemUTC());
+	}
+
+	/** Horloge injectable pour les tests ({@code emis_le}). */
+	PresenceEventPublisher(ObjectProvider<KafkaTemplate<String, String>> kafkaTemplateProvider, Clock clock) {
 		this.kafkaTemplateProvider = kafkaTemplateProvider;
+		this.clock = clock;
 	}
 
 	/**
@@ -39,19 +50,10 @@ public class PresenceEventPublisher {
 			Instant validUntil,
 			long joursRestants,
 			int qrVersion) {
-		String content = "PRESENCE_QR_EXPIRE_J30"
-				+ "|eventId=" + eventId
-				+ "|siteId=" + siteId
-				+ "|libelle=" + libelle
-				+ "|validUntil=" + validUntil
-				+ "|joursRestants=" + joursRestants
-				+ "|qrVersion=" + qrVersion
-				+ "|Le QR du site « " + libelle + " » expire dans " + joursRestants + " jour(s).";
-		NotificationMessage msg = new NotificationMessage(
-				"WEBSOCKET",
-				"RH",
-				"QR de pointage bientôt expiré",
-				content);
+		// Texte lisible seulement (D-L01) : l'événement et le site sont des champs structurés
+		String content = "Le QR du site « " + libelle + " » expire dans " + joursRestants + " jour(s).";
+		ObjetNotification objet = new ObjetNotification(null, "PRESENCE_QR_EXPIRE_J30", null, null, eventId);
+		NotificationMessage msg = message("RH", "QR de pointage bientôt expiré", content, objet);
 		try {
 			publier(RhPresenceTopics.RH_NOTIFICATIONS, siteId + ":" + qrVersion, msg);
 		} catch (Exception ex) {
@@ -60,9 +62,18 @@ public class PresenceEventPublisher {
 	}
 
 	/**
-	 * Notification in-app (D-P04) ; [destinataire] = compte utilisateur, ou {@link #DESTINATAIRE_RH}.
+	 * Notification in-app (D-P04) sans page de détail (ex. vérification faciale) ; [destinataire] = compte
+	 * utilisateur, ou {@link #DESTINATAIRE_RH}.
 	 */
 	public void notifier(String destinataire, String sujet, String corps) {
+		notifier(destinataire, sujet, corps, ObjetNotification.sansObjet("PRESENCE_INFORMATION"));
+	}
+
+	/**
+	 * Notification in-app portant sur un objet (ticket 2F : pointage manuel, heures sup). L'objet porte
+	 * l'identifiant d'événement : à réutiliser pour tous les destinataires du même événement.
+	 */
+	public void notifier(String destinataire, String sujet, String corps, ObjetNotification objet) {
 		if (destinataire == null || destinataire.isBlank()) {
 			return;
 		}
@@ -71,21 +82,26 @@ public class PresenceEventPublisher {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override
 				public void afterCommit() {
-					envoyer(destinataire, sujet, corps);
+					envoyer(destinataire, sujet, corps, objet);
 				}
 			});
 			return;
 		}
-		envoyer(destinataire, sujet, corps);
+		envoyer(destinataire, sujet, corps, objet);
 	}
 
-	private void envoyer(String destinataire, String sujet, String corps) {
+	private void envoyer(String destinataire, String sujet, String corps, ObjetNotification objet) {
 		try {
-			publier(RhPresenceTopics.RH_NOTIFICATIONS, destinataire,
-					new NotificationMessage("WEBSOCKET", destinataire, sujet, corps));
+			publier(RhPresenceTopics.RH_NOTIFICATIONS, destinataire, message(destinataire, sujet, corps, objet));
 		} catch (Exception ex) {
 			log.warn("Échec notification présence → {} : {}", destinataire, ex.getMessage());
 		}
+	}
+
+	private NotificationMessage message(String destinataire, String sujet, String corps, ObjetNotification objet) {
+		return new NotificationMessage("WEBSOCKET", destinataire, sujet, corps,
+				objet.notificationId().toString(), objet.evenement(), objet.type(),
+				objet.id() != null ? objet.id().toString() : null, objet.numero(), clock.instant().toString());
 	}
 
 	private void publier(String topic, String key, Object payload) {

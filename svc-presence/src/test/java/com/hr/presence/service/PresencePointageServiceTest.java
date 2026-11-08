@@ -638,6 +638,7 @@ class PresencePointageServiceTest {
 		assertThat(page.content()).isEmpty();
 		verify(pointageRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class),
 				any(org.springframework.data.domain.Pageable.class));
-		org.mockito.Mockito.verifyNoInteractions(referentielClient);
+		// le filtre s'élargit au compte du collaborateur (lignes anciennes), le référentiel est interrogé une fois
+		verify(referentielClient).affectations(java.util.List.of(collab));
 	}
 }

@@ -1,19 +1,25 @@
 package com.hr.notification.listener;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hr.notification.dto.NotificationMessage;
+import com.hr.notification.service.AnnuaireComptesClient;
 import com.hr.notification.service.EmailService;
+import com.hr.notification.service.NotificationStockageService;
 import com.hr.notification.service.WebSocketNotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Reçoit {@code rh.notifications} : e-mail éventuel, puis, pour WEBSOCKET / BOTH, conservation par compte
+ * destinataire AVANT l'envoi temps réel (D-NOT01). Un message rejoué n'est ni dupliqué ni renvoyé.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -21,51 +27,65 @@ public class NotificationListener {
 
     private final EmailService emailService;
     private final WebSocketNotificationService webSocketNotificationService;
+    private final NotificationStockageService stockage;
+    private final AnnuaireComptesClient annuaire;
     private final ObjectMapper objectMapper;
-    private final org.springframework.web.client.RestTemplate restTemplate;
-
-    @Value("${app.internal-api.token}")
-    private String internalApiToken;
 
     @KafkaListener(topics = "rh.notifications", groupId = "notification-group")
     public void handleNotificationMessage(String messagePayload) {
-        log.info("Received notification message: {}", messagePayload);
+        NotificationMessage message;
         try {
-            NotificationMessage message = objectMapper.readValue(messagePayload, NotificationMessage.class);
+            message = objectMapper.readValue(messagePayload, NotificationMessage.class);
+        } catch (JsonProcessingException e) {
+            log.error("Message de notification illisible : ignoré", e);
+            return;
+        }
+        traiter(message);
+    }
 
-            if ("EMAIL".equalsIgnoreCase(message.getType()) || "BOTH".equalsIgnoreCase(message.getType())) {
+    void traiter(NotificationMessage message) {
+        String type = message.getType();
+        if ("EMAIL".equalsIgnoreCase(type) || "BOTH".equalsIgnoreCase(type)) {
+            try {
                 emailService.sendTextEmail(message.getRecipient(), message.getSubject(), message.getContent());
+            } catch (RuntimeException e) {
+                log.error("Échec de l'envoi d'e-mail de notification", e);
             }
+        }
+        if (!"WEBSOCKET".equalsIgnoreCase(type) && !"BOTH".equalsIgnoreCase(type)) {
+            return; // EMAIL seul : non conservé
+        }
+        for (UUID compte : destinataires(message)) {
+            conserverEtPousser(message, compte);
+        }
+    }
 
-            if ("WEBSOCKET".equalsIgnoreCase(message.getType()) || "BOTH".equalsIgnoreCase(message.getType())) {
-                if ("RH".equalsIgnoreCase(message.getRecipient())) {
-                    log.info("HR recipient detected, fetching users with role RH from identity service");
-                    try {
-                        String url = "http://svc-identite-acces/internal/users/by-role?role=RH";
-                        HttpHeaders headers = new HttpHeaders();
-                        headers.set("X-Internal-Token", internalApiToken);
-                        HttpEntity<Void> request = new HttpEntity<>(headers);
-                        ResponseEntity<com.hr.notification.dto.UserIdentityResponse[]> response =
-                                restTemplate.exchange(url, HttpMethod.GET, request,
-                                        com.hr.notification.dto.UserIdentityResponse[].class);
-                        com.hr.notification.dto.UserIdentityResponse[] users = response.getBody();
-                        
-                        if (users != null) {
-                            for (com.hr.notification.dto.UserIdentityResponse user : users) {
-                                log.info("Sending notification to HR user: {}", user.getId());
-                                webSocketNotificationService.sendToUser(user.getId().toString(), message);
-                            }
-                        }
-                    } catch (Exception e) {
-                        log.error("Failed to fetch users for role RH", e);
-                    }
-                } else {
-                    webSocketNotificationService.sendToUser(message.getRecipient(), message);
-                }
-            }
+    private List<UUID> destinataires(NotificationMessage message) {
+        String recipient = message.getRecipient();
+        if (recipient == null || recipient.isBlank()) {
+            log.warn("Notification sans destinataire : ignorée");
+            return List.of();
+        }
+        if ("RH".equalsIgnoreCase(recipient.trim())) {
+            // Une erreur de résolution est propagée : Kafka rejoue le message (idempotent)
+            return annuaire.comptesRh();
+        }
+        try {
+            return List.of(UUID.fromString(recipient.trim()));
+        } catch (IllegalArgumentException e) {
+            // Ancien format (adresse ou nom) : pas de compte, donc rien à conserver
+            log.warn("Destinataire qui n'est pas un compte : notification non conservée");
+            return List.of();
+        }
+    }
 
-        } catch (Exception e) {
-            log.error("Error processing notification message", e);
+    private void conserverEtPousser(NotificationMessage message, UUID compte) {
+        try {
+            stockage.enregistrer(message, compte)
+                    .ifPresent(dto -> webSocketNotificationService.sendToUser(compte.toString(), dto));
+        } catch (DataIntegrityViolationException e) {
+            // Rejeu concurrent du même événement : l'autre traitement a déjà conservé et poussé
+            log.info("Notification déjà conservée pour le compte {} (rejeu concurrent)", compte);
         }
     }
 }

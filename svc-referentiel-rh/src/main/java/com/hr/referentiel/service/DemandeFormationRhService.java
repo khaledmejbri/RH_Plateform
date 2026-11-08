@@ -93,7 +93,7 @@ public class DemandeFormationRhService {
 				"Demande soumise au RH pour validation");
 		
 		// Notifier le RH et les collaborateurs cibles si RO
-		notificationPublisher.notifierDemandeFormationSoumise(saved.getDemandeur(), saved.getTypeFormation(), saved.getNumero());
+		notificationPublisher.notifierDemandeFormationSoumise(saved.getDemandeur(), saved.getTypeFormation(), saved.getId(), saved.getNumero());
 		if (saved.getOrigine() == OrigineDemandeFormationRh.RESPONSABLE_OPERATIONNEL 
 				&& saved.getCollaborateursCibles() != null && !saved.getCollaborateursCibles().isEmpty()) {
 			notifierCollaborateursCibles(saved);
@@ -112,6 +112,18 @@ public class DemandeFormationRhService {
 
 	@Transactional(readOnly = true)
 	public List<DemandeFormationRhResponse> listerPourRh(StatutDemandeFormationRh statut, String q) {
+		return listerPourRh(statut, q, null);
+	}
+
+	/**
+	 * D-N01 : {@code collaborateurId} = formations demandées par lui, qui le ciblent nommément, ou qui ciblent son
+	 * unité (sous-unités comprises). Un identifiant inconnu donne une liste vide.
+	 */
+	@Transactional(readOnly = true)
+	public List<DemandeFormationRhResponse> listerPourRh(StatutDemandeFormationRh statut, String q,
+			UUID collaborateurId) {
+		UniteOrganisation uniteDuCollaborateur = collaborateurId == null ? null
+				: collaborateurRepository.findDetailById(collaborateurId).map(Collaborateur::getUnite).orElse(null);
 		String numero = NumeroLisibleService.normaliserRecherche(q);
 		List<DemandeFormationRh> lignes;
 		if (numero != null) {
@@ -124,7 +136,13 @@ public class DemandeFormationRhService {
 					? demandeFormationRepository.findAllByOrderByCreeLeDesc()
 					: demandeFormationRepository.findByStatutOrderByCreeLeDesc(statut);
 		}
-		return lignes.stream().map(this::toResponse).collect(Collectors.toList());
+		return lignes.stream()
+				.filter(d -> collaborateurId == null
+						|| d.getDemandeur().getId().equals(collaborateurId)
+						|| (d.getCollaborateursCibles() != null && d.getCollaborateursCibles().contains(collaborateurId))
+						|| (d.getUniteCible() != null && uniteDuCollaborateur != null
+								&& SuperieurHierarchieRules.descendDe(uniteDuCollaborateur, d.getUniteCible().getId())))
+				.map(this::toResponse).collect(Collectors.toList());
 	}
 
 	@Transactional(readOnly = true)
@@ -187,7 +205,7 @@ public class DemandeFormationRhService {
 				"Intégrée au plan annuel" + (demande.getCommentaireRh() != null ? " : " + demande.getCommentaireRh() : ""));
 		
 		notificationPublisher.notifierDemandeFormationIntegree(demande.getDemandeur(), demande.getTypeFormation(),
-				demande.getNumero());
+				demande.getId(), demande.getNumero());
 		return toResponse(demande);
 	}
 
@@ -206,7 +224,7 @@ public class DemandeFormationRhService {
 				rh != null ? rh.getId() : null, nomActeurRh(rh), "Refusée par la RH : " + req.getMotifRefus().trim());
 		
 		notificationPublisher.notifierDemandeFormationRefusee(demande.getDemandeur(), demande.getTypeFormation(),
-				req.getMotifRefus(), demande.getNumero());
+				req.getMotifRefus(), demande.getId(), demande.getNumero());
 		return toResponse(demande);
 	}
 
@@ -226,7 +244,7 @@ public class DemandeFormationRhService {
 		enregistrerWorkflow(demande, ActionWorkflowFormation.ANNULATION_DEMANDEUR,
 				c.getId(), c.getPrenom() + " " + c.getNom(), "Annulée par le demandeur");
 		
-		notificationPublisher.notifierDemandeFormationAnnulee(demande.getDemandeur(), demande.getTypeFormation(), demande.getNumero());
+		notificationPublisher.notifierDemandeFormationAnnulee(demande.getDemandeur(), demande.getTypeFormation(), demande.getId(), demande.getNumero());
 		return toResponse(demande);
 	}
 
@@ -280,6 +298,7 @@ public class DemandeFormationRhService {
 				demande.getOrganisme(),
 				demande.getDateSouhaiteeDebut(),
 				demande.getDateSouhaiteeFin(),
+				demande.getId(),
 				demande.getNumero()
 			);
 			enregistrerWorkflow(demande, ActionWorkflowFormation.NOTIFICATION_ENVOYEE,
@@ -419,6 +438,15 @@ public class DemandeFormationRhService {
 		r.setNumero(demande.getNumero());
 		r.setDemandeurIdentifiant(demande.getDemandeur().getId());
 		r.setDemandeurNom(demande.getDemandeur().getPrenom() + " " + demande.getDemandeur().getNom());
+		r.setDemandeurMatricule(demande.getDemandeur().getMatricule());
+		r.setDemandeurUnite(demande.getDemandeur().getUnite() != null
+				? demande.getDemandeur().getUnite().getLibelle() : null);
+		if (demande.getCollaborateursCibles() != null && !demande.getCollaborateursCibles().isEmpty()) {
+			r.setCollaborateursCibles(collaborateurRepository.findAllById(demande.getCollaborateursCibles()).stream()
+					.map(c -> new DemandeFormationRhResponse.CollaborateurCible(
+							c.getId(), (c.getPrenom() + " " + c.getNom()).trim(), c.getMatricule()))
+					.collect(Collectors.toList()));
+		}
 		r.setOrigine(demande.getOrigine());
 		r.setCible(demande.getCible());
 		if (demande.getUniteCible() != null) {

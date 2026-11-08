@@ -55,7 +55,13 @@ class FormationsListScreen extends ConsumerWidget {
                           () async => ref.invalidate(formationsListProvider),
                       child: ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-                        itemBuilder: (_, i) => _FormationCard(item: items[i]),
+                        itemBuilder: (_, i) => InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: items[i].id.isEmpty
+                              ? null
+                              : () => context.push('/formations/${items[i].id}'),
+                          child: _FormationCard(item: items[i]),
+                        ),
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemCount: items.length,
                       ),

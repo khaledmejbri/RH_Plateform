@@ -23,7 +23,7 @@ public class TempsTravailCsvService {
 
 	private static final String[] ENTETES = {"Matricule", "Nom", "Direction", "Département", "Service", "Site", "Date",
 			"Entrées / sorties", "Nombre d'entrées / sorties", "Première entrée", "Dernière sortie", "Total (hh:mm)", "Total (minutes)",
-			"État", "Pointage manuel"};
+			"État", "Pointage manuel", "Retard (minutes)", "Retard (hh:mm)"};
 
 	private final TempsTravailService tempsTravailService;
 
@@ -50,7 +50,10 @@ public class TempsTravailCsvService {
 					CalculHeuresSupService.formaterHeures(l.minutesTravaillees()),
 					String.valueOf(l.minutesTravaillees()),
 					l.etat().libelle(),
-					d.manuel() ? "oui" : "non")).append("\r\n");
+					d.manuel() ? "oui" : "non",
+					// D-P19.g : vide quand le retard n'est pas calculable, 0 et 00:00 quand le pointage est à l'heure
+					l.retardMinutes() == null ? null : String.valueOf(l.retardMinutes()),
+					l.retardMinutes() == null ? null : CalculHeuresSupService.formaterHeures(l.retardMinutes()))).append("\r\n");
 		}
 		return sb.toString().getBytes(StandardCharsets.UTF_8);
 	}

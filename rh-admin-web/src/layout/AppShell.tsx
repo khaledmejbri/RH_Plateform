@@ -1,33 +1,90 @@
-import { useEffect, useMemo, useState, type ComponentType } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { clearToken, getToken } from '../api/auth';
 import { canWriteBackoffice, isDirectionOnly } from '../auth/jwtRoles';
 import NotificationBell from './NotificationBell';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { DetailProvider } from '../detail/DetailProvider';
 
-type NavItem = {
+type Icone = ComponentType<{ className?: string }>;
+
+type Entree = {
+  id: string;
   to: string;
   label: string;
-  icon: ComponentType<{ className?: string }>;
-  desc: string;
-  /** Visible uniquement en écriture RH/ADMIN */
+  /** Visible uniquement en écriture RH/ADMIN. */
   writeOnly?: boolean;
+  /** Visible uniquement pour RH et ADMIN (plaintes, D-N01.a). */
+  rhAdmin?: boolean;
 };
+type Menu =
+  | ({ kind: 'lien'; icon: Icone } & Entree)
+  | { kind: 'groupe'; id: string; label: string; icon: Icone; enfants: Entree[] };
 
-const navAll: NavItem[] = [
-  { to: '/app/accueil',                   label: 'Accueil',                    icon: IconHome,     desc: 'Tableau de bord' },
-  { to: '/app/plaintes',                  label: 'Plaintes',                   icon: IconChat,     desc: 'Suivi' },
-  { to: '/app/demandes-administratives',  label: 'Demandes administratives',   icon: IconFile,     desc: 'Congés, sorties, missions' },
-  { to: '/app/documents-administratifs',  label: 'Documents administratifs',   icon: IconDoc,      desc: 'Attestations et autres documents' },
-  { to: '/app/formations',                label: 'Formations',                 icon: IconSchool,   desc: 'Demandes de formation' },
-  { to: '/app/evaluations',               label: 'Évaluations',                icon: IconStar,     desc: 'Campagnes et suivi' },
-  { to: '/app/collaborateurs',            label: 'Collaborateurs',             icon: IconUsers,    desc: 'Fiches et comptes' },
-  { to: '/app/organigramme',              label: 'Organigramme',               icon: IconTree,     desc: 'Hiérarchie de la société' },
-  { to: '/app/pointage',                  label: 'Sites de pointage',          icon: IconQr,       desc: 'QR, pointages et temps de travail' },
-  { to: '/app/heures-sup',                label: 'Heures supplémentaires',     icon: IconClock,    desc: 'Demandes et heures comptées' },
-  { to: '/app/structure',                 label: 'Structure RH',               icon: IconBuilding, desc: 'Départements et services', writeOnly: true },
-  { to: '/app/unites',                    label: 'Organisation',               icon: IconBuilding, desc: 'Unités', writeOnly: true },
+/** Menu par ordre d'usage (D-N03). */
+const MENU: Menu[] = [
+  { kind: 'lien', id: 'accueil', to: '/app/accueil', label: 'Accueil', icon: IconHome },
+  {
+    kind: 'groupe', id: 'pointage', label: 'Pointage', icon: IconQr, enfants: [
+      { id: 'pointages', to: '/app/pointage?onglet=pointages', label: 'Pointages' },
+      { id: 'temps', to: '/app/pointage?onglet=temps', label: 'Temps de travail' },
+      { id: 'heures-sup', to: '/app/heures-sup', label: 'Heures supplémentaires' },
+      { id: 'manuels', to: '/app/pointage?onglet=manuels', label: 'Pointages manuels' },
+      { id: 'sites', to: '/app/pointage', label: 'Sites et bornes' },
+    ],
+  },
+  {
+    kind: 'groupe', id: 'collaborateurs', label: 'Collaborateurs', icon: IconUsers, enfants: [
+      { id: 'fiches', to: '/app/collaborateurs', label: 'Fiches collaborateurs' },
+      { id: 'organigramme', to: '/app/organigramme', label: 'Organigramme' },
+    ],
+  },
+  { kind: 'lien', id: 'formations', to: '/app/formations', label: 'Formations', icon: IconSchool },
+  { kind: 'lien', id: 'demandes', to: '/app/demandes-administratives', label: 'Demandes administratives', icon: IconFile },
+  { kind: 'lien', id: 'documents', to: '/app/documents-administratifs', label: 'Documents administratifs', icon: IconDoc },
+  { kind: 'lien', id: 'evaluations', to: '/app/evaluations', label: 'Évaluations', icon: IconStar },
+  { kind: 'lien', id: 'plaintes', to: '/app/plaintes', label: 'Plaintes', icon: IconChat, rhAdmin: true },
+  {
+    kind: 'groupe', id: 'parametrage', label: 'Paramétrage', icon: IconBuilding, enfants: [
+      { id: 'structure', to: '/app/structure', label: 'Structure RH', writeOnly: true },
+      { id: 'organisation', to: '/app/unites', label: 'Organisation', writeOnly: true },
+    ],
+  },
 ];
+
+/** Identifiant de l'entrée active d'après l'adresse (y compris sur une page de détail). */
+export function entreeActive(pathname: string, search: string): string {
+  const p = pathname;
+  if (p.startsWith('/app/pointage/sites')) return 'sites';
+  if (p.startsWith('/app/pointage/manuels')) return 'manuels';
+  if (p.startsWith('/app/pointage')) {
+    const o = new URLSearchParams(search).get('onglet');
+    return o === 'pointages' ? 'pointages' : o === 'temps' ? 'temps' : o === 'manuels' ? 'manuels' : 'sites';
+  }
+  if (p.startsWith('/app/heures-sup')) return 'heures-sup';
+  if (p.startsWith('/app/collaborateurs')) return 'fiches';
+  if (p.startsWith('/app/organigramme') || p.startsWith('/app/organisation')) return 'organigramme';
+  if (p.startsWith('/app/formations')) return 'formations';
+  if (p.startsWith('/app/demandes-administratives')) return 'demandes';
+  if (p.startsWith('/app/documents-administratifs')) return 'documents';
+  if (p.startsWith('/app/evaluations')) return 'evaluations';
+  if (p.startsWith('/app/plaintes')) return 'plaintes';
+  if (p.startsWith('/app/structure')) return 'structure';
+  if (p.startsWith('/app/unites')) return 'organisation';
+  if (p.startsWith('/app/accueil')) return 'accueil';
+  return '';
+}
+
+function libelleEntree(id: string): string | undefined {
+  for (const m of MENU) {
+    if (m.kind === 'lien' && m.id === id) return m.label;
+    if (m.kind === 'groupe') {
+      const e = m.enfants.find((x) => x.id === id);
+      if (e) return e.label;
+    }
+  }
+  return undefined;
+}
 
 export default function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -36,87 +93,141 @@ export default function AppShell() {
   const token = getToken();
   const direction = isDirectionOnly(token);
   const canWrite = canWriteBackoffice(token);
+  const menuBtn = useRef<HTMLButtonElement>(null);
+  const actif = entreeActive(location.pathname, location.search);
 
-  // Titre d'onglet propre à chaque page (R10).
+  // Menu filtré par rôle ; un groupe sans sous-entrée visible n'est pas affiché.
+  const menu = useMemo(() => {
+    const visible = (e: Entree) => (!e.writeOnly || canWrite) && (!e.rhAdmin || canWrite);
+    return MENU.flatMap((m): Menu[] => {
+      if (m.kind === 'lien') return visible(m) ? [m] : [];
+      const enfants = m.enfants.filter(visible);
+      return enfants.length > 0 ? [{ ...m, enfants }] : [];
+    });
+  }, [canWrite]);
+
+  const groupeActif = menu.find((m) => m.kind === 'groupe' && m.enfants.some((e) => e.id === actif))?.id;
+  const [ouverts, setOuverts] = useState<Record<string, boolean>>({});
+  // À l'ouverture d'une page, son groupe est déplié.
   useEffect(() => {
-    const item = navAll.find((i) => location.pathname === i.to || location.pathname.startsWith(`${i.to}/`));
-    const titre = location.pathname.includes('/alertes-ecart/') ? 'Alerte d’écart' : item?.label ?? 'Accueil';
-    document.title = `${titre} — RH-Évènement`;
-  }, [location.pathname]);
+    if (groupeActif) setOuverts((o) => (o[groupeActif] ? o : { ...o, [groupeActif]: true }));
+  }, [groupeActif]);
 
-  const nav = useMemo(
-    () => navAll.filter((item) => !item.writeOnly || canWrite),
-    [canWrite],
-  );
+  // Titre d'onglet : libellé de la sous-entrée (D-N03). Les fiches posent leur propre titre.
+  useEffect(() => {
+    const estFiche = /^\/app\/(collaborateurs|formations|plaintes|demandes-administratives|documents-administratifs|heures-sup|evaluations|organisation|pointage\/(sites|manuels))\/.+/.test(location.pathname);
+    if (!estFiche) document.title = `${libelleEntree(actif) ?? 'Accueil'} — RH-Évènement`;
+  }, [actif, location.pathname]);
+
+  // Tiroir (petits écrans) : Échap le ferme et rend le focus au bouton.
+  useEffect(() => {
+    if (!sidebarOpen) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSidebarOpen(false);
+        menuBtn.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [sidebarOpen]);
 
   function logout() {
     clearToken();
     navigate('/login', { replace: true });
   }
 
+  const lien = (e: Entree, Ic?: Icone) => (
+    <Link
+      key={e.id}
+      to={e.to}
+      aria-current={actif === e.id ? 'page' : undefined}
+      className={`shell__nav-item${actif === e.id ? ' shell__nav-item--active' : ''}`}
+      onClick={() => setSidebarOpen(false)}
+    >
+      {Ic ? <Ic className="shell__nav-icon" /> : null}
+      <span className="shell__nav-label">{e.label}</span>
+    </Link>
+  );
+
   return (
-    <div className="shell">
-      <a className="skip-link" href="#contenu">Aller au contenu</a>
-      <button type="button" className="shell__menu-btn" aria-label="Ouvrir le menu" aria-expanded={sidebarOpen}
-        onClick={() => setSidebarOpen(v => !v)}>
-        <span /><span /><span />
-      </button>
+    <DetailProvider>
+      <div className="shell">
+        <a className="skip-link" href="#contenu">Aller au contenu</a>
+        <button ref={menuBtn} type="button" className="shell__menu-btn" aria-label="Ouvrir le menu" aria-expanded={sidebarOpen}
+          onClick={() => setSidebarOpen(v => !v)}>
+          <span /><span /><span />
+        </button>
 
-      {sidebarOpen && (
-        <button type="button" className="shell__backdrop" aria-label="Fermer"
-          onClick={() => setSidebarOpen(false)} />
-      )}
+        {sidebarOpen && (
+          <button type="button" className="shell__backdrop" aria-label="Fermer"
+            onClick={() => { setSidebarOpen(false); menuBtn.current?.focus(); }} />
+        )}
 
-      <aside className={`shell__sidebar ${sidebarOpen ? 'shell__sidebar--open' : ''}`}>
-        <div className="shell__brand">
-          <div className="shell__logo" aria-hidden />
-          <div>
-            <div className="shell__brand-title">Plateforme RH</div>
-            <div className="shell__brand-sub">
-              {direction ? 'Consultation' : 'Administration'}
+        <aside className={`shell__sidebar ${sidebarOpen ? 'shell__sidebar--open' : ''}`}>
+          <div className="shell__brand">
+            <div className="shell__logo" aria-hidden />
+            <div>
+              <div className="shell__brand-title">Plateforme RH</div>
+              <div className="shell__brand-sub">
+                {direction ? 'Consultation' : 'Administration'}
+              </div>
             </div>
           </div>
+
+          <nav className="shell__nav" aria-label="Navigation principale">
+            {menu.map((m) => {
+              if (m.kind === 'lien') return lien(m, m.icon);
+              const ouvert = !!ouverts[m.id];
+              const Ic = m.icon;
+              return (
+                <div key={m.id} className="shell__nav-groupe">
+                  <button
+                    type="button"
+                    className={`shell__nav-groupe-btn${groupeActif === m.id ? ' shell__nav-groupe-btn--actif' : ''}`}
+                    aria-expanded={ouvert}
+                    aria-controls={`nav-${m.id}`}
+                    onClick={() => setOuverts((o) => ({ ...o, [m.id]: !o[m.id] }))}
+                  >
+                    <Ic className="shell__nav-icon" />
+                    <span className="shell__nav-label">{m.label}</span>
+                    <span className={`shell__nav-chevron${ouvert ? ' shell__nav-chevron--ouvert' : ''}`} aria-hidden>▸</span>
+                    <span className="sr-only">{ouvert ? 'déplié' : 'replié'}</span>
+                  </button>
+                  <div id={`nav-${m.id}`} className="shell__nav-sous" hidden={!ouvert}>
+                    {m.enfants.map((e) => lien(e))}
+                  </div>
+                </div>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <div className="shell__main">
+          <header className="shell__header">
+            <h1 className="shell__header-title">
+              {direction ? 'Espace Direction' : 'Espace Ressources Humaines'}
+            </h1>
+            <div className="shell__header-actions">
+              <NotificationBell />
+              <button type="button" className="btn btn--ghost" onClick={logout}>
+                Déconnexion
+              </button>
+            </div>
+          </header>
+          {direction ? (
+            <div className="alert alert--info" role="status" style={{ margin: '0 1.25rem', marginTop: 12 }}>
+              Consultation uniquement — vous ne pouvez pas modifier les données.
+            </div>
+          ) : null}
+          <main id="contenu" tabIndex={-1} className="shell__content anim-fade-in">
+            <ErrorBoundary resetKey={location.pathname}>
+              <Outlet context={{ lectureSeule: direction }} />
+            </ErrorBoundary>
+          </main>
         </div>
-
-        <nav className="shell__nav" aria-label="Navigation principale">
-          {nav.map(item => (
-            <NavLink key={item.to} to={item.to}
-              className={({ isActive }) => `shell__nav-item${isActive ? ' shell__nav-item--active' : ''}`}
-              onClick={() => setSidebarOpen(false)}>
-              <item.icon className="shell__nav-icon" />
-              <span>
-                <span className="shell__nav-label">{item.label}</span>
-                <span className="shell__nav-desc">{item.desc}</span>
-              </span>
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-
-      <div className="shell__main">
-        <header className="shell__header">
-          <h1 className="shell__header-title">
-            {direction ? 'Espace Direction' : 'Espace Ressources Humaines'}
-          </h1>
-          <div className="shell__header-actions">
-            <NotificationBell />
-            <button type="button" className="btn btn--ghost" onClick={logout}>
-              Déconnexion
-            </button>
-          </div>
-        </header>
-        {direction ? (
-          <div className="alert alert--info" role="status" style={{ margin: '0 1.25rem', marginTop: 12 }}>
-            Consultation uniquement — vous ne pouvez pas modifier les données.
-          </div>
-        ) : null}
-        <main id="contenu" tabIndex={-1} className="shell__content anim-fade-in">
-          <ErrorBoundary resetKey={location.pathname}>
-            <Outlet context={{ lectureSeule: direction }} />
-          </ErrorBoundary>
-        </main>
       </div>
-    </div>
+    </DetailProvider>
   );
 }
 
@@ -141,14 +252,8 @@ function IconUsers({ className }: { className?: string }) {
 function IconBuilding({ className }: { className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v0M9 13v0M9 17v0" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
-function IconTree({ className }: { className?: string }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 3v18M12 8h6a3 3 0 010 6h-6M12 8H8a3 3 0 000 6h4M12 14h5a2.5 2.5 0 010 5h-5M12 14H9a2.5 2.5 0 000 5h3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
 function IconStar({ className }: { className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-function IconClock({ className }: { className?: string }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 7v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 function IconQr({ className }: { className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 2h2v2h-2v-2zm4-2h2v6h-6v-2h2v-2h2v-2zm-4 4h2v2h-2v-2z" strokeLinecap="round" strokeLinejoin="round" /></svg>;

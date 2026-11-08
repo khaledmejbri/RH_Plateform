@@ -488,4 +488,40 @@ class HeuresSupServiceTest {
 
 		codeErreur(() -> service.annulerParBackoffice(demande.getId(), null), "STATUT_INCOMPATIBLE", 409);
 	}
+
+	// ---- Détail par numéro lisible (D-N01) ------------------------------------------------------------------------
+
+	@Test
+	void detailParNumero_trouve() {
+		demande.setNumero("HS-202611-0007");
+		when(demandeRepository.findByNumero("HS-202611-0007")).thenReturn(Optional.of(demande));
+
+		service.obtenirParNumero("HS-202611-0007");
+
+		org.mockito.Mockito.verify(mapper).versReponse(demande);
+	}
+
+	@Test
+	void detailParNumero_ancienneReferenceAcceptee() {
+		when(demandeRepository.findByNumero("HS-0000ABCD")).thenReturn(Optional.empty());
+		when(demandeRepository.findByReference("HS-0000ABCD")).thenReturn(Optional.of(demande));
+
+		service.obtenirParNumero("HS-0000ABCD");
+
+		org.mockito.Mockito.verify(mapper).versReponse(demande);
+	}
+
+	@Test
+	void detailParNumero_inconnu404_malForme400() {
+		when(demandeRepository.findByNumero("HS-202611-9999")).thenReturn(Optional.empty());
+		when(demandeRepository.findByReference("HS-202611-9999")).thenReturn(Optional.empty());
+
+		codeErreur(() -> service.obtenirParNumero("HS-202611-9999"), "DEMANDE_INTROUVABLE", 404);
+		codeErreur(() -> service.obtenirParNumero("PM-202611-0001"), "NUMERO_INVALIDE", 400);
+	}
+
+	@Test
+	void compteesDeDemande_demandeInconnue404() {
+		codeErreur(() -> service.compteesDeDemande(UUID.randomUUID()), "DEMANDE_INTROUVABLE", 404);
+	}
 }

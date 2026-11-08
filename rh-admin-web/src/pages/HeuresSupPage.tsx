@@ -33,6 +33,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { SaisieDate } from '../components/ChampsFr';
 import { formatDuree, formatHeure, formatPeriode, formatPersonne, jourIso, ressembleAUnIdentifiant } from '../utils/format';
 import { VALEUR_NON_RECONNUE } from '../utils/libelles';
+import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 type Onglet = 'a-valider' | 'historique' | 'comptees';
 
@@ -501,9 +502,9 @@ export default function HeuresSupPage() {
                       {comptees.contenu.map((h, i) => (
                         <tr key={`${h.collaborateur_id}-${h.site_id}-${h.journee}-${i}`}>
                           <td>
-                            {formatPersonne(h.nom, h.matricule)}
+                            <LienPersonne id={h.collaborateur_id} nom={h.nom} matricule={h.matricule} />
                           </td>
-                          <td>{h.site_libelle ?? '—'}</td>
+                          <td>{h.site_libelle ? <DetailLink type="site" id={h.site_id} libelle={h.site_libelle} /> : '—'}</td>
                           <td>{formatDateCourteTunis(h.journee)}</td>
                           <td className="small">
                             {h.horaire_debut && h.horaire_fin ? `${formatHeure(h.horaire_debut)} – ${formatHeure(h.horaire_fin)}` : '—'}
@@ -566,16 +567,16 @@ export default function HeuresSupPage() {
                   {demandes.contenu.map((d) => (
                     <tr key={d.id}>
                       <td className="mono small">
-                        {numeroDemande(d)}
+                        <DetailLink type="heures-sup" id={d.id} libelle={numeroDemande(d)} />
                         {d.creee_validee ? <div className="muted">créée validée</div> : null}
                       </td>
-                      <td>{d.site_libelle ?? '—'}</td>
+                      <td>{d.site_libelle ? <DetailLink type="site" id={d.site_id} libelle={d.site_libelle} /> : '—'}</td>
                       <td className="small">
                         {plageTexte(d)}
                         {d.jours?.length ? <div className="muted">{d.jours.length} jour{d.jours.length > 1 ? 's' : ''} ouvert{d.jours.length > 1 ? 's' : ''}</div> : null}
                       </td>
                       <td className="small">
-                        {(d.beneficiaires ?? []).map((b) => formatPersonne(b.nom, b.matricule)).join(', ') || '—'}
+                        {(d.beneficiaires ?? []).length === 0 ? '—' : (d.beneficiaires ?? []).map((b, i) => <span key={b.collaborateur_id}>{i > 0 ? ', ' : ''}<LienPersonne id={b.collaborateur_id} nom={b.nom} matricule={b.matricule} /></span>)}
                         {d.demandeur_nom ? <div className="muted">Demandeur : {auteur(d.demandeur_nom)}</div> : null}
                       </td>
                       <td className="small">{d.motif}</td>

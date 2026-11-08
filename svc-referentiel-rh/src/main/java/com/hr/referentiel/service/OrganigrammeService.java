@@ -1,5 +1,6 @@
 package com.hr.referentiel.service;
 
+import com.hr.referentiel.web.ReferentielMetierException;
 import com.hr.referentiel.config.CacheConfig;
 import com.hr.referentiel.domain.TypeNoeudOrganisation;
 import com.hr.referentiel.dto.*;
@@ -81,7 +82,7 @@ public class OrganigrammeService {
 		UniteOrganisation parent = null;
 		if (req.getParentIdentifiant() != null) {
 			parent = uniteRepository.findById(req.getParentIdentifiant())
-					.orElseThrow(() -> new IllegalArgumentException("Nœud parent introuvable."));
+					.orElseThrow(() -> ReferentielMetierException.notFound("UNITE_INTROUVABLE", "Nœud parent introuvable."));
 		}
 		u.setParent(hierarchieTypeRules.resoudreParentCreation(type, parent));
 		UniteOrganisation saved = uniteRepository.save(u);
@@ -93,7 +94,7 @@ public class OrganigrammeService {
 			CacheConfig.CACHE_COLLABORATEUR_MATRICULE }, allEntries = true)
 	public OrganigrammeNoeudResponse mettreAJourNoeud(UUID id, OrganigrammeNoeudMiseAJourRequest req) {
 		UniteOrganisation u = uniteRepository.findById(id)
-				.orElseThrow(() -> new IllegalArgumentException("Nœud introuvable."));
+				.orElseThrow(() -> ReferentielMetierException.notFound("UNITE_INTROUVABLE", "Nœud introuvable."));
 		if (req.getLibelle() != null) {
 			u.setLibelle(req.getLibelle().trim());
 		}
@@ -116,7 +117,7 @@ public class OrganigrammeService {
 				throw new IllegalArgumentException("Un nœud ne peut pas être son propre parent.");
 			}
 			UniteOrganisation parent = uniteRepository.findById(req.getParentIdentifiant())
-					.orElseThrow(() -> new IllegalArgumentException("Nœud parent introuvable."));
+					.orElseThrow(() -> ReferentielMetierException.notFound("UNITE_INTROUVABLE", "Nœud parent introuvable."));
 			verifierPasDeCycle(id, parent);
 			hierarchieTypeRules.verifierRattachement(u, parent);
 			u.setParent(parent);
@@ -137,9 +138,9 @@ public class OrganigrammeService {
 			CacheConfig.CACHE_COLLABORATEUR_MATRICULE }, allEntries = true)
 	public OrganigrammeNoeudResponse assignerManager(UUID noeudId, OrganigrammeAssignerManagerRequest req) {
 		UniteOrganisation noeud = uniteRepository.findById(noeudId)
-				.orElseThrow(() -> new IllegalArgumentException("Nœud introuvable."));
+				.orElseThrow(() -> ReferentielMetierException.notFound("UNITE_INTROUVABLE", "Nœud introuvable."));
 		Collaborateur manager = collaborateurRepository.findById(req.getCollaborateurIdentifiant())
-				.orElseThrow(() -> new IllegalArgumentException("Collaborateur introuvable."));
+				.orElseThrow(() -> ReferentielMetierException.notFound("COLLABORATEUR_INTROUVABLE", "Collaborateur introuvable."));
 		// role_workflow : ignoré (rétrocompat JSON). profil_acces n'est plus muté ici.
 
 		if (req.getTitrePoste() != null && !req.getTitrePoste().isBlank()) {
@@ -171,7 +172,7 @@ public class OrganigrammeService {
 			CacheConfig.CACHE_COLLABORATEUR_MATRICULE }, allEntries = true)
 	public OrganigrammeNoeudResponse retirerManager(UUID noeudId) {
 		UniteOrganisation noeud = uniteRepository.findById(noeudId)
-				.orElseThrow(() -> new IllegalArgumentException("Nœud introuvable."));
+				.orElseThrow(() -> ReferentielMetierException.notFound("UNITE_INTROUVABLE", "Nœud introuvable."));
 		noeud.setManager(null);
 		UniteOrganisation saved = uniteRepository.save(noeud);
 		// H3-T4 : membres ACTIFS → superieur null (écart actuel corrigé)

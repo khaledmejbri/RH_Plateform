@@ -4,30 +4,26 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-import java.net.http.HttpClient;
-import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 
-/** {@code GET /api/referentiel/v1/collaborateurs/moi} avec le JWT de l'appelant, délai de lecture 2 s. */
+/** {@code GET /api/referentiel/v1/collaborateurs/moi} avec le JWT de l'appelant, délais d'attente configurables. */
 @Component
 public class RestReferentielMoiClient implements ReferentielMoiClient {
 
 	private final RestClient restClient;
 
 	public RestReferentielMoiClient(
-			@Value("${evaluation.referentiel.base-url:http://localhost:8083}") String baseUrl) {
-		JdkClientHttpRequestFactory fabrique = new JdkClientHttpRequestFactory(
-				HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1)).build());
-		fabrique.setReadTimeout(Duration.ofSeconds(2));
-		this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(fabrique).build();
+			@Value("${evaluation.referentiel.base-url:http://localhost:8083}") String baseUrl,
+			@Value("${evaluation.referentiel.timeout-connexion-ms}") int delaiConnexionMs,
+			@Value("${evaluation.referentiel.timeout-lecture-ms}") int delaiLectureMs) {
+		this.restClient = ReferentielRestClients.creer(baseUrl, delaiConnexionMs, delaiLectureMs);
 	}
 
 	@Override

@@ -27,6 +27,10 @@ public interface UniteOrganisationRepository extends JpaRepository<UniteOrganisa
 	@EntityGraph(attributePaths = {"parent", "manager"})
 	List<UniteOrganisation> findByParentId(UUID parentId);
 
+	/** Nœuds dont la personne est le manager (fiche de hiérarchie, D-N01). */
+	@EntityGraph(attributePaths = {"parent", "manager"})
+	List<UniteOrganisation> findByManagerId(UUID managerId);
+
 	@EntityGraph(attributePaths = {"parent", "manager"})
 	@Override
 	Optional<UniteOrganisation> findById(UUID id);

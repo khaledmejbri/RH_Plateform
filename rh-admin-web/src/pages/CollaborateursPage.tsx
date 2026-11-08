@@ -29,6 +29,7 @@ import { formatNombre, formatPersonne } from '../utils/format';
 import { libelle, optionsDomaine } from '../utils/libelles';
 import { SaisieDate } from '../components/ChampsFr';
 import MenuLigne from '../components/MenuLigne';
+import DetailLink from '../detail/DetailLink';
 
 const PROFIL_DEFAUT = 'COLLABORATEUR' as const;
 const TAILLE_PAGE = 15;
@@ -347,7 +348,7 @@ export default function CollaborateursPage() {
                       <tr key={r.identifiant}>
                         <td className="mono">{r.matricule}</td>
                         <td>
-                          {r.prenom} {nomCollaborateur(r)}
+                          <DetailLink type="collaborateur" id={r.identifiant} libelle={`${r.prenom} ${nomCollaborateur(r)}`.trim()} />
                         </td>
                         <td className="muted">{r.courriel_professionnel ?? '—'}</td>
                         <td>

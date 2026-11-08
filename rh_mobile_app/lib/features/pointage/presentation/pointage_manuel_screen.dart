@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../data/presence_errors.dart';
 import '../data/presence_models.dart';
 import '../data/presence_repository.dart';
+import 'motif_refus_dialog.dart';
 
 final _mesDemandesProvider = FutureProvider.autoDispose<List<DemandeManuelle>>((ref) {
   return ref.watch(presenceRepositoryProvider).mesDemandesManuelles();
@@ -165,7 +166,7 @@ class _DemandeCardState extends ConsumerState<_DemandeCard> {
       [d.typeLibelle, d.collaborateurNom ?? ''].where((e) => e.isNotEmpty).join(' — ');
 
   Future<void> _refuser() async {
-    final motif = await showDialog<String>(context: context, builder: (_) => _MotifRefusDialog(element: _libelleElement(widget.demande)));
+    final motif = await showDialog<String>(context: context, builder: (_) => MotifRefusDialog(element: _libelleElement(widget.demande)));
     if (motif == null) return;
     await _decider(() => ref.read(presenceRepositoryProvider).refuserDemandeManuelle(widget.demande.id, motif),
         'Pointage manuel refusé.');
@@ -267,59 +268,6 @@ class _DemandeCardState extends ConsumerState<_DemandeCard> {
           ],
         ],
       ),
-    );
-  }
-}
-
-class _MotifRefusDialog extends StatefulWidget {
-  const _MotifRefusDialog({required this.element});
-
-  /// Nom de l'élément refusé, rappelé dans le dialogue.
-  final String element;
-
-  @override
-  State<_MotifRefusDialog> createState() => _MotifRefusDialogState();
-}
-
-class _MotifRefusDialogState extends State<_MotifRefusDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final motif = _controller.text.trim();
-    return AlertDialog(
-      title: const Text('Refuser le pointage manuel'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Êtes-vous sûr ?', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text(widget.element, style: const TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            maxLines: 3,
-            maxLength: 500,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(labelText: 'Motif du refus *'),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
-        FilledButton(
-          onPressed: motif.isEmpty ? null : () => Navigator.pop(context, motif),
-          child: const Text('Refuser'),
-        ),
-      ],
     );
   }
 }

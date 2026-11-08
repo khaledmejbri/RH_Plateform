@@ -1,6 +1,5 @@
 package com.hr.notification.service;
 
-import com.hr.notification.dto.NotificationMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.MessagingException;
@@ -14,26 +13,14 @@ public class WebSocketNotificationService {
 
     private final SimpMessagingTemplate messagingTemplate;
 
-    public void sendToUser(String userId, NotificationMessage message) {
-        log.info("📨 Sending websocket notification to user: {}", userId);
-        log.info("   - Message subject: {}", message.getSubject());
-        log.info("   - Message content: {}", message.getContent());
-        
-        // Use convertAndSendToUser for proper /user/{userId}/queue routing
-        String queue = "/queue/notifications";
-        log.info("   - Destination: /user/{}{}", userId, queue);
-        
+    /** Pousse la charge utile sur {@code /user/{compte}/queue/notifications} (le contenu n'est pas journalisé). */
+    public void sendToUser(String userId, Object payload) {
         try {
-            messagingTemplate.convertAndSendToUser(userId, queue, message);
-            log.info("✅ Notification sent successfully to /user/{}{}", userId, queue);
+            messagingTemplate.convertAndSendToUser(userId, "/queue/notifications", payload);
+            log.debug("Notification temps réel envoyée au compte {}", userId);
         } catch (MessagingException e) {
-            log.error("❌ Failed to send notification to /user/{}{}", userId, queue, e);
-            throw new RuntimeException(e);
+            // La notification est déjà conservée : le destinataire la retrouvera à sa prochaine connexion
+            log.error("Échec de l'envoi temps réel au compte {}", userId, e);
         }
-    }
-
-    public void sendToTopic(String topic, NotificationMessage message) {
-        log.info("Sending websocket notification to topic {}", topic);
-        messagingTemplate.convertAndSend("/topic/" + topic, message);
     }
 }

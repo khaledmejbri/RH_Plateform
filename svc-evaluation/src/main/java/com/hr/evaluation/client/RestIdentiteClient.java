@@ -3,12 +3,9 @@ package com.hr.evaluation.client;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-import java.net.http.HttpClient;
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -16,7 +13,7 @@ import java.util.UUID;
 
 /**
  * {@code GET /internal/users/by-role?role=...} avec le jeton interne (non routé par la gateway).
- * Délais : connexion 1 s, lecture 2 s.
+ * Délais d'attente configurables ({@code evaluation.referentiel.timeout-*}).
  */
 @Component
 public class RestIdentiteClient implements IdentiteClient {
@@ -26,11 +23,10 @@ public class RestIdentiteClient implements IdentiteClient {
 
 	public RestIdentiteClient(
 			@Value("${evaluation.identite.base-url:http://localhost:8081}") String baseUrl,
-			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne) {
-		JdkClientHttpRequestFactory fabrique = new JdkClientHttpRequestFactory(
-				HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1)).build());
-		fabrique.setReadTimeout(Duration.ofSeconds(2));
-		this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(fabrique).build();
+			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne,
+			@Value("${evaluation.referentiel.timeout-connexion-ms}") int delaiConnexionMs,
+			@Value("${evaluation.referentiel.timeout-lecture-ms}") int delaiLectureMs) {
+		this.restClient = ReferentielRestClients.creer(baseUrl, delaiConnexionMs, delaiLectureMs);
 		this.jetonInterne = jetonInterne;
 	}
 

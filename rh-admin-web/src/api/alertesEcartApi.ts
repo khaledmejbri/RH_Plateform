@@ -83,6 +83,9 @@ export type AlerteEcartResume = {
   identifiant: string;
   evaluationId: string;
   campagneId: string;
+  /** Ajoutés par le backend (lot 2) : absents sur un serveur plus ancien. */
+  collaborateurId?: string | null;
+  superieurId?: string | null;
   campagneNom: string | null;
   collaborateurNom: string | null;
   collaborateurMatricule: string | null;

@@ -8,6 +8,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
@@ -57,6 +58,14 @@ public class ReferentielExceptionHandler {
 	public ResponseEntity<Map<String, String>> routeInconnue(NoResourceFoundException ex) {
 		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
 				"code", "ROUTE_INCONNUE", "erreur", "Ressource introuvable."));
+	}
+
+	/** Identifiant ou paramètre mal formé (UUID, date, énumération) : 400 explicite, jamais un 403 vide via /error. */
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<Map<String, String>> parametreMalForme(MethodArgumentTypeMismatchException ex) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+				"code", "PARAMETRE_INVALIDE",
+				"erreur", "Le paramètre « " + ex.getName() + " » est mal formé."));
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)

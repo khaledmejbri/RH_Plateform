@@ -7,9 +7,13 @@ import {
   getPlaintesRh,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
+import { getToken } from '../api/auth';
+import { canWriteBackoffice } from '../auth/jwtRoles';
 
 export default function HomePage() {
   const lectureSeule = useLectureSeule();
+  // Plaintes : RH et ADMIN seulement (D-N01.a) ; pas d'appel ni de carte pour DIRECTION.
+  const voitPlaintes = canWriteBackoffice(getToken());
   const [plaintes,  setPlaintes]  = useState<number | null>(null);
   const [docs,      setDocs]      = useState<number | null>(null);
   const [demandes,  setDemandes]  = useState<number | null>(null);
@@ -22,13 +26,13 @@ export default function HomePage() {
       try {
         // D-T01 : chaque carte compte exactement ce que l'écran ouvert affiche avec le même filtre.
         const [p, d, dm, cp] = await Promise.all([
-          getPlaintesRh(),
+          voitPlaintes ? getPlaintesRh() : Promise.resolve([]),
           getDocumentsFileAttente(),
           getDemandesAdministrativesListe({ statut: 'EN_VALIDATION_RRH' }),
           getTousCollaborateurs(),
         ]);
         if (cancel) return;
-        setPlaintes(p.filter((x) => x.statut !== 'FERME').length);
+        if (voitPlaintes) setPlaintes(p.filter((x) => x.statut !== 'FERME').length);
         setDocs(d.filter((x) => x.statut === 'EN_ATTENTE_FILE' || x.statut === 'EN_TRAITEMENT_RH').length);
         setDemandes(dm.filter((x) => x.statut === 'EN_VALIDATION_RRH').length);
         setCollabs(cp.filter((x) => x.statut.toUpperCase() === 'ACTIF').length);
@@ -42,7 +46,7 @@ export default function HomePage() {
   const n = (v: number | null) => v === null ? '…' : String(v);
 
   const stats = [
-    {
+    ...(!voitPlaintes ? [] : [{
       to: '/app/plaintes?statut=OUVERTES',
       value: n(plaintes),
       label: 'Plaintes ouvertes',
@@ -50,7 +54,7 @@ export default function HomePage() {
       icon: <IconChat />,
       accent: '#1d4ed8',
       bg: '#eff6ff',
-    },
+    }]),
     {
       to: '/app/demandes-administratives?statut=EN_VALIDATION_RRH',
       value: n(demandes),

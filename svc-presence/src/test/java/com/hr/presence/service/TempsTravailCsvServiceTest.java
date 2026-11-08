@@ -21,7 +21,7 @@ class TempsTravailCsvServiceTest {
 										EtatJourHeuresSup etat, boolean manuel, String sortie) {
 		return new LigneDetaillee(new LigneTempsTravail("id", nom, "COL-WEB", UUID.randomUUID(), "SIEGE", "Siège",
 				LocalDate.of(2026, 11, 3), "2026-11-03T08:02:00+01:00", sortie, paires, orphelins, minutes, etat,
-				"Direction Technique", "Logiciel", "Web", null),
+				"Direction Technique", "Logiciel", "Web", null, null),
 				"Direction Technique", "Logiciel", "Web", manuel);
 	}
 
@@ -36,7 +36,7 @@ class TempsTravailCsvServiceTest {
 		assertThat(csv).startsWith("﻿");
 		assertThat(csv).isEqualTo("﻿\"Matricule\";\"Nom\";\"Direction\";\"Département\";\"Service\";\"Site\";\"Date\";"
 				+ "\"Entrées / sorties\";\"Nombre d'entrées / sorties\";\"Première entrée\";\"Dernière sortie\";\"Total (hh:mm)\";"
-				+ "\"Total (minutes)\";\"État\";\"Pointage manuel\"\r\n");
+				+ "\"Total (minutes)\";\"État\";\"Pointage manuel\";\"Retard (minutes)\";\"Retard (hh:mm)\"\r\n");
 	}
 
 	@Test
@@ -51,7 +51,20 @@ class TempsTravailCsvServiceTest {
 		String[] lignes = csv.split("\r\n");
 		assertThat(lignes).hasSize(2);
 		assertThat(lignes[1]).isEqualTo("\"COL-WEB\";\"Sarra Khemiri\";\"Direction Technique\";\"Logiciel\";\"Web\";\"Siège\";"
-				+ "\"03/11/2026\";\"08:02-12:01 | 13:00-17:05\";\"2\";\"08:02\";\"17:05\";\"08:04\";\"484\";\"Complet\";\"oui\"");
+				+ "\"03/11/2026\";\"08:02-12:01 | 13:00-17:05\";\"2\";\"08:02\";\"17:05\";\"08:04\";\"484\";\"Complet\";\"oui\";\"\";\"\"");
+	}
+
+	@Test
+	void colonnesRetard_renseigneesQuandLeRetardEstCalcule() {
+		LigneTempsTravail l = ligne("N", List.of(), List.of(), 0, EtatJourHeuresSup.COMPLET, false, null).ligne();
+		LigneDetaillee avecRetard = new LigneDetaillee(new LigneTempsTravail(l.collaborateurId(), l.collaborateurNom(),
+				l.collaborateurMatricule(), l.siteId(), l.siteCode(), l.siteLibelle(), l.jour(), l.premiereEntree(),
+				l.derniereSortie(), l.paires(), l.orphelins(), 0, EtatJourHeuresSup.COMPLET, null, null, null, null, 72),
+				null, null, null, false);
+
+		String csv = texte(TempsTravailCsvService.generer(List.of(avecRetard)));
+
+		assertThat(csv.split("\r\n")[1]).endsWith("\"non\";\"72\";\"01:12\"");
 	}
 
 	@Test

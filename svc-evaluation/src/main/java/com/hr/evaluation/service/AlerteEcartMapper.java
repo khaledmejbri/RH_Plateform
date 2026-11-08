@@ -47,8 +47,8 @@ final class AlerteEcartMapper {
     static AlerteEcartResume resume(AlerteEcart a) {
         return new AlerteEcartResume(
                 a.getId(), a.getEvaluationId(), a.getCampagneIdentifiant(), campagneNom(a),
-                collaborateurNom(a), a.getCollaborateurMatricule(),
-                a.getCollaborateurUniteId(), a.getCollaborateurUniteLibelle(), a.getSuperieurNom(),
+                a.getCollaborateurFicheId(), collaborateurNom(a), a.getCollaborateurMatricule(),
+                a.getCollaborateurUniteId(), a.getCollaborateurUniteLibelle(), a.getSuperieurFicheId(), a.getSuperieurNom(),
                 a.getNiveauCourant(), a.getNiveauDetection(), a.getStatut(), sensGlobal(a),
                 lignesEnEcart(a).size(), ecartMax(a), a.getDetecteeLe(), a.isNotesModifieesApresDetection());
     }
@@ -69,8 +69,8 @@ final class AlerteEcartMapper {
                 .map(AlerteEcartMapper::evenement).toList();
         return new AlerteEcartDetail(
                 a.getId(), a.getEvaluationId(), a.getCampagneIdentifiant(), campagneNom(a),
-                collaborateurNom(a), a.getCollaborateurMatricule(),
-                a.getCollaborateurUniteId(), a.getCollaborateurUniteLibelle(), a.getSuperieurNom(),
+                a.getCollaborateurFicheId(), collaborateurNom(a), a.getCollaborateurMatricule(),
+                a.getCollaborateurUniteId(), a.getCollaborateurUniteLibelle(), a.getSuperieurFicheId(), a.getSuperieurNom(),
                 a.getNiveauCourant(), a.getNiveauDetection(), a.getStatut(), sens,
                 lignesEnEcart(a).size(), ecartMax(a), a.getDetecteeLe(), a.isNotesModifieesApresDetection(),
                 libelleSens, aideSens, lignes,

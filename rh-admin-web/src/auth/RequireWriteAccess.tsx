@@ -1,13 +1,10 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { getToken } from '../api/auth';
+import AccesRefusePage from '../pages/AccesRefusePage';
 import { isDirectionOnly } from './jwtRoles';
 
-/** Routes d'édition masquées pour DIRECTION (structure, unités). */
+/** Routes réservées à RH/ADMIN (structure, unités, plaintes) : DIRECTION voit « Accès refusé » sans redirection. */
 export default function RequireWriteAccess() {
-  const loc = useLocation();
-  const token = getToken();
-  if (isDirectionOnly(token)) {
-    return <Navigate to="/app/acces-refuse" replace state={{ from: loc.pathname }} />;
-  }
+  if (isDirectionOnly(getToken())) return <AccesRefusePage />;
   return <Outlet />;
 }

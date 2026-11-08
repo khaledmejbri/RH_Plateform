@@ -242,6 +242,30 @@ public class HeuresSupService {
 		return mapper.versReponse(charger(id));
 	}
 
+	/** Détail par numéro lisible HS-AAAAMM-NNNN (ou ancienne référence HS-XXXXXXXX) : mal formé 400, inconnu 404. */
+	@Transactional(readOnly = true)
+	public DemandeHeuresSupResponse obtenirParNumero(String numero) {
+		if (numero == null || !NUMERO_HS.matcher(numero).matches()) {
+			throw PresenceMetierException.badRequest("NUMERO_INVALIDE", "Numéro de demande d'heures sup invalide (attendu HS-AAAAMM-NNNN)");
+		}
+		PresenceHeuresSupDemande d = demandeRepository.findByNumero(numero)
+				.or(() -> demandeRepository.findByReference(numero))
+				.orElseThrow(() -> PresenceMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable"));
+		return mapper.versReponse(d);
+	}
+
+	/** Heures comptées d'une demande validée, par bénéficiaire et par jour (fiche de la demande) ; inconnue : 404. */
+	@Transactional(readOnly = true)
+	public List<HeuresComptees> compteesDeDemande(UUID id) {
+		PresenceHeuresSupDemande d = charger(id);
+		return calculService.compter(jourRepository.findAll(
+				PresenceHeuresSupJourRepository.comptage(d.getDateDebut(), d.getDateFin(), null, null, null, null, null, d.getId()),
+				Sort.by("journee").and(Sort.by("id"))));
+	}
+
+	private static final java.util.regex.Pattern NUMERO_HS =
+			java.util.regex.Pattern.compile("^HS-(\\d{6}-\\d{4}|[0-9A-F]{8})$");
+
 	private static Specification<PresenceHeuresSupDemande> filtre(StatutHeuresSup statut, UUID siteId, UUID collaborateurId,
 			UUID directionId, LocalDate du, LocalDate au) {
 		return (root, query, cb) -> {

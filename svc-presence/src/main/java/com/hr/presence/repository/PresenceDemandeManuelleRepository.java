@@ -3,6 +3,7 @@ package com.hr.presence.repository;
 import com.hr.presence.domain.StatutDemandeManuelle;
 import com.hr.presence.entity.PresenceDemandeManuelle;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -10,7 +11,14 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-public interface PresenceDemandeManuelleRepository extends JpaRepository<PresenceDemandeManuelle, UUID> {
+public interface PresenceDemandeManuelleRepository extends JpaRepository<PresenceDemandeManuelle, UUID>,
+		JpaSpecificationExecutor<PresenceDemandeManuelle> {
+
+	/** Détail par numéro lisible PM-AAAAMM-NNNN (D-L02). */
+	java.util.Optional<PresenceDemandeManuelle> findByNumero(String numero);
+
+	/** Refus pour lesquels une demande manuelle existe déjà (éligibilité du bouton « pointage manuel »). */
+	List<PresenceDemandeManuelle> findByPointageRejeteIdIn(java.util.Collection<UUID> pointageRejeteIds);
 
 	boolean existsByPointageRejeteId(UUID pointageRejeteId);
 

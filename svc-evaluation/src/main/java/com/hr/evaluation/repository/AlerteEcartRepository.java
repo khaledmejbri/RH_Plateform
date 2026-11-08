@@ -37,6 +37,10 @@ public interface AlerteEcartRepository extends JpaRepository<AlerteEcart, UUID>,
             + "and a.evaluation.campaign.id = :campagneId group by a.niveauCourant")
     List<Object[]> compterParNiveauEtCampagne(Collection<StatutAlerteEcart> statuts, UUID campagneId);
 
+    /** Alertes d'un lot d'évaluations (une alerte par évaluation) : lignes et détail d'évaluation. */
+    @Query("select a from AlerteEcart a where a.evaluation.id in :ids")
+    List<AlerteEcart> findByEvaluationIdIn(Collection<UUID> ids);
+
     long countByStatutNot(StatutAlerteEcart statut);
 
     long countByStatutNotAndNiveauCourant(StatutAlerteEcart statut, NiveauEcart niveauCourant);

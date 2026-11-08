@@ -3,18 +3,15 @@ package com.hr.evaluation.client;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-import java.net.http.HttpClient;
-import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Appel {@code GET /internal/referentiel/collaborateurs/{id}/fiche-evaluation} (jeton interne, non routé par la
- * gateway). Délais courts : l'appel est fait pendant la validation du RO.
+ * gateway). Délais d'attente configurables : l'appel est fait pendant la validation du RO.
  */
 @Component
 public class RestReferentielFicheClient implements ReferentielFicheClient {
@@ -24,11 +21,10 @@ public class RestReferentielFicheClient implements ReferentielFicheClient {
 
 	public RestReferentielFicheClient(
 			@Value("${evaluation.referentiel.base-url:http://localhost:8083}") String baseUrl,
-			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne) {
-		JdkClientHttpRequestFactory fabrique = new JdkClientHttpRequestFactory(
-				HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1)).build());
-		fabrique.setReadTimeout(Duration.ofSeconds(2));
-		this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(fabrique).build();
+			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne,
+			@Value("${evaluation.referentiel.timeout-connexion-ms}") int delaiConnexionMs,
+			@Value("${evaluation.referentiel.timeout-lecture-ms}") int delaiLectureMs) {
+		this.restClient = ReferentielRestClients.creer(baseUrl, delaiConnexionMs, delaiLectureMs);
 		this.jetonInterne = jetonInterne;
 	}
 

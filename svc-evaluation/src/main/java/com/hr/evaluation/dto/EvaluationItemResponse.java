@@ -1,5 +1,6 @@
 package com.hr.evaluation.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.Instant;
@@ -36,6 +37,8 @@ public record EvaluationItemResponse(
     @JsonProperty("etapeActuelle")
     String etapeActuelle,
     
+    /** D-E15 : clé absente (pas null) pour le collaborateur avant VALIDEE. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonProperty("scoreSur20")
     Integer scoreSur20,
 

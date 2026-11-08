@@ -81,7 +81,7 @@ public class ReferentielRhService {
 		UniteOrganisation parent = null;
 		if (req.getParentIdentifiant() != null) {
 			parent = uniteRepository.findById(req.getParentIdentifiant())
-					.orElseThrow(() -> new IllegalArgumentException("Unité parente introuvable."));
+					.orElseThrow(() -> ReferentielMetierException.notFound("UNITE_INTROUVABLE", "Unité parente introuvable."));
 		}
 		// D-H04 : sans type → Département à la racine (à rattacher), Service sous un parent
 		String saisi = trimToNull(req.getTypeNoeud());
@@ -108,7 +108,7 @@ public class ReferentielRhService {
 					throw new IllegalArgumentException("Une unité ne peut pas être sa propre parente.");
 				}
 				UniteOrganisation parent = uniteRepository.findById(req.getParentIdentifiant())
-						.orElseThrow(() -> new IllegalArgumentException("Unité parente introuvable."));
+						.orElseThrow(() -> ReferentielMetierException.notFound("UNITE_INTROUVABLE", "Unité parente introuvable."));
 				hierarchieTypeRules.verifierRattachement(u, parent);
 				u.setParent(parent);
 			}
@@ -191,7 +191,7 @@ public class ReferentielRhService {
 			throw new IllegalArgumentException("Matricule déjà utilisé : " + req.getMatricule());
 		}
 		UniteOrganisation unite = uniteRepository.findById(req.getUniteIdentifiant())
-				.orElseThrow(() -> new IllegalArgumentException("Unité introuvable."));
+				.orElseThrow(() -> ReferentielMetierException.notFound("UNITE_INTROUVABLE", "Unité introuvable."));
 		Collaborateur c = new Collaborateur();
 		c.setMatricule(req.getMatricule().trim());
 		c.setPrenom(req.getPrenom().trim());
@@ -311,7 +311,7 @@ public class ReferentielRhService {
 			}
 			if (req.getUniteIdentifiant() != null) {
 				UniteOrganisation unite = uniteRepository.findById(req.getUniteIdentifiant())
-						.orElseThrow(() -> new IllegalArgumentException("Unité introuvable."));
+						.orElseThrow(() -> ReferentielMetierException.notFound("UNITE_INTROUVABLE", "Unité introuvable."));
 				c.setUnite(unite);
 			}
 			// H3-T2 / H3-R05 : toujours dériver ; ignore superieur_identifiant divergent

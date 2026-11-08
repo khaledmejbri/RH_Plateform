@@ -11,12 +11,12 @@ import {
   type OrganigrammeNoeud,
 } from '../api/rhClient';
 import { useLectureSeule } from '../auth/useLectureSeule';
-import { formatPersonne } from '../utils/format';
 import { intituleResponsable, libelleTypeNoeud } from '../utils/libelles';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useDialogA11y } from '../components/useDialogA11y';
 import { Icon } from '../components/ui';
 import { correspond, pluriel, useFiltresUrl } from '../utils/filtres';
+import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 type ModalKind = 'creer' | 'editer' | 'manager' | 'rattacher' | 'confirm-retrait' | null;
 
@@ -1099,7 +1099,7 @@ export default function OrganigrammePage() {
                   <span className="badge badge--warning">Sans responsable</span>
                 ) : null}
               </div>
-              <h3 className="org-panel__title">{selected.libelle}</h3>
+              <h3 className="org-panel__title"><DetailLink type="unite" id={selected.identifiant} libelle={selected.libelle} /></h3>
               <p className="text-muted text-sm">Code : {selected.code}</p>
               {selected.titre_poste ? (
                 <p className="org-panel__poste">{selected.titre_poste}</p>
@@ -1114,7 +1114,7 @@ export default function OrganigrammePage() {
                     </span>
                     <div>
                       <div className="org-panel__manager-name">
-                        {selected.manager.prenom} {selected.manager.nom}
+                        <DetailLink type="collaborateur" id={selected.manager.identifiant} libelle={`${selected.manager.prenom} ${selected.manager.nom}`} />
                       </div>
                       <div className="text-muted text-sm">
                         {intituleResponsable(selected.type_noeud, selected.titre_poste)} · {selected.manager.matricule}
@@ -1165,7 +1165,7 @@ export default function OrganigrammePage() {
                   <ul className="org-panel__list">
                     {selected.membres.map((m) => (
                       <li key={m.identifiant}>
-                        {formatPersonne(`${m.prenom} ${m.nom}`, m.matricule)}
+                        <LienPersonne id={m.identifiant} nom={`${m.prenom} ${m.nom}`} matricule={m.matricule} />
                         {m.poste_libelle ? ` — ${m.poste_libelle}` : ''}
                       </li>
                     ))}

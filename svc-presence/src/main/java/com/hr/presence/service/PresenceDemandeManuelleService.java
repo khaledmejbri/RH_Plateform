@@ -8,12 +8,15 @@ import com.hr.presence.domain.PointageStatut;
 import com.hr.presence.domain.PointageType;
 import com.hr.presence.domain.StatutDemandeManuelle;
 import com.hr.presence.dto.DemandeManuelleCreationRequest;
+import com.hr.presence.dto.DemandeManuelleDetail;
 import com.hr.presence.dto.DemandeManuelleResponse;
+import com.hr.presence.dto.PresenceCollaborateurDtos;
 import com.hr.presence.entity.PresenceDemandeManuelle;
 import com.hr.presence.entity.PresencePointage;
 import com.hr.presence.numero.NumeroDemandeService;
 import com.hr.presence.numero.PrefixeNumero;
 import com.hr.presence.entity.PresenceSite;
+import com.hr.presence.kafka.ObjetNotification;
 import com.hr.presence.kafka.PresenceEventPublisher;
 import com.hr.presence.repository.PresenceDemandeManuelleRepository;
 import com.hr.presence.repository.PresencePointageRepository;
@@ -22,16 +25,23 @@ import com.hr.presence.security.PresenceAccessService;
 import com.hr.presence.web.PresenceMetierException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import jakarta.persistence.criteria.Predicate;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.Locale;
@@ -48,6 +58,7 @@ public class PresenceDemandeManuelleService {
 
 	private static final Logger log = LoggerFactory.getLogger(PresenceDemandeManuelleService.class);
 	private static final ZoneId ZONE = ZoneId.of("Africa/Tunis");
+	private static final java.util.regex.Pattern NUMERO_PM = java.util.regex.Pattern.compile("^PM-\\d{6}-\\d{4}$");
 	private static final DateTimeFormatter HEURE = DateTimeFormatter.ofPattern("dd/MM HH:mm", Locale.FRENCH).withZone(ZONE);
 
 	private final PresenceDemandeManuelleRepository demandeRepository;
@@ -138,13 +149,15 @@ public class PresenceDemandeManuelleService {
 				saved.validationParRh() ? PresenceEventPublisher.DESTINATAIRE_RH : adresse(saved.getValideurCompteId(), saved.getValideurId()),
 				"Pointage manuel à valider — " + nom(saved) + " (" + saved.getNumero() + ")",
 				nom(saved) + " demande un pointage manuel (" + libelle + " du " + HEURE.format(heure) + ") : "
-						+ saved.getJustification());
+						+ saved.getJustification(),
+				objetManuel(saved, "POINTAGE_MANUEL_DEMANDE"));
 		log.info("Demande pointage manuel {} ({}) collab={} valideur={}", saved.getNumero(), saved.getId(), saved.getCollaborateurId(),
 				saved.validationParRh() ? "RH" : saved.getValideurId());
 		return toResponses(List.of(saved), null, d0 -> rejet.getMotifRejet()).get(0);
 	}
 
-	@Transactional(readOnly = true)
+	// Lectures sans transaction englobante : elles appellent le référentiel (noms, matricules) et ne doivent pas garder
+	// une connexion à la base pendant ces appels ; chaque lecture du dépôt a sa propre transaction.
 	public List<DemandeManuelleResponse> mesDemandes() {
 		ValideurPointage moi = referentielClient.monValideurPointage();
 		identiteService.verifierEntete(texte(moi.collaborateurId()));
@@ -153,7 +166,6 @@ public class PresenceDemandeManuelleService {
 	}
 
 	/** File du responsable : demandes dont il est le valideur attendu. */
-	@Transactional(readOnly = true)
 	public List<DemandeManuelleResponse> aValider() {
 		ValideurPointage moi = referentielClient.monValideurPointage();
 		identiteService.verifierEntete(texte(moi.collaborateurId()));
@@ -162,12 +174,123 @@ public class PresenceDemandeManuelleService {
 	}
 
 	/** Vue RH : toutes les demandes, avec le compteur mensuel et l'alerte de seuil. */
-	@Transactional(readOnly = true)
 	public List<DemandeManuelleResponse> listerAdmin(StatutDemandeManuelle statut) {
-		List<PresenceDemandeManuelle> demandes = statut == null
-				? demandeRepository.findAllByOrderByCreeLeDesc()
-				: demandeRepository.findByStatutOrderByCreeLeDesc(statut);
+		return listerAdmin(statut, null, null, null, null);
+	}
+
+	/**
+	 * Vue RH filtrée (D-N01) : statut, collaborateur (fiche ; les demandes anciennes portent parfois le compte, il est
+	 * cherché aussi), site et période sur l'heure déclarée (jours de Tunis, « au » inclus). Période inversée : 400.
+	 */
+	public List<DemandeManuelleResponse> listerAdmin(StatutDemandeManuelle statut, UUID collaborateurId, UUID siteId,
+			LocalDate du, LocalDate au) {
+		if (du != null && au != null && au.isBefore(du)) {
+			throw PresenceMetierException.badRequest("PERIODE_INVALIDE", "La date de fin précède la date de début");
+		}
+		Set<String> identites = collaborateurId != null ? identitesDe(collaborateurId) : null;
+		Instant from = du != null ? du.atStartOfDay(ZONE).toInstant() : null;
+		Instant to = au != null ? au.plusDays(1).atStartOfDay(ZONE).toInstant() : null;
+		List<PresenceDemandeManuelle> demandes = demandeRepository.findAll(
+				filtre(statut, identites, siteId, from, to), Sort.by(Sort.Direction.DESC, "creeLe"));
 		return toResponses(demandes, d -> manuelsDuMois(d.getCollaborateurId(), d.getHeureDeclaree()), this::motifRejet);
+	}
+
+	/**
+	 * Demandes d'un collaborateur (fiche ou compte) dont l'heure déclarée tombe dans [from, to[ : onglet Pointages de la
+	 * modale collaborateur et fiche d'équipe mobile. Les plus récentes d'abord.
+	 */
+	public List<DemandeManuelleResponse> pourIdentites(Set<String> identites, Instant from, Instant to) {
+		List<PresenceDemandeManuelle> demandes = demandeRepository.findAll(
+				filtre(null, identites, null, from, to), Sort.by(Sort.Direction.DESC, "creeLe"));
+		return toResponses(demandes, d -> manuelsDuMois(d.getCollaborateurId(), d.getHeureDeclaree()), this::motifRejet);
+	}
+
+	private static Specification<PresenceDemandeManuelle> filtre(StatutDemandeManuelle statut, Set<String> identites,
+			UUID siteId, Instant from, Instant to) {
+		return (root, query, cb) -> {
+			List<Predicate> predicats = new ArrayList<>();
+			if (statut != null) predicats.add(cb.equal(root.get("statut"), statut));
+			if (identites != null) {
+				predicats.add(cb.or(root.get("collaborateurId").in(identites), root.get("collaborateurCompteId").in(identites)));
+			}
+			if (siteId != null) predicats.add(cb.equal(root.get("siteId"), siteId));
+			if (from != null) predicats.add(cb.greaterThanOrEqualTo(root.get("heureDeclaree"), from));
+			if (to != null) predicats.add(cb.lessThan(root.get("heureDeclaree"), to));
+			return cb.and(predicats.toArray(Predicate[]::new));
+		};
+	}
+
+	/** Fiche et compte du collaborateur ; référentiel indisponible : la fiche seule (la liste reste servie). */
+	private Set<String> identitesDe(UUID ficheId) {
+		Set<String> identites = new LinkedHashSet<>();
+		identites.add(ficheId.toString());
+		try {
+			for (Affectation a : referentielClient.affectations(List.of(ficheId))) {
+				if (a.compteId() != null) {
+					identites.add(a.compteId().toString());
+				}
+			}
+		} catch (PresenceMetierException ex) {
+			log.warn("Filtre collaborateur sans élargissement au compte : {}", ex.getMessage());
+		}
+		return identites;
+	}
+
+	// ---- Détail (D-N01.b) ----------------------------------------------------------------------------------------
+
+	/** Détail pour la Plateforme RH (RH, DIRECTION, ADMIN) ; inconnu : 404 DEMANDE_INTROUVABLE. */
+	public DemandeManuelleDetail detailAdmin(UUID id) {
+		PresenceDemandeManuelle d = demandeRepository.findById(id)
+				.orElseThrow(() -> PresenceMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable"));
+		return versDetail(d, true);
+	}
+
+	/** Détail par numéro lisible PM-AAAAMM-NNNN : mal formé 400 NUMERO_INVALIDE, inconnu 404. */
+	public DemandeManuelleDetail detailAdminParNumero(String numero) {
+		if (numero == null || !NUMERO_PM.matcher(numero).matches()) {
+			throw PresenceMetierException.badRequest("NUMERO_INVALIDE", "Numéro de pointage manuel invalide (attendu PM-AAAAMM-NNNN)");
+		}
+		PresenceDemandeManuelle d = demandeRepository.findByNumero(numero)
+				.orElseThrow(() -> PresenceMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable"));
+		return versDetail(d, true);
+	}
+
+	/**
+	 * Détail pour le mobile (C5) : le demandeur, son valideur D-H03 attendu, ou RH / ADMIN quand la validation revient aux
+	 * RH. Identité lue dans le JWT. Tout autre appelant, et une demande inconnue : 403 HORS_PERIMETRE (pas d'énumération).
+	 * Le compteur du mois est réservé à qui décide, pas au demandeur.
+	 */
+	public DemandeManuelleDetail detailMobile(UUID id) {
+		ValideurPointage moi = referentielClient.monValideurPointage();
+		identiteService.verifierEntete(texte(moi.collaborateurId()));
+		PresenceDemandeManuelle d = demandeRepository.findById(id).orElse(null);
+		if (d == null) {
+			throw PresenceMetierException.forbidden("HORS_PERIMETRE", "Vous n'avez pas accès à cette demande");
+		}
+		boolean demandeur = appartientA(d.getCollaborateurId(), moi);
+		boolean valideur = d.getValideurId() != null && d.getValideurId().equals(texte(moi.collaborateurId()));
+		boolean rh = d.validationParRh() && accessService.isBackofficeEcriture();
+		if (!demandeur && !valideur && !rh) {
+			throw PresenceMetierException.forbidden("HORS_PERIMETRE", "Vous n'avez pas accès à cette demande");
+		}
+		return versDetail(d, !demandeur || valideur || rh);
+	}
+
+	private DemandeManuelleDetail versDetail(PresenceDemandeManuelle d, boolean avecCompteur) {
+		Affectation identite = identites(List.of(d)).get(d.getCollaborateurId());
+		PresencePointage rejet = pointageRepository.findById(d.getPointageRejeteId()).orElse(null);
+		PresenceSite site = d.getSiteId() != null ? siteRepository.findById(d.getSiteId()).orElse(null) : null;
+		Long duMois = avecCompteur ? manuelsDuMois(d.getCollaborateurId(), d.getHeureDeclaree()) : null;
+		String motif = rejet != null ? LibellesPresence.motifRejet(rejet, site) : null;
+		DemandeManuelleResponse base = toResponse(d, identite, duMois, motif);
+		PresenceCollaborateurDtos.PersonneResume valideur = d.validationParRh() ? null
+				: new PresenceCollaborateurDtos.PersonneResume(d.getValideurId(), d.getValideurNom(), null);
+		DemandeManuelleDetail.PointageRejeteResume refus = rejet == null ? null
+				: new DemandeManuelleDetail.PointageRejeteResume(rejet.getStatut(), LibellesPresence.statut(rejet.getStatut()),
+				motif, rejet.getDistanceMetres(), rejet.getServerTs());
+		return new DemandeManuelleDetail(base, site != null ? site.getLibelle() : null,
+				identite != null ? identite.uniteAffichee() : null, valideur, refus,
+				avecCompteur ? properties.getManuel().getSeuilAlerteMois() : null);
 	}
 
 	@Transactional
@@ -209,16 +332,22 @@ public class PresenceDemandeManuelleService {
 		eventPublisher.notifier(adresse(saved.getCollaborateurCompteId(), saved.getCollaborateurId()),
 				"Pointage manuel validé — " + saved.getNumero(),
 				"Votre pointage manuel " + saved.getNumero() + " (" + libelleType(saved.getType()) + " du " + HEURE.format(saved.getHeureDeclaree())
-						+ ") a été validé par " + decideur + ".");
+						+ ") a été validé par " + decideur + ".",
+				objetManuel(saved, "POINTAGE_MANUEL_VALIDE"));
 
 		long duMois = manuelsDuMois(saved.getCollaborateurId(), saved.getHeureDeclaree());
 		int seuil = properties.getManuel().getSeuilAlerteMois();
 		if (duMois > seuil) {
 			eventPublisher.notifier(PresenceEventPublisher.DESTINATAIRE_RH,
 					"Pointages manuels fréquents — " + nom(saved),
-					nom(saved) + " a " + duMois + " pointages manuels validés ce mois-ci (seuil : " + seuil + ").");
+					nom(saved) + " a " + duMois + " pointages manuels validés ce mois-ci (seuil : " + seuil + ").",
+					objetManuel(saved, "POINTAGE_MANUEL_FREQUENT"));
 		}
 		return toResponses(List.of(saved), d0 -> duMois, d0 -> null).get(0);
+	}
+
+	private static ObjetNotification objetManuel(PresenceDemandeManuelle d, String evenement) {
+		return ObjetNotification.de(ObjetNotification.POINTAGE_MANUEL, evenement, d.getId(), d.getNumero());
 	}
 
 	@Transactional
@@ -233,7 +362,8 @@ public class PresenceDemandeManuelleService {
 		eventPublisher.notifier(adresse(saved.getCollaborateurCompteId(), saved.getCollaborateurId()),
 				"Pointage manuel refusé — " + saved.getNumero(),
 				"Votre pointage manuel " + saved.getNumero() + " (" + libelleType(saved.getType()) + " du " + HEURE.format(saved.getHeureDeclaree())
-						+ ") a été refusé par " + decideur + ". Motif : " + saved.getMotifRefus());
+						+ ") a été refusé par " + decideur + ". Motif : " + saved.getMotifRefus(),
+				objetManuel(saved, "POINTAGE_MANUEL_REFUSE"));
 		return toResponses(List.of(saved), null, d0 -> null).get(0);
 	}
 

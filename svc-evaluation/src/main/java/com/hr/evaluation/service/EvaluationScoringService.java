@@ -176,7 +176,7 @@ public class EvaluationScoringService {
 				.intValue();
 	}
 
-	private AppreciationEvaluationRh appreciation(int scoreSur20) {
+	public AppreciationEvaluationRh appreciation(int scoreSur20) {
 		if (scoreSur20 <= 7) {
 			return AppreciationEvaluationRh.INSUFFISANT;
 		}

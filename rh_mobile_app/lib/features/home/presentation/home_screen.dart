@@ -12,6 +12,8 @@ import '../../demandes_admin/presentation/ro_validation_screen.dart';
 import '../../../features/auth/providers/collaborateur_notifier.dart';
 import '../../../features/auth/providers/auth_notifier.dart';
 import '../../evaluations/data/evaluation_repository.dart';
+import '../../a_valider/providers/a_valider_providers.dart';
+import '../../dossier/providers/dossier_providers.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -539,6 +541,36 @@ class _DashboardPage extends ConsumerWidget {
                     iconColor: AppTheme.primary,
                     onTap: () => context.push('/pointage'),
                   ),
+                  _ServiceCard(
+                    title: 'Mes pointages',
+                    subtitle: 'Temps et retards',
+                    icon: Icons.history_toggle_off_rounded,
+                    iconBg: AppTheme.primarySurface,
+                    iconColor: AppTheme.primary,
+                    onTap: () => context.push('/pointage/mes-pointages'),
+                  ),
+                  // Hub « À valider » : visible pour un valideur (JWT) ou dès qu'un élément attend.
+                  if (userAsync.maybeWhen(data: (u) => u?.peutValiderFile == true, orElse: () => false) ||
+                      (ref.watch(aValiderProvider).valueOrNull?.total ?? 0) > 0)
+                    _ServiceCard(
+                      title: 'À valider',
+                      subtitle: 'Demandes et pointages',
+                      icon: Icons.fact_check_outlined,
+                      iconBg: AppTheme.warningSurface,
+                      iconColor: AppTheme.warning,
+                      badge: ref.watch(aValiderProvider).valueOrNull?.total ?? 0,
+                      onTap: () => context.push('/a-valider'),
+                    ),
+                  // Mon équipe : seulement si je suis le valideur d'au moins une personne.
+                  if ((ref.watch(monEquipeProvider).valueOrNull ?? const []).isNotEmpty)
+                    _ServiceCard(
+                      title: 'Mon équipe',
+                      subtitle: 'Présence et retards',
+                      icon: Icons.groups_outlined,
+                      iconBg: AppTheme.successSurface,
+                      iconColor: AppTheme.success,
+                      onTap: () => context.push('/equipe'),
+                    ),
                   _ServiceCard(
                     title: 'Mes heures sup',
                     subtitle: 'Validées et comptées',

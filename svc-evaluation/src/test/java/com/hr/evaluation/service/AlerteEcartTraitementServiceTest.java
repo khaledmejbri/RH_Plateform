@@ -365,8 +365,8 @@ class AlerteEcartTraitementServiceTest {
         liste.set(24, urgente);
         alertesEnBase(liste);
 
-        AlerteEcartPage page0 = service.lister(null, null, null, null, 0, 20);
-        AlerteEcartPage page1 = service.lister(null, null, null, null, 1, 20);
+        AlerteEcartPage page0 = service.lister(null, null, null, null, null, 0, 20);
+        AlerteEcartPage page1 = service.lister(null, null, null, null, null, 1, 20);
 
         assertThat(page0.elements()).hasSize(20);
         assertThat(page0.total()).isEqualTo(25);
@@ -378,20 +378,20 @@ class AlerteEcartTraitementServiceTest {
     @Test
     void listeVide_elementsVidesTotalZero() {
         alertesEnBase(List.of());
-        AlerteEcartPage page = service.lister(null, null, null, null, 0, 20);
+        AlerteEcartPage page = service.lister(null, null, null, null, null, 0, 20);
         assertThat(page.elements()).isEmpty();
         assertThat(page.total()).isZero();
     }
 
     @Test
     void parametresDePaginationInvalides_400() {
-        assertThatThrownBy(() -> service.lister(null, null, null, null, -1, 20))
+        assertThatThrownBy(() -> service.lister(null, null, null, null, null, -1, 20))
                 .satisfies(t -> assertErreur(t, 400, "PARAMETRE_INVALIDE"));
-        assertThatThrownBy(() -> service.lister(null, null, null, null, 0, 101))
+        assertThatThrownBy(() -> service.lister(null, null, null, null, null, 0, 101))
                 .satisfies(t -> assertErreur(t, 400, "PARAMETRE_INVALIDE"));
-        assertThatThrownBy(() -> service.lister(null, null, null, null, 0, 0))
+        assertThatThrownBy(() -> service.lister(null, null, null, null, null, 0, 0))
                 .satisfies(t -> assertErreur(t, 400, "PARAMETRE_INVALIDE"));
-        service.lister(null, null, null, null, 0, 100);
+        service.lister(null, null, null, null, null, 0, 100);
     }
 
     @Test

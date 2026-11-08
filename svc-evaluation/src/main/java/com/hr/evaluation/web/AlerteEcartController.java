@@ -47,9 +47,10 @@ public class AlerteEcartController {
             @RequestParam(required = false) NiveauEcart niveau,
             @RequestParam(required = false) UUID campagneId,
             @RequestParam(required = false) UUID uniteId,
+            @RequestParam(required = false) UUID collaborateurId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "" + AlerteEcartTraitementService.TAILLE_PAR_DEFAUT) int taille) {
-        return ResponseEntity.ok(traitementService.lister(statut, niveau, campagneId, uniteId, page, taille));
+        return ResponseEntity.ok(traitementService.lister(statut, niveau, campagneId, uniteId, collaborateurId, page, taille));
     }
 
     @GetMapping("/compteur")

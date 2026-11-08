@@ -159,6 +159,9 @@ services:
     image: sirh/svc-notification
     environment:
       <<: *env-commun
+      # Notifications conservées (D-NOT01) ; jetons vérifiés par JWKS via env-commun
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/notification_db
+      NOTIFICATION_RETENTIONJOURS: ${NOTIFICATION_RETENTION_JOURS:-180}
       APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
       APP_MAIL_FROM: ${MAIL_FROM:-no-reply@sirh.local}
 

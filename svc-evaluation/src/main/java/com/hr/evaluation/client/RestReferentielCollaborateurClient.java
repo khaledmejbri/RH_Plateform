@@ -26,8 +26,10 @@ public class RestReferentielCollaborateurClient implements ReferentielCollaborat
 
 	public RestReferentielCollaborateurClient(
 			@Value("${evaluation.referentiel.base-url:http://localhost:8083}") String baseUrl,
-			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne) {
-		this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne,
+			@Value("${evaluation.referentiel.timeout-connexion-ms}") int delaiConnexionMs,
+			@Value("${evaluation.referentiel.timeout-lecture-ms}") int delaiLectureMs) {
+		this.restClient = ReferentielRestClients.creer(baseUrl, delaiConnexionMs, delaiLectureMs);
 		this.jetonInterne = jetonInterne;
 	}
 

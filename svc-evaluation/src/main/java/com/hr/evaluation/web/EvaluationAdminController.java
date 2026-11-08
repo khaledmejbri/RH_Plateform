@@ -3,11 +3,13 @@ package com.hr.evaluation.web;
 import com.hr.evaluation.domain.EvaluationCampaignStatus;
 import com.hr.evaluation.domain.EvaluationCampaignType;
 import com.hr.evaluation.domain.QuestionType;
+import com.hr.evaluation.domain.StatutEvaluationRh;
 import com.hr.evaluation.dto.*;
 import com.hr.evaluation.entity.*;
 import com.hr.evaluation.repository.*;
 import com.hr.evaluation.security.EvaluationAccessService;
 import com.hr.evaluation.service.EvaluationCampaignService;
+import com.hr.evaluation.service.EvaluationDetailService;
 import com.hr.evaluation.service.EvaluationScoringService;
 import com.hr.evaluation.service.EvaluationTemplateService;
 import com.hr.evaluation.service.EvaluationWorkflowService;
@@ -50,6 +52,7 @@ public class EvaluationAdminController {
     private final EvaluationAccessService evaluationAccess;
     private final Validator validator;
     private final com.hr.evaluation.service.EvaluationAnalyseAdminService analyseAdminService;
+    private final EvaluationDetailService detailService;
 
     public EvaluationAdminController(
             EvaluationCampaignService campaignService,
@@ -62,7 +65,8 @@ public class EvaluationAdminController {
             EvaluationCampaignRepository campaignRepository,
             EvaluationAccessService evaluationAccess,
             Validator validator,
-            com.hr.evaluation.service.EvaluationAnalyseAdminService analyseAdminService) {
+            com.hr.evaluation.service.EvaluationAnalyseAdminService analyseAdminService,
+            EvaluationDetailService detailService) {
         this.campaignService = campaignService;
         this.templateService = templateService;
         this.technicalTemplateService = technicalTemplateService;
@@ -74,6 +78,7 @@ public class EvaluationAdminController {
         this.evaluationAccess = evaluationAccess;
         this.validator = validator;
         this.analyseAdminService = analyseAdminService;
+        this.detailService = detailService;
     }
 
     private void valider(Object requete) {
@@ -141,6 +146,22 @@ public class EvaluationAdminController {
         }
         
         return ResponseEntity.ok(response);
+    }
+
+    /** B1 : détail d'une campagne (informations, compteurs, alertes ouvertes). 404 {@code CAMPAGNE_INTROUVABLE}. */
+    @GetMapping("/campaigns/{id}")
+    public ResponseEntity<CampagneDetail> getCampaignDetail(@PathVariable UUID id) {
+        return ResponseEntity.ok(detailService.campagne(id));
+    }
+
+    /** B2 : évaluations d'une campagne, paginées, avec noms résolus. */
+    @GetMapping("/campaigns/{id}/evaluations")
+    public ResponseEntity<PageEvaluations> getCampaignEvaluations(
+            @PathVariable UUID id,
+            @RequestParam(required = false) StatutEvaluationRh statut,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int taille) {
+        return ResponseEntity.ok(detailService.evaluationsDeCampagne(id, statut, page, taille));
     }
 
     @PostMapping("/campaigns")
@@ -454,47 +475,20 @@ public class EvaluationAdminController {
 
     // ========== EVALUATION MONITORING ==========
 
-    /** Transaction lecture : campaign est LAZY et open-in-view=false (SCRUM-10, LazyInitializationException). */
+    /** B4 : liste enrichie (noms, matricules, libellés, alerte). Filtres cumulables, tous facultatifs. */
     @GetMapping
-    @Transactional(readOnly = true)
-    public ResponseEntity<List<Map<String, Object>>> listAllEvaluations(
+    public ResponseEntity<List<EvaluationLigne>> listAllEvaluations(
             @RequestParam(required = false) UUID campagneId,
+            @RequestParam(required = false) UUID collaborateurId,
+            @RequestParam(required = false) UUID superieurId,
             @RequestParam(required = false) Boolean profilIncomplet) {
-        List<Evaluation> evaluations;
-        if (campagneId != null && Boolean.TRUE.equals(profilIncomplet)) {
-            evaluations = evaluationRepository.findByCampaignIdAndProfilMetierIncompletTrue(campagneId);
-        } else if (campagneId != null) {
-            evaluations = evaluationRepository.findByCampaignId(campagneId);
-        } else if (Boolean.TRUE.equals(profilIncomplet)) {
-            evaluations = evaluationRepository.findByProfilMetierIncompletTrue();
-        } else {
-            evaluations = evaluationRepository.findAll();
-        }
-        List<Map<String, Object>> response = new ArrayList<>();
-        Map<UUID, com.hr.evaluation.service.EvaluationAnalyseAdminService.NotesResponsable> notesResponsable =
-                analyseAdminService.notesResponsable(evaluations.stream().map(Evaluation::getId).toList());
+        return ResponseEntity.ok(detailService.lister(campagneId, collaborateurId, superieurId, profilIncomplet));
+    }
 
-        for (Evaluation evaluation : evaluations) {
-            Map<String, Object> evalMap = new HashMap<>();
-            evalMap.put("identifiant", evaluation.getId().toString());
-            evalMap.put("campaignNom", evaluation.getCampaign().getNom());
-            // D-E12.b : couleur seulement si le responsable a noté (jamais VERT par défaut)
-            var notes = notesResponsable.get(evaluation.getId());
-            evalMap.put("aNoteResponsable", notes != null && notes.aNote());
-            evalMap.put("couleurAlerte", notes != null && notes.aNote() ? notes.couleur().name() : null);
-            evalMap.put("collaborateurIdentifiant", evaluation.getCollaborateurIdentifiant().toString());
-            evalMap.put("superieurIdentifiant", Objects.toString(evaluation.getSuperieurIdentifiant(), null));
-            evalMap.put("statut", evaluation.getStatut().name());
-            evalMap.put("etapeActuelle", evaluation.getEtapeActuelle().name());
-            evalMap.put("scoreSur20", evaluation.getScoreSur20());
-            evalMap.put("familleMetierCode", evaluation.getFamilleMetierCode());
-            evalMap.put("niveauSeniorite", evaluation.getNiveauSeniorite());
-            evalMap.put("profilMetierIncomplet", evaluation.isProfilMetierIncomplet());
-            evalMap.put("creeLe", evaluation.getCreeLe());
-            response.add(evalMap);
-        }
-        
-        return ResponseEntity.ok(response);
+    /** B3 : détail complet d'une évaluation (notes des deux côtés, écarts, scores, historique). */
+    @GetMapping("/{id}/detail")
+    public ResponseEntity<EvaluationDetail> getEvaluationDetail(@PathVariable UUID id) {
+        return ResponseEntity.ok(detailService.detail(id));
     }
 
     @GetMapping("/{id}")
@@ -541,25 +535,11 @@ public class EvaluationAdminController {
         return ResponseEntity.ok(response);
     }
 
+    /** B5 : évaluations d'un collaborateur (fiche ou compte), enrichies comme la liste. */
     @GetMapping("/collaborateur/{collaborateurId}")
-    public ResponseEntity<List<Map<String, Object>>> getEvaluationsByCollaborateur(
+    public ResponseEntity<List<EvaluationLigne>> getEvaluationsByCollaborateur(
             @PathVariable UUID collaborateurId) {
-        
-        List<Evaluation> evaluations = workflowService.listerEvaluationsCollaborateur(collaborateurId);
-        List<Map<String, Object>> response = new ArrayList<>();
-        
-        for (Evaluation evaluation : evaluations) {
-            Map<String, Object> evalMap = new HashMap<>();
-            evalMap.put("identifiant", evaluation.getId().toString());
-            evalMap.put("campaignNom", evaluation.getCampaign().getNom());
-            evalMap.put("statut", evaluation.getStatut().name());
-            evalMap.put("etapeActuelle", evaluation.getEtapeActuelle().name());
-            evalMap.put("scoreSur20", evaluation.getScoreSur20());
-            evalMap.put("creeLe", evaluation.getCreeLe());
-            response.add(evalMap);
-        }
-        
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(detailService.lister(null, collaborateurId, null, null));
     }
 
     @GetMapping("/superieur/{superieurId}")

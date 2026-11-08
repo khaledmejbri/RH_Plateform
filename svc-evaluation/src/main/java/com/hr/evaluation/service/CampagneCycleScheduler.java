@@ -4,6 +4,7 @@ import com.hr.evaluation.domain.EvaluationCampaignStatus;
 import com.hr.evaluation.dto.CampaignActivationResult;
 import com.hr.evaluation.entity.EvaluationCampaign;
 import com.hr.evaluation.kafka.EvaluationEventPublisher;
+import com.hr.evaluation.kafka.ObjetNotification;
 import com.hr.evaluation.repository.EvaluationCampaignRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,7 +64,8 @@ public class CampagneCycleScheduler {
                             "Campagne non lancée — " + c.getNom(),
                             "La campagne « " + c.getNom() + " » devait démarrer le " + JOUR.format(c.getDateDebut())
                                     + " mais aucun template général publié ne lui est associé. Associez-en un : "
-                                    + "elle sera lancée automatiquement au passage suivant.");
+                                    + "elle sera lancée automatiquement au passage suivant.",
+                            ObjetNotification.de(ObjetNotification.CAMPAGNE, "CAMPAGNE_NON_LANCEE", c.getId(), null));
                     campaignService.marquerAlerteLancement(c.getId());
                 }
                 log.warn("Campagne {} non lancée : template général manquant", c.getId());

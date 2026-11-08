@@ -49,8 +49,9 @@ public class DemandeFormationRhController {
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<List<DemandeFormationRhResponse>> listerPourRh(
 			@RequestParam(name = "statut", required = false) StatutDemandeFormationRh statut,
-			@RequestParam(name = "q", required = false) String q) {
-		return ResponseEntity.ok(demandeFormationRhService.listerPourRh(statut, q));
+			@RequestParam(name = "q", required = false) String q,
+			@RequestParam(name = "collaborateur_id", required = false) UUID collaborateurId) {
+		return ResponseEntity.ok(demandeFormationRhService.listerPourRh(statut, q, collaborateurId));
 	}
 
 	@GetMapping("/cibles/unites")

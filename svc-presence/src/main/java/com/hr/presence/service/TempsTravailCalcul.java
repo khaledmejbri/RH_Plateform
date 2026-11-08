@@ -34,7 +34,9 @@ public final class TempsTravailCalcul {
 	/** Journée de travail d'un collaborateur sur un site, avec ses paires et ses orphelins. */
 	public record JourTravail(String collaborateur, UUID siteId, LocalDate jour, List<Paire> paires,
 							  List<PresencePointage> orphelins, long secondes, Instant premiereEntree,
-							  Instant derniereSortie, Instant horaireFin, boolean manuel) {
+							  Instant derniereSortie, Instant horaireFin, boolean manuel,
+							  /** D-P19 : minutes de retard ; nul si non calculable (« — »), 0 si à l'heure. */
+							  Integer retardMinutes) {
 
 		public long minutes() {
 			return secondes / 60;
@@ -54,6 +56,13 @@ public final class TempsTravailCalcul {
 	 */
 	public static List<JourTravail> regrouper(Collection<PresencePointage> pointages,
 											  Function<String, String> collaborateur, int dureeMaxHeures) {
+		return regrouper(pointages, collaborateur, dureeMaxHeures, Duration.ZERO);
+	}
+
+	/** Idem, avec le délai de grâce des retards (D-P19.d). */
+	public static List<JourTravail> regrouper(Collection<PresencePointage> pointages,
+											  Function<String, String> collaborateur, int dureeMaxHeures,
+											  Duration delaiGrace) {
 		Map<Cle, List<PresencePointage>> parCollaborateurSite = new LinkedHashMap<>();
 		for (PresencePointage p : pointages) {
 			parCollaborateurSite.computeIfAbsent(new Cle(collaborateur.apply(p.getCollaborateurId()), p.getSiteId()),
@@ -69,7 +78,7 @@ public final class TempsTravailCalcul {
 			}
 		});
 		List<JourTravail> out = new ArrayList<>();
-		parJour.forEach((cle, liste) -> out.add(construire(cle, liste)));
+		parJour.forEach((cle, liste) -> out.add(construire(cle, liste, delaiGrace)));
 		return out;
 	}
 
@@ -100,7 +109,7 @@ public final class TempsTravailCalcul {
 		return journees;
 	}
 
-	private static JourTravail construire(CleJour cle, List<PresencePointage> pointages) {
+	private static JourTravail construire(CleJour cle, List<PresencePointage> pointages, Duration delaiGrace) {
 		Appariement appariement = CalculHeuresSupService.apparier(pointages);
 		long secondes = 0;
 		Instant derniereSortie = null;
@@ -125,7 +134,7 @@ public final class TempsTravailCalcul {
 		List<PresencePointage> orphelins = new ArrayList<>(appariement.orphelins());
 		orphelins.sort(Comparator.comparing(PresencePointage::getServerTs));
 		return new JourTravail(cle.collaborateur(), cle.siteId(), cle.jour(), appariement.paires(), orphelins,
-				secondes, premiereEntree, derniereSortie, horaireFin, manuel);
+				secondes, premiereEntree, derniereSortie, horaireFin, manuel, RetardCalcul.calculer(pointages, delaiGrace));
 	}
 
 	/**

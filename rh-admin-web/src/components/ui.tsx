@@ -78,7 +78,7 @@ const TONES: Record<string, Tone> = {
   CONFIRME: 'success', RESOLU: 'success', TERMINEE: 'neutral', FERME: 'neutral', ACTIF: 'success',
   ACTIVE: 'success', INACTIVE: 'neutral', SUSPENDU: 'warning', PUBLISHED: 'success', DRAFT: 'neutral',
   ARCHIVE: 'neutral', ARCHIVED: 'neutral', REJETEE: 'danger', REFUSEE: 'danger', ANNULEE: 'neutral',
-  EXPIRE: 'danger', EXPIREE: 'danger', DISPONIBLE: 'success', REVOQUE: 'danger',
+  EXPIRE: 'danger', EN_ATTENTE_VALIDATION_CROISEE: 'progress', VALIDEE_COLLABORATEUR: 'info', VALIDEE_SUPERIEUR: 'warning', ARCHIVEE: 'neutral', OUVERTE: 'warning', TRAITEE: 'success', EXPIREE: 'danger', DISPONIBLE: 'success', REVOQUE: 'danger',
 };
 
 const TONE_ICON: Record<Tone, IconName> = {

@@ -22,6 +22,7 @@ import '../data/presence_gps.dart';
 import '../data/presence_models.dart';
 import '../data/presence_repository.dart';
 import 'fenetre_du_jour_banner.dart';
+import 'justification_dialog.dart';
 
 /// Pointage : scan QR → ENTREE/SORTIE → GPS → (visage si exigé, ADR-M09-FACE) → API.
 class PointageScreen extends ConsumerStatefulWidget {
@@ -415,7 +416,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
     if (rejetId == null) return;
     final justification = await showDialog<String>(
       context: context,
-      builder: (_) => const _JustificationDialog(),
+      builder: (_) => const JustificationPointageDialog(),
     );
     if (justification == null || !mounted) return;
     setState(() => _busy = true);
@@ -839,65 +840,6 @@ class _StepCard extends StatelessWidget {
           SizedBox(width: double.infinity, child: action),
         ],
       ),
-    );
-  }
-}
-
-/// Justification obligatoire d'une demande de pointage manuel (D-P04).
-class _JustificationDialog extends StatefulWidget {
-  const _JustificationDialog();
-
-  @override
-  State<_JustificationDialog> createState() => _JustificationDialogState();
-}
-
-class _JustificationDialogState extends State<_JustificationDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final texte = _controller.text.trim();
-    return AlertDialog(
-      title: const Text('Demander un pointage manuel'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Votre responsable validera ce pointage à l’heure du refus. '
-            'Expliquez pourquoi le pointage automatique a échoué.',
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            maxLines: 3,
-            maxLength: 500,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              labelText: 'Justification *',
-              hintText: 'Ex. : signal GPS trop faible dans le bâtiment',
-              helperText: '10 caractères minimum',
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Annuler'),
-        ),
-        FilledButton(
-          onPressed: texte.length < 10 ? null : () => Navigator.pop(context, texte),
-          child: const Text('Envoyer'),
-        ),
-      ],
     );
   }
 }

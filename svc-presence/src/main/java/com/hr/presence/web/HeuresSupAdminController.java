@@ -67,6 +67,20 @@ public class HeuresSupAdminController {
 		return service.obtenir(id);
 	}
 
+	/** Détail par numéro lisible HS-AAAAMM-NNNN (lien porté par la référence dans les tableaux). */
+	@GetMapping("/demandes/numero/{numero}")
+	@PreAuthorize(PresenceSecurityExpressions.BACKOFFICE_LECTURE)
+	public DemandeHeuresSupResponse obtenirParNumero(@PathVariable String numero) {
+		return service.obtenirParNumero(numero);
+	}
+
+	/** Heures comptées de la demande, par bénéficiaire et par jour. */
+	@GetMapping("/demandes/{id}/comptees")
+	@PreAuthorize(PresenceSecurityExpressions.BACKOFFICE_LECTURE)
+	public java.util.List<HeuresComptees> compteesDeDemande(@PathVariable UUID id) {
+		return service.compteesDeDemande(id);
+	}
+
 	@PostMapping("/demandes")
 	@PreAuthorize(PresenceSecurityExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<DemandeHeuresSupResponse> creer(@Valid @RequestBody CreationHeuresSupRequest request) {

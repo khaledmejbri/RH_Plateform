@@ -137,9 +137,9 @@ class PresenceDemandeManuelleServiceTest {
 		assertThat(r.statut()).isEqualTo(StatutDemandeManuelle.EN_ATTENTE);
 		assertThat(r.valideurNom()).isEqualTo("Omar Belhadj");
 		assertThat(r.numero()).matches("PM-\\d{6}-0001");
-		verify(eventPublisher).notifier(eq(compteRo.toString()), org.mockito.ArgumentMatchers.contains(r.numero()), anyString());
+		verify(eventPublisher).notifier(eq(compteRo.toString()), org.mockito.ArgumentMatchers.contains(r.numero()), anyString(), any());
 		assertThat(r.heureDeclaree()).isEqualTo(rejet.getServerTs());
-		verify(eventPublisher).notifier(eq(compteRo.toString()), startsWith("Pointage manuel à valider"), anyString());
+		verify(eventPublisher).notifier(eq(compteRo.toString()), startsWith("Pointage manuel à valider"), anyString(), any());
 	}
 
 	@Test
@@ -187,7 +187,7 @@ class PresenceDemandeManuelleServiceTest {
 				rejet.getId(), null, null, "GPS faible au rez-de-chaussée"));
 
 		assertThat(r.validationParRh()).isTrue();
-		verify(eventPublisher).notifier(eq(PresenceEventPublisher.DESTINATAIRE_RH), anyString(), anyString());
+		verify(eventPublisher).notifier(eq(PresenceEventPublisher.DESTINATAIRE_RH), anyString(), anyString(), any());
 	}
 
 	@Test
@@ -244,7 +244,15 @@ class PresenceDemandeManuelleServiceTest {
 		assertThat(p.getValue().getStatut()).isEqualTo(PointageStatut.VALIDE_MANUEL);
 		assertThat(p.getValue().getServerTs()).isEqualTo(d.getHeureDeclaree());
 		assertThat(p.getValue().getDemandeManuelleId()).isEqualTo(d.getId());
-		verify(eventPublisher).notifier(eq(compteCollab.toString()), eq("Pointage manuel validé — PM-202611-0007"), anyString());
+		org.mockito.ArgumentCaptor<com.hr.presence.kafka.ObjetNotification> objet =
+				org.mockito.ArgumentCaptor.forClass(com.hr.presence.kafka.ObjetNotification.class);
+		verify(eventPublisher).notifier(eq(compteCollab.toString()), eq("Pointage manuel validé — PM-202611-0007"), anyString(),
+				objet.capture());
+		// 2F : la notification ouvre le détail du pointage manuel
+		org.assertj.core.api.Assertions.assertThat(objet.getValue().type()).isEqualTo("POINTAGE_MANUEL");
+		org.assertj.core.api.Assertions.assertThat(objet.getValue().evenement()).isEqualTo("POINTAGE_MANUEL_VALIDE");
+		org.assertj.core.api.Assertions.assertThat(objet.getValue().numero()).isEqualTo("PM-202611-0007");
+		org.assertj.core.api.Assertions.assertThat(objet.getValue().notificationId()).isNotNull();
 	}
 
 	@Test
@@ -298,7 +306,7 @@ class PresenceDemandeManuelleServiceTest {
 		DemandeManuelleResponse r = service.valider(d.getId());
 
 		assertThat(r.alerteSeuil()).isTrue();
-		verify(eventPublisher).notifier(eq(PresenceEventPublisher.DESTINATAIRE_RH), startsWith("Pointages manuels fréquents"), anyString());
+		verify(eventPublisher).notifier(eq(PresenceEventPublisher.DESTINATAIRE_RH), startsWith("Pointages manuels fréquents"), anyString(), any());
 	}
 
 	@Test
@@ -320,7 +328,7 @@ class PresenceDemandeManuelleServiceTest {
 
 		assertThat(r.statut()).isEqualTo(StatutDemandeManuelle.REFUSEE);
 		assertThat(r.motifRefus()).isEqualTo("Absent ce matin-là");
-		verify(eventPublisher).notifier(eq(compteCollab.toString()), eq("Pointage manuel refusé — PM-202611-0007"), anyString());
+		verify(eventPublisher).notifier(eq(compteCollab.toString()), eq("Pointage manuel refusé — PM-202611-0007"), anyString(), any());
 		verify(pointageRepository, never()).save(any());
 	}
 

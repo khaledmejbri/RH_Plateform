@@ -28,7 +28,7 @@ public class AlerteEcartNotificationListener {
 
 	static final String ROLE_RH = "RH";
 	static final String ROLE_ADMIN = "ADMIN";
-	static final String TYPE_NOTIFICATION = "ALERTE_ECART_EVALUATION";
+	static final String EVENEMENT_ALERTE_ECART = "ALERTE_ECART_EVALUATION";
 
 	private final IdentiteClient identiteClient;
 	private final EvaluationEventPublisher eventPublisher;
@@ -48,8 +48,11 @@ public class AlerteEcartNotificationListener {
 			}
 			String sujet = sujet(evenement);
 			String contenu = contenu(evenement);
+			// Un seul identifiant d'événement pour tous les destinataires de l'alerte
+			ObjetNotification objet = ObjetNotification.de(ObjetNotification.ALERTE_ECART,
+					EVENEMENT_ALERTE_ECART, evenement.alerteId(), null);
 			for (UUID compte : destinataires) {
-				eventPublisher.notifier(compte.toString(), sujet, contenu);
+				eventPublisher.notifier(compte.toString(), sujet, contenu, objet);
 			}
 		} catch (Exception ex) {
 			log.warn("Notification de l'alerte d'écart {} non envoyée : {}", evenement.alerteId(), ex.getMessage());
@@ -78,8 +81,7 @@ public class AlerteEcartNotificationListener {
 	static String contenu(AlerteEcartANotifierEvent e) {
 		String nom = e.collaborateurNom() != null ? e.collaborateurNom() : "un collaborateur";
 		String campagne = e.campagneNom() != null ? e.campagneNom() : "campagne";
-		return TYPE_NOTIFICATION + "|alerte=" + e.alerteId() + "|niveau=" + e.niveau().name()
-				+ "|Évaluation de " + nom + " (" + campagne + ") : " + e.nbCompetencesEnEcart()
+		return "Évaluation de " + nom + " (" + campagne + ") : " + e.nbCompetencesEnEcart()
 				+ " compétence(s) en écart, écart max " + e.ecartMax() + " étoiles.";
 	}
 }

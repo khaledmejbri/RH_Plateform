@@ -32,7 +32,8 @@ class EvaluationEventPublisherCampagneOuverteTest {
     @Test
     void publieSurRhNotificationsAuCompteDuCollaborateur() {
         when(kafkaTemplateProvider.getIfAvailable()).thenReturn(kafkaTemplate);
-        EvaluationEventPublisher publisher = new EvaluationEventPublisher(kafkaTemplateProvider);
+        EvaluationEventPublisher publisher = new EvaluationEventPublisher(kafkaTemplateProvider,
+                java.time.Clock.fixed(java.time.Instant.parse("2026-11-08T10:15:30Z"), java.time.ZoneOffset.UTC));
 
         UUID compte = UUID.randomUUID();
         UUID campagneId = UUID.randomUUID();
@@ -46,14 +47,21 @@ class EvaluationEventPublisherCampagneOuverteTest {
         assertThat(msg.type()).isEqualTo("WEBSOCKET");
         assertThat(msg.recipient()).isEqualTo(compte.toString());
         assertThat(msg.subject()).isEqualTo("Votre évaluation est ouverte");
-        assertThat(msg.content()).startsWith("EVALUATION_CAMPAGNE_OUVERTE|campagne=" + campagneId);
-        assertThat(msg.content()).contains("|evaluation=" + evalId);
+        assertThat(msg.content()).startsWith("La campagne").doesNotContain("|").doesNotContain(evalId.toString())
+                .doesNotContain(campagneId.toString());
+        assertThat(msg.evenement()).isEqualTo("EVALUATION_CAMPAGNE_OUVERTE");
+        assertThat(msg.objetType()).isEqualTo("EVALUATION");
+        assertThat(msg.objetId()).isEqualTo(evalId.toString());
+        assertThat(msg.objetNumero()).isNull();
+        assertThat(msg.emisLe()).isEqualTo("2026-11-08T10:15:30Z");
+        assertThat(UUID.fromString(msg.notificationId())).isNotNull();
     }
 
     @Test
     void sansCompteRepliSurLaFiche() {
         when(kafkaTemplateProvider.getIfAvailable()).thenReturn(kafkaTemplate);
-        EvaluationEventPublisher publisher = new EvaluationEventPublisher(kafkaTemplateProvider);
+        EvaluationEventPublisher publisher = new EvaluationEventPublisher(kafkaTemplateProvider,
+                java.time.Clock.fixed(java.time.Instant.parse("2026-11-08T10:15:30Z"), java.time.ZoneOffset.UTC));
         Evaluation evaluation = evaluation(UUID.randomUUID(), UUID.randomUUID());
 
         publisher.publierEvaluationCampagneOuverte(evaluation, "Annuelle 2026");
@@ -65,7 +73,8 @@ class EvaluationEventPublisherCampagneOuverteTest {
     @Test
     void validationCollaborateurNotifieLeCompteDuResponsable() {
         when(kafkaTemplateProvider.getIfAvailable()).thenReturn(kafkaTemplate);
-        EvaluationEventPublisher publisher = new EvaluationEventPublisher(kafkaTemplateProvider);
+        EvaluationEventPublisher publisher = new EvaluationEventPublisher(kafkaTemplateProvider,
+                java.time.Clock.fixed(java.time.Instant.parse("2026-11-08T10:15:30Z"), java.time.ZoneOffset.UTC));
         UUID compteManager = UUID.randomUUID();
         Evaluation evaluation = evaluation(UUID.randomUUID(), UUID.randomUUID());
         evaluation.setSuperieurIdentifiant(UUID.randomUUID());
@@ -77,12 +86,18 @@ class EvaluationEventPublisherCampagneOuverteTest {
         NotificationMessage msg = capturer(compteManager.toString());
         assertThat(msg.recipient()).isEqualTo(compteManager.toString());
         assertThat(msg.subject()).isEqualTo("Évaluation à noter — Sarra Khemiri");
-        assertThat(msg.content()).startsWith("EVALUATION_A_NOTER|evaluation=" + evaluation.getId());
+        assertThat(msg.content()).startsWith("Sarra Khemiri a validé").doesNotContain("|")
+                .doesNotContain(evaluation.getId().toString());
+        assertThat(msg.evenement()).isEqualTo("EVALUATION_A_NOTER");
+        assertThat(msg.objetType()).isEqualTo("EVALUATION");
+        assertThat(msg.objetId()).isEqualTo(evaluation.getId().toString());
+        assertThat(msg.emisLe()).isEqualTo("2026-11-08T10:15:30Z");
     }
 
     @Test
     void sansKafkaTemplateNeLevePasDException() {
-        EvaluationEventPublisher publisher = new EvaluationEventPublisher(kafkaTemplateProvider);
+        EvaluationEventPublisher publisher = new EvaluationEventPublisher(kafkaTemplateProvider,
+                java.time.Clock.fixed(java.time.Instant.parse("2026-11-08T10:15:30Z"), java.time.ZoneOffset.UTC));
         Evaluation evaluation = evaluation(UUID.randomUUID(), UUID.randomUUID());
 
         assertThatCode(() -> publisher.publierEvaluationCampagneOuverte(evaluation, "Annuelle 2026"))

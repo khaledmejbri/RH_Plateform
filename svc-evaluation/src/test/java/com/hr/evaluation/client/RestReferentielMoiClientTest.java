@@ -54,7 +54,7 @@ class RestReferentielMoiClientTest {
     }
 
     private RestReferentielMoiClient client() {
-        return new RestReferentielMoiClient("http://127.0.0.1:" + serveur.getAddress().getPort());
+        return new RestReferentielMoiClient("http://127.0.0.1:" + serveur.getAddress().getPort(), 1000, 2000);
     }
 
     @Test

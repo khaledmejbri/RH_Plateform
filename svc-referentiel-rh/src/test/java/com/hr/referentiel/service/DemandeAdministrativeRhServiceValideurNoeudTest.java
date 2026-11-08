@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -112,7 +113,7 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 		DemandeAdministrativeRhResponse response = service.validerSuperieur(demandeId, jwt);
 
 		assertThat(response.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
-		verify(notificationPublisher).notifierValidationRo(demandeur, "CONGE", managerActif, null);
+		verify(notificationPublisher).notifierValidationRo(eq(demandeur), eq("CONGE"), eq(managerActif), any(), isNull());
 	}
 
 	@Test
@@ -326,7 +327,7 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 			assertThat(h.getActeurNom()).isEqualTo("Bob Martin");
 		});
 		assertThat(captor.getAllValues().get(0).getCommentaire()).isEqualTo("Demande de congé annuel créée");
-		verify(notificationPublisher).notifierDemandeRecue(demandeur, "CONGE", "DEM-202611-0001", managerActif);
+		verify(notificationPublisher).notifierDemandeRecue(eq(demandeur), eq("CONGE"), any(), eq("DEM-202611-0001"), eq(managerActif));
 	}
 
 	@Test

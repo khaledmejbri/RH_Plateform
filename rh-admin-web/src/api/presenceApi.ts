@@ -765,6 +765,8 @@ export type LigneTempsTravail = {
   paires: PaireTempsTravail[];
   orphelins: OrphelinTempsTravail[];
   minutes_travaillees: number;
+  /** D-P19 : minutes de retard ; null = « — » (non calculable), 0 = à l'heure. */
+  retard_minutes?: number | null;
   etat: EtatTempsTravail;
   /**
    * D-P18.d : instant (ISO) où une journée « En cours » basculera en « Incomplet ». Champ optionnel

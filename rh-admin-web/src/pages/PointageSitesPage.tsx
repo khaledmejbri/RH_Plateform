@@ -41,6 +41,7 @@ import HoraireSitePanel from './HoraireSitePanel';
 import PointagesManuelsPanel from './PointagesManuelsPanel';
 import TempsTravailPanel from './TempsTravailPanel';
 import VerificationFacialePanel from './VerificationFacialePanel';
+import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 type Tab = 'sites' | 'pointages' | 'temps' | 'manuels' | 'facial';
 type ModalKind = 'creer' | 'regenerer' | 'revoquer' | null;
@@ -585,7 +586,7 @@ export default function PointageSitesPage() {
                   ? 'Pointages manuels'
                   : tab === 'facial'
                     ? 'Vérification faciale'
-                    : 'Sites de pointage'}
+                    : 'Sites et bornes'}
           </h2>
           <p className="page__lead">
             {showDetail
@@ -757,7 +758,7 @@ export default function PointageSitesPage() {
                     {sitesAffiches.map((s) => (
                       <tr key={s.id}>
                         <td className="mono">{s.code}</td>
-                        <td>{s.libelle}</td>
+                        <td><DetailLink type="site" id={s.id} libelle={s.libelle} /></td>
                         <td>
                           {s.actif ? (
                             <span className="badge badge--success">Actif</span>
@@ -1245,8 +1246,8 @@ export default function PointageSitesPage() {
                     {pointages.map((p) => (
                       <tr key={p.id}>
                         <td>{formatDateTunis(p.serverTs, minutesPartagees.has(p.id))}</td>
-                        <td>{libelleCollabPointage(p)}</td>
-                        <td>{p.siteLibelle ?? SITE_INTROUVABLE}</td>
+                        <td>{p.collaborateurNom ? <LienPersonne id={p.collaborateurId} nom={p.collaborateurNom} matricule={p.collaborateurMatricule} /> : libelleCollabPointage(p)}</td>
+                        <td>{p.siteLibelle ? <DetailLink type="site" id={p.siteId} libelle={p.siteLibelle} /> : SITE_INTROUVABLE}</td>
                         <td>{p.type === 'ENTREE' ? 'Entrée' : p.type === 'SORTIE' ? 'Sortie' : VALEUR_NON_RECONNUE}</td>
                         <td>
                           <PointageStatutBadge statut={p.statut} />

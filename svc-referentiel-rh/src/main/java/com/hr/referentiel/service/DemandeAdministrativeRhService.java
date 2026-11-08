@@ -101,7 +101,7 @@ public class DemandeAdministrativeRhService {
 
 		// Notification : demandeur → valideur retenu (D-H03), ou RH / ADMIN sans valideur (SCRUM-28)
 		notificationPublisher.notifierDemandeRecue(demandeur,
-				req.getTypeDemande().name(), saved.getNumero(), valideurAttendu);
+				req.getTypeDemande().name(), saved.getId(), saved.getNumero(), valideurAttendu);
 
 		return toResponse(saved);
 	}
@@ -138,6 +138,17 @@ public class DemandeAdministrativeRhService {
 	public List<DemandeAdministrativeRhResponse> listerToutPourRh(
 			TypeDemandeAdministrativeRh type, LocalDate couvreJour,
 			StatutDemandeAdministrativeRh statut, String q) {
+		return listerToutPourRh(type, couvreJour, statut, q, null, null);
+	}
+
+	/**
+	 * D-N01 : en plus des filtres existants, {@code collaborateurId} (demandeur, fiche) et {@code uniteId} (unité du
+	 * demandeur, sous-unités comprises). Un identifiant inconnu donne une liste vide.
+	 */
+	@Transactional(readOnly = true)
+	public List<DemandeAdministrativeRhResponse> listerToutPourRh(
+			TypeDemandeAdministrativeRh type, LocalDate couvreJour,
+			StatutDemandeAdministrativeRh statut, String q, UUID collaborateurId, UUID uniteId) {
 		List<DemandeAdministrativeRh> lignes;
 		String numero = NumeroLisibleService.normaliserRecherche(q);
 		if (numero != null) {
@@ -154,7 +165,11 @@ public class DemandeAdministrativeRhService {
 		} else {
 			lignes = filtrerStatut(demandeRepo.findAllPourRhByTypeDemandeOrderByCreeLeDesc(type), statut);
 		}
-		return lignes.stream().map(this::toResponse).collect(Collectors.toList());
+		return lignes.stream()
+				.filter(d -> collaborateurId == null || d.getDemandeur().getId().equals(collaborateurId))
+				.filter(d -> uniteId == null
+						|| SuperieurHierarchieRules.descendDe(d.getDemandeur().getUnite(), uniteId))
+				.map(this::toResponse).collect(Collectors.toList());
 	}
 
 	@Transactional(readOnly = true)
@@ -217,7 +232,7 @@ public class DemandeAdministrativeRhService {
 			"Validée par le responsable");
 
 		// Notification : RO a validé → RH doit approuver
-		notificationPublisher.notifierValidationRo(demandeur, d.getTypeDemande().name(), ro, d.getNumero());
+		notificationPublisher.notifierValidationRo(demandeur, d.getTypeDemande().name(), ro, d.getId(), d.getNumero());
 
 		return toResponse(d);
 	}
@@ -240,7 +255,7 @@ public class DemandeAdministrativeRhService {
 			"Refusée par le responsable : " + req.getMotifRefus().trim());
 
 		// Notification : RO a refusé → le demandeur est notifié avec le motif
-		notificationPublisher.notifierRefusRo(demandeur, d.getTypeDemande().name(), req.getMotifRefus(), d.getNumero());
+		notificationPublisher.notifierRefusRo(demandeur, d.getTypeDemande().name(), req.getMotifRefus(), d.getId(), d.getNumero());
 
 		return toResponse(d);
 	}
@@ -263,7 +278,7 @@ public class DemandeAdministrativeRhService {
 			rh != null ? rh.getId() : null, nomActeurRh(rh, jwt), "Approuvée par la RH");
 
 		// Notification : RRH a approuvé → demandeur
-		notificationPublisher.notifierApprobationRrh(demandeur, d.getTypeDemande().name(), d.getNumero());
+		notificationPublisher.notifierApprobationRrh(demandeur, d.getTypeDemande().name(), d.getId(), d.getNumero());
 
 		return toResponse(d);
 	}
@@ -285,7 +300,7 @@ public class DemandeAdministrativeRhService {
 			rh != null ? rh.getId() : null, nomActeurRh(rh, jwt), "Refusée par la RH : " + req.getMotifRefus().trim());
 
 		// Notification : RRH a refusé → demandeur avec motif
-		notificationPublisher.notifierRefusRrh(demandeur, d.getTypeDemande().name(), req.getMotifRefus(), d.getNumero());
+		notificationPublisher.notifierRefusRrh(demandeur, d.getTypeDemande().name(), req.getMotifRefus(), d.getId(), d.getNumero());
 
 		return toResponse(d);
 	}
@@ -315,7 +330,7 @@ public class DemandeAdministrativeRhService {
 			"Annulée par le demandeur");
 
 		// Notification : annulation → RO pour info
-		notificationPublisher.notifierAnnulationDemandeur(demandeur, d.getTypeDemande().name(), d.getValideurAttendu(), d.getNumero());
+		notificationPublisher.notifierAnnulationDemandeur(demandeur, d.getTypeDemande().name(), d.getValideurAttendu(), d.getId(), d.getNumero());
 
 		return toResponse(d);
 	}

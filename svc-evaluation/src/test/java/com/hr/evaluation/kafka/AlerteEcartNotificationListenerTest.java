@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -56,12 +57,17 @@ class AlerteEcartNotificationListenerTest {
         ArgumentCaptor<String> destinataire = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> sujet = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> contenu = ArgumentCaptor.forClass(String.class);
-        verify(publisher, times(2)).notifier(destinataire.capture(), sujet.capture(), contenu.capture());
+        ArgumentCaptor<ObjetNotification> objet = ArgumentCaptor.forClass(ObjetNotification.class);
+        verify(publisher, times(2)).notifier(destinataire.capture(), sujet.capture(), contenu.capture(), objet.capture());
+        // 2F : même événement pour les deux RH = même notification_id, objet = l'alerte
+        assertThat(objet.getAllValues().get(0).notificationId()).isEqualTo(objet.getAllValues().get(1).notificationId());
+        assertThat(objet.getValue().type()).isEqualTo("ALERTE_ECART");
+        assertThat(objet.getValue().id()).isEqualTo(alerteId);
+        assertThat(objet.getValue().evenement()).isEqualTo("ALERTE_ECART_EVALUATION");
         assertThat(destinataire.getAllValues()).containsExactlyInAnyOrder(drh01.toString(), rh02.toString())
                 .doesNotContain("RH");
         assertThat(sujet.getValue()).isEqualTo("Alerte d'écart d'évaluation — Alerte");
-        assertThat(contenu.getValue()).isEqualTo("ALERTE_ECART_EVALUATION|alerte=" + alerteId + "|niveau=ORANGE"
-                + "|Évaluation de Sarra Khemiri (Campagne S2) : 1 compétence(s) en écart, écart max 2 étoiles.");
+        assertThat(contenu.getValue()).isEqualTo("Évaluation de Sarra Khemiri (Campagne S2) : 1 compétence(s) en écart, écart max 2 étoiles.");
         verify(identite, never()).comptesParRole("ADMIN");
     }
 
@@ -73,7 +79,7 @@ class AlerteEcartNotificationListenerTest {
         listener.surAlerteANotifier(evenement(NiveauEcart.URGENTE, 1, 4, Set.of()));
 
         ArgumentCaptor<String> sujet = ArgumentCaptor.forClass(String.class);
-        verify(publisher, times(2)).notifier(anyString(), sujet.capture(), anyString());
+        verify(publisher, times(2)).notifier(anyString(), sujet.capture(), anyString(), any());
         assertThat(sujet.getAllValues()).containsExactly(
                 "Alerte d'écart d'évaluation — Critique", "Alerte d'écart d'évaluation — Urgente");
     }
@@ -85,7 +91,7 @@ class AlerteEcartNotificationListenerTest {
         listener.surAlerteANotifier(evenement(NiveauEcart.ROUGE, 1, 3, Set.of(collaborateur, drh01)));
 
         ArgumentCaptor<String> destinataire = ArgumentCaptor.forClass(String.class);
-        verify(publisher).notifier(destinataire.capture(), anyString(), anyString());
+        verify(publisher).notifier(destinataire.capture(), anyString(), anyString(), any());
         assertThat(destinataire.getValue()).isEqualTo(rh02.toString());
     }
 
@@ -97,7 +103,7 @@ class AlerteEcartNotificationListenerTest {
         listener.surAlerteANotifier(evenement(NiveauEcart.ROUGE, 1, 3, Set.of(collaborateur, ro)));
 
         ArgumentCaptor<String> destinataire = ArgumentCaptor.forClass(String.class);
-        verify(publisher).notifier(destinataire.capture(), anyString(), anyString());
+        verify(publisher).notifier(destinataire.capture(), anyString(), anyString(), any());
         assertThat(destinataire.getValue()).isEqualTo(admin.toString());
     }
 
@@ -108,18 +114,18 @@ class AlerteEcartNotificationListenerTest {
 
         listener.surAlerteANotifier(evenement(NiveauEcart.ORANGE, 1, 2, Set.of()));
 
-        verify(publisher, never()).notifier(anyString(), anyString(), anyString());
+        verify(publisher, never()).notifier(anyString(), anyString(), anyString(), any());
     }
 
     @Test
     void panneIdentiteOuKafka_aucuneExceptionNePropage() {
         when(identite.comptesParRole("RH")).thenThrow(new IllegalStateException("identité en panne"));
         listener.surAlerteANotifier(evenement(NiveauEcart.ORANGE, 1, 2, Set.of()));
-        verify(publisher, never()).notifier(anyString(), anyString(), anyString());
+        verify(publisher, never()).notifier(anyString(), anyString(), anyString(), any());
 
         org.mockito.Mockito.doReturn(List.of(drh01)).when(identite).comptesParRole("RH");
         org.mockito.Mockito.doThrow(new IllegalStateException("kafka")).when(publisher)
-                .notifier(anyString(), anyString(), anyString());
+                .notifier(anyString(), anyString(), anyString(), any());
         listener.surAlerteANotifier(evenement(NiveauEcart.ORANGE, 1, 2, Set.of()));
     }
 }

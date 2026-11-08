@@ -20,6 +20,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
@@ -93,7 +94,9 @@ class CampagneCycleSchedulerTest {
         assertThat(bilan.bloquees()).isEqualTo(1);
         verify(campaignService, never()).activerCampagne(any());
         verify(eventPublisher).notifier(eq(EvaluationEventPublisher.DESTINATAIRE_RH),
-                startsWith("Campagne non lancée"), anyString());
+                startsWith("Campagne non lancée"), anyString(),
+                argThat(o -> "CAMPAGNE".equals(o.type()) && c.getId().equals(o.id())
+                        && "CAMPAGNE_NON_LANCEE".equals(o.evenement()) && o.notificationId() != null));
         verify(campaignService).marquerAlerteLancement(c.getId());
     }
 
@@ -106,7 +109,7 @@ class CampagneCycleSchedulerTest {
 
         scheduler.executer(maintenant);
 
-        verify(eventPublisher, never()).notifier(any(), any(), any());
+        verify(eventPublisher, never()).notifier(any(), any(), any(), any());
     }
 
     @Test

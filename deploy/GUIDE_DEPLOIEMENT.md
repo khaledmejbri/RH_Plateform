@@ -15,7 +15,7 @@ Durée : environ 1 h la première fois, dont 15 à 20 min de construction des im
 | `Dockerfile.web` + `nginx.conf` | Plateforme RH ; nginx relaie aussi `/api` et `/ws` vers la gateway |
 | `Caddyfile` | Certificat HTTPS Let's Encrypt automatique pour votre domaine |
 | `.env.example` | Secrets et réglages à copier en `.env` (jamais commité) |
-| `postgres/init/01-bases.sql` | Crée les 4 bases au premier démarrage |
+| `postgres/init/01-bases.sql` | Crée les 5 bases au premier démarrage |
 | `scripts/exporter-donnees-locales.sh` | Sur votre PC : exporte comptes, organigramme, évaluations, pointage |
 | `scripts/importer-donnees.sh` | Sur le serveur : recharge ces données |
 
@@ -203,6 +203,21 @@ Pour ne mettre à jour **qu'un service** sans redémarrer les autres (Eureka com
 pendant 1 à 2 minutes) : `docker compose up -d --build --no-deps svc-evaluation`.
 Redémarrer `svc-identite-acces` déconnecte les utilisateurs (clé de signature des jetons régénérée) :
 il suffit de se reconnecter.
+
+**Mise à jour vers les notifications conservées (SCRUM-81) sur un serveur déjà installé.** Le script
+`postgres/init/01-bases.sql` ne s'exécute qu'à la création du volume : créer la base à la main, une seule fois,
+avant de reconstruire `svc-notification` (les tables sont ensuite créées par le service) :
+
+```bash
+cd ~/sirh/deploy
+echo "SELECT 'CREATE DATABASE notification_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname='notification_db')\gexec" \
+  | docker compose exec -T postgres psql -U "$(grep -E '^POSTGRES_USER=' .env | cut -d= -f2)" -d postgres
+docker compose up -d --build --no-deps svc-notification svc-referentiel-rh gateway
+```
+
+La commande est sans effet si la base existe déjà. Redémarrer ensuite la gateway (nouvelle route
+`/api/rh/v1/notifications/**`).
+
 
 ## 14. Sauvegardes
 

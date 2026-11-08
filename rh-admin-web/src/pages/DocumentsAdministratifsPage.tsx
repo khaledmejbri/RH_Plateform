@@ -17,6 +17,7 @@ import { DialogPanel } from '../components/useDialogA11y';
 import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge } from '../components/ui';
 import { formatDateHeure, formatPersonne } from '../utils/format';
 import { libelle } from '../utils/libelles';
+import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', type: '', statut: '' };
 
@@ -262,9 +263,9 @@ export default function DocumentsAdministratifsPage() {
                           <span className="cell-meta">—</span>
                         )}
                       </td>
-                      <td data-label="Numéro" className="cell-meta">{d.numero ?? ''}</td>
+                      <td data-label="Numéro" className="cell-meta"><DetailLink type="document" id={d.identifiant} libelle={d.numero} /></td>
                       <td data-label="Demandée le" className="cell-meta">{formatDateHeure(d.cree_le)}</td>
-                      <td data-label="Demandeur">{formatPersonne(d.demandeur_nom, d.demandeur_matricule)}</td>
+                      <td data-label="Demandeur"><LienPersonne id={d.demandeur_identifiant} nom={d.demandeur_nom} matricule={d.demandeur_matricule} /></td>
                       <td data-label="Type"><Chip tone="info" icon="file">{libelleTypeDocument(d.type_document)}</Chip></td>
                       <td data-label="Statut"><StatusBadge statut={d.statut} label={docStatusLabel(d.statut)} /></td>
                       <td data-label="SLA" className="cell-meta">{d.delai_sla_heures} h</td>
