@@ -76,6 +76,12 @@ void main() {
           '/formations/$_uuid');
     });
 
+    test('alerte d’échecs de pointage : fiche d’équipe du collaborateur (D-P20)', () {
+      expect(routePourNotification(_dto({'objet_type': 'COLLABORATEUR', 'objet_id': _uuid})),
+          '/equipe/$_uuid');
+      expect(routePourNotification(_dto({'objet_type': 'COLLABORATEUR', 'objet_id': '../x'})), '/equipe');
+    });
+
     test('identifiant invalide : liste du module, jamais un chemin libre', () {
       expect(routePourNotification(_dto({'objet_type': 'DEMANDE', 'objet_id': '../x'})),
           '/demandes-admin');

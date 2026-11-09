@@ -15,6 +15,25 @@ public class PresenceProperties {
 	private final HeuresSup heuresSup = new HeuresSup();
 	private final TempsTravail tempsTravail = new TempsTravail();
 	private final Retard retard = new Retard();
+	private final AlerteEchecs alerteEchecs = new AlerteEchecs();
+
+	public AlerteEchecs getAlerteEchecs() {
+		return alerteEchecs;
+	}
+
+	/** Alerte « pointages refusés à répétition » (D-P20) : information seulement, aucun blocage. */
+	public static class AlerteEchecs {
+		/** Nombre de refus de position (zone, précision, position simulée) dans la journée qui déclenche l'alerte. */
+		private int seuil = 5;
+
+		public int getSeuil() {
+			return seuil;
+		}
+
+		public void setSeuil(int seuil) {
+			this.seuil = Math.max(1, seuil);
+		}
+	}
 
 	public Retard getRetard() {
 		return retard;

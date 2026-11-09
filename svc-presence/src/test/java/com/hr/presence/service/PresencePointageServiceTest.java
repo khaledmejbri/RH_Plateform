@@ -46,6 +46,8 @@ class PresencePointageServiceTest {
 	private FenetreHoraireService fenetreHoraire;
 	@Mock
 	private com.hr.presence.client.ReferentielClient referentielClient;
+	@Mock
+	private AlerteEchecsPointageService alerteEchecs;
 
 	private QrTokenService qrTokenService;
 	private QrDynamiqueService qrDynamique;
@@ -77,6 +79,7 @@ class PresencePointageServiceTest {
 				verificationFaciale,
 				fenetreHoraire,
 				referentielClient,
+				alerteEchecs,
 				java.time.Clock.systemUTC());
 
 		now = Instant.now();
@@ -111,6 +114,13 @@ class PresencePointageServiceTest {
 		org.mockito.Mockito.lenient().when(verificationFaciale.decider(any(), any(), any()))
 				.thenReturn(VerificationFacialePointageService.Decision.sansControle());
 		org.mockito.Mockito.lenient().when(pointageRepository.save(any(PresencePointage.class))).thenAnswer(inv -> {
+			PresencePointage p = inv.getArgument(0);
+			if (p.getId() == null) {
+				p.setId(UUID.randomUUID());
+			}
+			return p;
+		});
+		org.mockito.Mockito.lenient().when(pointageRepository.saveAndFlush(any(PresencePointage.class))).thenAnswer(inv -> {
 			PresencePointage p = inv.getArgument(0);
 			if (p.getId() == null) {
 				p.setId(UUID.randomUUID());
@@ -160,7 +170,7 @@ class PresencePointageServiceTest {
 
 		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_QR_INVALIDE);
 		ArgumentCaptor<PresencePointage> captor = ArgumentCaptor.forClass(PresencePointage.class);
-		verify(pointageRepository).save(captor.capture());
+		verify(pointageRepository).saveAndFlush(captor.capture());
 		assertThat(captor.getValue().getStatut()).isEqualTo(PointageStatut.REJETE_QR_INVALIDE);
 	}
 
@@ -269,7 +279,7 @@ class PresencePointageServiceTest {
 
 		assertThat(resp.statut()).isEqualTo(PointageStatut.REJETE_POSITION_SIMULEE);
 		ArgumentCaptor<PresencePointage> captor = ArgumentCaptor.forClass(PresencePointage.class);
-		verify(pointageRepository).save(captor.capture());
+		verify(pointageRepository).saveAndFlush(captor.capture());
 		assertThat(captor.getValue().getPositionSimulee()).isTrue();
 	}
 

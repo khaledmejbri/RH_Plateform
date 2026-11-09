@@ -27,6 +27,10 @@ public interface PresencePointageRepository extends JpaRepository<PresencePointa
 			UUID siteId, java.time.LocalDate du, java.time.LocalDate au, java.util.Collection<PointageStatut> statuts,
 			java.util.Collection<String> collaborateurIds);
 
+	/** Pointages d'un collaborateur, de ces statuts, entre deux instants (début inclus, fin exclue) : alerte D-P20. */
+	long countByCollaborateurIdAndStatutInAndServerTsGreaterThanEqualAndServerTsLessThan(
+			String collaborateurId, java.util.Collection<PointageStatut> statuts, Instant debut, Instant fin);
+
 	Page<PresencePointage> findByCollaborateurIdOrderByServerTsDesc(String collaborateurId, Pageable pageable);
 
 	/**

@@ -112,7 +112,7 @@ Demande du client acheteur (06/11/2026) : « je clique sur le nom d’un collabo
 - **D-N01.b — Modale de détail puis page complète (décision de l’utilisateur du 07/11/2026, tranché ; complète D-N01, contrainte C-UX-05).** Retour client : « dans chaque tableau, je peux entrer dans les détails, par exemple collaborateur : son CV, ses demandes, ses pointages, ses heures et tout, en cliquant sur le nom du collaborateur ou la référence, et une modale s’affiche ; pas que collaborateur ». Règle :
   - a. **Déclencheur** : dans **tous** les tableaux de la Plateforme RH, un clic sur un nom de collaborateur ou sur une référence lisible (`DEM-`, `DOC-`, `FOR-`, `HS-`, `PM-`, `PLT-` pour RH et ADMIN seulement, D-L02) ouvre une **grande modale à onglets** sur la page en cours (la liste reste derrière, filtres conservés). Objets concernés : collaborateur, demande administrative, document, formation, demande d’heures sup, pointage manuel, site de pointage, unité, campagne, évaluation, alerte d’écart, plainte (RH et ADMIN). Le nom ou la référence reste un vrai lien vers la page complète : Ctrl + clic, clic molette ou « Ouvrir dans un nouvel onglet » ouvrent la page complète.
   - b. **Page complète** : la modale porte un bouton « Ouvrir la fiche complète » qui mène à la page de détail D-N01 (URL propre, partageable, rechargeable). La page complète garde son contenu (fiche `docs/jira/fiche_lot2_uat.md` § 2).
-  - c. **Onglets de la modale collaborateur**, dans cet ordre : Profil (nom, matricule, poste, intitulé de rôle D-H06, famille · niveau en libellés, unité avec son chemin, supérieur) ; CV / documents (**source non tranchée**, voir § 23 Q14) ; Demandes administratives ; Documents (demandes de documents M02) ; Formations (demandées ou ciblées) ; Pointages (31 derniers jours, pointages manuels compris) ; Temps de travail et heures sup (temps par jour, retards D-P19, heures sup comptées) ; Évaluations (et alertes d’écart pour RH, ADMIN, DIRECTION) ; Plaintes (**RH et ADMIN seulement, jamais DIRECTION**, D-N01.a) ; Hiérarchie (chemin, responsable direct, valideur D-H03, collaborateurs encadrés). Autres objets : contenu de leur page de détail, regroupé en onglets (au minimum « Détail » et « Historique » quand l’objet a un historique).
+  - c. **Onglets de la modale collaborateur**, dans cet ordre : Profil (nom, matricule, poste, intitulé de rôle D-H06, famille · niveau en libellés, unité avec son chemin, supérieur) ; CV / documents (**source non tranchée**, voir § 23 Q14) ; Demandes administratives ; Documents (demandes de documents M02) ; Évaluations (et alertes d’écart pour RH, ADMIN, DIRECTION) ; Pointages (31 derniers jours, pointages manuels compris) ; Temps de travail et heures sup (temps par jour, retards D-P19, heures sup comptées) ; Formations (demandées ou ciblées ; ordre Évaluations / Formations inversé par l’utilisateur le 09/11/2026) ; Plaintes (**RH et ADMIN seulement, jamais DIRECTION**, D-N01.a) ; Hiérarchie (chemin, responsable direct, valideur D-H03, collaborateurs encadrés). Autres objets : contenu de leur page de détail, regroupé en onglets (au minimum « Détail » et « Historique » quand l’objet a un historique).
   - d. **Liens croisés** : un nom ou une référence affiché dans la modale ouvre la modale de cet objet **dans la même fenêtre** ; un bouton « Retour » revient à l’objet précédent (onglet compris) ; la fermeture ferme toute la pile.
   - e. **Clavier et accessibilité** : Échap ferme la modale ; le focus est piégé dans la modale tant qu’elle est ouverte ; à l’ouverture il va sur le titre (nom de l’objet) ; à la fermeture il revient sur l’élément cliqué ; onglets navigables au clavier ; clic sur le fond = fermeture.
   - f. **États par onglet** : chargement (squelette), vide (message explicite, ex. « Aucun pointage sur la période »), erreur réseau (« Réessayer »), 403 (« Vous n’avez pas accès à cette information », sans « Réessayer ») ; l’échec d’un onglet ne bloque pas les autres. Objet inexistant → « Élément introuvable » dans la modale.
@@ -122,12 +122,13 @@ Demande du client acheteur (06/11/2026) : « je clique sur le nom d’un collabo
   1. Accueil
   2. **Pointage** ▸ Pointages · Temps de travail · Heures supplémentaires · Pointages manuels · Sites et bornes
   3. **Collaborateurs** ▸ Fiches collaborateurs · Organigramme
-  4. Formations
-  5. Demandes administratives
-  6. Documents administratifs
-  7. Évaluations
-  8. Plaintes (RH et ADMIN seulement, D-N01.a)
-  9. **Paramétrage** ▸ Structure RH · Organisation · Paramètres (Paramètres au lot 3, D-R10)
+  4. Demandes administratives
+  5. Documents administratifs
+  6. **Paramétrage** ▸ Structure RH · Organisation · Paramètres (Paramètres au lot 3, D-R10)
+  7. Formations
+  8. Évaluations
+  9. Plaintes (RH et ADMIN seulement, D-N01.a)
+  - Ordre révisé par l’utilisateur le 09/11/2026 : demandes avant formations, Paramétrage juste après les demandes.
   - a. Les sous-entrées de Pointage pointent vers les onglets existants de l’écran des sites de pointage (onglet porté par l’URL) et vers l’écran Heures supplémentaires ; les adresses existantes restent valides. L’onglet « Vérification faciale » n’a pas d’entrée de menu propre (reste un onglet de l’écran, voir § 23 Q16).
   - b. Un groupe (▸) se déplie et se replie au clic sans changer de page ; le groupe qui contient la page affichée est déplié à l’ouverture ; l’entrée active (sous-entrée et son groupe) est surlignée, y compris sur une page de détail (ex. fiche collaborateur → « Fiches collaborateurs ») ; le titre de la page reprend le libellé de l’entrée.
   - c. Sous 768 px : menu dans un tiroir ouvert par un bouton nommé « Ouvrir le menu », mêmes groupes ; choisir une page ferme le tiroir ; Échap le ferme.
@@ -843,6 +844,20 @@ Le client demande de voir les « retards » d’un collaborateur ; aucune règle
 | **D-P19.f** | Information seulement : **aucune notification, aucune sanction ni retenue**, aucune donnée de paie. |
 | **D-P19.g** | Affichage : colonne « Retard » de la vue et de l’export Temps de travail ; synthèse (nombre de retards, cumul) dans la fiche collaborateur web, la fiche site, « Mes pointages » et la fiche d’équipe mobile (D-N02). Droits : D-P17.k pour le web, D-N02 pour le mobile. |
 
+### 14.2 septies Alerte d’échecs de pointage répétés (D-P20 — demande de l’utilisateur du 09/11/2026, **Cible**, choix par défaut validés par l’utilisateur)
+
+Constat du 09/11/2026 sur le kit : 7 pointages refusés de suite (hors zone, précision, faux GPS) n’alertent personne. Le refus lui-même reste conforme (D-P01) : le pointage refusé est **conservé avec son statut `REJETE_*` et son motif** (preuve en cas de contestation, base du pointage manuel D-P04, base du comptage ci-dessous) et n’entre dans aucun calcul (temps de travail, retards, heures sup ne retiennent que `VALIDE` et `VALIDE_MANUEL`).
+
+| ID | Décision |
+|---|---|
+| **D-P20.a** | Échecs comptés : `REJETE_HORS_ZONE`, `REJETE_PRECISION_GPS`, `REJETE_POSITION_SIMULEE`. Non comptés : hors horaire (D-P12), QR invalide / expiré / révoqué, site inactif, emplacement absent, échecs faciaux (alerte propre D-P10). |
+| **D-P20.b** | Fenêtre : **journée calendaire** (Africa/Tunis), par collaborateur, tous sites confondus. Un rejeu idempotent (même clé) ne compte pas deux fois. |
+| **D-P20.c** | Seuil : **5** échecs comptés dans la journée (propriété, réglable au lot 3 dans les Paramètres, D-R06). |
+| **D-P20.d** | À l’atteinte du seuil : **une seule alerte par collaborateur et par journée** (les échecs suivants du même jour n’alertent plus). |
+| **D-P20.e** | Destinataires : le **responsable D-H03** du collaborateur (son compte, repli sur la fiche) **et toutes les RH** (destinataire `RH`). Sans responsable : RH seulement. Jamais ADMIN ni DIRECTION en tant que tels. |
+| **D-P20.f** | Contenu : titre « Pointages refusés à répétition — Prénom Nom » ; texte : nombre d’échecs du jour, dernier motif en clair (ex. « hors zone, 79,9 m pour une zone de 50 m »), site, heure. La notification ouvre la fiche du collaborateur (`objet_type` = `COLLABORATEUR`, `objet_id` = fiche) : modale collaborateur sur le web, fiche d’équipe sur mobile pour le responsable. |
+| **D-P20.g** | Information seulement : **aucun blocage du pointage**, aucune sanction ; le pointage manuel reste possible. Envoyée après l’enregistrement du refus (après commit) ; une panne de Kafka ou du référentiel n’empêche ni le refus ni la réponse au collaborateur. |
+
 ### 14.3 Données d’un pointage
 
 **Must** : collaborateur (JWT), type `ENTREE`/`SORTIE`, `server_ts`, GPS réel, site, distance, `device_id`, statut `VALIDE` / `REJETE_*`.
@@ -1028,7 +1043,7 @@ Destinataire spécial `RH` : diffusion à **tous les comptes rôle RH**.
 | C-UX-03 | **D-N01 / D-N02** : toute entité a une page de détail avec URL propre ; tout nom affiché mène à sa fiche ; droits de lecture inchangés |
 | C-UX-04 | **D-L03 (tranché le 06/11/2026)** : toute action à effet (archiver, clôturer, terminer, désactiver, supprimer, valider / approuver, refuser, annuler, révoquer, régénérer, débloquer, prendre en charge) passe par une fenêtre « Êtes-vous sûr ? » qui nomme l’action et l’élément (nom ou numéro lisible), boutons « Annuler » (aucun appel serveur) et verbe de l’action ; motif obligatoire saisi dans la même fenêtre ; web et mobile |
 | C-UX-05 | **D-N01.b (tranché le 07/11/2026)** : dans tous les tableaux web, nom de collaborateur ou référence lisible → grande modale à onglets (liens croisés avec « Retour », Échap, focus piégé et rendu, états par onglet, aucun UUID) + bouton « Ouvrir la fiche complète » vers la page à URL propre ; droits inchangés, Plaintes jamais pour DIRECTION |
-| C-UX-06 | **D-N03 (tranché le 07/11/2026)** : menu web dans l’ordre Accueil, Pointage ▸, Collaborateurs ▸, Formations, Demandes administratives, Documents administratifs, Évaluations, Plaintes (RH, ADMIN), Paramétrage ▸ ; groupes repliables, entrée active surlignée, tiroir sous 768 px, entrées masquées selon le rôle |
+| C-UX-06 | **D-N03 (tranché le 07/11/2026)** : menu web dans l’ordre Accueil, Pointage ▸, Collaborateurs ▸, Demandes administratives, Documents administratifs, Paramétrage ▸, Formations, Évaluations, Plaintes (RH, ADMIN) (ordre révisé le 09/11/2026) ; groupes repliables, entrée active surlignée, tiroir sous 768 px, entrées masquées selon le rôle |
 | C-NOT-01 | **D-NOT01 (06/11/2026)** : toute notification temps réel est conservée par compte destinataire, lue / non lue, consultable dans « Mes notifications » (web et mobile) avec compteur des non lues ; rétention 6 mois / 180 jours (choix par défaut) ; chacun ne lit que les siennes (identité JWT, 404 sinon) |
 | C-PAR-01 | **D-R01 / D-R02** : un code de comportement (statut, transition, type piloté par une règle) n’est ni créé ni supprimé par paramétrage ; une valeur utilisée se désactive, ne se supprime pas ; toute modification de paramètre est tracée 5 ans |
 

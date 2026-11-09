@@ -11,6 +11,7 @@ public record ObjetNotification(String type, String evenement, UUID id, String n
 
 	public static final String POINTAGE_MANUEL = "POINTAGE_MANUEL";
 	public static final String HEURES_SUP = "HEURES_SUP";
+	public static final String COLLABORATEUR = "COLLABORATEUR";
 
 	public static ObjetNotification de(String type, String evenement, UUID id, String numero) {
 		return new ObjetNotification(type, evenement, id, numero, UUID.randomUUID());

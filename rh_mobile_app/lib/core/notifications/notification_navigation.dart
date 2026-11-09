@@ -30,6 +30,9 @@ String? routePourNotification(AppNotification n) {
         return idValide ? '/pointage/manuels/$id' : '/pointage/manuel';
       case 'HEURES_SUP':
         return '/heures-sup/moi';
+      case 'COLLABORATEUR':
+        // Alerte d'échecs de pointage (D-P20) : le responsable ouvre la fiche d'équipe du collaborateur.
+        return idValide ? '/equipe/$id' : '/equipe';
       default:
         // ALERTE_ECART et types inconnus : pas d'écran mobile (alertes réservées à la Plateforme RH).
         return null;

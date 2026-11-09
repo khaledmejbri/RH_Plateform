@@ -32,6 +32,7 @@ export const TITRE_PAR_DEFAUT: Record<DetailType, string> = {
 /** Type d'objet porté par une notification (2F) vers type de fiche. */
 export function typeDepuisNotification(objetType?: string | null): DetailType | null {
   switch ((objetType ?? '').toUpperCase()) {
+    case 'COLLABORATEUR': return 'collaborateur';
     case 'DEMANDE': return 'demande';
     case 'DOCUMENT': return 'document';
     case 'PLAINTE': return 'plainte';

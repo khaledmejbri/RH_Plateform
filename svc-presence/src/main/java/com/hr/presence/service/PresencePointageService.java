@@ -51,6 +51,7 @@ public class PresencePointageService {
 	private final VerificationFacialePointageService verificationFaciale;
 	private final FenetreHoraireService fenetreHoraire;
 	private final ReferentielClient referentielClient;
+	private final AlerteEchecsPointageService alerteEchecs;
 	private final Clock clock;
 
 	/** QR résolu : site et credential statique (null pour une borne écran), ou rejet déjà enregistré. */
@@ -72,6 +73,7 @@ public class PresencePointageService {
 			VerificationFacialePointageService verificationFaciale,
 			FenetreHoraireService fenetreHoraire,
 			ReferentielClient referentielClient,
+			AlerteEchecsPointageService alerteEchecs,
 			Clock clock) {
 		this.pointageRepository = pointageRepository;
 		this.siteRepository = siteRepository;
@@ -84,6 +86,7 @@ public class PresencePointageService {
 		this.verificationFaciale = verificationFaciale;
 		this.fenetreHoraire = fenetreHoraire;
 		this.referentielClient = referentielClient;
+		this.alerteEchecs = alerteEchecs;
 		this.clock = clock;
 	}
 
@@ -387,8 +390,10 @@ public class PresencePointageService {
 		pointage.setStatut(statut);
 		pointage.setMotifRejet(motif);
 		pointage.setDistanceMetres(distance);
-		PresencePointage saved = pointageRepository.save(pointage);
+		PresencePointage saved = pointageRepository.saveAndFlush(pointage); // écrit avant le comptage D-P20 : une erreur de base ne survient pas pendant l'alerte
 		log.info("Pointage {} collab={} motif={}", statut, collaborateurId, motif);
+		// D-P20 : ne lève jamais d'exception, le refus reste enregistré et la réponse part quoi qu'il arrive
+		alerteEchecs.apresRefus(saved);
 		return toResponse(saved);
 	}
 
