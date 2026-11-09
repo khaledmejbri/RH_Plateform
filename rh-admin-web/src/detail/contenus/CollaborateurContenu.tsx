@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   getAlertesDuCollaborateur, getCollaborateurFiche, getDemandesDuCollaborateur, getDocumentsDuCollaborateur,
@@ -8,7 +9,7 @@ import { getDemandesHeuresSup } from '../../api/heuresSupApi';
 import { libelleProfilAcces } from '../../api/rhClient';
 import { libelleNiveauSeniorite } from '../../api/evaluationCatalog';
 import { LIBELLES_STATUT_HEURES_SUP } from '../../api/heuresSupApi';
-import { StatusBadge } from '../../components/ui';
+import { Chip, Icon, StatusBadge, type IconName, type Tone } from '../../components/ui';
 import {
   formatDate, formatDateHeure, formatDuree, formatHeuresMinutes, formatNote, nomComplet, TIRET,
 } from '../../utils/format';
@@ -19,7 +20,7 @@ import Onglets from '../Onglets';
 import DetailLink, { LienPersonne } from '../DetailLink';
 import { peutVoirPlaintes, useTitre } from '../contexte';
 import { useChargement } from '../useChargement';
-import { Cartes, Champ, Champs, periode31, Tableau, titreOnglet } from './commun';
+import { Cartes, Champ, Champs, periode31, Section, Tableau, titreOnglet } from './commun';
 import type { PersonneResume, UniteResume } from '../../api/detailApi';
 
 type Props = { id: string; nom?: string; onglet?: string; onOnglet: (o: string) => void };
@@ -30,10 +31,10 @@ export default function CollaborateurContenu({ id, onglet, onOnglet }: Props) {
     { id: 'profil', label: 'Profil' },
     { id: 'demandes', label: 'Demandes administratives' },
     { id: 'documents', label: 'Documents' },
-    { id: 'formations', label: 'Formations' },
+    { id: 'evaluations', label: 'Évaluations' },
     { id: 'pointages', label: 'Pointages' },
     { id: 'temps', label: 'Temps de travail et heures sup' },
-    { id: 'evaluations', label: 'Évaluations' },
+    { id: 'formations', label: 'Formations' },
     ...(plaintes ? [{ id: 'plaintes', label: 'Plaintes' }] : []),
     { id: 'hierarchie', label: 'Hiérarchie' },
   ];
@@ -53,33 +54,43 @@ export default function CollaborateurContenu({ id, onglet, onOnglet }: Props) {
     return <Charge etat={fiche.etat} recharger={fiche.recharger}>{() => null}</Charge>;
   }
 
+  const h = hier.etat.statut === 'ok' ? hier.etat.data : null;
+
   return (
+    <>
+    {f ? <EnTete c={f} h={h} /> : <div className="fiche-hero fiche-hero--charge" aria-hidden="true" />}
     <Onglets onglets={defs} actif={actif} onChange={onOnglet}>
       {actif === 'profil' && (
         <Charge etat={fiche.etat} recharger={fiche.recharger}>
           {(c) => (
-            <Champs>
-              <Champ label="Nom">{nomComplet(c)}</Champ>
-              <Champ label="Matricule">{c.matricule}</Champ>
-              <Champ label="Poste">{c.poste_libelle}</Champ>
-              <Champ label="Intitulé de rôle">
-                {hier.etat.statut === 'ok' ? hier.etat.data.collaborateur.intitule_role : null}
-              </Champ>
-              <Champ label="Famille · niveau">
-                {[c.famille_metier_libelle, libelleNiveauSeniorite(c.niveau_seniorite)].filter(Boolean).join(' · ')}
-              </Champ>
-              <Champ label="Unité">
-                {hier.etat.statut === 'ok' ? <CheminUnites chemin={hier.etat.data.chemin} /> : (c.unite?.libelle ?? null)}
-              </Champ>
-              <Champ label="Supérieur">
-                {hier.etat.statut === 'ok' ? <Personne p={hier.etat.data.responsable_direct} vide="Aucun supérieur" /> : null}
-              </Champ>
-              <Champ label="Statut">{libelle('statutCollaborateur', c.statut)}</Champ>
-              <Champ label="Courriel professionnel">{c.courriel_professionnel}</Champ>
-              <Champ label="Date de recrutement">{c.date_recrutement ? formatDate(c.date_recrutement) : null}</Champ>
-              <Champ label="Ancienneté">{anciennete(c.date_recrutement)}</Champ>
-              <Champ label="Droits d’accès">{c.profil_acces ? libelleProfilAcces(c.profil_acces) : null}</Champ>
-            </Champs>
+            <div className="fiche-sections">
+              <Section titre="Identité" icone="user">
+                <Champs>
+                  <Champ label="Nom">{nomComplet(c)}</Champ>
+                  <Champ label="Matricule">{c.matricule}</Champ>
+                  <Champ label="Courriel professionnel">
+                    {c.courriel_professionnel ? <a href={`mailto:${c.courriel_professionnel}`}>{c.courriel_professionnel}</a> : null}
+                  </Champ>
+                  <Champ label="Statut">{libelle('statutCollaborateur', c.statut)}</Champ>
+                </Champs>
+              </Section>
+              <Section titre="Poste et organisation" icone="briefcase">
+                <Champs>
+                  <Champ label="Poste">{c.poste_libelle}</Champ>
+                  <Champ label="Intitulé de rôle">{h ? h.collaborateur.intitule_role : null}</Champ>
+                  <Champ label="Famille · niveau">{familleNiveau(c)}</Champ>
+                  <Champ label="Unité">{h ? <CheminUnites chemin={h.chemin} /> : (c.unite?.libelle ?? null)}</Champ>
+                  <Champ label="Supérieur">{h ? <Personne p={h.responsable_direct} vide="Aucun supérieur" /> : null}</Champ>
+                </Champs>
+              </Section>
+              <Section titre="Contrat et accès" icone="lock">
+                <Champs>
+                  <Champ label="Date de recrutement">{c.date_recrutement ? formatDate(c.date_recrutement) : null}</Champ>
+                  <Champ label="Ancienneté">{anciennete(c.date_recrutement)}</Champ>
+                  <Champ label="Droits d’accès">{c.profil_acces ? libelleProfilAcces(c.profil_acces) : null}</Champ>
+                </Champs>
+              </Section>
+            </div>
           )}
         </Charge>
       )}
@@ -94,6 +105,83 @@ export default function CollaborateurContenu({ id, onglet, onOnglet }: Props) {
         <Charge etat={hier.etat} recharger={hier.recharger}>{(h) => <OngletHierarchie h={h} />}</Charge>
       )}
     </Onglets>
+    </>
+  );
+}
+
+type Fiche = Awaited<ReturnType<typeof getCollaborateurFiche>>;
+
+/** Couleurs d'avatar, texte blanc lisible (contraste ≥ 4,5:1). */
+const AVATARS = ['#2563eb', '#0f766e', '#4338ca', '#b45309', '#be185d', '#15803d'];
+
+function initiales(c: Fiche): string {
+  const n = nomComplet(c).split(/\s+/).filter(Boolean);
+  return ((n[0]?.[0] ?? '') + (n.length > 1 ? n[n.length - 1][0] : '')).toUpperCase() || '?';
+}
+
+function couleurAvatar(id: string): string {
+  let x = 0;
+  for (const ch of id) x = (x * 31 + ch.charCodeAt(0)) >>> 0;
+  return AVATARS[x % AVATARS.length];
+}
+
+function familleNiveau(c: Fiche): string {
+  return [c.famille_metier_libelle, libelleNiveauSeniorite(c.niveau_seniorite)].filter(Boolean).join(' · ');
+}
+
+function toneStatut(statut?: string | null): Tone {
+  if (statut === 'ACTIF') return 'success';
+  if (statut === 'SUSPENDU') return 'warning';
+  return 'neutral';
+}
+
+/** En-tête de la fiche : avatar, poste, pastilles et faits clés (le nom est dans le titre de la modale ou de la page). */
+function EnTete({ c, h }: { c: Fiche; h: Hierarchie | null }) {
+  const poste = [c.poste_libelle, h?.collaborateur.intitule_role].filter(Boolean).join(' · ');
+  const unite = h && h.chemin.length > 0 ? h.chemin[h.chemin.length - 1] : null;
+  const fn = familleNiveau(c);
+  return (
+    <section className="fiche-hero" aria-label="Résumé du collaborateur">
+      <div className="fiche-hero__haut">
+        <div className="fiche-hero__avatar" style={{ background: couleurAvatar(c.identifiant ?? c.matricule ?? '') }} aria-hidden="true">
+          {initiales(c)}
+        </div>
+        <div className="fiche-hero__id">
+          <p className="fiche-hero__poste">{poste || 'Poste non renseigné'}</p>
+          <div className="fiche-hero__chips">
+            <Chip tone={toneStatut(c.statut)}>{libelle('statutCollaborateur', c.statut)}</Chip>
+            {c.matricule ? <Chip icon="user">{c.matricule}</Chip> : null}
+            {fn ? <Chip tone="info" icon="target">{fn}</Chip> : null}
+          </div>
+        </div>
+      </div>
+      <dl className="fiche-faits">
+        <Fait icone="building" label="Unité">
+          {unite ? <DetailLink type="unite" id={unite.unite_id} libelle={unite.libelle} /> : (c.unite?.libelle ?? null)}
+        </Fait>
+        <Fait icone="users" label="Supérieur">{h ? <Personne p={h.responsable_direct} vide="Aucun supérieur" /> : null}</Fait>
+        <Fait icone="calendar" label="Ancienneté">
+          {anciennete(c.date_recrutement)}
+          {c.date_recrutement ? <span className="fiche-fait__meta">depuis le {formatDate(c.date_recrutement)}</span> : null}
+        </Fait>
+        <Fait icone="send" label="Courriel">
+          {c.courriel_professionnel ? <a href={`mailto:${c.courriel_professionnel}`}>{c.courriel_professionnel}</a> : null}
+        </Fait>
+      </dl>
+    </section>
+  );
+}
+
+function Fait({ icone, label, children }: { icone: IconName; label: string; children?: ReactNode }) {
+  const vide = children === null || children === undefined || children === '' || (Array.isArray(children) && children.every((x) => x == null));
+  return (
+    <div className="fiche-fait">
+      <span className="fiche-fait__icone" aria-hidden="true"><Icon name={icone} size={16} /></span>
+      <div>
+        <dt>{label}</dt>
+        <dd>{vide ? TIRET : children}</dd>
+      </div>
+    </div>
   );
 }
 

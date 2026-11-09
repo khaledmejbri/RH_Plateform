@@ -39,17 +39,17 @@ const MENU: Menu[] = [
       { id: 'organigramme', to: '/app/organigramme', label: 'Organigramme' },
     ],
   },
-  { kind: 'lien', id: 'formations', to: '/app/formations', label: 'Formations', icon: IconSchool },
   { kind: 'lien', id: 'demandes', to: '/app/demandes-administratives', label: 'Demandes administratives', icon: IconFile },
   { kind: 'lien', id: 'documents', to: '/app/documents-administratifs', label: 'Documents administratifs', icon: IconDoc },
-  { kind: 'lien', id: 'evaluations', to: '/app/evaluations', label: 'Évaluations', icon: IconStar },
-  { kind: 'lien', id: 'plaintes', to: '/app/plaintes', label: 'Plaintes', icon: IconChat, rhAdmin: true },
   {
     kind: 'groupe', id: 'parametrage', label: 'Paramétrage', icon: IconBuilding, enfants: [
       { id: 'structure', to: '/app/structure', label: 'Structure RH', writeOnly: true },
       { id: 'organisation', to: '/app/unites', label: 'Organisation', writeOnly: true },
     ],
   },
+  { kind: 'lien', id: 'formations', to: '/app/formations', label: 'Formations', icon: IconSchool },
+  { kind: 'lien', id: 'evaluations', to: '/app/evaluations', label: 'Évaluations', icon: IconStar },
+  { kind: 'lien', id: 'plaintes', to: '/app/plaintes', label: 'Plaintes', icon: IconChat, rhAdmin: true },
 ];
 
 /** Identifiant de l'entrée active d'après l'adresse (y compris sur une page de détail). */

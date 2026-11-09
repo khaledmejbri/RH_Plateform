@@ -153,10 +153,10 @@ export default function PointageSitesPage() {
   const confirm = useConfirm();
   const [params, setParams] = useSearchParams();
   const ongletUrl = params.get('onglet') as Tab | null;
-  const [tab, setTabEtat] = useState<Tab>(ongletUrl && ONGLETS.includes(ongletUrl) ? ongletUrl : 'sites');
+  // Onglet lu dans l'URL à chaque rendu : le sous-menu Pointage (D-N03) change l'URL sans recréer la page.
+  const tab: Tab = ongletUrl && ONGLETS.includes(ongletUrl) ? ongletUrl : 'sites';
   /** L'onglet courant est mémorisé dans l'URL avec les filtres de la page. */
   function setTab(t: Tab) {
-    setTabEtat(t);
     setParams(
       (prev) => {
         const suivant = new URLSearchParams(prev);

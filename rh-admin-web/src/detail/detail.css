@@ -21,13 +21,18 @@
   .dmodal__head { flex-wrap: wrap; }
 }
 
-.detail-tabs { display: flex; gap: 0.25rem; overflow-x: auto; border-bottom: 2px solid var(--border, #e5e7eb); margin-bottom: 1rem; }
-.detail-tab {
-  flex: 0 0 auto; padding: 0.6rem 0.9rem; border: none; background: transparent; cursor: pointer; white-space: nowrap;
-  color: var(--muted, #667085); font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -2px;
+.detail-tabs {
+  display: flex; gap: 0.25rem; overflow-x: auto; margin-bottom: 1.25rem; padding: 0.25rem;
+  background: var(--color-muted, #f1f5f9); border-radius: 10px; scrollbar-width: thin;
 }
-.detail-tab:hover { color: var(--text, #111827); }
-.detail-tab--on { color: var(--color-primary, #2563eb); border-bottom-color: var(--color-primary, #2563eb); }
+.detail-tab {
+  flex: 0 0 auto; min-height: 36px; padding: 0.45rem 0.85rem; border: none; border-radius: 8px; background: transparent;
+  cursor: pointer; white-space: nowrap; color: var(--color-muted-foreground, #475569); font: inherit; font-size: 0.875rem; font-weight: 500;
+  transition: background 0.15s var(--ease, ease), color 0.15s var(--ease, ease);
+}
+.detail-tab:hover { color: var(--color-heading, #0f172a); background: rgba(255, 255, 255, 0.6); }
+.detail-tab:focus-visible { outline: 2px solid var(--color-ring, #2563eb); outline-offset: 1px; }
+.detail-tab--on, .detail-tab--on:hover { background: var(--color-card, #fff); color: var(--color-primary-hover, #1d4ed8); font-weight: 600; box-shadow: var(--shadow-sm); }
 .detail-panel { min-height: 6rem; }
 
 .detail-champs { display: grid; gap: 0.6rem; margin: 0 0 1rem; }
@@ -36,11 +41,11 @@
 .detail-champs dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .detail-champs > div { grid-template-columns: 1fr; gap: 0.1rem; } }
 
-.detail-h3 { font-size: 1rem; margin: 1.25rem 0 0.5rem; }
+.detail-h3 { font-size: 0.95rem; font-weight: 600; color: var(--color-heading, #0f172a); margin: 1.5rem 0 0.6rem; padding-top: 1rem; border-top: 1px solid var(--color-border, #e2e8f0); }
 .detail-vide { color: var(--muted, #667085); padding: 0.75rem 0; margin: 0; }
 .detail-liste { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.35rem; }
 .detail-cartes { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.75rem; margin: 0 0 1rem; }
-.detail-carte { border: 1px solid var(--border, #e5e7eb); border-radius: 8px; padding: 0.6rem 0.8rem; }
+.detail-carte { border: 1px solid var(--color-border, #e2e8f0); border-radius: 10px; padding: 0.75rem 0.9rem; background: var(--color-card, #fff); box-shadow: var(--shadow-sm); }
 .detail-carte__val { font-size: 1.15rem; font-weight: 700; }
 .detail-carte__lab { font-size: 0.78rem; color: var(--muted, #667085); }
 
@@ -81,3 +86,54 @@
 .notif__item:hover { background: var(--surface-2, #f3f4f6); }
 .notif__sujet { font-weight: 600; }
 .notif__foot { padding: 8px 16px; font-size: 0.78rem; color: var(--muted, #667085); }
+
+/* Fiche collaborateur : en-tête et sections du profil */
+.fiche-hero {
+  margin: 0 0 1.25rem; padding: 1.1rem 1.25rem; border-radius: 12px; border: 1px solid var(--color-border, #e2e8f0);
+  background: linear-gradient(135deg, var(--color-primary-soft, #eff6ff) 0%, var(--color-card, #fff) 60%);
+}
+.fiche-hero--charge { min-height: 132px; animation: detailPulse 1.2s ease-in-out infinite; background: var(--color-muted, #f1f5f9); }
+.fiche-hero__haut { display: flex; align-items: center; gap: 1rem; }
+.fiche-hero__avatar {
+  flex: 0 0 auto; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center;
+  color: #fff; font-size: 1.35rem; font-weight: 700; letter-spacing: 0.02em; box-shadow: 0 0 0 4px var(--color-card, #fff), var(--shadow-md);
+}
+.fiche-hero__id { min-width: 0; display: grid; gap: 0.5rem; }
+.fiche-hero__poste { margin: 0; font-size: 1.05rem; font-weight: 600; color: var(--color-heading, #0f172a); }
+.fiche-hero__chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.fiche-faits {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.75rem; margin: 1rem 0 0;
+}
+.fiche-fait {
+  display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.6rem 0.75rem; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.85); border: 1px solid var(--color-border, #e2e8f0); min-width: 0;
+}
+.fiche-fait__icone {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+  background: var(--color-primary-soft, #eff6ff); color: var(--color-primary-hover, #1d4ed8);
+}
+.fiche-fait > div { min-width: 0; }
+.fiche-fait dt { margin: 0; font-size: 0.75rem; color: var(--color-muted-foreground, #475569); }
+.fiche-fait dd { margin: 0.1rem 0 0; font-weight: 600; color: var(--color-heading, #0f172a); overflow-wrap: anywhere; }
+.fiche-fait__meta { display: block; font-weight: 400; font-size: 0.78rem; color: var(--color-muted-foreground, #475569); }
+
+.fiche-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1rem; align-items: start; }
+.fiche-section {
+  border: 1px solid var(--color-border, #e2e8f0); border-radius: 12px; padding: 1rem 1.1rem; background: var(--color-card, #fff);
+  box-shadow: var(--shadow-sm);
+}
+.fiche-section__titre {
+  display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.85rem; font-size: 0.8rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-muted-foreground, #475569);
+}
+.fiche-section__titre svg { color: var(--color-primary, #2563eb); }
+.fiche-section .detail-champs { margin: 0; gap: 0.75rem; }
+.fiche-section .detail-champs > div { grid-template-columns: 1fr; gap: 0.15rem; }
+.fiche-section .detail-champs dt { font-size: 0.78rem; }
+.fiche-section .detail-champs dd { font-weight: 500; color: var(--color-heading, #0f172a); }
+@media (max-width: 600px) {
+  .fiche-hero { padding: 1rem; }
+  .fiche-hero__avatar { width: 52px; height: 52px; font-size: 1.1rem; }
+  .fiche-sections { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { .fiche-hero--charge { animation: none; } .detail-tab { transition: none; } }

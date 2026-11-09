@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { TIRET } from '../../utils/format';
+import { Icon, type IconName } from '../../components/ui';
 
 export function Champs({ children }: { children: ReactNode }) {
   return <dl className="detail-champs">{children}</dl>;
@@ -12,6 +13,16 @@ export function Champ({ label, children }: { label: string; children?: ReactNode
       <dt>{label}</dt>
       <dd>{vide ? TIRET : children}</dd>
     </div>
+  );
+}
+
+/** Carte titrée regroupant des champs (fiche collaborateur). */
+export function Section({ titre, icone, children }: { titre: string; icone: IconName; children: ReactNode }) {
+  return (
+    <section className="fiche-section">
+      <h3 className="fiche-section__titre"><Icon name={icone} size={16} />{titre}</h3>
+      {children}
+    </section>
   );
 }
 
