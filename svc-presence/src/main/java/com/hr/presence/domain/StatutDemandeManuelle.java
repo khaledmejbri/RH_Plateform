@@ -4,5 +4,7 @@ package com.hr.presence.domain;
 public enum StatutDemandeManuelle {
 	EN_ATTENTE,
 	VALIDEE,
-	REFUSEE
+	REFUSEE,
+	/** Non traitée avant l'échéance (D-P23.b) : stocké, la contrainte CHECK est recréée au démarrage. */
+	EXPIREE
 }

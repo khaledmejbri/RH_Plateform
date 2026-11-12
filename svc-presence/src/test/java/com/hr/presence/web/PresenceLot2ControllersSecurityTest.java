@@ -150,14 +150,14 @@ class PresenceLot2ControllersSecurityTest {
 	@Test
 	void listeManuels_filtreCollaborateurSiteEtPeriode_transmisAuService_directionLit() throws Exception {
 		UUID site = UUID.randomUUID();
-		when(demandeService.listerAdmin(any(), any(), any(), any(), any())).thenReturn(List.of());
+		when(demandeService.listerAdmin(any(), any(), any(), any(), any(), any())).thenReturn(List.of());
 
 		mockMvc.perform(get(ADMIN + "/demandes-manuelles?collaborateurId=" + id + "&siteId=" + site
-						+ "&du=2026-11-01&au=2026-11-05&statut=EN_ATTENTE").with(roles("DIRECTION")))
+						+ "&du=2026-11-01&au=2026-11-05&statut=EN_ATTENTE&avecSignal=true").with(roles("DIRECTION")))
 				.andExpect(status().isOk());
 
 		verify(demandeService).listerAdmin(StatutDemandeManuelle.EN_ATTENTE, id, site, LocalDate.of(2026, 11, 1),
-				LocalDate.of(2026, 11, 5));
+				LocalDate.of(2026, 11, 5), true);
 	}
 
 	@Test
@@ -174,7 +174,7 @@ class PresenceLot2ControllersSecurityTest {
 				PointageType.ENTREE, Instant.parse("2026-11-04T08:00:00Z"), "GPS", "f", "Sarra Khemiri", "COL-WEB", null,
 				null, null, "Omar Belhadj", false, null, null, null, null, null, 2L, false);
 		DemandeManuelleDetail detail = new DemandeManuelleDetail(base, "Siège", "Web",
-				new PersonneResume("v", "Omar Belhadj", null), null, 3);
+				new PersonneResume("v", "Omar Belhadj", null), null);
 		when(demandeService.detailAdmin(id)).thenReturn(detail);
 		UUID inconnu = UUID.randomUUID();
 		when(demandeService.detailAdmin(inconnu)).thenThrow(PresenceMetierException.notFound("DEMANDE_INTROUVABLE", "x"));
@@ -186,7 +186,6 @@ class PresenceLot2ControllersSecurityTest {
 				.andExpect(jsonPath("$.collaborateur_nom").value("Sarra Khemiri"))
 				.andExpect(jsonPath("$.site_libelle").value("Siège"))
 				.andExpect(jsonPath("$.valideur.nom_complet").value("Omar Belhadj"))
-				.andExpect(jsonPath("$.seuil_mois").value(3))
 				.andExpect(jsonPath("$.manuels_du_mois").value(2));
 		mockMvc.perform(get(ADMIN + "/demandes-manuelles/numero/PM-202611-0001").with(roles("RH")))
 				.andExpect(status().isOk());
@@ -203,7 +202,7 @@ class PresenceLot2ControllersSecurityTest {
 		when(demandeService.detailMobile(id)).thenReturn(new DemandeManuelleDetail(
 				new DemandeManuelleResponse(id, "PM-202611-0001", StatutDemandeManuelle.EN_ATTENTE, PointageType.ENTREE,
 						null, "GPS", "f", "S", null, null, null, null, null, true, null, null, null, null, null, null, null),
-				null, null, null, null, null));
+				null, null, null, null));
 
 		mockMvc.perform(get(MOBILE + "/demandes-manuelles/" + id).with(roles("USER"))).andExpect(status().isOk());
 		mockMvc.perform(get(MOBILE + "/demandes-manuelles/" + autre).with(roles("USER")))

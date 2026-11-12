@@ -34,7 +34,11 @@ public record PointageResponse(
 		@JsonProperty("site_code") String siteCode,
 		@JsonProperty("site_libelle") String siteLibelle,
 		/** D-P18.b : état de séquence (liste admin seulement), nul pour un pointage apparié ou rejeté. */
-		@JsonProperty("etat_sequence") com.hr.presence.domain.EtatSequencePointage etatSequence
+		@JsonProperty("etat_sequence") com.hr.presence.domain.EtatSequencePointage etatSequence,
+		/** D-P22.a (mobile) : refus rattrapable par un pointage manuel ; nul pour un pointage accepté. */
+		@JsonProperty("manuel_possible") Boolean manuelPossible,
+		/** Raison en clair quand {@code manuel_possible} est faux (D-P21.d) ; nulle sinon. */
+		@JsonProperty("manuel_impossible_motif") String manuelImpossibleMotif
 ) {
 
 	/** Réponse sans identité lisible (mobile, historique) : les quatre champs ajoutés restent nuls. */
@@ -45,20 +49,27 @@ public record PointageResponse(
 			Integer echecsConsecutifs, Instant bloqueJusqua, java.time.LocalDate journee) {
 		this(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet, collaborateurId,
 				verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua, journee,
-				null, null, null, null, null);
+				null, null, null, null, null, null, null);
 	}
 
 	/** Copie enrichie du nom et du matricule du collaborateur, du code et du libellé du site. */
 	public PointageResponse avecIdentite(String nom, String matricule, String codeSite, String libelleSite) {
 		return new PointageResponse(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet,
 				collaborateurId, verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua,
-				journee, nom, matricule, codeSite, libelleSite, etatSequence);
+				journee, nom, matricule, codeSite, libelleSite, etatSequence, manuelPossible, manuelImpossibleMotif);
 	}
 
 	/** Copie avec l'état de séquence D-P18.b. */
 	public PointageResponse avecEtatSequence(com.hr.presence.domain.EtatSequencePointage etat) {
 		return new PointageResponse(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet,
 				collaborateurId, verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua,
-				journee, collaborateurNom, collaborateurMatricule, siteCode, siteLibelle, etat);
+				journee, collaborateurNom, collaborateurMatricule, siteCode, siteLibelle, etat, manuelPossible, manuelImpossibleMotif);
+	}
+
+	/** Copie avec l'éligibilité au pointage manuel (D-P22.a), pour un refus ; les deux champs sont nuls sinon. */
+	public PointageResponse avecManuel(Boolean possible, String motifImpossible) {
+		return new PointageResponse(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet,
+				collaborateurId, verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua,
+				journee, collaborateurNom, collaborateurMatricule, siteCode, siteLibelle, etatSequence, possible, motifImpossible);
 	}
 }

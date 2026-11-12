@@ -6,6 +6,11 @@ import com.hr.presence.domain.StatutDemandeManuelle;
 import com.hr.presence.entity.PresencePointage;
 import com.hr.presence.entity.PresenceSite;
 
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 /**
@@ -45,6 +50,7 @@ public final class LibellesPresence {
 			case EN_ATTENTE -> "En attente";
 			case VALIDEE -> "Validée";
 			case REFUSEE -> "Refusée";
+			case EXPIREE -> "Expirée";
 		};
 	}
 
@@ -66,5 +72,48 @@ public final class LibellesPresence {
 			return p.getMotifRejet();
 		}
 		return statut(p.getStatut());
+	}
+
+	private static final ZoneId ZONE = ZoneId.of("Africa/Tunis");
+	private static final DateTimeFormatter JOUR_HEURE = DateTimeFormatter.ofPattern("dd/MM 'à' HH:mm", Locale.FRENCH).withZone(ZONE);
+
+	/** Mètres au dixième, format français avec espace comme séparateur de milliers : « 3 450,0 m ». */
+	public static String metres(double valeur) {
+		DecimalFormatSymbols symboles = new DecimalFormatSymbols(Locale.FRANCE);
+		symboles.setGroupingSeparator(' ');
+		symboles.setDecimalSeparator(',');
+		return new DecimalFormat("#,##0.0", symboles).format(valeur) + " m";
+	}
+
+	/** Instant en heure de Tunis : « 10/11 à 08:02 » (D-P23). */
+	public static String jourHeure(Instant instant) {
+		return JOUR_HEURE.format(instant);
+	}
+
+	/** Délai enregistré (D-P24.e), minutes entières : « 40 min » sous 1 h, sinon « 1 h 40 » / « 26 h 05 ». */
+	public static String duree(long minutes) {
+		if (minutes < 60) {
+			return minutes + " min";
+		}
+		return (minutes / 60) + " h " + String.format("%02d", minutes % 60);
+	}
+
+	/** Délai réglé en phrase : « 2 heures », « 15 minutes », « 1 h 30 ». */
+	public static String dureeEnPhrase(long minutes) {
+		if (minutes < 60) {
+			return minutes + (minutes > 1 ? " minutes" : " minute");
+		}
+		if (minutes % 60 == 0) {
+			long heures = minutes / 60;
+			return heures + (heures > 1 ? " heures" : " heure");
+		}
+		return duree(minutes);
+	}
+
+	public static String modeQr(String mode) {
+		if (mode == null) {
+			return null;
+		}
+		return "ECRAN".equals(mode) ? "Écran" : "Papier";
 	}
 }

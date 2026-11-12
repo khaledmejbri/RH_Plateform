@@ -20,13 +20,19 @@ void main() {
         'server_ts': '2026-11-05T08:05:00',
         'manuel': false,
         'motif_rejet': 'Hors zone de pointage (179,8 m pour une zone de 50 m)',
-        'eligible_pointage_manuel': true,
+        'manuel_possible': true,
       },
       {
         'id': 'p2',
         'type': 'ENTREE',
         'statut': 'REJETE_HORS_HORAIRE',
-        'eligible_pointage_manuel': false,
+        'manuel_possible': false,
+        'manuel_impossible_motif': 'pointage hors de l’horaire du site',
+      },
+      {
+        'id': 'p3',
+        'type': 'ENTREE',
+        'statut': 'REJETE_HORS_ZONE',
       },
     ],
   };
@@ -36,7 +42,7 @@ void main() {
     expect(j.tempsMinutes, 482);
     expect(j.retardMinutes, 12);
     expect(j.etatAffiche, 'Complet');
-    expect(j.pointages, hasLength(2));
+    expect(j.pointages, hasLength(3));
   });
 
   test('motif : texte du serveur prioritaire, libellé du statut sinon', () {
@@ -45,10 +51,13 @@ void main() {
     expect(j.pointages[1].motifAffiche, contains('horaires'));
   });
 
-  test('bouton de demande piloté par eligible_pointage_manuel', () {
+  test('bouton de demande piloté par manuel_possible, motif sinon, rien si le champ est absent', () {
     final j = JourneePresence.fromJson(json);
-    expect(j.pointages[0].eligiblePointageManuel, isTrue);
-    expect(j.pointages[1].eligiblePointageManuel, isFalse);
+    expect(j.pointages[0].manuelPossible, isTrue);
+    expect(j.pointages[1].manuelPossible, isFalse);
+    expect(j.pointages[1].manuelImpossibleMotif, 'pointage hors de l’horaire du site');
+    expect(j.pointages[2].manuelPossible, isFalse, reason: 'champ absent : pas de bouton');
+    expect(j.pointages[2].manuelImpossibleMotif, isNull);
   });
 
   test('retard null (site sans horaire) distinct de 0', () {

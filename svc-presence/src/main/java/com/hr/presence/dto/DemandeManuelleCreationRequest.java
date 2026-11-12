@@ -1,28 +1,22 @@
 package com.hr.presence.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
 
 import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Demande de pointage manuel après un rejet (D-P04).
+ * Demande de pointage manuel après un rejet (D-P04). Validée dans le service, après l'identité (D-P21.c : 403 avant 400).
  */
 public record DemandeManuelleCreationRequest(
-		@NotNull
 		@JsonProperty("pointage_rejete_id") UUID pointageRejeteId,
 
-		/** ENTREE / SORTIE ; défaut = type du pointage rejeté. */
+		/** Toléré seulement s'il est identique à celui du refus (D-P23, sinon 400 CHAMP_NON_MODIFIABLE). */
 		@JsonProperty("type") String type,
 
-		/** Défaut = heure du rejet. */
+		/** Toléré seulement s'il est identique à l'heure du refus, à la seconde (D-P23). */
 		@JsonProperty("heure_declaree") Instant heureDeclaree,
 
-		@NotBlank
-		@Size(min = 10, max = 500)
 		@JsonProperty("justification") String justification
 ) {
 }

@@ -43,9 +43,6 @@ abstract final class PointageStatut {
 
   static bool estRejet(String? s) =>
       s != null && s.startsWith('REJETE_');
-
-  /// Un rejet hors horaire ne propose pas de pointage manuel (décision 5).
-  static bool manuelPossible(String? s) => estRejet(s) && s != rejeteHorsHoraire;
 }
 
 class PointageRequest {
@@ -123,6 +120,12 @@ class PointageResult {
   /// Fin du blocage (3e échec facial).
   final DateTime? bloqueJusquA;
 
+  /// D-P22.a : le serveur seul dit si le refus est rattrapable. Champ absent = pas de bouton.
+  final bool manuelPossible;
+
+  /// Raison en clair quand le refus n'est pas rattrapable (`null` sinon).
+  final String? manuelImpossibleMotif;
+
   const PointageResult({
     this.id,
     required this.statut,
@@ -136,6 +139,8 @@ class PointageResult {
     this.vivaciteReussie,
     this.echecsConsecutifs,
     this.bloqueJusquA,
+    this.manuelPossible = false,
+    this.manuelImpossibleMotif,
   });
 
   bool get isValide => PointageStatut.estValide(statut);
@@ -159,6 +164,8 @@ class PointageResult {
       vivaciteReussie: json['vivacite_reussie'] as bool?,
       echecsConsecutifs: (json['echecs_consecutifs'] as num?)?.toInt(),
       bloqueJusquA: DateTime.tryParse('${json['bloque_jusqu_a'] ?? ''}'),
+      manuelPossible: json['manuel_possible'] == true,
+      manuelImpossibleMotif: _texteNonVide(json['manuel_impossible_motif']),
     );
   }
 
@@ -177,6 +184,10 @@ class PointageHistoriqueItem {
   final double? distanceMetres;
   final String? motifRejet;
 
+  /// D-P22.a : décision du serveur ; champ absent = pas de bouton.
+  final bool manuelPossible;
+  final String? manuelImpossibleMotif;
+
   const PointageHistoriqueItem({
     required this.id,
     required this.statut,
@@ -186,6 +197,8 @@ class PointageHistoriqueItem {
     this.siteLibelle,
     this.distanceMetres,
     this.motifRejet,
+    this.manuelPossible = false,
+    this.manuelImpossibleMotif,
   });
 
   factory PointageHistoriqueItem.fromJson(Map<String, dynamic> json) {
@@ -204,6 +217,8 @@ class PointageHistoriqueItem {
       ),
       motifRejet:
           json['motifRejet'] as String? ?? json['motif_rejet'] as String?,
+      manuelPossible: json['manuel_possible'] == true,
+      manuelImpossibleMotif: _texteNonVide(json['manuel_impossible_motif']),
     );
   }
 }
@@ -267,7 +282,23 @@ class PresenceSite {
   }
 }
 
-/// Demande de pointage manuel après un rejet (D-P04).
+/// Signal de vigilance d'une demande (D-P24.a) : code stable et libellé en clair du serveur.
+class SignalVigilance {
+  final String code;
+  final String libelle;
+
+  const SignalVigilance({required this.code, required this.libelle});
+
+  factory SignalVigilance.fromJson(Map<String, dynamic> json) => SignalVigilance(
+        code: (json['code'] ?? '').toString(),
+        libelle: (json['libelle'] ?? json['code'] ?? '').toString(),
+      );
+}
+
+/// Demande de pointage manuel après un rejet (D-P04, D-P21 à D-P26).
+///
+/// Les champs réservés à qui décide (signaux, compteurs, délais, commentaire) sont absents de l'API pour
+/// le demandeur (D-P24.d) : tous nullables, rien n'est déduit côté mobile.
 class DemandeManuelle {
   final String id;
   final String statut;
@@ -283,6 +314,24 @@ class DemandeManuelle {
   final String? motifRefus;
   final DateTime? creeLe;
 
+  /// Libellé du statut fourni par le serveur (prioritaire sur la table locale).
+  final String? statutLibelleServeur;
+
+  /// Date limite de décision ; passée, la demande devient « Expirée » (D-P23).
+  final DateTime? echeance;
+  final List<SignalVigilance> signaux;
+  final bool? avecSignalServeur;
+  final String? modeQrLibelle;
+  final double? distanceMetres;
+  final double? rayonMetres;
+  final double? precisionMetres;
+  final int? delaiDemandeMinutes;
+  final int? manuelsDuMois;
+  final int? seuilMois;
+  final int? refusDuJour;
+  final String? commentaireValideur;
+  final int? delaiDecisionMinutes;
+
   const DemandeManuelle({
     required this.id,
     required this.statut,
@@ -297,17 +346,40 @@ class DemandeManuelle {
     this.decideLe,
     this.motifRefus,
     this.creeLe,
+    this.statutLibelleServeur,
+    this.echeance,
+    this.signaux = const [],
+    this.avecSignalServeur,
+    this.modeQrLibelle,
+    this.distanceMetres,
+    this.rayonMetres,
+    this.precisionMetres,
+    this.delaiDemandeMinutes,
+    this.manuelsDuMois,
+    this.seuilMois,
+    this.refusDuJour,
+    this.commentaireValideur,
+    this.delaiDecisionMinutes,
   });
 
   bool get enAttente => statut == 'EN_ATTENTE';
   bool get validee => statut == 'VALIDEE';
+  bool get expiree => statut == 'EXPIREE';
 
-  String get statutLibelle => switch (statut) {
-        'EN_ATTENTE' => 'En attente',
-        'VALIDEE' => 'Validée',
-        'REFUSEE' => 'Refusée',
-        _ => Libelles.valeurNonReconnue,
-      };
+  /// Vrai si le serveur déclare un signal (`avec_signal`) ou en liste au moins un.
+  bool get avecSignal => avecSignalServeur ?? signaux.isNotEmpty;
+
+  String get statutLibelle {
+    final l = statutLibelleServeur;
+    if (l != null && !Libelles.ressembleAUnCode(l)) return l;
+    return switch (statut) {
+      'EN_ATTENTE' => 'En attente',
+      'VALIDEE' => 'Validée',
+      'REFUSEE' => 'Refusée',
+      'EXPIREE' => 'Expirée',
+      _ => Libelles.valeurNonReconnue,
+    };
+  }
 
   String get typeLibelle => type == 'SORTIE' ? 'Sortie' : 'Entrée';
 
@@ -316,6 +388,7 @@ class DemandeManuelle {
       validationParRh || valideurNom == null ? 'les RH' : valideurNom!;
 
   factory DemandeManuelle.fromJson(Map<String, dynamic> json) {
+    final brutSignaux = json['signaux'];
     return DemandeManuelle(
       id: json['id'] as String? ?? '',
       statut: (json['statut'] as String?) ?? '',
@@ -330,8 +403,32 @@ class DemandeManuelle {
       decideLe: _parseDate(json['decide_le']),
       motifRefus: json['motif_refus'] as String?,
       creeLe: _parseDate(json['cree_le']),
+      statutLibelleServeur: _texteNonVide(json['statut_libelle']),
+      echeance: _parseDate(json['echeance']),
+      signaux: brutSignaux is List
+          ? brutSignaux
+              .whereType<Map>()
+              .map((e) => SignalVigilance.fromJson(Map<String, dynamic>.from(e)))
+              .toList()
+          : const [],
+      avecSignalServeur: json['avec_signal'] is bool ? json['avec_signal'] as bool : null,
+      modeQrLibelle: _texteNonVide(json['mode_qr_libelle']),
+      distanceMetres: _parseDouble(json['distance_metres']),
+      rayonMetres: _parseDouble(json['rayon_metres']),
+      precisionMetres: _parseDouble(json['precision_metres']),
+      delaiDemandeMinutes: _parseInt(json['delai_demande_minutes']),
+      manuelsDuMois: _parseInt(json['manuels_du_mois']),
+      seuilMois: _parseInt(json['seuil_mois']),
+      refusDuJour: _parseInt(json['refus_du_jour']),
+      commentaireValideur: _texteNonVide(json['commentaire_valideur']),
+      delaiDecisionMinutes: _parseInt(json['delai_decision_minutes']),
     );
   }
+}
+
+String? _texteNonVide(dynamic raw) {
+  final t = raw?.toString().trim();
+  return (t == null || t.isEmpty) ? null : t;
 }
 
 DateTime? _parseDate(dynamic raw) {
@@ -356,7 +453,7 @@ int? _parseInt(dynamic raw) {
 /// Durée du blocage après 3 échecs faciaux (D-P10).
 const dureeBlocageFacial = Duration(minutes: 15);
 
-/// Dernier pointage `REJETE_*` utilisable pour une demande manuelle pendant un blocage facial (D-P10.3) :
+/// Dernier pointage `REJETE_*` rattrapable (`manuel_possible` du serveur) utilisable pour une demande manuelle pendant un blocage facial (D-P10.3) :
 /// rejet du jour (date locale de [maintenant]) ou, si [bloqueJusquA] est connu, rejet de la veille dont l'heure
 /// est à moins de [dureeBlocageFacial] de cette fin (ex. 23 h 55 pour un blocage jusqu'à 00 h 10).
 /// `null` si aucun.
@@ -369,7 +466,7 @@ PointageHistoriqueItem? dernierRejetPourBlocage(
   PointageHistoriqueItem? best;
   for (final p in historique) {
     final ts = p.serverTs?.toLocal();
-    if (!PointageStatut.manuelPossible(p.statut) || ts == null || p.id.isEmpty) continue;
+    if (!p.manuelPossible || ts == null || p.id.isEmpty) continue;
     final memeJour =
         ts.year == maintenant.year && ts.month == maintenant.month && ts.day == maintenant.day;
     final dansFenetre = debutFenetre != null && !ts.isBefore(debutFenetre) && !ts.isAfter(maintenant);

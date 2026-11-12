@@ -66,8 +66,47 @@ class PresenceDemandeManuelleControllerSecurityTest {
 	@Test
 	void validationRefuseeParLeServiceDonne403() throws Exception {
 		UUID id = UUID.randomUUID();
-		when(service.valider(id)).thenThrow(new SecurityException("Vous ne pouvez pas valider votre propre pointage manuel"));
+		when(service.valider(id, null)).thenThrow(new SecurityException("Vous ne pouvez pas valider votre propre pointage manuel"));
 		mockMvc.perform(post("/api/rh/v1/mobile/presence/demandes-manuelles/" + id + "/valider")
+						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void validerTransmetLeCommentaire_mobileEtAdmin_etAccepteUnCorpsAbsent() throws Exception {
+		UUID id = UUID.randomUUID();
+		when(service.valider(any(), any())).thenReturn(null);
+		mockMvc.perform(post("/api/rh/v1/mobile/presence/demandes-manuelles/" + id + "/valider")
+						.contentType("application/json").content("{\"commentaire\":\"Vu avec le chef de site\"}")
+						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+				.andExpect(status().isOk());
+		org.mockito.Mockito.verify(service).valider(id, "Vu avec le chef de site");
+		mockMvc.perform(post("/api/rh/v1/admin/presence/demandes-manuelles/" + id + "/valider")
+						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_RH"))))
+				.andExpect(status().isOk());
+		org.mockito.Mockito.verify(service).valider(id, null);
+	}
+
+	@Test
+	void validerSansRoleConnu403_etCommentaireInvalideRemonteEn400() throws Exception {
+		UUID id = UUID.randomUUID();
+		mockMvc.perform(post("/api/rh/v1/admin/presence/demandes-manuelles/" + id + "/valider")
+						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_DIRECTION"))))
+				.andExpect(status().isForbidden());
+		when(service.valider(id, "court")).thenThrow(
+				PresenceMetierException.badRequest("COMMENTAIRE_TROP_COURT", "Le commentaire doit faire au moins 10 caractères."));
+		mockMvc.perform(post("/api/rh/v1/mobile/presence/demandes-manuelles/" + id + "/valider")
+						.contentType("application/json").content("{\"commentaire\":\"court\"}")
+						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void creationSansCorpsValide_laValidationEstFaiteParLeService() throws Exception {
+		when(service.creer(any())).thenThrow(PresenceMetierException.forbidden("HORS_PERIMETRE", "x"));
+		mockMvc.perform(post("/api/rh/v1/mobile/presence/demandes-manuelles")
+						.contentType("application/json").content("{\"pointage_rejete_id\":\"" + UUID.randomUUID()
+								+ "\",\"justification\":\"GPS faible ici\"}")
 						.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
 				.andExpect(status().isForbidden());
 	}

@@ -8,6 +8,8 @@ import { getAlerteEcart, getAlertesEcart, LIBELLES_NIVEAU_ECART, LIBELLES_STATUT
 import {
   getDemandeAdministrativeHistorique, getDemandeAdministrativeSuivi,
 } from '../../api/rhClient';
+import { lireVigilance } from '../../api/presenceApi';
+import { BandeauQrPapier, BandeauSignaux, lignesVigilance } from '../../components/VigilanceManuelle';
 import { getHoraireSite, getPresencePointages, getPresenceSite, JOURS_SEMAINE } from '../../api/presenceApi';
 import { LIBELLES_ETAT_COMPTEES, LIBELLES_STATUT_HEURES_SUP, type HeuresComptees } from '../../api/heuresSupApi';
 import { LIBELLES_TYPE_CAMPAGNE, type CampaignType } from '../../api/evaluationApi';
@@ -120,6 +122,7 @@ export function SiteContenu({ id, onglet, onOnglet }: Props) {
     <Onglets onglets={defs} actif={actif} onChange={onOnglet}>
       {actif === 'detail' && (
         <>
+          {s.modeQr !== 'ECRAN' ? <BandeauQrPapier /> : null}
           <Champs>
             <Champ label="Code"><span className="cell-meta">{s.code}</span></Champ>
             <Champ label="Type de lieu">{libelle('typeSite', s.typeLieu)}</Champ>
@@ -686,15 +689,17 @@ export function PointageManuelContenu({ id, onglet, onOnglet }: Props) {
   if (etat.statut !== 'ok') return <Charge etat={etat} recharger={recharger}>{() => null}</Charge>;
   const d = etat.data;
   const r = d.pointage_rejete;
+  const v = lireVigilance(d as unknown as Record<string, unknown>);
   return (
     <Onglets onglets={[{ id: 'detail', label: 'Détail' }]} actif={titreOnglet(['detail'], onglet)} onChange={onOnglet}>
+      <BandeauSignaux signaux={v.signaux} />
       <Champs>
         <Champ label="Numéro">{d.numero}</Champ>
         <Champ label="Collaborateur"><LienPersonne id={d.collaborateur_id} nom={d.collaborateur_nom} matricule={d.collaborateur_matricule} /></Champ>
         <Champ label="Unité">{d.unite_libelle}</Champ>
         <Champ label="Site">{d.site_libelle}</Champ>
         <Champ label="Type">{d.type === 'ENTREE' ? 'Entrée' : d.type === 'SORTIE' ? 'Sortie' : null}</Champ>
-        <Champ label="Heure déclarée">{d.heure_declaree ? formatDateHeure(d.heure_declaree) : null}</Champ>
+        <Champ label="Heure de la tentative">{d.heure_declaree ? formatDateHeure(d.heure_declaree) : null}</Champ>
         <Champ label="Justification">{d.justification}</Champ>
         <Champ label="Statut"><StatusBadge statut={d.statut} /></Champ>
         <Champ label="Valideur">
@@ -707,6 +712,7 @@ export function PointageManuelContenu({ id, onglet, onOnglet }: Props) {
         <Champ label="Pointages manuels ce mois-ci">
           {d.manuels_du_mois != null ? `${d.manuels_du_mois}${d.seuil_mois != null ? ` (seuil d’alerte : ${d.seuil_mois})` : ''}` : null}
         </Champ>
+        {lignesVigilance(v, d.statut).map((l) => <Champ key={l.label} label={l.label}>{l.valeur}</Champ>)}
       </Champs>
       {r ? (
         <>

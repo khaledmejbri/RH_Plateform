@@ -20,9 +20,7 @@ public record DemandeManuelleDetail(
 		@JsonProperty("unite_libelle") String uniteLibelle,
 		/** Nul = validation par les RH (aucun responsable selon D-H03). */
 		@JsonProperty("valideur") PersonneResume valideur,
-		@JsonProperty("pointage_rejete") PointageRejeteResume pointageRejete,
-		/** Seuil mensuel d'alerte RH (D-P04) ; le compteur {@code manuels_du_mois} est dans {@code demande}. */
-		@JsonProperty("seuil_mois") Integer seuilMois) {
+		@JsonProperty("pointage_rejete") PointageRejeteResume pointageRejete) {
 
 	/** Refus d'origine : statut et motif en clair, distance, instant. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)

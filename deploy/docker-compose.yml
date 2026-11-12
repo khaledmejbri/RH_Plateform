@@ -150,6 +150,11 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/presence_db
       PRESENCE_QR_HMAC_SECRET: ${PRESENCE_QR_HMAC_SECRET:?PRESENCE_QR_HMAC_SECRET manquant dans .env}
       PRESENCE_REFERENTIEL_BASEURL: http://svc-referentiel-rh:8083
+      # Pointage manuel sécurisé (D-P22, D-P23) : vides = valeurs par défaut du service
+      PRESENCE_MANUEL_PLAFOND_DISTANCE_METRES: ${PRESENCE_MANUEL_PLAFOND_DISTANCE_METRES:-300}
+      PRESENCE_MANUEL_DELAI_DEMANDE_MINUTES: ${PRESENCE_MANUEL_DELAI_DEMANDE_MINUTES:-120}
+      PRESENCE_MANUEL_DELAI_DECISION_MINUTES: ${PRESENCE_MANUEL_DELAI_DECISION_MINUTES:-1440}
+      PRESENCE_MANUEL_EXPIRATION_CRON: ${PRESENCE_MANUEL_EXPIRATION_CRON:-0 */5 * * * *}
       # Appels de service à service vers le référentiel (périmètre des heures supplémentaires, SCRUM-50)
       APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
 

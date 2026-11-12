@@ -1,6 +1,8 @@
 package com.hr.presence.config;
 
 import com.hr.presence.domain.TypeLieu;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "presence")
@@ -148,27 +150,101 @@ public class PresenceProperties {
 		return referentiel;
 	}
 
-	/** Pointage manuel validé par le responsable (D-P04). */
+	/** Pointage manuel validé par le responsable (D-P04, D-P21 à D-P26). */
 	public static class Manuel {
+		private static final Logger log = LoggerFactory.getLogger(Manuel.class);
+
 		/** Alerte RH quand un collaborateur dépasse ce nombre de pointages manuels dans le mois. */
 		private int seuilAlerteMois = 3;
-		/** Heure déclarée au plus N jours dans le passé. */
-		private int ancienneteMaxJours = 7;
+		/** Plafond de distance et de précision d'un refus rattrapable (D-P22), 100 à 1 000 m. */
+		private int plafondDistanceMetres = 300;
+		/** Délai pour demander un pointage manuel après le refus (D-P23.a), 15 min à 8 h. */
+		private int delaiDemandeMinutes = 120;
+		/** Délai de décision avant expiration (D-P23.b), 4 à 72 h. */
+		private int delaiDecisionMinutes = 1440;
+		/** Délai au-delà duquel une demande porte le signal « tardive » (D-P24.a). */
+		private int signalDelaiMinutes = 30;
+		/** Cron du planificateur d'expiration (lu par le planificateur, zone Africa/Tunis). */
+		private String expirationCron = "0 */5 * * * *";
+
+		public static final int PLAFOND_MIN = 100;
+		public static final int PLAFOND_MAX = 1000;
+		public static final int DELAI_DEMANDE_MIN = 15;
+		public static final int DELAI_DEMANDE_MAX = 480;
+		public static final int DELAI_DECISION_MIN = 240;
+		public static final int DELAI_DECISION_MAX = 4320;
 
 		public int getSeuilAlerteMois() {
 			return seuilAlerteMois;
 		}
 
 		public void setSeuilAlerteMois(int seuilAlerteMois) {
-			this.seuilAlerteMois = seuilAlerteMois;
+			this.seuilAlerteMois = strictementPositif("presence.manuel.seuil-alerte-mois", seuilAlerteMois);
 		}
 
-		public int getAncienneteMaxJours() {
-			return ancienneteMaxJours;
+		public int getPlafondDistanceMetres() {
+			return plafondDistanceMetres;
 		}
 
-		public void setAncienneteMaxJours(int ancienneteMaxJours) {
-			this.ancienneteMaxJours = ancienneteMaxJours;
+		public void setPlafondDistanceMetres(int valeur) {
+			this.plafondDistanceMetres = verifier("presence.manuel.plafond-distance-metres", valeur, PLAFOND_MIN, PLAFOND_MAX);
+		}
+
+		public int getDelaiDemandeMinutes() {
+			return delaiDemandeMinutes;
+		}
+
+		public void setDelaiDemandeMinutes(int valeur) {
+			this.delaiDemandeMinutes = verifier("presence.manuel.delai-demande-minutes", valeur, DELAI_DEMANDE_MIN, DELAI_DEMANDE_MAX);
+		}
+
+		public int getDelaiDecisionMinutes() {
+			return delaiDecisionMinutes;
+		}
+
+		public void setDelaiDecisionMinutes(int valeur) {
+			this.delaiDecisionMinutes = verifier("presence.manuel.delai-decision-minutes", valeur, DELAI_DECISION_MIN, DELAI_DECISION_MAX);
+		}
+
+		public int getSignalDelaiMinutes() {
+			return signalDelaiMinutes;
+		}
+
+		public void setSignalDelaiMinutes(int signalDelaiMinutes) {
+			this.signalDelaiMinutes = strictementPositif("presence.manuel.signal-delai-minutes", signalDelaiMinutes);
+		}
+
+		public String getExpirationCron() {
+			return expirationCron;
+		}
+
+		public void setExpirationCron(String expirationCron) {
+			this.expirationCron = expirationCron;
+		}
+
+		/** Zéro ou négatif : le service refuse de démarrer, en nommant la propriété. */
+		static int strictementPositif(String propriete, int valeur) {
+			if (valeur <= 0) {
+				throw new IllegalArgumentException(propriete + " = " + valeur + " doit être strictement positif");
+			}
+			return valeur;
+		}
+
+		/**
+		 * Au-dessus de la borne haute : le service refuse de démarrer (jamais de valeur ramenée en silence, D-P22.b).
+		 * Sous la borne basse (plus strict, utile en recette) : démarrage avec un avertissement.
+		 */
+		static int verifier(String propriete, int valeur, int min, int max) {
+			strictementPositif(propriete, valeur);
+			if (valeur > max) {
+				throw new IllegalArgumentException(propriete + " = " + valeur + " dépasse la borne haute " + max
+						+ " (plage autorisée " + min + " à " + max + ")");
+			}
+			if (valeur < min) {
+				log.warn("{} = {} est sous la borne basse {} (plage {} à {}) : réglage plus strict, à réserver à la recette",
+						propriete, valeur, min, min, max);
+			}
+			return valeur;
 		}
 	}
 

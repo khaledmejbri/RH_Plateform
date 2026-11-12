@@ -210,7 +210,13 @@ void main() {
 
   group('dernier rejet pour blocage (D-P10.3)', () {
     PointageHistoriqueItem p(String id, String statut, DateTime ts) =>
-        PointageHistoriqueItem(id: id, statut: statut, type: 'ENTREE', serverTs: ts);
+        PointageHistoriqueItem(
+          id: id,
+          statut: statut,
+          type: 'ENTREE',
+          serverTs: ts,
+          manuelPossible: statut.startsWith('REJETE_'),
+        );
 
     test('retient le rejet le plus récent du jour, ignore valides, anciens et sans id', () {
       final now = DateTime(2026, 10, 30, 14, 0);

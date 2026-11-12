@@ -61,9 +61,13 @@ class PresenceDemandeManuelleDetailTest {
 
 	@BeforeEach
 	void setUp() {
+		FenetreHoraireService fenetre = mock(FenetreHoraireService.class);
 		service = new PresenceDemandeManuelleService(demandeRepository, pointageRepository, referentiel, accessService,
 				new FacialIdentiteService(accessService, referentiel), mock(PresenceEventPublisher.class), properties,
-				siteRepository, mock(FenetreHoraireService.class), new NumeroDemandeService(cle -> 1L));
+				siteRepository, fenetre, new NumeroDemandeService(cle -> 1L),
+				new EligibiliteManuelService(properties, new HaversineService(), fenetre),
+				new DemandeManuelleReponseMapper(demandeRepository, pointageRepository, referentiel, properties),
+				mock(jakarta.persistence.EntityManager.class), java.time.Clock.systemUTC());
 
 		PresencePointage rejet = new PresencePointage();
 		rejet.setId(UUID.randomUUID());
@@ -118,7 +122,7 @@ class PresenceDemandeManuelleDetailTest {
 		assertThat(d.pointageRejete().statut()).isEqualTo(PointageStatut.REJETE_HORS_ZONE);
 		assertThat(d.pointageRejete().motifRejet()).isEqualTo("Hors zone de pointage (179,8 m pour une zone de 50 m)");
 		assertThat(d.demande().manuelsDuMois()).isEqualTo(2L);
-		assertThat(d.seuilMois()).isEqualTo(3);
+		assertThat(d.demande().seuilMois()).isEqualTo(3);
 	}
 
 	@Test
@@ -155,7 +159,7 @@ class PresenceDemandeManuelleDetailTest {
 		DemandeManuelleDetail d = service.detailMobile(demande.getId());
 
 		assertThat(d.demande().manuelsDuMois()).isNull();
-		assertThat(d.seuilMois()).isNull();
+		assertThat(d.demande().seuilMois()).isNull();
 		assertThat(d.siteLibelle()).isEqualTo("Siège");
 	}
 
@@ -231,5 +235,18 @@ class PresenceDemandeManuelleDetailTest {
 	void numeroHsEtPmDeCompteursDifferentsNeSontPasConfondus() {
 		assertThatThrownBy(() -> service.detailAdminParNumero("HS-202611-0001"))
 				.isInstanceOfSatisfying(PresenceMetierException.class, e -> assertThat(e.getCode()).isEqualTo("NUMERO_INVALIDE"));
+	}
+
+	@Test
+	void detailMobile_rhSurSaPropreDemande_vueDemandeur() {
+		demande.setValideurId(null);
+		appelant(fiche, compte);
+		when(accessService.isBackofficeEcriture()).thenReturn(true);
+
+		DemandeManuelleDetail d = service.detailMobile(demande.getId());
+
+		assertThat(d.demande().manuelsDuMois()).isNull();
+		assertThat(d.demande().signaux()).isNull();
+		assertThat(d.demande().delaiDecisionMinutes()).isNull();
 	}
 }

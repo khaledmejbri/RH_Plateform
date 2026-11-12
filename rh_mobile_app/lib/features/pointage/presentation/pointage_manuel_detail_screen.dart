@@ -3,14 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/format/formats.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/confirmation_action.dart';
 import '../../../core/widgets/rh_ui.dart';
 import '../../a_valider/providers/a_valider_providers.dart';
+import '../data/demande_manuelle_textes.dart';
 import '../data/journee_models.dart';
 import '../data/presence_errors.dart';
 import '../data/presence_models.dart';
 import '../data/presence_repository.dart';
 import 'motif_refus_dialog.dart';
+import 'validation_manuelle_dialog.dart';
 
 final demandeManuelleDetailProvider =
     FutureProvider.autoDispose.family<DemandeManuelleDetail, String>((ref, id) {
@@ -35,14 +36,17 @@ class _PointageManuelDetailScreenState extends ConsumerState<PointageManuelDetai
       [d.typeLibelle, d.collaborateurNom ?? ''].where((e) => e.isNotEmpty).join(' — ');
 
   Future<void> _valider(DemandeManuelle d) async {
-    final ok = await confirmerAction(
-      context,
-      action: 'Valider ce pointage manuel ?',
-      element: _element(d),
-      libelleConfirmer: 'Valider',
+    final commentaire = await showDialog<String>(
+      context: context,
+      builder: (_) => ValidationManuelleDialog(
+        element: _element(d),
+        avecSignal: d.avecSignal,
+        signaux: d.signaux,
+      ),
     );
-    if (!ok || !mounted) return;
-    await _decider(() => ref.read(presenceRepositoryProvider).validerDemandeManuelle(d.id),
+    if (commentaire == null || !mounted) return;
+    await _decider(
+        () => ref.read(presenceRepositoryProvider).validerDemandeManuelle(d.id, commentaire: commentaire),
         'Pointage manuel validé.');
   }
 
@@ -65,6 +69,11 @@ class _PointageManuelDetailScreenState extends ConsumerState<PointageManuelDetai
       ref.invalidate(aValiderProvider);
       messenger.showSnackBar(SnackBar(content: Text(succes)));
     } catch (e) {
+      // 409 DEMANDE_EXPIREE : la demande a changé de statut, on recharge le détail et les listes.
+      if (codeErreurPresence(e) == 'DEMANDE_EXPIREE') {
+        ref.invalidate(demandeManuelleDetailProvider(widget.id));
+        ref.invalidate(aValiderProvider);
+      }
       messenger.showSnackBar(
         SnackBar(content: Text(messageErreurPresence(e)), backgroundColor: AppTheme.error),
       );
@@ -115,15 +124,24 @@ class _PointageManuelDetailScreenState extends ConsumerState<PointageManuelDetai
                     ),
                     const SizedBox(height: 10),
                     _Ligne('Pointage', '${d.typeLibelle} du ${d.heureDeclaree == null ? kValeurAbsente : formatDateHeure(d.heureDeclaree!.toLocal())}'),
+                    if (d.avecSignal) ...[
+                      const Align(alignment: Alignment.centerLeft, child: PastilleVigilance()),
+                      const SizedBox(height: 8),
+                      BandeauSignaux(signaux: d.signaux),
+                      const SizedBox(height: 8),
+                    ],
                     _Ligne('Site', detail.siteLibelle),
                     _Ligne('Unité', detail.uniteLibelle),
                     _Ligne('Justification', d.justification),
                     _Ligne('Refus automatique', detail.motifRejetAutomatique ?? d.motifRejetInitial),
                     _Ligne('Valideur', detail.valideurAffiche),
                     _Ligne('Demande déposée', d.creeLe == null ? null : formatDateHeure(d.creeLe!.toLocal())),
+                    if (libelleEcheance(d) != null) _Ligne('Échéance', libelleEcheance(d)),
+                    if (estValideur)
+                      for (final (libelle, valeur) in lignesInfosValideur(d)) _Ligne(libelle, valeur),
                     if (d.motifRefus != null) _Ligne('Motif du refus', d.motifRefus),
-                    if (detail.manuelsDuMois != null && detail.seuilMois != null)
-                      _Ligne('Ce mois-ci', '${detail.manuelsDuMois} pointage(s) manuel(s) sur ${detail.seuilMois} autorisés'),
+                    if (d.commentaireValideur != null) _Ligne('Commentaire', d.commentaireValideur),
+                    if (libelleDelaiDecision(d) != null) _Ligne('Décision', libelleDelaiDecision(d)),
                   ],
                 ),
               ),

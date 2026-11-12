@@ -3,6 +3,7 @@ package com.hr.presence.web;
 import com.hr.presence.domain.StatutDemandeManuelle;
 import com.hr.presence.dto.DemandeManuelleCreationRequest;
 import com.hr.presence.dto.DemandeManuelleRefusRequest;
+import com.hr.presence.dto.DemandeManuelleValidationRequest;
 import com.hr.presence.dto.DemandeManuelleDetail;
 import com.hr.presence.dto.DemandeManuelleResponse;
 import com.hr.presence.service.PresenceDemandeManuelleService;
@@ -40,7 +41,7 @@ public class PresenceDemandeManuelleController {
 
 	@PostMapping(MOBILE)
 	@PreAuthorize(PresenceSecurityExpressions.MOBILE_USER)
-	public ResponseEntity<DemandeManuelleResponse> creer(@Valid @RequestBody DemandeManuelleCreationRequest request) {
+	public ResponseEntity<DemandeManuelleResponse> creer(@RequestBody DemandeManuelleCreationRequest request) {
 		return ResponseEntity.status(HttpStatus.CREATED).body(service.creer(request));
 	}
 
@@ -58,8 +59,9 @@ public class PresenceDemandeManuelleController {
 
 	@PostMapping({MOBILE + "/{id}/valider", ADMIN + "/{id}/valider"})
 	@PreAuthorize("hasAnyRole('USER','RH','ADMIN')")
-	public DemandeManuelleResponse valider(@PathVariable UUID id) {
-		return service.valider(id);
+	public DemandeManuelleResponse valider(@PathVariable UUID id,
+			@RequestBody(required = false) DemandeManuelleValidationRequest request) {
+		return service.valider(id, request != null ? request.commentaire() : null);
 	}
 
 	@PostMapping({MOBILE + "/{id}/refuser", ADMIN + "/{id}/refuser"})
@@ -75,8 +77,9 @@ public class PresenceDemandeManuelleController {
 			@RequestParam(name = "collaborateurId", required = false) UUID collaborateurId,
 			@RequestParam(name = "siteId", required = false) UUID siteId,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
-			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au) {
-		return service.listerAdmin(statut, collaborateurId, siteId, du, au);
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au,
+			@RequestParam(name = "avecSignal", required = false) Boolean avecSignal) {
+		return service.listerAdmin(statut, collaborateurId, siteId, du, au, avecSignal);
 	}
 
 	@GetMapping(ADMIN + "/{id}")

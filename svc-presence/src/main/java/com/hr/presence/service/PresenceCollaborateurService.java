@@ -64,38 +64,32 @@ public class PresenceCollaborateurService {
 	private final TempsTravailService tempsTravail;
 	private final PresencePointageRepository pointageRepository;
 	private final PresenceSiteRepository siteRepository;
-	private final PresenceDemandeManuelleRepository demandeRepository;
 	private final PresenceHeuresSupJourRepository heuresSupJourRepository;
 	private final CalculHeuresSupService calculHeuresSup;
 	private final PresenceDemandeManuelleService demandeManuelleService;
 	private final FacialIdentiteService identiteService;
 	private final ReferentielClient referentielClient;
-	private final PresenceProperties properties;
-	private final Clock clock;
+	private final EligibiliteManuelLecture eligibiliteLecture;
 
 	public PresenceCollaborateurService(
 			TempsTravailService tempsTravail,
 			PresencePointageRepository pointageRepository,
 			PresenceSiteRepository siteRepository,
-			PresenceDemandeManuelleRepository demandeRepository,
 			PresenceHeuresSupJourRepository heuresSupJourRepository,
 			CalculHeuresSupService calculHeuresSup,
 			PresenceDemandeManuelleService demandeManuelleService,
 			FacialIdentiteService identiteService,
 			ReferentielClient referentielClient,
-			PresenceProperties properties,
-			Clock clock) {
+			EligibiliteManuelLecture eligibiliteLecture) {
 		this.tempsTravail = tempsTravail;
 		this.pointageRepository = pointageRepository;
 		this.siteRepository = siteRepository;
-		this.demandeRepository = demandeRepository;
 		this.heuresSupJourRepository = heuresSupJourRepository;
 		this.calculHeuresSup = calculHeuresSup;
 		this.demandeManuelleService = demandeManuelleService;
 		this.identiteService = identiteService;
 		this.referentielClient = referentielClient;
-		this.properties = properties;
-		this.clock = clock;
+		this.eligibiliteLecture = eligibiliteLecture;
 	}
 
 	/** Résultat interne : journées et lignes de la période. */
@@ -341,18 +335,14 @@ public class PresenceCollaborateurService {
 				.collect(Collectors.toSet());
 		Map<UUID, PresenceSite> sites = siteRepository.findAllById(siteIds).stream()
 				.collect(Collectors.toMap(PresenceSite::getId, s -> s));
-		Set<UUID> dejaDemandes = refuses.isEmpty() ? Set.of() : demandeRepository
-				.findByPointageRejeteIdIn(refuses.stream().map(PresencePointage::getId).toList()).stream()
-				.map(PresenceDemandeManuelle::getPointageRejeteId).collect(Collectors.toSet());
-		Instant limiteAnciennete = clock.instant()
-				.minus(java.time.Duration.ofDays(properties.getManuel().getAncienneteMaxJours()));
+		Map<UUID, EligibiliteManuelLecture.Etat> manuel = eligibiliteLecture.pour(refuses);
 
 		List<JourneePresence> journees = new ArrayList<>();
 		brouillons.forEach((cle, b) -> {
 			PresenceSite site = cle.siteId() != null ? sites.get(cle.siteId()) : null;
 			List<PointageJournee> pointages = b.pointages.stream()
 					.sorted(Comparator.comparing(PresencePointage::getServerTs))
-					.map(p -> versPointage(p, site, dejaDemandes, limiteAnciennete))
+					.map(p -> versPointage(p, site, manuel.get(p.getId())))
 					.toList();
 			journees.add(new JourneePresence(cle.jour(), cle.siteId(), site != null ? site.getLibelle() : null,
 					b.tempsMinutes, b.retardMinutes, b.etat, b.etat != null ? b.etat.libelle() : null, pointages));
@@ -362,14 +352,12 @@ public class PresenceCollaborateurService {
 		return new Calcul(lignes, journees);
 	}
 
-	private static PointageJournee versPointage(PresencePointage p, PresenceSite site, Set<UUID> dejaDemandes,
-												Instant limiteAnciennete) {
-		boolean refus = p.getStatut().name().startsWith("REJETE_");
-		// D-P04 / D-P12.a : tout refus sauf « hors horaire », sans demande déjà faite, assez récent
-		boolean eligible = refus && p.getStatut() != PointageStatut.REJETE_HORS_HORAIRE
-				&& !dejaDemandes.contains(p.getId()) && p.getServerTs().isAfter(limiteAnciennete);
+	private static PointageJournee versPointage(PresencePointage p, PresenceSite site, EligibiliteManuelLecture.Etat manuel) {
+		// D-P22.a : verdict du serveur (D-P21 à D-P23.a) ; nul pour un pointage accepté. Le booléen historique le reprend.
+		boolean eligible = manuel != null && manuel.possible();
 		return new PointageJournee(p.getId(), p.getType(), LibellesPresence.type(p.getType()), p.getStatut(),
 				LibellesPresence.statut(p.getStatut()), p.getServerTs(), TempsTravailCalcul.estManuel(p),
-				LibellesPresence.motifRejet(p, site), eligible);
+				LibellesPresence.motifRejet(p, site), eligible,
+				manuel != null ? manuel.possible() : null, manuel != null ? manuel.motif() : null);
 	}
 }

@@ -73,11 +73,9 @@ void main() {
   });
 
   group('REJETE_HORS_HORAIRE', () {
-    test('libellé français et pas de pointage manuel', () {
+    test('libellé français', () {
       expect(messageMotifPointage(PointageStatut.rejeteHorsHoraire), contains('horaires'));
       expect(PointageStatut.estRejet(PointageStatut.rejeteHorsHoraire), isTrue);
-      expect(PointageStatut.manuelPossible(PointageStatut.rejeteHorsHoraire), isFalse);
-      expect(PointageStatut.manuelPossible(PointageStatut.rejeteHorsZone), isTrue);
     });
 
     test('le message serveur prime', () {
@@ -96,6 +94,8 @@ void main() {
           statut: PointageStatut.rejeteHorsHoraire,
           type: 'ENTREE',
           serverTs: DateTime(2026, 11, 3, 9),
+          manuelPossible: false,
+          manuelImpossibleMotif: 'pointage hors de l’horaire du site',
         ),
       ];
       expect(dernierRejetPourBlocage(liste, maintenant), isNull);

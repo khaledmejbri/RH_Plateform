@@ -52,6 +52,7 @@ public class PresencePointageService {
 	private final FenetreHoraireService fenetreHoraire;
 	private final ReferentielClient referentielClient;
 	private final AlerteEchecsPointageService alerteEchecs;
+	private final EligibiliteManuelLecture eligibiliteManuel;
 	private final Clock clock;
 
 	/** QR résolu : site et credential statique (null pour une borne écran), ou rejet déjà enregistré. */
@@ -74,6 +75,7 @@ public class PresencePointageService {
 			FenetreHoraireService fenetreHoraire,
 			ReferentielClient referentielClient,
 			AlerteEchecsPointageService alerteEchecs,
+			EligibiliteManuelLecture eligibiliteManuel,
 			Clock clock) {
 		this.pointageRepository = pointageRepository;
 		this.siteRepository = siteRepository;
@@ -87,6 +89,7 @@ public class PresencePointageService {
 		this.fenetreHoraire = fenetreHoraire;
 		this.referentielClient = referentielClient;
 		this.alerteEchecs = alerteEchecs;
+		this.eligibiliteManuel = eligibiliteManuel;
 		this.clock = clock;
 	}
 
@@ -103,7 +106,7 @@ public class PresencePointageService {
 			Optional<PresencePointage> existing = pointageRepository
 					.findByCollaborateurIdAndIdempotencyKey(collaborateurId, request.idempotencyKey().trim());
 			if (existing.isPresent()) {
-				return toResponse(existing.get());
+				return avecManuel(existing.get(), toResponse(existing.get()));
 			}
 		}
 		// Blocage en cours : 409 avant tout QR / GPS, mais après identité et rejeu d'idempotence.
@@ -290,7 +293,20 @@ public class PresencePointageService {
 		int pageSize = Math.clamp(size, 1, 50);
 		Page<PresencePointage> result = pointageRepository.findByCollaborateurIdOrderByServerTsDesc(
 				collaborateurId, PageRequest.of(Math.max(page, 0), pageSize));
-		return toPage(result);
+		PageResponse<PointageResponse> resultatPage = toPage(result);
+		// D-P22.a : éligibilité au pointage manuel calculée à la lecture (le délai s'écoule)
+		Map<UUID, EligibiliteManuelLecture.Etat> manuel = eligibiliteManuel.pour(result.getContent());
+		List<PointageResponse> avecManuel = resultatPage.content().stream()
+				.map(r -> manuel.containsKey(r.id())
+						? r.avecManuel(manuel.get(r.id()).possible(), manuel.get(r.id()).motif()) : r)
+				.toList();
+		return new PageResponse<>(avecManuel, resultatPage.page(), resultatPage.size(), resultatPage.totalElements(), resultatPage.totalPages());
+	}
+
+	/** Réponse d'un refus enrichie de l'éligibilité au pointage manuel (D-P22.a) ; inchangée pour un pointage accepté. */
+	private PointageResponse avecManuel(PresencePointage p, PointageResponse reponse) {
+		EligibiliteManuelLecture.Etat etat = eligibiliteManuel.pour(List.of(p)).get(p.getId());
+		return etat == null ? reponse : reponse.avecManuel(etat.possible(), etat.motif());
 	}
 
 	// Sans transaction englobante : la page appelle le référentiel (noms, compte du collaborateur).
@@ -394,7 +410,7 @@ public class PresencePointageService {
 		log.info("Pointage {} collab={} motif={}", statut, collaborateurId, motif);
 		// D-P20 : ne lève jamais d'exception, le refus reste enregistré et la réponse part quoi qu'il arrive
 		alerteEchecs.apresRefus(saved);
-		return toResponse(saved);
+		return avecManuel(saved, toResponse(saved));
 	}
 
 	private PresencePointage basePointage(

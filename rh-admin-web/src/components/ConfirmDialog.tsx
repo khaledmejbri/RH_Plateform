@@ -8,7 +8,14 @@ type ConfirmOptions = {
   /** Action destructive / irréversible → bouton rouge. */
   danger?: boolean;
   /** Champ de motif porté par la même fenêtre (D-L03). */
-  motif?: { label: string; obligatoire?: boolean; placeholder?: string };
+  motif?: {
+    label: string;
+    obligatoire?: boolean;
+    placeholder?: string;
+    /** Longueur minimale après suppression des espaces (si le champ est rempli) ; affiche aussi un compteur. */
+    minLength?: number;
+    maxLength?: number;
+  };
   /**
    * Action à exécuter à la confirmation : la fenêtre porte l'état d'envoi et affiche l'erreur ;
    * elle se ferme (résultat `true`) si l'action réussit, reste ouverte si elle échoue.
@@ -67,7 +74,9 @@ function ConfirmModal({
   const [texteMotif, setTexteMotif] = useState('');
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const motifManquant = !!champMotif?.obligatoire && !texteMotif.trim();
+  const longueur = texteMotif.trim().length;
+  const motifManquant =
+    (!!champMotif?.obligatoire && longueur === 0) || (!!champMotif?.minLength && longueur > 0 && longueur < champMotif.minLength);
 
   async function valider() {
     if (busy || motifManquant) return;
@@ -144,12 +153,18 @@ function ConfirmModal({
               id="confirm-motif"
               className="field-input field-input--area"
               rows={3}
-              maxLength={500}
+              maxLength={champMotif.maxLength ?? 500}
               value={texteMotif}
               placeholder={champMotif.placeholder}
               disabled={busy}
               onChange={(e) => setTexteMotif(e.target.value)}
             />
+            {champMotif.minLength ? (
+              <p className={`muted small${motifManquant ? ' field-error' : ''}`} id="confirm-motif-compteur" aria-live="polite">
+                {longueur} / {champMotif.maxLength ?? 500} caractères
+                {longueur < champMotif.minLength && (champMotif.obligatoire || longueur > 0) ? ` (au moins ${champMotif.minLength})` : ''}
+              </p>
+            ) : null}
           </div>
         ) : null}
         {erreur ? <p className="alert alert--error" role="alert">{erreur}</p> : null}

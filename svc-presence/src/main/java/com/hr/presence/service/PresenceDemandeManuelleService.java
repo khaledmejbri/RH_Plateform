@@ -13,45 +13,49 @@ import com.hr.presence.dto.DemandeManuelleResponse;
 import com.hr.presence.dto.PresenceCollaborateurDtos;
 import com.hr.presence.entity.PresenceDemandeManuelle;
 import com.hr.presence.entity.PresencePointage;
-import com.hr.presence.numero.NumeroDemandeService;
-import com.hr.presence.numero.PrefixeNumero;
 import com.hr.presence.entity.PresenceSite;
 import com.hr.presence.kafka.ObjetNotification;
 import com.hr.presence.kafka.PresenceEventPublisher;
+import com.hr.presence.numero.NumeroDemandeService;
+import com.hr.presence.numero.PrefixeNumero;
 import com.hr.presence.repository.PresenceDemandeManuelleRepository;
 import com.hr.presence.repository.PresencePointageRepository;
 import com.hr.presence.repository.PresenceSiteRepository;
 import com.hr.presence.security.PresenceAccessService;
+import com.hr.presence.service.DemandeManuelleReponseMapper.Vue;
 import com.hr.presence.web.PresenceMetierException;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import jakarta.persistence.criteria.Predicate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
-import java.util.Set;
 import java.util.List;
-import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
 
 /**
- * Pointage manuel après un rejet (D-P04) : demande du collaborateur, validation par le responsable
- * D-H03 (sinon RH / ADMIN), personne ne valide sa propre demande, alerte RH au-delà du seuil mensuel.
+ * Pointage manuel après un refus (D-P04, D-P21 à D-P26) : demande du collaborateur (contrôles d'éligibilité, données
+ * figées), validation par le responsable D-H03 (sinon RH / ADMIN), personne ne valide sa propre demande, expiration
+ * après le délai de décision, alerte RH au-delà du seuil mensuel.
+ *
+ * <p>Valider, refuser et expirer prennent un verrou pessimiste sur la demande, après l'autorisation, et relisent le
+ * statut sous verrou. Ces méthodes ne rétablissent pas la transaction sur {@link PresenceMetierException} : le passage
+ * en EXPIREE doit rester enregistré quand la décision reçoit son 409.
  */
 @Service
 public class PresenceDemandeManuelleService {
@@ -60,6 +64,11 @@ public class PresenceDemandeManuelleService {
 	private static final ZoneId ZONE = ZoneId.of("Africa/Tunis");
 	private static final java.util.regex.Pattern NUMERO_PM = java.util.regex.Pattern.compile("^PM-\\d{6}-\\d{4}$");
 	private static final DateTimeFormatter HEURE = DateTimeFormatter.ofPattern("dd/MM HH:mm", Locale.FRENCH).withZone(ZONE);
+
+	static final int COMMENTAIRE_MIN = 10;
+	static final int COMMENTAIRE_MAX = 500;
+	static final int JUSTIFICATION_MIN = 10;
+	static final int JUSTIFICATION_MAX = 500;
 
 	private final PresenceDemandeManuelleRepository demandeRepository;
 	private final PresencePointageRepository pointageRepository;
@@ -71,6 +80,10 @@ public class PresenceDemandeManuelleService {
 	private final PresenceSiteRepository siteRepository;
 	private final FenetreHoraireService fenetreHoraire;
 	private final NumeroDemandeService numeroService;
+	private final EligibiliteManuelService eligibilite;
+	private final DemandeManuelleReponseMapper mapper;
+	private final EntityManager entityManager;
+	private final Clock clock;
 
 	public PresenceDemandeManuelleService(
 			PresenceDemandeManuelleRepository demandeRepository,
@@ -82,7 +95,11 @@ public class PresenceDemandeManuelleService {
 			PresenceProperties properties,
 			PresenceSiteRepository siteRepository,
 			FenetreHoraireService fenetreHoraire,
-			NumeroDemandeService numeroService) {
+			NumeroDemandeService numeroService,
+			EligibiliteManuelService eligibilite,
+			DemandeManuelleReponseMapper mapper,
+			EntityManager entityManager,
+			Clock clock) {
 		this.demandeRepository = demandeRepository;
 		this.pointageRepository = pointageRepository;
 		this.referentielClient = referentielClient;
@@ -93,40 +110,45 @@ public class PresenceDemandeManuelleService {
 		this.siteRepository = siteRepository;
 		this.fenetreHoraire = fenetreHoraire;
 		this.numeroService = numeroService;
+		this.eligibilite = eligibilite;
+		this.mapper = mapper;
+		this.entityManager = entityManager;
+		this.clock = clock;
 	}
 
+	// ---- Création (D-P21.c) --------------------------------------------------------------------------------------
+
+	/**
+	 * Ordre des contrôles : jeton (401, sécurité) puis identité (403 IDENTITE_INCOHERENTE) puis corps (400) puis
+	 * périmètre (403 HORS_PERIMETRE, pointage inconnu ou d'un autre : même réponse) puis champs figés (400) puis les
+	 * contrôles d'éligibilité. Un refus d'office ne crée rien et ne notifie personne ; il est journalisé sans coordonnées.
+	 */
 	@Transactional
 	public DemandeManuelleResponse creer(DemandeManuelleCreationRequest request) {
 		ValideurPointage moi = referentielClient.monValideurPointage();
 		identiteService.verifierEntete(texte(moi.collaborateurId()));
-		PresencePointage rejet = pointageRepository.findById(request.pointageRejeteId())
-				.orElseThrow(() -> PresenceMetierException.notFound("POINTAGE_INTROUVABLE", "Pointage introuvable"));
-		if (!appartientA(rejet.getCollaborateurId(), moi)) {
-			throw new SecurityException("Ce pointage ne vous appartient pas");
+		String justification = validerCorps(request);
+		PresencePointage rejet = pointageRepository.findById(request.pointageRejeteId()).orElse(null);
+		if (rejet == null || !appartientA(rejet.getCollaborateurId(), moi)) {
+			log.info("Demande de pointage manuel refusée d'office collab={} pointage={} code=HORS_PERIMETRE",
+					texte(moi.collaborateurId()), request.pointageRejeteId());
+			throw PresenceMetierException.forbidden("HORS_PERIMETRE", "Ce pointage n'existe pas ou ne vous appartient pas.");
 		}
-		if (!rejet.getStatut().name().startsWith("REJETE_")) {
-			throw PresenceMetierException.unprocessable("POINTAGE_NON_REJETE",
-					"Seul un pointage refusé peut faire l'objet d'une demande manuelle");
-		}
-		if (demandeRepository.existsByPointageRejeteId(rejet.getId())) {
-			throw PresenceMetierException.conflict("DEMANDE_DEJA_FAITE",
-					"Une demande de pointage manuel existe déjà pour ce refus");
+		controlerChampsFiges(request, rejet);
+
+		PresenceSite site = rejet.getSiteId() != null ? siteRepository.findById(rejet.getSiteId()).orElse(null) : null;
+		Instant maintenant = clock.instant();
+		EligibiliteManuelService.Verdict verdict = eligibilite.evaluer(rejet, site,
+				demandeRepository.findByPointageRejeteId(rejet.getId()).orElse(null), maintenant);
+		if (!verdict.possible()) {
+			log.info("Demande de pointage manuel refusée d'office collab={} pointage={} code={}",
+					rejet.getCollaborateurId(), rejet.getId(), verdict.code());
+			throw verdict.exception();
 		}
 
-		Instant maintenant = Instant.now();
-		Instant heure = request.heureDeclaree() != null ? request.heureDeclaree() : rejet.getServerTs();
-		if (heure.isAfter(maintenant.plus(Duration.ofMinutes(5)))) {
-			throw PresenceMetierException.unprocessable("HEURE_FUTURE", "L'heure déclarée ne peut pas être dans le futur");
-		}
-		int maxJours = properties.getManuel().getAncienneteMaxJours();
-		if (heure.isBefore(maintenant.minus(maxJours, ChronoUnit.DAYS))) {
-			throw PresenceMetierException.unprocessable("HEURE_TROP_ANCIENNE",
-					"L'heure déclarée doit dater de moins de " + maxJours + " jours");
-		}
-
-		PointageType typeDemande = request.type() != null ? parseType(request.type()) : rejet.getType();
-		// D-P12.c : l'heure déclarée doit tomber dans la fenêtre du jour du site (horaire modifié depuis : celle en vigueur).
-		controlerFenetre(rejet.getSiteId(), rejet.getCollaborateurId(), heure, typeDemande);
+		Duration delaiDemande = Duration.between(rejet.getServerTs(), maintenant);
+		EligibiliteManuelService.Figees figees = eligibilite.figer(rejet, site, delaiDemande,
+				mapper.manuelsDuMois(rejet.getCollaborateurId(), rejet.getServerTs()));
 
 		PresenceDemandeManuelle d = new PresenceDemandeManuelle();
 		d.setPointageRejeteId(rejet.getId());
@@ -134,56 +156,126 @@ public class PresenceDemandeManuelleService {
 		d.setCollaborateurCompteId(texte(moi.collaborateurCompteId()));
 		d.setCollaborateurNom(moi.collaborateurNom());
 		d.setSiteId(rejet.getSiteId());
-		d.setType(typeDemande);
-		d.setHeureDeclaree(heure);
-		d.setJustification(request.justification().trim());
+		d.setType(rejet.getType());
+		d.setHeureDeclaree(rejet.getServerTs());
+		d.setJustification(justification);
 		d.setValideurId(texte(moi.valideurId()));
 		d.setValideurCompteId(texte(moi.valideurCompteId()));
 		d.setValideurNom(moi.valideurNom());
 		d.setCreeLe(maintenant);
 		d.setNumero(numeroService.attribuer(PrefixeNumero.PM, maintenant));
-		PresenceDemandeManuelle saved = demandeRepository.save(d);
+		d.setRefusStatut(figees.refusStatut());
+		d.setDistanceMetres(figees.distance());
+		d.setPrecisionMetres(figees.precision());
+		d.setRayonMetres(figees.rayon());
+		d.setModeQr(figees.modeQr().name());
+		d.setPlafondMetres(properties.getManuel().getPlafondDistanceMetres());
+		d.setDelaiDemandeMinutes(figees.delaiDemandeMinutes());
+		d.setEcheance(rejet.getServerTs().plus(Duration.ofMinutes(properties.getManuel().getDelaiDecisionMinutes())));
+		d.setSignaux(figees.signaux());
+		PresenceDemandeManuelle saved;
+		try {
+			saved = demandeRepository.saveAndFlush(d);
+		} catch (DataIntegrityViolationException ex) {
+			// Deux demandes simultanées pour le même refus : la contrainte unique tranche (D-P21.b).
+			if (!causeContrainte(ex, CONTRAINTE_UNIQUE_REFUS)) {
+				throw ex;
+			}
+			String ref = demandeRepository.numeroParPointageRejeteId(rejet.getId()).map(n -> " (" + n + ")").orElse("");
+			throw PresenceMetierException.conflict("DEMANDE_DEJA_FAITE",
+					"Une demande de pointage manuel a déjà été faite pour ce refus" + ref + ".");
+		}
 
-		String libelle = libelleType(saved.getType());
 		eventPublisher.notifier(
 				saved.validationParRh() ? PresenceEventPublisher.DESTINATAIRE_RH : adresse(saved.getValideurCompteId(), saved.getValideurId()),
 				"Pointage manuel à valider — " + nom(saved) + " (" + saved.getNumero() + ")",
-				nom(saved) + " demande un pointage manuel (" + libelle + " du " + HEURE.format(heure) + ") : "
-						+ saved.getJustification(),
+				nom(saved) + " demande un pointage manuel (" + libelleType(saved.getType()) + " du " + HEURE.format(saved.getHeureDeclaree())
+						+ ") : " + saved.getJustification(),
 				objetManuel(saved, "POINTAGE_MANUEL_DEMANDE"));
-		log.info("Demande pointage manuel {} ({}) collab={} valideur={}", saved.getNumero(), saved.getId(), saved.getCollaborateurId(),
-				saved.validationParRh() ? "RH" : saved.getValideurId());
-		return toResponses(List.of(saved), null, d0 -> rejet.getMotifRejet()).get(0);
+		log.info("Demande pointage manuel {} ({}) collab={} valideur={} signaux={}", saved.getNumero(), saved.getId(),
+				saved.getCollaborateurId(), saved.validationParRh() ? "RH" : saved.getValideurId(), saved.getSignaux().size());
+		return mapper.versReponses(List.of(saved), Vue.DEMANDEUR, d0 -> rejet.getMotifRejet()).get(0);
 	}
 
-	// Lectures sans transaction englobante : elles appellent le référentiel (noms, matricules) et ne doivent pas garder
+	private static final String CONTRAINTE_UNIQUE_REFUS = "uk_demande_manuelle_rejet";
+
+	/** Vrai si la contrainte nommée figure dans la chaîne des causes (insensible à la casse). */
+	private static boolean causeContrainte(Throwable ex, String contrainte) {
+		for (Throwable t = ex; t != null; t = t.getCause() == t ? null : t.getCause()) {
+			if (t.getMessage() != null && t.getMessage().toLowerCase(Locale.ROOT).contains(contrainte)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** 400 VALIDATION_ERROR : pointage obligatoire, justification de 10 à 500 caractères (espaces de bord retirés). */
+	private static String validerCorps(DemandeManuelleCreationRequest request) {
+		if (request == null || request.pointageRejeteId() == null) {
+			throw PresenceMetierException.badRequest("VALIDATION_ERROR", "pointage_rejete_id est obligatoire");
+		}
+		String justification = request.justification() == null ? "" : request.justification().trim();
+		if (justification.length() < JUSTIFICATION_MIN || justification.length() > JUSTIFICATION_MAX) {
+			throw PresenceMetierException.badRequest("VALIDATION_ERROR",
+					"La justification doit faire entre " + JUSTIFICATION_MIN + " et " + JUSTIFICATION_MAX + " caractères");
+		}
+		return justification;
+	}
+
+	/** D-P23 : heure (à la seconde) et type sont ceux du refus ; identiques tolérés, différents : 400. */
+	private static void controlerChampsFiges(DemandeManuelleCreationRequest request, PresencePointage rejet) {
+		boolean heureDifferente = request.heureDeclaree() != null
+				&& !request.heureDeclaree().truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
+				.equals(rejet.getServerTs().truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
+		boolean typeDifferent = request.type() != null
+				&& !request.type().trim().equalsIgnoreCase(rejet.getType().name());
+		if (heureDifferente || typeDifferent) {
+			throw PresenceMetierException.badRequest("CHAMP_NON_MODIFIABLE",
+					"L'heure et le type d'un pointage manuel sont ceux de la tentative refusée.");
+		}
+	}
+
+	// ---- Lectures ------------------------------------------------------------------------------------------------
+	// Sans transaction englobante : elles appellent le référentiel (noms, matricules) et ne doivent pas garder
 	// une connexion à la base pendant ces appels ; chaque lecture du dépôt a sa propre transaction.
+
+	/** Demandes du collaborateur : vue du demandeur, sans signaux ni compteurs (D-P24.d). */
 	public List<DemandeManuelleResponse> mesDemandes() {
 		ValideurPointage moi = referentielClient.monValideurPointage();
 		identiteService.verifierEntete(texte(moi.collaborateurId()));
-		return toResponses(demandeRepository.findByCollaborateurIdOrderByCreeLeDesc(moi.collaborateurId().toString()),
-				null, d -> null);
+		return mapper.versReponses(demandeRepository.findByCollaborateurIdOrderByCreeLeDesc(moi.collaborateurId().toString()),
+				Vue.DEMANDEUR, d -> null);
 	}
 
-	/** File du responsable : demandes dont il est le valideur attendu. */
+	/** File du responsable : demandes dont il est le valideur attendu et dont l'échéance n'est pas atteinte. */
 	public List<DemandeManuelleResponse> aValider() {
 		ValideurPointage moi = referentielClient.monValideurPointage();
 		identiteService.verifierEntete(texte(moi.collaborateurId()));
-		return toResponses(demandeRepository.findByValideurIdAndStatutOrderByCreeLeAsc(
-				moi.collaborateurId().toString(), StatutDemandeManuelle.EN_ATTENTE), null, this::motifRejet);
+		Instant maintenant = clock.instant();
+		List<PresenceDemandeManuelle> enAttente = demandeRepository.findByValideurIdAndStatutOrderByCreeLeAsc(
+						moi.collaborateurId().toString(), StatutDemandeManuelle.EN_ATTENTE).stream()
+				.filter(d -> d.getEcheance() == null || maintenant.isBefore(d.getEcheance()))
+				.toList();
+		return mapper.versReponses(enAttente, Vue.DECIDEUR, this::motifRejet);
 	}
 
 	/** Vue RH : toutes les demandes, avec le compteur mensuel et l'alerte de seuil. */
 	public List<DemandeManuelleResponse> listerAdmin(StatutDemandeManuelle statut) {
-		return listerAdmin(statut, null, null, null, null);
+		return listerAdmin(statut, null, null, null, null, null);
+	}
+
+	public List<DemandeManuelleResponse> listerAdmin(StatutDemandeManuelle statut, UUID collaborateurId, UUID siteId,
+			LocalDate du, LocalDate au) {
+		return listerAdmin(statut, collaborateurId, siteId, du, au, null);
 	}
 
 	/**
 	 * Vue RH filtrée (D-N01) : statut, collaborateur (fiche ; les demandes anciennes portent parfois le compte, il est
-	 * cherché aussi), site et période sur l'heure déclarée (jours de Tunis, « au » inclus). Période inversée : 400.
+	 * cherché aussi), site, période sur l'heure déclarée (jours de Tunis, « au » inclus) et « avec signal de vigilance »
+	 * (D-P24.a). Période inversée : 400.
 	 */
 	public List<DemandeManuelleResponse> listerAdmin(StatutDemandeManuelle statut, UUID collaborateurId, UUID siteId,
-			LocalDate du, LocalDate au) {
+			LocalDate du, LocalDate au, Boolean avecSignal) {
 		if (du != null && au != null && au.isBefore(du)) {
 			throw PresenceMetierException.badRequest("PERIODE_INVALIDE", "La date de fin précède la date de début");
 		}
@@ -191,22 +283,22 @@ public class PresenceDemandeManuelleService {
 		Instant from = du != null ? du.atStartOfDay(ZONE).toInstant() : null;
 		Instant to = au != null ? au.plusDays(1).atStartOfDay(ZONE).toInstant() : null;
 		List<PresenceDemandeManuelle> demandes = demandeRepository.findAll(
-				filtre(statut, identites, siteId, from, to), Sort.by(Sort.Direction.DESC, "creeLe"));
-		return toResponses(demandes, d -> manuelsDuMois(d.getCollaborateurId(), d.getHeureDeclaree()), this::motifRejet);
+				filtre(statut, identites, siteId, from, to, avecSignal), Sort.by(Sort.Direction.DESC, "creeLe"));
+		return mapper.versReponses(demandes, Vue.DECIDEUR, this::motifRejet);
 	}
 
 	/**
 	 * Demandes d'un collaborateur (fiche ou compte) dont l'heure déclarée tombe dans [from, to[ : onglet Pointages de la
-	 * modale collaborateur et fiche d'équipe mobile. Les plus récentes d'abord.
+	 * modale collaborateur et fiche d'équipe mobile (lecteurs : RH, DIRECTION, ADMIN, valideur). Les plus récentes d'abord.
 	 */
 	public List<DemandeManuelleResponse> pourIdentites(Set<String> identites, Instant from, Instant to) {
 		List<PresenceDemandeManuelle> demandes = demandeRepository.findAll(
-				filtre(null, identites, null, from, to), Sort.by(Sort.Direction.DESC, "creeLe"));
-		return toResponses(demandes, d -> manuelsDuMois(d.getCollaborateurId(), d.getHeureDeclaree()), this::motifRejet);
+				filtre(null, identites, null, from, to, null), Sort.by(Sort.Direction.DESC, "creeLe"));
+		return mapper.versReponses(demandes, Vue.DECIDEUR, this::motifRejet);
 	}
 
 	private static Specification<PresenceDemandeManuelle> filtre(StatutDemandeManuelle statut, Set<String> identites,
-			UUID siteId, Instant from, Instant to) {
+			UUID siteId, Instant from, Instant to, Boolean avecSignal) {
 		return (root, query, cb) -> {
 			List<Predicate> predicats = new ArrayList<>();
 			if (statut != null) predicats.add(cb.equal(root.get("statut"), statut));
@@ -216,6 +308,7 @@ public class PresenceDemandeManuelleService {
 			if (siteId != null) predicats.add(cb.equal(root.get("siteId"), siteId));
 			if (from != null) predicats.add(cb.greaterThanOrEqualTo(root.get("heureDeclaree"), from));
 			if (to != null) predicats.add(cb.lessThan(root.get("heureDeclaree"), to));
+			if (Boolean.TRUE.equals(avecSignal)) predicats.add(cb.isNotNull(root.get("signaux")));
 			return cb.and(predicats.toArray(Predicate[]::new));
 		};
 	}
@@ -242,7 +335,7 @@ public class PresenceDemandeManuelleService {
 	public DemandeManuelleDetail detailAdmin(UUID id) {
 		PresenceDemandeManuelle d = demandeRepository.findById(id)
 				.orElseThrow(() -> PresenceMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable"));
-		return versDetail(d, true);
+		return versDetail(d, Vue.DECIDEUR);
 	}
 
 	/** Détail par numéro lisible PM-AAAAMM-NNNN : mal formé 400 NUMERO_INVALIDE, inconnu 404. */
@@ -252,13 +345,13 @@ public class PresenceDemandeManuelleService {
 		}
 		PresenceDemandeManuelle d = demandeRepository.findByNumero(numero)
 				.orElseThrow(() -> PresenceMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable"));
-		return versDetail(d, true);
+		return versDetail(d, Vue.DECIDEUR);
 	}
 
 	/**
 	 * Détail pour le mobile (C5) : le demandeur, son valideur D-H03 attendu, ou RH / ADMIN quand la validation revient aux
 	 * RH. Identité lue dans le JWT. Tout autre appelant, et une demande inconnue : 403 HORS_PERIMETRE (pas d'énumération).
-	 * Le compteur du mois est réservé à qui décide, pas au demandeur.
+	 * Signaux, compteurs et commentaire sont réservés à qui décide, pas au demandeur.
 	 */
 	public DemandeManuelleDetail detailMobile(UUID id) {
 		ValideurPointage moi = referentielClient.monValideurPointage();
@@ -273,30 +366,32 @@ public class PresenceDemandeManuelleService {
 		if (!demandeur && !valideur && !rh) {
 			throw PresenceMetierException.forbidden("HORS_PERIMETRE", "Vous n'avez pas accès à cette demande");
 		}
-		return versDetail(d, !demandeur || valideur || rh);
+		return versDetail(d, demandeur ? Vue.DEMANDEUR : Vue.DECIDEUR);
 	}
 
-	private DemandeManuelleDetail versDetail(PresenceDemandeManuelle d, boolean avecCompteur) {
-		Affectation identite = identites(List.of(d)).get(d.getCollaborateurId());
+	private DemandeManuelleDetail versDetail(PresenceDemandeManuelle d, Vue vue) {
+		Affectation identite = mapper.identites(List.of(d)).get(d.getCollaborateurId());
 		PresencePointage rejet = pointageRepository.findById(d.getPointageRejeteId()).orElse(null);
 		PresenceSite site = d.getSiteId() != null ? siteRepository.findById(d.getSiteId()).orElse(null) : null;
-		Long duMois = avecCompteur ? manuelsDuMois(d.getCollaborateurId(), d.getHeureDeclaree()) : null;
 		String motif = rejet != null ? LibellesPresence.motifRejet(rejet, site) : null;
-		DemandeManuelleResponse base = toResponse(d, identite, duMois, motif);
+		DemandeManuelleResponse base = mapper.versReponse(d, identite, vue, motif);
 		PresenceCollaborateurDtos.PersonneResume valideur = d.validationParRh() ? null
 				: new PresenceCollaborateurDtos.PersonneResume(d.getValideurId(), d.getValideurNom(), null);
 		DemandeManuelleDetail.PointageRejeteResume refus = rejet == null ? null
 				: new DemandeManuelleDetail.PointageRejeteResume(rejet.getStatut(), LibellesPresence.statut(rejet.getStatut()),
 				motif, rejet.getDistanceMetres(), rejet.getServerTs());
 		return new DemandeManuelleDetail(base, site != null ? site.getLibelle() : null,
-				identite != null ? identite.uniteAffichee() : null, valideur, refus,
-				avecCompteur ? properties.getManuel().getSeuilAlerteMois() : null);
+				identite != null ? identite.uniteAffichee() : null, valideur, refus);
 	}
 
-	@Transactional
-	public DemandeManuelleResponse valider(UUID id) {
-		PresenceDemandeManuelle d = exigerEnAttente(id);
-		String decideur = autoriserDecision(d);
+	// ---- Décision ------------------------------------------------------------------------------------------------
+
+	@Transactional(noRollbackFor = PresenceMetierException.class)
+	public DemandeManuelleResponse valider(UUID id, String commentaire) {
+		Verrouillee v = verrouillerPourDecision(id);
+		PresenceDemandeManuelle d = v.demande();
+		String decideur = v.decideur();
+		String note = validerCommentaire(d, commentaire);
 
 		// D-P12.c : revérifié à la validation, l'horaire a pu changer depuis la demande.
 		FenetreHoraireService.DansFenetre dansFenetre =
@@ -323,10 +418,13 @@ public class PresenceDemandeManuelleService {
 		}
 		PresencePointage pointage = pointageRepository.save(p);
 
+		Instant maintenant = clock.instant();
 		d.setStatut(StatutDemandeManuelle.VALIDEE);
 		d.setDecidePar(decideur);
-		d.setDecideLe(Instant.now());
+		d.setDecideLe(maintenant);
 		d.setPointageId(pointage.getId());
+		d.setCommentaireValideur(note);
+		d.setDelaiDecisionMinutes(minutesDepuisTentative(d, maintenant));
 		PresenceDemandeManuelle saved = demandeRepository.save(d);
 
 		eventPublisher.notifier(adresse(saved.getCollaborateurCompteId(), saved.getCollaborateurId()),
@@ -335,7 +433,7 @@ public class PresenceDemandeManuelleService {
 						+ ") a été validé par " + decideur + ".",
 				objetManuel(saved, "POINTAGE_MANUEL_VALIDE"));
 
-		long duMois = manuelsDuMois(saved.getCollaborateurId(), saved.getHeureDeclaree());
+		long duMois = mapper.manuelsDuMois(saved.getCollaborateurId(), saved.getHeureDeclaree());
 		int seuil = properties.getManuel().getSeuilAlerteMois();
 		if (duMois > seuil) {
 			eventPublisher.notifier(PresenceEventPublisher.DESTINATAIRE_RH,
@@ -343,28 +441,144 @@ public class PresenceDemandeManuelleService {
 					nom(saved) + " a " + duMois + " pointages manuels validés ce mois-ci (seuil : " + seuil + ").",
 					objetManuel(saved, "POINTAGE_MANUEL_FREQUENT"));
 		}
-		return toResponses(List.of(saved), d0 -> duMois, d0 -> null).get(0);
+		return mapper.versReponse(saved, v.identite(), Vue.DECIDEUR, null);
 	}
 
-	private static ObjetNotification objetManuel(PresenceDemandeManuelle d, String evenement) {
-		return ObjetNotification.de(ObjetNotification.POINTAGE_MANUEL, evenement, d.getId(), d.getNumero());
-	}
-
-	@Transactional
+	@Transactional(noRollbackFor = PresenceMetierException.class)
 	public DemandeManuelleResponse refuser(UUID id, String motif) {
-		PresenceDemandeManuelle d = exigerEnAttente(id);
-		String decideur = autoriserDecision(d);
+		Verrouillee v = verrouillerPourDecision(id);
+		PresenceDemandeManuelle d = v.demande();
+		String decideur = v.decideur();
+		Instant maintenant = clock.instant();
 		d.setStatut(StatutDemandeManuelle.REFUSEE);
 		d.setDecidePar(decideur);
-		d.setDecideLe(Instant.now());
+		d.setDecideLe(maintenant);
 		d.setMotifRefus(motif.trim());
+		d.setDelaiDecisionMinutes(minutesDepuisTentative(d, maintenant));
 		PresenceDemandeManuelle saved = demandeRepository.save(d);
 		eventPublisher.notifier(adresse(saved.getCollaborateurCompteId(), saved.getCollaborateurId()),
 				"Pointage manuel refusé — " + saved.getNumero(),
 				"Votre pointage manuel " + saved.getNumero() + " (" + libelleType(saved.getType()) + " du " + HEURE.format(saved.getHeureDeclaree())
 						+ ") a été refusé par " + decideur + ". Motif : " + saved.getMotifRefus(),
 				objetManuel(saved, "POINTAGE_MANUEL_REFUSE"));
-		return toResponses(List.of(saved), null, d0 -> null).get(0);
+		return mapper.versReponse(saved, v.identite(), Vue.DECIDEUR, null);
+	}
+
+	/** Demande relue sous verrou et nom du décideur autorisé. */
+	private record Verrouillee(PresenceDemandeManuelle demande, String decideur, Affectation identite) {
+	}
+
+	/**
+	 * Autorise l'appelant (404, 403) sur une lecture simple, puis prend le verrou et relit la demande sous verrou :
+	 * expirée (statut ou échéance atteinte) : EXPIREE enregistré puis 409 DEMANDE_EXPIREE ; autre statut final : 409
+	 * DEMANDE_DEJA_TRAITEE. L'autorisation précède le verrou pour ne pas le garder pendant les appels au référentiel ;
+	 * la première lecture est détachée pour que la relecture sous verrou ne ressorte pas un état périmé.
+	 */
+	private Verrouillee verrouillerPourDecision(UUID id) {
+		PresenceDemandeManuelle apercu = demandeRepository.findById(id)
+				.orElseThrow(() -> PresenceMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable"));
+		String decideur = autoriserDecision(apercu);
+		// Identité résolue ici, avant le verrou : aucun appel HTTP ne doit avoir lieu pendant le FOR UPDATE.
+		Affectation identite = mapper.identites(List.of(apercu)).get(apercu.getCollaborateurId());
+		entityManager.detach(apercu);
+
+		PresenceDemandeManuelle d = demandeRepository.findByIdPourDecision(id)
+				.orElseThrow(() -> PresenceMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable"));
+		Instant maintenant = clock.instant();
+		if (d.getStatut() == StatutDemandeManuelle.EN_ATTENTE && estEchue(d, maintenant)) {
+			passerEnExpiree(d);
+		}
+		if (d.getStatut() == StatutDemandeManuelle.EXPIREE) {
+			throw PresenceMetierException.conflict("DEMANDE_EXPIREE", "Cette demande a expiré le "
+					+ (d.getEcheance() != null ? LibellesPresence.jourHeure(d.getEcheance()) : "—")
+					+ " : elle ne peut plus être validée ni refusée.");
+		}
+		if (d.getStatut() != StatutDemandeManuelle.EN_ATTENTE) {
+			throw PresenceMetierException.conflict("DEMANDE_DEJA_TRAITEE", "Cette demande a déjà été traitée");
+		}
+		return new Verrouillee(d, decideur, identite);
+	}
+
+	/**
+	 * Commentaire du valideur (D-P24.b), compté après suppression des espaces de bord : obligatoire si la demande porte
+	 * un signal (RH et ADMIN compris), de 10 à 500 caractères quand il est fourni, avec ou sans signal.
+	 */
+	private static String validerCommentaire(PresenceDemandeManuelle d, String commentaire) {
+		String c = commentaire == null ? "" : commentaire.trim();
+		if (c.isEmpty()) {
+			if (!d.getSignaux().isEmpty()) {
+				throw PresenceMetierException.badRequest("COMMENTAIRE_OBLIGATOIRE",
+						"Un commentaire est obligatoire pour valider une demande signalée.");
+			}
+			return null;
+		}
+		if (c.length() < COMMENTAIRE_MIN) {
+			throw PresenceMetierException.badRequest("COMMENTAIRE_TROP_COURT",
+					"Le commentaire doit faire au moins " + COMMENTAIRE_MIN + " caractères.");
+		}
+		if (c.length() > COMMENTAIRE_MAX) {
+			throw PresenceMetierException.badRequest("COMMENTAIRE_TROP_LONG",
+					"Le commentaire ne peut pas dépasser " + COMMENTAIRE_MAX + " caractères.");
+		}
+		return c;
+	}
+
+	private static boolean estEchue(PresenceDemandeManuelle d, Instant maintenant) {
+		return d.getEcheance() != null && !maintenant.isBefore(d.getEcheance());
+	}
+
+	private static long minutesDepuisTentative(PresenceDemandeManuelle d, Instant maintenant) {
+		return Math.max(0, Duration.between(d.getHeureDeclaree(), maintenant).toMinutes());
+	}
+
+	// ---- Expiration (D-P23.b) ------------------------------------------------------------------------------------
+
+	/** Demandes en attente dont l'échéance est atteinte (lues par le planificateur). */
+	@Transactional(readOnly = true)
+	public List<UUID> idsAExpirer() {
+		return demandeRepository.idsEchues(clock.instant());
+	}
+
+	/**
+	 * Une transaction par demande, idempotent : sous verrou, une demande déjà décidée ou déjà expirée n'est pas touchée,
+	 * et une échéance non atteinte non plus.
+	 */
+	@Transactional
+	public boolean expirer(UUID id) {
+		PresenceDemandeManuelle d = demandeRepository.findByIdPourDecision(id).orElse(null);
+		if (d == null || d.getStatut() != StatutDemandeManuelle.EN_ATTENTE || !estEchue(d, clock.instant())) {
+			return false;
+		}
+		passerEnExpiree(d);
+		return true;
+	}
+
+	/** Statut EXPIREE, sans pointage créé ; le collaborateur et le valideur figé (ou les RH) sont notifiés (D-P23.c). */
+	private void passerEnExpiree(PresenceDemandeManuelle d) {
+		d.setStatut(StatutDemandeManuelle.EXPIREE);
+		PresenceDemandeManuelle saved = demandeRepository.save(d);
+		String libelle = libelleType(saved.getType());
+		String tentative = LibellesPresence.jourHeure(saved.getHeureDeclaree());
+		String echeance = saved.getEcheance() != null ? LibellesPresence.jourHeure(saved.getEcheance()) : "—";
+		ObjetNotification objet = objetManuel(saved, "POINTAGE_MANUEL_EXPIRE");
+		eventPublisher.notifier(adresse(saved.getCollaborateurCompteId(), saved.getCollaborateurId()),
+				"Pointage manuel expiré — " + saved.getNumero(),
+				"Votre pointage manuel " + saved.getNumero() + " n'a pas été traité à temps et a expiré. "
+						+ "Contactez votre responsable ou les RH.",
+				objet);
+		eventPublisher.notifier(
+				saved.validationParRh() ? PresenceEventPublisher.DESTINATAIRE_RH : adresse(saved.getValideurCompteId(), saved.getValideurId()),
+				"Pointage manuel expiré — " + nom(saved) + " (" + saved.getNumero() + ")",
+				"La demande de pointage manuel " + saved.getNumero() + " de " + nom(saved) + " (" + libelle + " du " + tentative
+						+ ") a expiré le " + echeance + " sans décision. Aucun pointage n'a été enregistré.",
+				objet);
+		log.info("Demande pointage manuel {} expirée collab={}", saved.getNumero(), saved.getCollaborateurId());
+	}
+
+	// ---- Outils --------------------------------------------------------------------------------------------------
+
+	private static ObjetNotification objetManuel(PresenceDemandeManuelle d, String evenement) {
+		return ObjetNotification.de(ObjetNotification.POINTAGE_MANUEL, evenement, d.getId(), d.getNumero());
 	}
 
 	/**
@@ -420,96 +634,8 @@ public class PresenceDemandeManuelleService {
 		return moi.collaborateurNom() != null ? moi.collaborateurNom() : "votre responsable";
 	}
 
-	private PresenceDemandeManuelle exigerEnAttente(UUID id) {
-		PresenceDemandeManuelle d = demandeRepository.findById(id)
-				.orElseThrow(() -> PresenceMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable"));
-		if (d.getStatut() != StatutDemandeManuelle.EN_ATTENTE) {
-			throw PresenceMetierException.conflict("DEMANDE_DEJA_TRAITEE", "Cette demande a déjà été traitée");
-		}
-		return d;
-	}
-
-	long manuelsDuMois(String collaborateurId, Instant reference) {
-		ZonedDateTime debut = reference.atZone(ZONE).withDayOfMonth(1).truncatedTo(ChronoUnit.DAYS);
-		return demandeRepository.compterValideesSurPeriode(
-				collaborateurId, debut.toInstant(), debut.plusMonths(1).toInstant());
-	}
-
 	private String motifRejet(PresenceDemandeManuelle d) {
 		return pointageRepository.findById(d.getPointageRejeteId()).map(PresencePointage::getMotifRejet).orElse(null);
-	}
-
-	/**
-	 * Réponses par lot : noms et matricules résolus par le serveur (D-L01.a). Référentiel injoignable : on garde les
-	 * noms figés à la création et le matricule reste absent, sans jamais exposer d'identifiant.
-	 */
-	private List<DemandeManuelleResponse> toResponses(List<PresenceDemandeManuelle> demandes,
-			Function<PresenceDemandeManuelle, Long> duMois,
-			Function<PresenceDemandeManuelle, String> motifRejet) {
-		Map<String, Affectation> identites = identites(demandes);
-		return demandes.stream()
-				.map(d -> toResponse(d, identites.get(d.getCollaborateurId()),
-						duMois == null ? null : duMois.apply(d), motifRejet.apply(d)))
-				.toList();
-	}
-
-	private DemandeManuelleResponse toResponse(PresenceDemandeManuelle d, Affectation identite, Long duMois,
-			String motifRejet) {
-		String nom = d.getCollaborateurNom() != null ? d.getCollaborateurNom()
-				: identite != null && identite.nom() != null ? identite.nom() : "Collaborateur introuvable";
-		return new DemandeManuelleResponse(
-				d.getId(),
-				d.getNumero(),
-				d.getStatut(),
-				d.getType(),
-				d.getHeureDeclaree(),
-				d.getJustification(),
-				d.getCollaborateurId(),
-				nom,
-				identite != null ? identite.matricule() : null,
-				d.getSiteId(),
-				d.getPointageRejeteId(),
-				motifRejet,
-				d.getValideurNom(),
-				d.validationParRh(),
-				d.getDecidePar(),
-				d.getDecideLe(),
-				d.getMotifRefus(),
-				d.getPointageId(),
-				d.getCreeLe(),
-				duMois,
-				duMois != null ? duMois > properties.getManuel().getSeuilAlerteMois() : null);
-	}
-
-	/** Identités (matricule, nom) des collaborateurs des demandes, indexées par l'identifiant stocké (fiche ou compte). */
-	private Map<String, Affectation> identites(List<PresenceDemandeManuelle> demandes) {
-		List<UUID> ids = demandes.stream().map(PresenceDemandeManuelle::getCollaborateurId).distinct()
-				.map(PresenceDemandeManuelleService::uuidOuNull).filter(Objects::nonNull).toList();
-		Map<String, Affectation> resultat = new HashMap<>();
-		if (ids.isEmpty()) {
-			return resultat;
-		}
-		try {
-			for (Affectation a : referentielClient.affectations(ids)) {
-				if (a.collaborateurId() != null) {
-					resultat.put(a.collaborateurId().toString(), a);
-				}
-				if (a.compteId() != null) {
-					resultat.put(a.compteId().toString(), a);
-				}
-			}
-		} catch (RuntimeException ex) {
-			log.warn("Identités des demandes manuelles non résolues : {}", ex.getMessage());
-		}
-		return resultat;
-	}
-
-	private static UUID uuidOuNull(String valeur) {
-		try {
-			return valeur == null ? null : UUID.fromString(valeur);
-		} catch (IllegalArgumentException ex) {
-			return null;
-		}
 	}
 
 	/** Le pointage a pu être enregistré sous l'identifiant de fiche (en-tête) ou de compte (JWT). */
@@ -533,13 +659,5 @@ public class PresenceDemandeManuelleService {
 
 	private static String texte(UUID id) {
 		return id != null ? id.toString() : null;
-	}
-
-	private static PointageType parseType(String raw) {
-		try {
-			return PointageType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
-		} catch (IllegalArgumentException e) {
-			throw PresenceMetierException.unprocessable("TYPE_INVALIDE", "type doit être ENTREE ou SORTIE");
-		}
 	}
 }

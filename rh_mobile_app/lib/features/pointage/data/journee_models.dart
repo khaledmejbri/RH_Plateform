@@ -29,8 +29,11 @@ class PointageJournee {
   final bool manuel;
   final String? motifRejet;
 
-  /// Calculé par le serveur (D-P04 / D-P12.a) : le mobile ne recode pas la règle.
-  final bool eligiblePointageManuel;
+  /// D-P22.a : décision du serveur (le mobile ne recode pas la règle). Champ absent = pas de bouton.
+  final bool manuelPossible;
+
+  /// Raison en clair quand le refus n'est pas rattrapable (affichée à la place du bouton).
+  final String? manuelImpossibleMotif;
 
   const PointageJournee({
     required this.id,
@@ -41,7 +44,8 @@ class PointageJournee {
     this.serverTs,
     this.manuel = false,
     this.motifRejet,
-    this.eligiblePointageManuel = false,
+    this.manuelPossible = false,
+    this.manuelImpossibleMotif,
   });
 
   factory PointageJournee.fromJson(Map<String, dynamic> json) {
@@ -54,7 +58,8 @@ class PointageJournee {
       serverTs: _date(json['server_ts']),
       manuel: json['manuel'] == true,
       motifRejet: _texte(json['motif_rejet']),
-      eligiblePointageManuel: json['eligible_pointage_manuel'] == true,
+      manuelPossible: json['manuel_possible'] == true,
+      manuelImpossibleMotif: _texte(json['manuel_impossible_motif']),
     );
   }
 
@@ -198,15 +203,13 @@ class PresenceEquipe {
 }
 
 /// Détail d'un pointage manuel (C5) : la demande plus le contexte du refus automatique.
+/// Signaux, distance, compteurs et délais sont portés par [demande] (absents pour le demandeur, D-P24.d).
 class DemandeManuelleDetail {
   final DemandeManuelle demande;
   final String? siteLibelle;
   final String? uniteLibelle;
   final String? valideurNom;
   final String? motifRejetAutomatique;
-  final double? distanceMetres;
-  final int? manuelsDuMois;
-  final int? seuilMois;
 
   const DemandeManuelleDetail({
     required this.demande,
@@ -214,15 +217,11 @@ class DemandeManuelleDetail {
     this.uniteLibelle,
     this.valideurNom,
     this.motifRejetAutomatique,
-    this.distanceMetres,
-    this.manuelsDuMois,
-    this.seuilMois,
   });
 
   factory DemandeManuelleDetail.fromJson(Map<String, dynamic> json) {
     final v = json['valideur'];
     final p = json['pointage_rejete'];
-    final distance = p is Map ? p['distance_metres'] : null;
     return DemandeManuelleDetail(
       demande: DemandeManuelle.fromJson(json),
       siteLibelle: _texte(json['site_libelle']),
@@ -231,9 +230,6 @@ class DemandeManuelleDetail {
       motifRejetAutomatique: p is Map
           ? messageMotifPointage(_texte(p['statut']), motifServeur: _texte(p['motif_rejet']))
           : null,
-      distanceMetres: distance is num ? distance.toDouble() : null,
-      manuelsDuMois: _entier(json['manuels_du_mois']),
-      seuilMois: _entier(json['seuil_mois']),
     );
   }
 

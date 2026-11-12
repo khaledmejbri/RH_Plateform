@@ -1,4 +1,3 @@
-import '../../../core/widgets/confirmation_action.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -7,7 +6,9 @@ import '../../../core/theme/app_theme.dart';
 import '../data/presence_errors.dart';
 import '../data/presence_models.dart';
 import '../data/presence_repository.dart';
+import '../data/demande_manuelle_textes.dart';
 import 'motif_refus_dialog.dart';
+import 'validation_manuelle_dialog.dart';
 
 final _mesDemandesProvider = FutureProvider.autoDispose<List<DemandeManuelle>>((ref) {
   return ref.watch(presenceRepositoryProvider).mesDemandesManuelles();
@@ -150,14 +151,17 @@ class _DemandeCardState extends ConsumerState<_DemandeCard> {
 
   Future<void> _valider() async {
     final d = widget.demande;
-    final ok = await confirmerAction(
-      context,
-      action: 'Valider ce pointage manuel ?',
-      element: _libelleElement(d),
-      libelleConfirmer: 'Valider',
+    final commentaire = await showDialog<String>(
+      context: context,
+      builder: (_) => ValidationManuelleDialog(
+        element: _libelleElement(d),
+        avecSignal: d.avecSignal,
+        signaux: d.signaux,
+      ),
     );
-    if (!ok || !mounted) return;
-    await _decider(() => ref.read(presenceRepositoryProvider).validerDemandeManuelle(widget.demande.id),
+    if (commentaire == null || !mounted) return;
+    await _decider(
+        () => ref.read(presenceRepositoryProvider).validerDemandeManuelle(d.id, commentaire: commentaire),
         'Pointage manuel validé.');
   }
 
@@ -184,6 +188,8 @@ class _DemandeCardState extends ConsumerState<_DemandeCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(messageErreurPresence(e)), backgroundColor: AppTheme.error),
       );
+      // 409 DEMANDE_EXPIREE : la liste est rafraîchie, la demande passe en « Expirée ».
+      if (codeErreurPresence(e) == 'DEMANDE_EXPIREE') widget.onDecision?.call();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -194,7 +200,7 @@ class _DemandeCardState extends ConsumerState<_DemandeCard> {
     final d = widget.demande;
     final (fond, texte) = switch (d.statut) {
       'VALIDEE' => (AppTheme.successSurface, AppTheme.success),
-      'REFUSEE' => (AppTheme.errorSurface, AppTheme.errorDark),
+      'REFUSEE' || 'EXPIREE' => (AppTheme.errorSurface, AppTheme.errorDark),
       _ => (AppTheme.warningSurface, AppTheme.warning),
     };
     return Container(
@@ -224,6 +230,10 @@ class _DemandeCardState extends ConsumerState<_DemandeCard> {
               ),
             ],
           ),
+          if (widget.vueResponsable && d.avecSignal) ...[
+            const SizedBox(height: 6),
+            const PastilleVigilance(),
+          ],
           if (widget.vueResponsable) ...[
             const SizedBox(height: 4),
             Text(
@@ -238,12 +248,19 @@ class _DemandeCardState extends ConsumerState<_DemandeCard> {
             Text('Refus automatique : ${d.motifRejetInitial}',
                 style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
           ],
+          if (widget.vueResponsable)
+            for (final (libelle, valeur) in lignesInfosValideur(d))
+              Text('$libelle : $valeur', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+          if (libelleEcheance(d) != null)
+            Text(libelleEcheance(d)!, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
           const SizedBox(height: 6),
           if (!widget.vueResponsable)
             Text(
               d.enAttente
                   ? 'En attente de validation par ${d.valideurLibelle}.'
-                  : (d.validee ? 'Validée par ${d.decidePar ?? d.valideurLibelle}.' : 'Refusée par ${d.decidePar ?? d.valideurLibelle} : ${d.motifRefus ?? ''}'),
+                  : d.expiree
+                      ? 'Demande expirée : elle ne peut plus être validée ni refusée.'
+                      : (d.validee ? 'Validée par ${d.decidePar ?? d.valideurLibelle}.' : 'Refusée par ${d.decidePar ?? d.valideurLibelle} : ${d.motifRefus ?? ''}'),
               style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
           if (widget.vueResponsable && d.enAttente) ...[

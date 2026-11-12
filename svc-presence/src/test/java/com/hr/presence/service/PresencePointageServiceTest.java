@@ -48,6 +48,8 @@ class PresencePointageServiceTest {
 	private com.hr.presence.client.ReferentielClient referentielClient;
 	@Mock
 	private AlerteEchecsPointageService alerteEchecs;
+	@Mock
+	private EligibiliteManuelLecture eligibiliteManuel;
 
 	private QrTokenService qrTokenService;
 	private QrDynamiqueService qrDynamique;
@@ -80,6 +82,7 @@ class PresencePointageServiceTest {
 				fenetreHoraire,
 				referentielClient,
 				alerteEchecs,
+				eligibiliteManuel,
 				java.time.Clock.systemUTC());
 
 		now = Instant.now();
@@ -650,5 +653,103 @@ class PresencePointageServiceTest {
 				any(org.springframework.data.domain.Pageable.class));
 		// le filtre s'élargit au compte du collaborateur (lignes anciennes), le référentiel est interrogé une fois
 		verify(referentielClient).affectations(java.util.List.of(collab));
+	}
+
+	// ---- D-P20 : l'alerte d'échecs est bien appelée depuis le service de pointage (dette connue) ----
+
+	@Test
+	void refusHorsZone_appelleLAlerteDEchecsAvecLeRefusEnregistre() {
+		when(qrRepository.findByJti(credential.getJti())).thenReturn(Optional.of(credential));
+		when(siteRepository.findById(site.getId())).thenReturn(Optional.of(site));
+		double latFar = 36.8065 + (55.0 / 111_320.0);
+
+		pointageService.pointer("collab-1", new CreatePointageRequest(
+				validToken, "ENTREE", latFar, 10.1815, 10.0, now, null, null, null));
+
+		ArgumentCaptor<PresencePointage> refus = ArgumentCaptor.forClass(PresencePointage.class);
+		verify(alerteEchecs).apresRefus(refus.capture());
+		assertThat(refus.getValue().getStatut()).isEqualTo(PointageStatut.REJETE_HORS_ZONE);
+		assertThat(refus.getValue().getCollaborateurId()).isEqualTo("collab-1");
+	}
+
+	@Test
+	void pointageValide_nAppellePasLAlerteDEchecs() {
+		when(qrRepository.findByJti(credential.getJti())).thenReturn(Optional.of(credential));
+		when(siteRepository.findById(site.getId())).thenReturn(Optional.of(site));
+
+		pointageService.pointer("collab-1", new CreatePointageRequest(
+				validToken, "ENTREE", 36.8065, 10.1815, 10.0, now, null, null, null));
+
+		org.mockito.Mockito.verifyNoInteractions(alerteEchecs);
+	}
+
+	// ---- D-P22.a : manuel_possible / manuel_impossible_motif ----
+
+	@Test
+	void refus_porteLEligibiliteAuPointageManuelCalculeeParLeServeur() {
+		when(qrRepository.findByJti(credential.getJti())).thenReturn(Optional.of(credential));
+		when(siteRepository.findById(site.getId())).thenReturn(Optional.of(site));
+		when(eligibiliteManuel.pour(any())).thenAnswer(inv -> {
+			java.util.Collection<PresencePointage> l = inv.getArgument(0);
+			return java.util.Map.of(l.iterator().next().getId(), new EligibiliteManuelLecture.Etat(true, null));
+		});
+		double latFar = 36.8065 + (55.0 / 111_320.0);
+
+		PointageResponse resp = pointageService.pointer("collab-1", new CreatePointageRequest(
+				validToken, "ENTREE", latFar, 10.1815, 10.0, now, null, null, null));
+
+		assertThat(resp.manuelPossible()).isTrue();
+		assertThat(resp.manuelImpossibleMotif()).isNull();
+	}
+
+	@Test
+	void refusNonRattrapable_porteLeMotifEnClair() {
+		when(eligibiliteManuel.pour(any())).thenAnswer(inv -> {
+			java.util.Collection<PresencePointage> l = inv.getArgument(0);
+			return java.util.Map.of(l.iterator().next().getId(),
+					new EligibiliteManuelLecture.Etat(false, "code QR non reconnu, pointez avec le code QR du site"));
+		});
+
+		PointageResponse resp = pointageService.pointer("collab-1", new CreatePointageRequest(
+				"p1.abc.def", "ENTREE", 36.8065, 10.1815, 10.0, now, null, null, null));
+
+		assertThat(resp.manuelPossible()).isFalse();
+		assertThat(resp.manuelImpossibleMotif()).contains("code QR non reconnu");
+	}
+
+	@Test
+	void pointageValide_neporteNiPossibleNiMotif() {
+		when(qrRepository.findByJti(credential.getJti())).thenReturn(Optional.of(credential));
+		when(siteRepository.findById(site.getId())).thenReturn(Optional.of(site));
+
+		PointageResponse resp = pointageService.pointer("collab-1", new CreatePointageRequest(
+				validToken, "ENTREE", 36.8065, 10.1815, 10.0, now, null, null, null));
+
+		assertThat(resp.manuelPossible()).isNull();
+		assertThat(resp.manuelImpossibleMotif()).isNull();
+	}
+
+	@Test
+	void historique_ajouteLEligibiliteAuxSeulsRefus() {
+		PresencePointage refus = new PresencePointage();
+		refus.setId(UUID.randomUUID());
+		refus.setStatut(PointageStatut.REJETE_HORS_ZONE);
+		refus.setType(com.hr.presence.domain.PointageType.ENTREE);
+		refus.setServerTs(now);
+		PresencePointage valide = new PresencePointage();
+		valide.setId(UUID.randomUUID());
+		valide.setStatut(PointageStatut.VALIDE);
+		valide.setType(com.hr.presence.domain.PointageType.SORTIE);
+		valide.setServerTs(now);
+		when(pointageRepository.findByCollaborateurIdOrderByServerTsDesc(any(), any()))
+				.thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(refus, valide)));
+		when(eligibiliteManuel.pour(any())).thenReturn(java.util.Map.of(refus.getId(),
+				new EligibiliteManuelLecture.Etat(false, "délai de demande dépassé (2 heures après le pointage refusé du 10/11 à 08:02)")));
+
+		var page = pointageService.historiqueMoi("collab-1", 0, 20);
+
+		assertThat(page.content().get(0).manuelPossible()).isFalse();
+		assertThat(page.content().get(0).manuelImpossibleMotif()).startsWith("délai de demande dépassé");
+		assertThat(page.content().get(1).manuelPossible()).isNull();
 	}
 }
