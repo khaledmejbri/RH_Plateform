@@ -12,10 +12,12 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.function.Function;
 
 /**
- * Libellés français des statuts et motifs de pointage (D-L01.b) : aucun code brut n'arrive à l'écran. En attendant la
- * table de libellés paramétrable du lot 3, la correspondance est ici, à un seul endroit.
+ * Libellés français d'origine des statuts et motifs de pointage (D-L01.b) : aucun code brut n'arrive à l'écran.
+ * Les libellés servis viennent des paramètres ({@link PresenceParametresService}, D-R02) ; cette classe ne sert que
+ * de valeur d'amorçage et de repli quand la ligne de paramètre est absente ou la base indisponible.
  */
 public final class LibellesPresence {
 
@@ -45,6 +47,7 @@ public final class LibellesPresence {
 		return type == PointageType.SORTIE ? "Sortie" : "Entrée";
 	}
 
+	/** Libellé d'origine d'un statut de demande manuelle (amorçage et repli). */
 	public static String statutDemande(StatutDemandeManuelle statut) {
 		return switch (statut) {
 			case EN_ATTENTE -> "En attente";
@@ -57,9 +60,9 @@ public final class LibellesPresence {
 	/**
 	 * Motif d'un pointage refusé, en clair. Hors zone : distance et rayon du site (« Hors zone de pointage
 	 * (179,8 m pour une zone de 50 m) ») ; sinon le motif enregistré, à défaut le libellé du statut. Nul pour un
-	 * pointage accepté.
+	 * pointage accepté. {@code libelleStatut} donne le libellé courant du statut (paramètres D-R02).
 	 */
-	public static String motifRejet(PresencePointage p, PresenceSite site) {
+	public static String motifRejet(PresencePointage p, PresenceSite site, Function<PointageStatut, String> libelleStatut) {
 		if (p.getStatut() == null || !p.getStatut().name().startsWith("REJETE_")) {
 			return null;
 		}
@@ -71,7 +74,7 @@ public final class LibellesPresence {
 		if (p.getMotifRejet() != null && !p.getMotifRejet().isBlank()) {
 			return p.getMotifRejet();
 		}
-		return statut(p.getStatut());
+		return libelleStatut.apply(p.getStatut());
 	}
 
 	private static final ZoneId ZONE = ZoneId.of("Africa/Tunis");

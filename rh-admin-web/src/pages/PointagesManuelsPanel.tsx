@@ -46,7 +46,7 @@ function StatutBadge({ statut }: { statut: StatutDemandeManuelle }) {
 
 /**
  * Onglet RH « Pointages manuels » (D-P04 — SCRUM-38) : toutes les demandes, compteur mensuel par
- * collaborateur avec alerte au-delà de 3, décision RH quand aucun responsable n'est trouvé.
+ * collaborateur avec alerte au-delà du seuil (réglable dans Paramètres), décision RH quand aucun responsable n'est trouvé.
  */
 export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: boolean }) {
   useParametres();

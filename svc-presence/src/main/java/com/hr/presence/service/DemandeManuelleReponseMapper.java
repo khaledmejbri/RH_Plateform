@@ -90,7 +90,7 @@ public class DemandeManuelleReponseMapper {
 				d.getPointageRejeteId(), motifRejet, d.getValideurNom(), d.validationParRh(), d.getDecidePar(),
 				d.getDecideLe(), d.getMotifRefus(), d.getPointageId(), d.getCreeLe(),
 				duMois, duMois != null ? duMois > seuil : null,
-				LibellesPresence.statutDemande(d.getStatut()),
+				parametres.libelleStatutDemande(d.getStatut()),
 				d.getRefusStatut(), libelleRefus(d.getRefusStatut()),
 				d.getDistanceMetres(), d.getPrecisionMetres(), d.getRayonMetres(),
 				d.getModeQr(), LibellesPresence.modeQr(d.getModeQr()),
@@ -124,15 +124,8 @@ public class DemandeManuelleReponseMapper {
 				jour.atStartOfDay(ZONE).toInstant(), jour.plusDays(1).atStartOfDay(ZONE).toInstant());
 	}
 
-	private static String libelleRefus(String code) {
-		if (code == null) {
-			return null;
-		}
-		try {
-			return LibellesPresence.statut(com.hr.presence.domain.PointageStatut.valueOf(code));
-		} catch (IllegalArgumentException ex) {
-			return code;
-		}
+	private String libelleRefus(String code) {
+		return parametres.libelleStatutPointage(code);
 	}
 
 	/** Signaux en clair, rédigés d'après les valeurs figées (D-P24.a) ; liste vide si aucun. */

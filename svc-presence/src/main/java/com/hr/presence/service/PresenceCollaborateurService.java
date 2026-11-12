@@ -360,7 +360,7 @@ public class PresenceCollaborateurService {
 		boolean eligible = manuel != null && manuel.possible();
 		return new PointageJournee(p.getId(), p.getType(), LibellesPresence.type(p.getType()), p.getStatut(),
 				parametres.libelleStatutPointage(p.getStatut()), p.getServerTs(), TempsTravailCalcul.estManuel(p),
-				LibellesPresence.motifRejet(p, site), eligible,
+				parametres.motifRejet(p, site), eligible,
 				manuel != null ? manuel.possible() : null, manuel != null ? manuel.motif() : null);
 	}
 }

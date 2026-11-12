@@ -46,13 +46,16 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 	private final PresenceParametreValeurRepository valeurRepository;
 	private final PresenceParametresRepository parametresRepository;
 	private final PresenceProperties properties;
+	private final PresenceParametresService parametresService;
 
 	public ParametresAmorceRunner(PresenceParametreValeurRepository valeurRepository,
 								  PresenceParametresRepository parametresRepository,
-								  PresenceProperties properties) {
+								  PresenceProperties properties,
+								  PresenceParametresService parametresService) {
 		this.valeurRepository = valeurRepository;
 		this.parametresRepository = parametresRepository;
 		this.properties = properties;
+		this.parametresService = parametresService;
 	}
 
 	@Override
@@ -68,6 +71,9 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 					ParametresAmorceRunner::libelleStatut, code -> null, ParametresAmorceRunner::couleurStatut);
 		} catch (RuntimeException ex) {
 			log.warn("Amorçage des paramètres de présence incomplet : {}", ex.getMessage());
+		} finally {
+			// la reprise des demandes (SmartInitializingSingleton) a pu lire un instantané antérieur à l'amorçage
+			parametresService.invaliderApresCommit();
 		}
 	}
 
@@ -170,8 +176,14 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 		return java.util.Arrays.stream(valeurs).map(Enum::name).toList();
 	}
 
+	/** Ramène la valeur initiale dans les bornes du réglage ; un écart est signalé en WARN (D-P22.b). */
 	private static int borne(ReglagePresence r, int valeur) {
-		return Math.clamp(valeur, r.min(), r.max());
+		int bornee = Math.clamp(valeur, r.min(), r.max());
+		if (bornee != valeur) {
+			log.warn("Valeur initiale {} du réglage {} hors des bornes [{} ; {}] : ramenée à {}",
+					valeur, r, r.min(), r.max(), bornee);
+		}
+		return bornee;
 	}
 
 	static String normaliser(String libelle) {

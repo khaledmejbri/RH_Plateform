@@ -372,12 +372,12 @@ public class PresenceDemandeManuelleService {
 		Affectation identite = mapper.identites(List.of(d)).get(d.getCollaborateurId());
 		PresencePointage rejet = pointageRepository.findById(d.getPointageRejeteId()).orElse(null);
 		PresenceSite site = d.getSiteId() != null ? siteRepository.findById(d.getSiteId()).orElse(null) : null;
-		String motif = rejet != null ? LibellesPresence.motifRejet(rejet, site) : null;
+		String motif = rejet != null ? parametres.motifRejet(rejet, site) : null;
 		DemandeManuelleResponse base = mapper.versReponse(d, identite, vue, motif);
 		PresenceCollaborateurDtos.PersonneResume valideur = d.validationParRh() ? null
 				: new PresenceCollaborateurDtos.PersonneResume(d.getValideurId(), d.getValideurNom(), null);
 		DemandeManuelleDetail.PointageRejeteResume refus = rejet == null ? null
-				: new DemandeManuelleDetail.PointageRejeteResume(rejet.getStatut(), LibellesPresence.statut(rejet.getStatut()),
+				: new DemandeManuelleDetail.PointageRejeteResume(rejet.getStatut(), parametres.libelleStatutPointage(rejet.getStatut()),
 				motif, rejet.getDistanceMetres(), rejet.getServerTs());
 		return new DemandeManuelleDetail(base, site != null ? site.getLibelle() : null,
 				identite != null ? identite.uniteAffichee() : null, valideur, refus);

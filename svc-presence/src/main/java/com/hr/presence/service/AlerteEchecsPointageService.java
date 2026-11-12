@@ -49,6 +49,7 @@ public class AlerteEchecsPointageService {
 	private final ReferentielClient referentielClient;
 	private final PresenceEventPublisher eventPublisher;
 	private final PresenceProperties properties;
+	private final PresenceParametresService parametres;
 	private final Clock clock;
 
 	public AlerteEchecsPointageService(
@@ -57,12 +58,14 @@ public class AlerteEchecsPointageService {
 			ReferentielClient referentielClient,
 			PresenceEventPublisher eventPublisher,
 			PresenceProperties properties,
+			PresenceParametresService parametres,
 			Clock clock) {
 		this.pointageRepository = pointageRepository;
 		this.siteRepository = siteRepository;
 		this.referentielClient = referentielClient;
 		this.eventPublisher = eventPublisher;
 		this.properties = properties;
+		this.parametres = parametres;
 		this.clock = clock;
 	}
 
@@ -112,7 +115,7 @@ public class AlerteEchecsPointageService {
 		String qui = nom != null && !nom.isBlank() ? nom : "Un collaborateur";
 
 		PresenceSite site = refus.getSiteId() == null ? null : siteRepository.findById(refus.getSiteId()).orElse(null);
-		String motif = LibellesPresence.motifRejet(refus, site);
+		String motif = parametres.motifRejet(refus, site);
 		String surSite = site != null ? " sur le site « " + site.getLibelle() + " »" : "";
 		String corps = qui + " a eu " + total + " pointages refusés aujourd'hui. Dernier refus à "
 				+ HEURE.format(refus.getServerTs().atZone(zone)) + surSite + " : " + enMinuscule(motif)

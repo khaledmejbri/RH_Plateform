@@ -35,7 +35,8 @@ class ParametresAmorceRunnerTest {
 		reglages = mock(PresenceParametresRepository.class);
 		props = new PresenceProperties();
 		when(valeurs.findByReferentielOrderByOrdreAscCodeAsc(any())).thenReturn(List.of());
-		runner = new ParametresAmorceRunner(valeurs, reglages, props);
+		runner = new ParametresAmorceRunner(valeurs, reglages, props,
+				com.hr.presence.service.ParametresTestSupport.depuis(props));
 	}
 
 	@Test

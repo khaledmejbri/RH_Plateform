@@ -4,9 +4,12 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.hr.presence.config.PresenceProperties;
 import com.hr.presence.domain.PointageStatut;
+import com.hr.presence.domain.StatutDemandeManuelle;
 import com.hr.presence.domain.TypeLieu;
 import com.hr.presence.dto.ParametresDtos.ValeurLibelle;
 import com.hr.presence.entity.PresenceParametreValeur;
+import com.hr.presence.entity.PresencePointage;
+import com.hr.presence.entity.PresenceSite;
 import com.hr.presence.entity.PresenceParametres;
 import com.hr.presence.repository.PresenceParametreValeurRepository;
 import com.hr.presence.repository.PresenceParametresRepository;
@@ -40,6 +43,7 @@ public class PresenceParametresService {
 	public static final List<String> REFERENTIELS = List.of(STATUT_POINTAGE, STATUT_DEMANDE_MANUELLE, STATUT_HEURES_SUP);
 
 	private static final String CLE = "instantane";
+	static final String VALEUR_NON_RECONNUE = "Valeur non reconnue";
 
 	/** Réglages en vigueur (valeurs entières déjà résolues, repli sur les propriétés). */
 	public record Reglages(int seuilPointagesManuelsMois, int delaiGraceRetardMinutes, int rayonDefautExterieurMetres,
@@ -175,13 +179,39 @@ public class PresenceParametresService {
 		return typeLieu == TypeLieu.INTERIEUR ? r.rayonDefautInterieurMetres() : r.rayonDefautExterieurMetres();
 	}
 
-	/** Libellé courant d'un statut de pointage ; repli sur le libellé d'origine si la ligne est absente. */
+	/** Libellé courant d'un statut de pointage (valeurs inactives comprises) ; repli sur le libellé d'origine. */
 	public String libelleStatutPointage(PointageStatut statut) {
 		if (statut == null) {
 			return null;
 		}
 		ValeurLibelle v = instantane().valeur(STATUT_POINTAGE, statut.name());
 		return v != null ? v.libelle() : LibellesPresence.statut(statut);
+	}
+
+	/** Idem pour un code stocké en texte (statut du refus figé) ; code inconnu : « Valeur non reconnue » (D-L01). */
+	public String libelleStatutPointage(String code) {
+		if (code == null) {
+			return null;
+		}
+		try {
+			return libelleStatutPointage(PointageStatut.valueOf(code));
+		} catch (IllegalArgumentException ex) {
+			return VALEUR_NON_RECONNUE;
+		}
+	}
+
+	/** Libellé courant d'un statut de demande de pointage manuel ; repli sur le libellé d'origine. */
+	public String libelleStatutDemande(StatutDemandeManuelle statut) {
+		if (statut == null) {
+			return null;
+		}
+		ValeurLibelle v = instantane().valeur(STATUT_DEMANDE_MANUELLE, statut.name());
+		return v != null ? v.libelle() : LibellesPresence.statutDemande(statut);
+	}
+
+	/** Motif d'un pointage refusé, avec le libellé courant du statut en repli. */
+	public String motifRejet(PresencePointage pointage, PresenceSite site) {
+		return LibellesPresence.motifRejet(pointage, site, this::libelleStatutPointage);
 	}
 
 	/** Libellés courants des statuts de pointage, par code (un seul instantané pour toute une page). */

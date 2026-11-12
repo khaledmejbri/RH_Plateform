@@ -198,4 +198,28 @@ class PresenceParametresServiceTest {
 		var r = sites.patch(existant.getId(), new PatchSiteRequest("Ancien renommé", null, null, null, null));
 		assertThat(r.rayonMetres()).isEqualTo(50);
 	}
+
+	@Test
+	void libelleStatutDemande_suitLeParametreMemeInactif_etRetombeSurLOrigine() {
+		PresenceParametreValeur v = new PresenceParametreValeur();
+		v.setCode("EXPIREE");
+		v.setLibelle("Délai dépassé");
+		v.setLibelleNormalise("delai depasse");
+		v.setActif(false);
+		when(valeurs.findByReferentielOrderByOrdreAscCodeAsc(PresenceParametresService.STATUT_DEMANDE_MANUELLE))
+				.thenReturn(List.of(v));
+		PresenceParametresService service = service();
+
+		assertThat(service.libelleStatutDemande(com.hr.presence.domain.StatutDemandeManuelle.EXPIREE)).isEqualTo("Délai dépassé");
+		assertThat(service.libelleStatutDemande(com.hr.presence.domain.StatutDemandeManuelle.VALIDEE)).isEqualTo("Validée");
+	}
+
+	@Test
+	void libelleStatutPointageParCode_codeInconnuDonneValeurNonReconnue() {
+		PresenceParametresService service = service();
+
+		assertThat(service.libelleStatutPointage("REJETE_HORS_ZONE")).isEqualTo("Hors zone de pointage");
+		assertThat(service.libelleStatutPointage("CODE_INCONNU")).isEqualTo("Valeur non reconnue");
+		assertThat(service.libelleStatutPointage((String) null)).isNull();
+	}
 }

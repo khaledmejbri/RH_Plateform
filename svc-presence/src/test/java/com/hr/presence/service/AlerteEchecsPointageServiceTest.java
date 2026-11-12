@@ -59,7 +59,7 @@ class AlerteEchecsPointageServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AlerteEchecsPointageService(pointageRepository, siteRepository, referentielClient,
-				eventPublisher, new PresenceProperties(), Clock.fixed(MAINTENANT, TUNIS));
+				eventPublisher, new PresenceProperties(), ParametresTestSupport.depuis(new PresenceProperties()), Clock.fixed(MAINTENANT, TUNIS));
 		site = new PresenceSite();
 		site.setLibelle("Agence Lac");
 		site.setRayonMetres(50);
