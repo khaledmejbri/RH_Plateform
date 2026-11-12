@@ -50,6 +50,12 @@ void main() {
   });
 
   testWidgets('pièce jointe obligatoire : envoi inactif sans pièce, actif pour un type sans pièce', (tester) async {
+    // La ListView ne construit pas ce qui sort de l'écran : avec le bloc « Justificatif », le bouton
+    // d'envoi passerait hors de la zone construite. Écran haut pour que tout le formulaire soit construit.
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     await tester.pumpWidget(_ecran(typesCongeActifsProvider.overrideWith((ref) async => _types)));
     await tester.pumpAndSettle();
 

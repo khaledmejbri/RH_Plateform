@@ -149,7 +149,7 @@ void main() {
 
     test('tous les types de document désactivés : liste vide, pas d’erreur', () async {
       final t = creer();
-      (t.serveur.referentiel['referentiels'] as Map)['TYPE_DOCUMENT'] = <dynamic>[];
+      ((t.serveur.referentiel['referentiels'] as Map)['TYPE_DOCUMENT'] as List).clear();
       final c = ProviderContainer(overrides: [libellesServiceProvider.overrideWithValue(t.service)]);
       addTearDown(c.dispose);
 
