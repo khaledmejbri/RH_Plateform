@@ -59,6 +59,14 @@ public class EvaluationMetierException extends RuntimeException {
 		return new EvaluationMetierException(code, message, 404);
 	}
 
+	public static EvaluationMetierException methodNotAllowed(String code, String message) {
+		return new EvaluationMetierException(code, message, 405);
+	}
+
+	public static EvaluationMetierException unavailable(String code, String message) {
+		return new EvaluationMetierException(code, message, 503);
+	}
+
 	public static EvaluationMetierException forbidden(String code, String message) {
 		return new EvaluationMetierException(code, message, 403);
 	}

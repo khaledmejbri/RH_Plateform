@@ -8,7 +8,8 @@ import { appartientSelection, correspond, indexerUnites, selectionActive, useFil
 import { DialogPanel } from '../components/useDialogA11y';
 import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge } from '../components/ui';
 import { formatDateHeure, formatPersonne } from '../utils/format';
-import { libelle, libelleConnu } from '../utils/libelles';
+import { libelleConnu } from '../utils/libelles';
+import { libelleReferentiel, optionsFiltre } from '../utils/parametresStore';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 /**
@@ -107,7 +108,7 @@ export default function PlaintesSuiviPage() {
       return;
     }
     const ok = await confirm({
-      message: `Passer la plainte ${edit.numero_ticket} (« ${edit.titre} ») au statut « ${libelle('statut', newStatut)} » ?`,
+      message: `Passer la plainte ${edit.numero_ticket} (« ${edit.titre} ») au statut « ${libelleReferentiel('STATUT_PLAINTE', newStatut)} » ?`,
       confirmLabel: 'Confirmer',
     });
     if (!ok) return;
@@ -126,8 +127,6 @@ export default function PlaintesSuiviPage() {
       setSaving(false);
     }
   }
-
-  const STATUTS_PLAINTE = ['NOUVEAU', 'EN_ANALYSE', 'EN_TRAITEMENT', 'RESOLU', 'FERME'];
 
   return (
     <div className="page">
@@ -160,7 +159,7 @@ export default function PlaintesSuiviPage() {
           libelle="Type"
           valeur={f.type}
           toutesLibelle="Tous les types"
-          options={[{ valeur: 'INTERNE', libelle: 'Interne' }, { valeur: 'EXTERNE', libelle: 'Externe' }]}
+          options={optionsFiltre('TYPE_PLAINTE', rows.map((r) => r.type_plainte))}
           onChange={(v) => filtres.definir({ type: v })}
         />
         <ChampSelect
@@ -170,7 +169,7 @@ export default function PlaintesSuiviPage() {
           toutesLibelle="Tous les statuts"
           options={[
             { valeur: 'OUVERTES', libelle: 'Ouvertes (non fermées)' },
-            ...STATUTS_PLAINTE.map((v) => ({ valeur: v, libelle: libelle('statut', v) })),
+            ...optionsFiltre('STATUT_PLAINTE', rows.map((r) => r.statut)),
           ]}
           onChange={(v) => filtres.definir({ statut: v })}
         />
@@ -227,7 +226,7 @@ export default function PlaintesSuiviPage() {
                         <span className="cell-meta">—</span>
                       )}
                     </td>
-                    <td data-label="Statut"><StatusBadge statut={p.statut} /></td>
+                    <td data-label="Statut"><StatusBadge referentiel="STATUT_PLAINTE" statut={p.statut} /></td>
                     <td data-label="Action" className="cell-actions">
                       <button type="button" className="btn btn--sm btn--secondary" onClick={() => openEdit(p)}>
                         {!lectureSeule && (TRANSITIONS[p.statut]?.length ?? 0) > 0 ? 'Traiter' : 'Voir le détail'}
@@ -258,7 +257,7 @@ export default function PlaintesSuiviPage() {
             <div className="modal__scroll">
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <TypeChip type={edit.type_plainte} />
-                <StatusBadge statut={edit.statut} />
+                <StatusBadge referentiel="STATUT_PLAINTE" statut={edit.statut} />
               </div>
 
               <dl className="detail-grid">
@@ -270,7 +269,7 @@ export default function PlaintesSuiviPage() {
                 {edit.type_plainte === 'EXTERNE' ? (
                   <div>
                     <dt>Validation du responsable</dt>
-                    <dd><StatusBadge statut={VALIDATION_RO[edit.validation_ro ?? '']?.statut ?? 'EN_ATTENTE_VALIDATION'}
+                    <dd><StatusBadge referentiel="STATUT_PLAINTE" statut={VALIDATION_RO[edit.validation_ro ?? '']?.statut ?? 'EN_ATTENTE_VALIDATION'}
                       label={VALIDATION_RO[edit.validation_ro ?? '']?.label ?? '—'} /></dd>
                   </div>
                 ) : null}
@@ -304,11 +303,11 @@ export default function PlaintesSuiviPage() {
               <select id="plaintessuivi-f3" className="field-input" value={newStatut} onChange={(e) => setNewStatut(e.target.value)}
                 aria-describedby="plainte-transition-help">
                 {(TRANSITIONS[edit.statut] ?? []).map((s) => (
-                  <option key={s} value={s}>{libelle('statut', s)}</option>
+                  <option key={s} value={s}>{libelleReferentiel('STATUT_PLAINTE', s)}</option>
                 ))}
               </select>
               <p id="plainte-transition-help" className="cell-meta" style={{ marginTop: -8, marginBottom: 14 }}>
-                Transition : {libelle('statut', edit.statut)} → {libelle('statut', newStatut)}
+                Transition : {libelleReferentiel('STATUT_PLAINTE', edit.statut)} → {libelleReferentiel('STATUT_PLAINTE', newStatut)}
               </p>
 
               <label htmlFor="plaintessuivi-f4" className="field-label">
@@ -339,7 +338,7 @@ export default function PlaintesSuiviPage() {
                     <li key={i}>
                       <strong>
                         {log.action === 'VALIDATION_RO' ? 'Validation du responsable · ' : ''}
-                        {log.ancien_statut ? libelle('statut', log.ancien_statut) : 'Création'} → {libelle('statut', log.nouveau_statut)}
+                        {log.ancien_statut ? libelleReferentiel('STATUT_PLAINTE', log.ancien_statut) : 'Création'} → {libelleReferentiel('STATUT_PLAINTE', log.nouveau_statut)}
                       </strong>
                       <span className="timeline__meta">
                         {log.horodatage ? formatDateHeure(log.horodatage) : ''}

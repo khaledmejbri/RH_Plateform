@@ -5,11 +5,13 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Catalogue fermé niveaux séniorité (aligné référentiel E2).
+ * Normalisation des codes de niveau de séniorité. Le catalogue n'est plus fermé (ADR lot 3 § 3) : la liste des niveaux
+ * est paramétrée au référentiel, qui valide les codes ciblés par un template ({@code POST /internal/referentiel/
+ * parametres/utiliser}). Ne restent ici que les alias historiques (CONFIRMED, LEAD…) et la mise en forme du code.
  */
 public final class NiveauSenioriteCodes {
 
-	public static final Set<String> CATALOGUE = Set.of("JUNIOR", "CONFIRME", "SENIOR", "TEAM_LEAD");
+	public static final Set<String> VALEURS_INITIALES = Set.of("JUNIOR", "CONFIRME", "SENIOR", "TEAM_LEAD");
 
 	private NiveauSenioriteCodes() {
 	}
@@ -24,7 +26,7 @@ public final class NiveauSenioriteCodes {
 			case "CONFIRME", "CONFIRMED" -> Optional.of("CONFIRME");
 			case "SENIOR" -> Optional.of("SENIOR");
 			case "TEAM_LEAD", "TEAMLEAD", "LEAD" -> Optional.of("TEAM_LEAD");
-			default -> Optional.empty();
+			default -> n.matches("[A-Z0-9_]{1,40}") ? Optional.of(n) : Optional.empty();
 		};
 	}
 

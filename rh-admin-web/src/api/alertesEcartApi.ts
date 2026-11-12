@@ -1,40 +1,23 @@
 import { apiFetch, clearToken } from './auth';
 import { parseJson } from './rhClient';
+import { libelle, libelleConnu } from '../utils/libelles';
 
 /** Alertes d'écart d'étoiles (M07, D-E04 à D-E10, SCRUM-55) — contrat : ADR-M07-alertes-ecart § 9.1. */
 const BASE = '/api/rh/v1/admin/evaluations/alertes-ecart';
 
-export type NiveauEcart = 'ALIGNE' | 'ORANGE' | 'ROUGE' | 'URGENTE';
+/** Code d'un niveau d'alerte (référentiel NIVEAU_ALERTE, lot 3) ou `ALIGNE` : aucun `switch` sur les codes. */
+export type NiveauEcart = string;
 export type StatutAlerteEcart = 'OUVERTE' | 'EN_COURS' | 'TRAITEE';
 export type SensGlobal = 'RO_INFERIEUR' | 'RO_SUPERIEUR' | 'DEUX_SENS';
 export type SensEcart = 'RO_INFERIEUR' | 'RO_SUPERIEUR';
-export type ConclusionAlerteEcart =
-  | 'MANQUE_EFFORT'
-  | 'SURESTIMATION_COLLABORATEUR'
-  | 'SUIVI_INSUFFISANT_RO'
-  | 'SOUS_ESTIMATION_COLLABORATEUR'
-  | 'NOTE_GONFLEE_RO'
-  | 'ECART_JUSTIFIE'
-  | 'AUTRE';
+/** Code d'une conclusion de clôture (référentiel CONCLUSION_ALERTE, lot 3). */
+export type ConclusionAlerteEcart = string;
 export type EvenementAlerteEcart =
   | 'CREATION'
   | 'RECALCUL'
   | 'PRISE_EN_CHARGE'
   | 'CLOTURE'
   | 'REOUVERTURE_AUTOMATIQUE';
-
-export const LIBELLES_NIVEAU_ECART: Record<NiveauEcart, string> = {
-  ALIGNE: 'Aligné',
-  ORANGE: 'Alerte',
-  ROUGE: 'Critique',
-  URGENTE: 'Urgente',
-};
-
-export const LIBELLES_STATUT_ALERTE: Record<StatutAlerteEcart, string> = {
-  OUVERTE: 'Ouverte',
-  EN_COURS: 'En cours',
-  TRAITEE: 'Traitée',
-};
 
 export const LIBELLES_SENS_GLOBAL: Record<SensGlobal, string> = {
   RO_INFERIEUR: 'Le responsable note plus bas que le collaborateur',
@@ -54,17 +37,6 @@ export const LECTURE_NEUTRE: Record<SensEcart, string> = {
   RO_SUPERIEUR: 'Note du responsable plus haute que l’auto-évaluation : à clarifier lors d’un échange.',
 };
 
-/** Ordre d'affichage des 7 conclusions (D-E08.c). */
-export const CONCLUSIONS: Array<{ code: ConclusionAlerteEcart; libelle: string }> = [
-  { code: 'MANQUE_EFFORT', libelle: 'Manque d’effort confirmé' },
-  { code: 'SURESTIMATION_COLLABORATEUR', libelle: 'Le collaborateur a surestimé son niveau' },
-  { code: 'SUIVI_INSUFFISANT_RO', libelle: 'Le responsable ne suivait pas assez le travail' },
-  { code: 'SOUS_ESTIMATION_COLLABORATEUR', libelle: 'Le collaborateur a sous-estimé son travail' },
-  { code: 'NOTE_GONFLEE_RO', libelle: 'Le responsable a surévalué la note' },
-  { code: 'ECART_JUSTIFIE', libelle: 'Écart expliqué, aucune action' },
-  { code: 'AUTRE', libelle: 'Autre (préciser dans le commentaire)' },
-];
-
 export const LIBELLES_EVENEMENT: Record<EvenementAlerteEcart, string> = {
   CREATION: 'Création de l’alerte',
   RECALCUL: 'Recalcul après modification des notes',
@@ -73,10 +45,10 @@ export const LIBELLES_EVENEMENT: Record<EvenementAlerteEcart, string> = {
   REOUVERTURE_AUTOMATIQUE: 'Réouverture automatique',
 };
 
+/** Libellé courant de la conclusion (paramétrage) ; celui du serveur sert de repli si le code est retiré. */
 export function libelleConclusion(code: string | null | undefined, serveur?: string | null): string {
-  if (serveur) return serveur;
   if (!code) return '—';
-  return CONCLUSIONS.find((c) => c.code === code)?.libelle ?? 'Valeur non reconnue';
+  return libelleConnu('conclusionAlerte', code) ?? serveur ?? libelle('conclusionAlerte', code);
 }
 
 export type AlerteEcartResume = {
@@ -226,12 +198,19 @@ export function getAlertesEcart(f: FiltreAlertes, page = 0, taille = 20): Promis
   }));
 }
 
-export type OuvertesParNiveau = { ORANGE: number; ROUGE: number; URGENTE: number; total: number };
+export type NiveauOuvert = { code: string; libelle: string; couleur: string | null; seuil: number; nombre: number };
+export type OuvertesParNiveau = { niveaux: NiveauOuvert[]; total: number };
 
-/** Alertes OUVERTE + EN_COURS par niveau (jamais TRAITEE), éventuellement pour une campagne. */
+type BrutOuvertes = NiveauOuvert[] | { niveaux?: NiveauOuvert[]; elements?: NiveauOuvert[]; liste?: NiveauOuvert[]; total?: number };
+
+/** Alertes OUVERTE + EN_COURS par niveau (jamais TRAITEE), éventuellement pour une campagne ; liste des niveaux du serveur. */
 export function getAlertesOuvertesParNiveau(campagneId?: string): Promise<OuvertesParNiveau> {
   const q = campagneId ? `?campagneId=${encodeURIComponent(campagneId)}` : '';
-  return call<OuvertesParNiveau>(`/api/rh/v1/admin/evaluations/alertes-ecart/ouvertes-par-niveau${q}`);
+  return call<BrutOuvertes>(`/api/rh/v1/admin/evaluations/alertes-ecart/ouvertes-par-niveau${q}`).then((raw) => {
+    const niveaux = Array.isArray(raw) ? raw : raw.niveaux ?? raw.elements ?? raw.liste ?? [];
+    const total = !Array.isArray(raw) && typeof raw.total === 'number' ? raw.total : niveaux.reduce((n, x) => n + x.nombre, 0);
+    return { niveaux: [...niveaux].sort((x, y) => y.seuil - x.seuil), total };
+  });
 }
 
 export function getCompteurAlertesEcart(): Promise<CompteurAlertes> {

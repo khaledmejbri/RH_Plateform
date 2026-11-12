@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 
 public class FamilleMetierCreationRequest {
 
-	@NotBlank
+	/** Ignore (lot 3) : le code est genere depuis le libelle. Conserve pour les anciens clients. */
 	@Size(max = 64)
 	@JsonProperty("code")
 	private String code;

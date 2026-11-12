@@ -5,7 +5,6 @@ import '../../../core/format/formats.dart';
 import '../data/demande_admin_models.dart';
 import '../data/demande_admin_repository.dart';
 import '../data/demande_admin_errors.dart';
-import '../data/type_conge.dart';
 import 'package:rh_mobile_app/core/theme/app_theme.dart';
 import 'package:rh_mobile_app/core/widgets/confirmation_action.dart';
 import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
@@ -447,8 +446,8 @@ class _PeriodRow extends StatelessWidget {
     } else {
       // CONGE
       final periode = formatPeriode(item.periodeDebut, item.periodeFin);
-      final typeCode = item.contenu?['type_conge'] as String? ?? '';
-      label = typeCode.isNotEmpty ? '${libelleTypeConge(typeCode)}  ·  $periode' : periode;
+      final typeLibelle = item.typeCongeLibelle;
+      label = typeLibelle != null ? '$typeLibelle  ·  $periode' : periode;
       icon = Icons.calendar_month_rounded;
     }
 

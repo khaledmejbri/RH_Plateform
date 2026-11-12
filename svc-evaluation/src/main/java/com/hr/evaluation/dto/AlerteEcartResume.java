@@ -1,6 +1,5 @@
 package com.hr.evaluation.dto;
 
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 
 import java.time.Instant;
@@ -22,8 +21,8 @@ public record AlerteEcartResume(
         String collaborateurUniteLibelle,
         UUID superieurId,
         String superieurNom,
-        NiveauEcart niveau,
-        NiveauEcart niveauDetection,
+        String niveau,
+        String niveauDetection,
         StatutAlerteEcart statut,
         String sensGlobal,
         int nbCompetencesEnEcart,

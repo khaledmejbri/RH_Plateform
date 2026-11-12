@@ -35,16 +35,19 @@ public class PresenceSiteService {
 	private final PresenceQrCredentialRepository qrRepository;
 	private final PresenceProperties properties;
 	private final PresenceAccessService accessService;
+	private final PresenceParametresService parametres;
 
 	public PresenceSiteService(
 			PresenceSiteRepository siteRepository,
 			PresenceQrCredentialRepository qrRepository,
 			PresenceProperties properties,
-			PresenceAccessService accessService) {
+			PresenceAccessService accessService,
+			PresenceParametresService parametres) {
 		this.siteRepository = siteRepository;
 		this.qrRepository = qrRepository;
 		this.properties = properties;
 		this.accessService = accessService;
+		this.parametres = parametres;
 	}
 
 	@Transactional(readOnly = true)
@@ -79,7 +82,7 @@ public class PresenceSiteService {
 		site.setTypeLieu(typeLieu);
 		site.setRayonMetres(request.rayonMetres() != null
 				? exigerRayon(request.rayonMetres())
-				: properties.getGeofence().defaultRadius(typeLieu));
+				: parametres.rayonDefaut(typeLieu));
 		site.setActif(true);
 		site.setUpdatedBy(accessService.currentActorLabel());
 		if (request.latitude() != null && request.longitude() != null) {
@@ -105,7 +108,7 @@ public class PresenceSiteService {
 		if (request.typeLieu() != null) {
 			TypeLieu typeLieu = exigerTypeLieu(request.typeLieu());
 			if (typeLieu != site.getTypeLieu() && request.rayonMetres() == null) {
-				site.setRayonMetres(properties.getGeofence().defaultRadius(typeLieu));
+				site.setRayonMetres(parametres.rayonDefaut(typeLieu));
 			}
 			site.setTypeLieu(typeLieu);
 		}

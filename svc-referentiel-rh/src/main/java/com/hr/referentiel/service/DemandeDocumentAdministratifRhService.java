@@ -1,13 +1,13 @@
 package com.hr.referentiel.service;
 
 import lombok.extern.slf4j.Slf4j;
-import com.hr.referentiel.config.ReferentielEvenementsProperties;
 import com.hr.referentiel.dto.*;
 import com.hr.referentiel.kafka.RhNotificationPublisher;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.entity.DemandeDocumentAdministratifRh;
 import com.hr.referentiel.domain.StatutDocumentAdministratifDemandeRh;
-import com.hr.referentiel.domain.TypeDocumentAdministratifDemandeRh;
+import com.hr.referentiel.domain.ValeursInitialesReferentiel;
+import com.hr.referentiel.service.ParametresCache.ParametreVue;
 import com.hr.referentiel.repository.DemandeDocumentAdministratifRhRepository;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
@@ -29,6 +29,11 @@ import java.util.stream.Collectors;
 @Slf4j
 public class DemandeDocumentAdministratifRhService {
 
+	static final String REFERENTIEL_TYPE = "TYPE_DOCUMENT";
+
+	/** Repli si un type n'a pas de SLA (ne devrait pas arriver : le SLA est obligatoire à la création). */
+	static final int SLA_PAR_DEFAUT_HEURES = 24;
+
 	public static final String REGLE_FIFO = "FIFO_PREMIER_ARRIVE_PREMIER_SERVI";
 
 	/** Message retourné lorsque le traitement viole l'ordre FIFO sans justification. */
@@ -47,18 +52,18 @@ public class DemandeDocumentAdministratifRhService {
 
 	private final DemandeDocumentAdministratifRhRepository repository;
 	private final CollaborateurConnecteService collaborateurConnecteService;
-	private final ReferentielEvenementsProperties evenementsProperties;
+	private final ParametreService parametreService;
 	private final RhNotificationPublisher notificationPublisher;
 	private final NumeroLisibleService numeroLisibleService;
 
 	public DemandeDocumentAdministratifRhService(DemandeDocumentAdministratifRhRepository repository,
 			CollaborateurConnecteService collaborateurConnecteService,
-			ReferentielEvenementsProperties evenementsProperties,
+			ParametreService parametreService,
 			RhNotificationPublisher notificationPublisher,
 			NumeroLisibleService numeroLisibleService) {
 		this.repository = repository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
-		this.evenementsProperties = evenementsProperties;
+		this.parametreService = parametreService;
 		this.notificationPublisher = notificationPublisher;
 		this.numeroLisibleService = numeroLisibleService;
 	}
@@ -66,16 +71,19 @@ public class DemandeDocumentAdministratifRhService {
 	@Transactional
 	public DemandeDocumentAdministratifRhResponse soumettre(DemandeDocumentAdministratifCreationRequest req, Jwt jwt) {
 		Collaborateur demandeur = collaborateurConnecteService.exigerCollaborateur(jwt);
-		TypeDocumentAdministratifDemandeRh type = req.getTypeDocument();
+		// Lot 3 : le type est une valeur paramétrable, il doit exister et être actif (lu en base, décision d'écriture)
+		ParametreVue type = exigerTypeActif(req.getTypeDocument());
 		// D-F06.b : le serveur est le garde ; la fiche est verrouillée pour que deux POST simultanés
 		// du même type ne passent pas tous les deux.
 		collaborateurConnecteService.verrouiller(demandeur);
 		repository.findFirstByDemandeurIdAndTypeDocumentAndStatutInOrderByCreeLeAsc(
-				demandeur.getId(), type, STATUTS_OUVERTS).ifPresent(ouverte -> {
+				demandeur.getId(), type.code(), STATUTS_OUVERTS).ifPresent(ouverte -> {
 					throw ReferentielMetierException.conflict("DEMANDE_DOCUMENT_DEJA_EN_COURS",
 							messageDoublon(ouverte));
 				});
-		int sla = evenementsProperties.delaiSlaHeuresPourDocument(type.name(), type.getDelaiSlaHeuresDefaut());
+		// D-R05 : le SLA est lu dans le paramètre et COPIÉ dans la demande (C-M02-02) : modifier le SLA du type
+		// plus tard ne change pas l'échéance des demandes déjà déposées.
+		int sla = type.slaHeures() != null ? type.slaHeures() : SLA_PAR_DEFAUT_HEURES;
 		// D-L02 : numéro attribué dans la transaction de création, rang du mois de l'instant de création
 		Instant creation = Instant.now();
 		Instant echeance = creation.plus(sla, ChronoUnit.HOURS);
@@ -84,7 +92,7 @@ public class DemandeDocumentAdministratifRhService {
 		d.setCreeLe(creation);
 		d.setNumero(numeroLisibleService.attribuer(PrefixeNumero.DOC, creation));
 		d.setDemandeur(demandeur);
-		d.setTypeDocument(type);
+		d.setTypeDocument(type.code());
 		d.setStatut(StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE);
 		d.setDelaiSlaHeures(sla);
 		d.setDateEcheanceTraitement(echeance);
@@ -92,9 +100,11 @@ public class DemandeDocumentAdministratifRhService {
 			d.setCommentaireDemandeur(req.getCommentaireDemandeur().trim());
 		}
 		d = repository.save(d);
+		parametreService.marquerUtilisee(REFERENTIEL_TYPE, type.code());
 
 		try {
-			notificationPublisher.notifierDemandeDocumentRecue(demandeur, type.name(), d.getId(), d.getNumero());
+			notificationPublisher.notifierDemandeDocumentRecue(demandeur, libelleNotification(type.code()), d.getId(),
+					d.getNumero());
 		} catch (Exception e) {
 			log.error("Erreur lors de l'envoi de la notification Kafka (Nouvelle demande)", e);
 		}
@@ -108,26 +118,48 @@ public class DemandeDocumentAdministratifRhService {
 	@Transactional(readOnly = true)
 	public CheckRestrictionDocumentResponse verifierRestriction(String typeDocument, Jwt jwt) {
 		Collaborateur demandeur = collaborateurConnecteService.exigerCollaborateur(jwt);
-		TypeDocumentAdministratifDemandeRh type = parserType(typeDocument);
+		String type = parserType(typeDocument);
 		return repository.findFirstByDemandeurIdAndTypeDocumentAndStatutInOrderByCreeLeAsc(
 						demandeur.getId(), type, STATUTS_OUVERTS)
 				.map(ouverte -> new CheckRestrictionDocumentResponse(false, messageDoublon(ouverte)))
 				.orElseGet(() -> new CheckRestrictionDocumentResponse(true, null));
 	}
 
-	private static TypeDocumentAdministratifDemandeRh parserType(String code) {
-		if (code != null) {
-			try {
-				return TypeDocumentAdministratifDemandeRh.valueOf(code.trim());
-			} catch (IllegalArgumentException ignored) {
-				// retombe sur le 400 ci-dessous
-			}
-		}
-		throw new IllegalArgumentException("Type de document inconnu.");
+	private String parserType(String code) {
+		return parametreService.lire(REFERENTIEL_TYPE, code)
+				.map(ParametreVue::code)
+				.orElseThrow(() -> new IllegalArgumentException("Type de document inconnu."));
 	}
 
-	private static String messageDoublon(DemandeDocumentAdministratifRh ouverte) {
-		return "Vous avez déjà une demande de " + ouverte.getTypeDocument().getLibelle()
+	/** Type existant (400 {@code TYPE_DOCUMENT_INVALIDE} sinon) et actif (422 {@code TYPE_DOCUMENT_INACTIF} sinon). */
+	private ParametreVue exigerTypeActif(String code) {
+		ParametreVue v = parametreService.lire(REFERENTIEL_TYPE, code).orElseThrow(() ->
+				ReferentielMetierException.badRequest("TYPE_DOCUMENT_INVALIDE", "Type de document inconnu."));
+		if (!v.actif()) {
+			throw ReferentielMetierException.unprocessable("TYPE_DOCUMENT_INACTIF",
+					"Le type de document « " + v.libelle() + " » n'est plus proposé.");
+		}
+		return v;
+	}
+
+	/** Libellé courant du type de document ; repli lisible si le code n'a plus de ligne. */
+	private String libelleType(String code) {
+		String l = parametreService.libelleOuDefaut(REFERENTIEL_TYPE, code);
+		return l != null ? l : ValeursInitialesReferentiel.libelleParDefaut(code);
+	}
+
+	/** Libellé pour une phrase (« attestation de travail »), sans perdre un sigle (« attestation CNSS »). */
+	private String libelleNotification(String code) {
+		return ParametreService.enMinuscule(libelleType(code));
+	}
+
+	private String libelleStatut(StatutDocumentAdministratifDemandeRh statut) {
+		String l = parametreService.libelleOuDefaut("STATUT_DOCUMENT", statut.name());
+		return l != null ? l : statut.getLibelle();
+	}
+
+	private String messageDoublon(DemandeDocumentAdministratifRh ouverte) {
+		return "Vous avez déjà une demande de " + libelleNotification(ouverte.getTypeDocument())
 				+ " en cours (déposée le " + FORMAT_JOUR.format(ouverte.getCreeLe().atZone(FUSEAU_TUNIS)) + ").";
 	}
 
@@ -211,6 +243,8 @@ public class DemandeDocumentAdministratifRhService {
 				enRetard,
 				etapesDocument(d.getStatut()));
 		suivi.setNumero(d.getNumero());
+		suivi.setTypeDocumentLibelle(libelleType(d.getTypeDocument()));
+		suivi.setStatutLibelle(parametreService.libelleOuInconnu("STATUT_DOCUMENT", d.getStatut().name()));
 		return suivi;
 	}
 
@@ -238,7 +272,7 @@ public class DemandeDocumentAdministratifRhService {
 		if (d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
 			throw ReferentielMetierException.conflict("DEMANDE_DEJA_DECIDEE",
-					"Cette demande est déjà décidée : statut « " + d.getStatut().getLibelle() + " ».");
+					"Cette demande est déjà décidée : statut « " + libelleStatut(d.getStatut()) + " ».");
 		}
 
 		// ── Validation FIFO ──────────────────────────────────────────────────
@@ -252,7 +286,7 @@ public class DemandeDocumentAdministratifRhService {
 		DemandeDocumentAdministratifRh saved = repository.save(d);
 
 		try {
-			notificationPublisher.notifierDocumentDisponible(d.getDemandeur(), d.getTypeDocument().name(),
+			notificationPublisher.notifierDocumentDisponible(d.getDemandeur(), libelleNotification(d.getTypeDocument()),
 					req.getReferenceLivrable(), d.getId(), d.getNumero());
 		} catch (Exception e) {
 			log.error("Erreur lors de l'envoi de la notification Kafka (Document disponible)", e);
@@ -268,7 +302,7 @@ public class DemandeDocumentAdministratifRhService {
 		if (d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
 			throw ReferentielMetierException.conflict("DEMANDE_DEJA_DECIDEE",
-					"Cette demande est déjà décidée : statut « " + d.getStatut().getLibelle() + " ».");
+					"Cette demande est déjà décidée : statut « " + libelleStatut(d.getStatut()) + " ».");
 		}
 
 		// ── Validation FIFO ──────────────────────────────────────────────────
@@ -342,7 +376,7 @@ public class DemandeDocumentAdministratifRhService {
 			try {
 				notificationPublisher.notifierDerogationFifo(
 						rhActeur, 
-						demande.getTypeDocument().name(), 
+						libelleNotification(demande.getTypeDocument()), 
 						justificationDerogation.trim(), 
 						demande.getDemandeur(),
 						demande.getId(),
@@ -431,6 +465,8 @@ public class DemandeDocumentAdministratifRhService {
 				d.getJustificationDerogationFifo(),
 				d.getDerogationFifoPar());
 		r.setNumero(d.getNumero());
+		r.setTypeDocumentLibelle(libelleType(d.getTypeDocument()));
+		r.setStatutLibelle(parametreService.libelleOuInconnu("STATUT_DOCUMENT", d.getStatut().name()));
 		Collaborateur demandeur = d.getDemandeur();
 		r.setDemandeurNom((demandeur.getPrenom() + " " + demandeur.getNom()).trim());
 		r.setDemandeurMatricule(demandeur.getMatricule());

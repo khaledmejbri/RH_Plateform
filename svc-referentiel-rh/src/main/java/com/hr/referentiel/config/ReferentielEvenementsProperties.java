@@ -1,6 +1,5 @@
 package com.hr.referentiel.config;
 
-import com.hr.referentiel.domain.TypeDocumentAdministratifDemandeRh;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.HashMap;
@@ -10,7 +9,8 @@ import java.util.Map;
 public class ReferentielEvenementsProperties {
 
 	/**
-	 * Clés = noms {@link TypeDocumentAdministratifDemandeRh#name()}.
+	 * Clés = codes des types de document (ex. {@code ATTESTATION_TRAVAIL}). Lot 3 : lue seulement au premier
+	 * amorçage des paramètres ; ensuite le SLA se règle dans l'écran Paramètres.
 	 */
 	private Map<String, Integer> documentSlaHeuresParType = new HashMap<>();
 
@@ -22,7 +22,7 @@ public class ReferentielEvenementsProperties {
 		this.documentSlaHeuresParType = documentSlaHeuresParType != null ? documentSlaHeuresParType : new HashMap<>();
 	}
 
-	public int delaiSlaHeuresPourDocument(String typeDocumentEnumName, int defautEnum) {
-		return documentSlaHeuresParType.getOrDefault(typeDocumentEnumName, defautEnum);
+	public int delaiSlaHeuresPourDocument(String codeTypeDocument, int defaut) {
+		return documentSlaHeuresParType.getOrDefault(codeTypeDocument, defaut);
 	}
 }

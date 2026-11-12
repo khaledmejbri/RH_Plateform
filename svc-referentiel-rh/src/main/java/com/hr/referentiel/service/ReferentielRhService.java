@@ -1,7 +1,6 @@
 package com.hr.referentiel.service;
 
 import com.hr.referentiel.config.CacheConfig;
-import com.hr.referentiel.domain.NiveauSeniorite;
 import com.hr.referentiel.domain.ProfilAccesCollaborateur;
 import com.hr.referentiel.domain.TypeNoeudOrganisation;
 import com.hr.referentiel.dto.*;
@@ -143,6 +142,7 @@ public class ReferentielRhService {
 		}
 		List<CollaborateurResponse> contenu = p.getContent().stream()
 				.map(this::toCollaborateurResponse)
+				.map(this::avecLibelles)
 				.collect(Collectors.toList());
 		return new PageReferentielResponse<>(contenu, p.getTotalElements(), p.getTotalPages(),
 				p.getNumber(), p.getSize());
@@ -158,7 +158,7 @@ public class ReferentielRhService {
 
 	@Transactional(readOnly = true)
 	public CollaborateurResponse obtenirMonCollaborateur(org.springframework.security.oauth2.jwt.Jwt jwt) {
-		return toCollaborateurResponse(collaborateurConnecteService.exigerCollaborateur(jwt));
+		return avecLibelles(toCollaborateurResponse(collaborateurConnecteService.exigerCollaborateur(jwt)));
 	}
 
 	/**
@@ -244,7 +244,16 @@ public class ReferentielRhService {
 			registerKafkaCompteDemandeAfterCommit(saved.getId().toString(), event);
 		}
 
-		return toCollaborateurResponse(saved);
+		return avecLibelles(toCollaborateurResponse(saved));
+	}
+
+	/**
+	 * Ajoute les libellés courants de la famille et du niveau à une réponse (D-R02.c, ADR-UAT-lot3 § 4) : appelé
+	 * APRÈS le cache de 5 min des fiches, qui ne contient que des codes ; un renommage est ainsi visible en 30 s.
+	 */
+	public CollaborateurResponse avecLibelles(CollaborateurResponse r) {
+		return r.avecLibelles(familleMetierService.libelleOuNull(r.getFamilleMetierCode()),
+				familleMetierService.libelleNiveauOuNull(r.getNiveauSeniorite()));
 	}
 
 	private void registerKafkaCompteDemandeAfterCommit(String key, CollaborateurCompteDemandeEvent event) {
@@ -324,7 +333,7 @@ public class ReferentielRhService {
 			}
 			Collaborateur saved = collaborateurRepository.save(c);
 			publierMajRolesSiProfilChange(saved, profilAvant);
-			return toCollaborateurResponse(saved);
+			return avecLibelles(toCollaborateurResponse(saved));
 		});
 	}
 
@@ -371,7 +380,9 @@ public class ReferentielRhService {
 							nomComplet(c),
 							c.getPosteLibelle(),
 							sup != null ? sup.getCompteUtilisateurId() : null,
-							sup != null ? nomComplet(sup) : null);
+							sup != null ? nomComplet(sup) : null,
+							familleMetierService.libelleOuNull(c.getFamilleMetierCode()),
+							familleMetierService.libelleNiveauOuNull(c.getNiveauSeniorite()));
 				})
 				.toList();
 	}
@@ -397,14 +408,18 @@ public class ReferentielRhService {
 
 	/**
 	 * @param partialUpdate si true, null = ne pas toucher ; blank string = effacer
+	 *
+	 * <p>Famille et niveau doivent exister et être actifs, sauf s'ils sont déjà portés par la fiche (D-R07 : une valeur
+	 * désactivée reste valable pour les fiches qui la portent, un formulaire qui renvoie la valeur inchangée n'échoue
+	 * pas). La valeur retenue pose la marque « déjà utilisée » du paramètre.
 	 */
 	private void appliquerProfilMetier(Collaborateur c, String familleCode, String niveauRaw, boolean partialUpdate) {
 		if (familleCode != null) {
 			String trimmed = familleCode.trim();
 			if (trimmed.isEmpty()) {
 				c.setFamilleMetierCode(null);
-			} else {
-				c.setFamilleMetierCode(familleMetierService.exigerActive(trimmed).getCode());
+			} else if (!trimmed.equalsIgnoreCase(c.getFamilleMetierCode())) {
+				c.setFamilleMetierCode(familleMetierService.exigerActive(trimmed));
 			}
 		} else if (!partialUpdate) {
 			c.setFamilleMetierCode(null);
@@ -414,12 +429,8 @@ public class ReferentielRhService {
 			String trimmed = niveauRaw.trim();
 			if (trimmed.isEmpty()) {
 				c.setNiveauSeniorite(null);
-			} else {
-				NiveauSeniorite niveau = NiveauSeniorite.parseOptional(trimmed)
-						.orElseThrow(() -> ReferentielMetierException.unprocessable(
-								NiveauSeniorite.MESSAGE_INVALIDE,
-								"Niveau de séniorité invalide : " + trimmed));
-				c.setNiveauSeniorite(niveau.name());
+			} else if (!trimmed.equalsIgnoreCase(c.getNiveauSeniorite())) {
+				c.setNiveauSeniorite(familleMetierService.exigerNiveauActif(trimmed));
 			}
 		} else if (!partialUpdate) {
 			c.setNiveauSeniorite(null);
@@ -463,7 +474,6 @@ public class ReferentielRhService {
 		r.setCompteUtilisateurId(c.getCompteUtilisateurId());
 		r.setProfilAcces(c.getProfilAcces());
 		r.setFamilleMetierCode(c.getFamilleMetierCode());
-		r.setFamilleMetierLibelle(familleMetierService.libelleOuNull(c.getFamilleMetierCode()));
 		r.setNiveauSeniorite(c.getNiveauSeniorite());
 		r.setCreeLe(c.getCreeLe());
 		r.setModifieLe(c.getModifieLe());

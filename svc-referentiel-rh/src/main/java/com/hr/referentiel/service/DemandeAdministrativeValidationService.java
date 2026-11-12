@@ -1,6 +1,6 @@
 package com.hr.referentiel.service;
 
-import com.hr.referentiel.domain.TypeConge;
+import com.hr.referentiel.service.ParametresCache.ParametreVue;
 import com.hr.referentiel.domain.TypeDemandeAdministrativeRh;
 import com.hr.referentiel.web.ReferentielMetierException;
 import org.springframework.stereotype.Component;
@@ -15,8 +15,8 @@ import java.util.Map;
 /**
  * CDC v2 §M01 — Validation du contenu selon le type de demande.
  * Corrections v2 :
- *  - CONGE        : date_debut <= date_fin ; catalogue fermé {@link TypeConge} ;
- *                   PJ obligatoire pour MALADIE / MATERNITE
+ *  - CONGE        : date_debut <= date_fin ; type de congé lu dans le référentiel paramétrable TYPE_CONGE
+ *                   (inconnu 400, inactif 422) ; PJ exigée selon {@code piece_jointe_obligatoire} (D-R08)
  *  - AUTORISATION : durée max 2h (SCRUM-40, auparavant 4h), motif libre (plus de type_sortie)
  *  - ORDRE_MISSION: date_debut <= date_fin, motif + lieu obligatoires
  */
@@ -25,7 +25,25 @@ public class DemandeAdministrativeValidationService {
 
 	static final long DUREE_MAX_SORTIE_MINUTES = 2 * 60;
 
-	public void validerContenu(TypeDemandeAdministrativeRh type, Map<String, Object> contenu) {
+	static final String REFERENTIEL_TYPE_CONGE = "TYPE_CONGE";
+
+	static final String MESSAGE_CERTIFICAT_OBLIGATOIRE =
+			"Une pièce jointe (certificat) est obligatoire pour ce type de congé.";
+
+	private final ParametreService parametreService;
+
+	public DemandeAdministrativeValidationService(ParametreService parametreService) {
+		this.parametreService = parametreService;
+	}
+
+	/**
+	 * Valide le contenu d'une demande.
+	 *
+	 * @return le code canonique du type de congé pour une demande de congé (à réécrire dans le contenu et à marquer
+	 *         « utilisé »), {@code null} pour les autres types
+	 */
+	public String validerContenu(TypeDemandeAdministrativeRh type, Map<String, Object> contenu) {
+		String codeConge = null;
 		if (contenu == null || contenu.isEmpty()) {
 			throw new IllegalArgumentException("Le contenu de la demande est obligatoire.");
 		}
@@ -40,11 +58,19 @@ public class DemandeAdministrativeValidationService {
 					throw new IllegalArgumentException(
 							"La date de fin de congé ne peut pas être antérieure à la date de début.");
 				}
-				TypeConge typeConge = TypeConge.parse(String.valueOf(contenu.get("type_conge")));
-				if (typeConge.exigePieceJointe() && !aPieceJointe(contenu)) {
-					throw ReferentielMetierException.unprocessable(
-							"CERTIFICAT_OBLIGATOIRE", TypeConge.MESSAGE_CERTIFICAT_OBLIGATOIRE);
+				ParametreVue typeConge = parametreService.lire(REFERENTIEL_TYPE_CONGE,
+						String.valueOf(contenu.get("type_conge"))).orElseThrow(() ->
+						ReferentielMetierException.badRequest("TYPE_CONGE_INVALIDE",
+								"Type de congé inconnu : " + contenu.get("type_conge") + "."));
+				if (!typeConge.actif()) {
+					throw ReferentielMetierException.unprocessable("TYPE_CONGE_INACTIF",
+							"Le type de congé « " + typeConge.libelle() + " » n'est plus proposé.");
 				}
+				if (Boolean.TRUE.equals(typeConge.pieceJointeObligatoire()) && !aPieceJointe(contenu)) {
+					throw ReferentielMetierException.unprocessable(
+							"CERTIFICAT_OBLIGATOIRE", MESSAGE_CERTIFICAT_OBLIGATOIRE);
+				}
+				codeConge = typeConge.code();
 			}
 			case AUTORISATION_SORTIE -> {
 				exigerCle(contenu, "date_jour");
@@ -77,6 +103,7 @@ public class DemandeAdministrativeValidationService {
 				}
 			}
 		}
+		return codeConge;
 	}
 
 	/**

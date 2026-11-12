@@ -1,8 +1,6 @@
 package com.hr.evaluation.dto;
 
-import com.hr.evaluation.domain.ConclusionAlerteEcart;
 import com.hr.evaluation.domain.EvenementAlerteEcart;
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.SensEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 
@@ -29,8 +27,8 @@ public record AlerteEcartDetail(
         String collaborateurUniteLibelle,
         UUID superieurId,
         String superieurNom,
-        NiveauEcart niveau,
-        NiveauEcart niveauDetection,
+        String niveau,
+        String niveauDetection,
         StatutAlerteEcart statut,
         String sensGlobal,
         int nbCompetencesEnEcart,
@@ -40,7 +38,7 @@ public record AlerteEcartDetail(
         String libelleSensGlobal,
         String aideSensGlobal,
         List<Ligne> lignes,
-        ConclusionAlerteEcart conclusion,
+        String conclusion,
         String conclusionLibelle,
         List<Evenement> historique,
         boolean peutTraiter,
@@ -56,12 +54,12 @@ public record AlerteEcartDetail(
             int etoilesCollaborateurDetection,
             int etoilesRoDetection,
             int ecartDetection,
-            NiveauEcart niveauDetection,
+            String niveauDetection,
             SensEcart sensDetection,
             int etoilesCollaborateurActuelles,
             int etoilesRoActuelles,
             int ecartActuel,
-            NiveauEcart niveauActuel,
+            String niveauActuel,
             SensEcart sensActuel,
             String libelleSens,
             String aideSens) {
@@ -83,9 +81,9 @@ public record AlerteEcartDetail(
             String statutAvantLibelle,
             StatutAlerteEcart statutApres,
             String statutApresLibelle,
-            NiveauEcart niveauAvant,
-            NiveauEcart niveauApres,
-            ConclusionAlerteEcart conclusion,
+            String niveauAvant,
+            String niveauApres,
+            String conclusion,
             String conclusionLibelle,
             String commentaire) {
     }

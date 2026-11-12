@@ -1,4 +1,3 @@
-import '../../../core/libelles/libelles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -78,7 +77,7 @@ class _FormationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = _statusMeta(item.statut);
+    final status = _statusMeta(item);
     final cible =
         item.cible == 'UNITE'
             ? (item.uniteCibleLibelle ?? 'Unité cible')
@@ -215,9 +214,9 @@ class _FormationCard extends StatelessWidget {
     );
   }
 
-  (String, Color, Color) _statusMeta(String statut) {
-    final libelle = Libelles.statutFormation(statut);
-    return switch (statut) {
+  (String, Color, Color) _statusMeta(FormationItem formation) {
+    final libelle = formation.statutLibelle;
+    return switch (formation.statut) {
       'INTEGREE_PLAN' => (libelle, AppTheme.successSurface, AppTheme.success),
       'REFUSEE' => (libelle, AppTheme.errorSurface, AppTheme.errorDark),
       'ANNULEE' => (libelle, AppTheme.surfaceMuted, AppTheme.textSecondary),

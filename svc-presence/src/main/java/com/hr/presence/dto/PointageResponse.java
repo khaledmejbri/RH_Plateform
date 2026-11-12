@@ -34,7 +34,9 @@ public record PointageResponse(
 		@JsonProperty("site_code") String siteCode,
 		@JsonProperty("site_libelle") String siteLibelle,
 		/** D-P18.b : état de séquence (liste admin seulement), nul pour un pointage apparié ou rejeté. */
-		@JsonProperty("etat_sequence") com.hr.presence.domain.EtatSequencePointage etatSequence
+		@JsonProperty("etat_sequence") com.hr.presence.domain.EtatSequencePointage etatSequence,
+		/** Libellé courant du statut (paramètre « Statuts et motifs », D-R03) ; nul tant que la liste ne le renseigne pas. */
+		@JsonProperty("statut_libelle") String statutLibelle
 ) {
 
 	/** Réponse sans identité lisible (mobile, historique) : les quatre champs ajoutés restent nuls. */
@@ -45,20 +47,27 @@ public record PointageResponse(
 			Integer echecsConsecutifs, Instant bloqueJusqua, java.time.LocalDate journee) {
 		this(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet, collaborateurId,
 				verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua, journee,
-				null, null, null, null, null);
+				null, null, null, null, null, null);
 	}
 
 	/** Copie enrichie du nom et du matricule du collaborateur, du code et du libellé du site. */
 	public PointageResponse avecIdentite(String nom, String matricule, String codeSite, String libelleSite) {
 		return new PointageResponse(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet,
 				collaborateurId, verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua,
-				journee, nom, matricule, codeSite, libelleSite, etatSequence);
+				journee, nom, matricule, codeSite, libelleSite, etatSequence, statutLibelle);
 	}
 
 	/** Copie avec l'état de séquence D-P18.b. */
 	public PointageResponse avecEtatSequence(com.hr.presence.domain.EtatSequencePointage etat) {
 		return new PointageResponse(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet,
 				collaborateurId, verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua,
-				journee, collaborateurNom, collaborateurMatricule, siteCode, siteLibelle, etat);
+				journee, collaborateurNom, collaborateurMatricule, siteCode, siteLibelle, etat, statutLibelle);
+	}
+
+	/** Copie avec le libellé courant du statut, lu dans l'instantané des paramètres. */
+	public PointageResponse avecStatutLibelle(String libelle) {
+		return new PointageResponse(id, statut, type, serverTs, siteId, distanceMetres, accuracyMetres, motifRejet,
+				collaborateurId, verificationFaciale, scoreFacial, vivaciteReussie, echecsConsecutifs, bloqueJusqua,
+				journee, collaborateurNom, collaborateurMatricule, siteCode, siteLibelle, etatSequence, libelle);
 	}
 }

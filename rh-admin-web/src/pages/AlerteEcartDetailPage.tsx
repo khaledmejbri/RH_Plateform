@@ -8,7 +8,6 @@ import {
   LIBELLES_EVENEMENT,
   LIBELLES_SENS_ECART,
   LIBELLES_SENS_GLOBAL,
-  LIBELLES_STATUT_ALERTE,
   messageErreurAction,
   postClotureAlerte,
   postPriseEnChargeAlerte,
@@ -21,6 +20,7 @@ import { ClotureAlerteDialog } from '../components/ClotureAlerteDialog';
 import { EmptyState, LoadingState } from '../components/ui';
 import { COLLABORATEUR_INTROUVABLE, formatDateHeure, formatPersonne } from '../utils/format';
 import { VALEUR_NON_RECONNUE } from '../utils/libelles';
+import { libelleReferentiel } from '../utils/parametresStore';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useLectureSeule } from '../auth/useLectureSeule';
 
@@ -283,8 +283,8 @@ export default function AlerteEcartDetailPage() {
               {h.statutAvant !== h.statutApres && h.statutApres ? (
                 <div className="text-sm">
                   {h.statutAvant
-                    ? <>Statut : {h.statutAvantLibelle ?? LIBELLES_STATUT_ALERTE[h.statutAvant]} → {h.statutApresLibelle ?? LIBELLES_STATUT_ALERTE[h.statutApres]}</>
-                    : <>Création : {h.statutApresLibelle ?? LIBELLES_STATUT_ALERTE[h.statutApres]}</>}
+                    ? <>Statut : {h.statutAvantLibelle ?? libelleReferentiel('STATUT_ALERTE', h.statutAvant)} → {h.statutApresLibelle ?? libelleReferentiel('STATUT_ALERTE', h.statutApres)}</>
+                    : <>Création : {h.statutApresLibelle ?? libelleReferentiel('STATUT_ALERTE', h.statutApres)}</>}
                 </div>
               ) : null}
               {h.niveauApres && h.niveauAvant !== h.niveauApres ? (

@@ -1,62 +1,30 @@
-/** Catalogue M07 — familles métier (seed H-B1) × niveaux de séniorité (spec E2/E3). */
+import { libelle, libelleConnu } from '../utils/libelles';
 
-export type FamilleMetier = {
-  code: string;
-  libelle: string;
-  actif: boolean;
-  systeme?: boolean;
-};
+/**
+ * Catalogue M07 — familles métier × niveaux de séniorité.
+ * Lot 3 (D-R07) : les valeurs viennent du paramétrage (`utils/parametresStore.ts`) ; plus de liste figée ici.
+ */
 
-export type NiveauSeniorite = {
-  code: string;
-  libelle: string;
-};
-
-/** Seed BA tant que GET /familles-metier n’est pas dispo. */
-export const FAMILLES_METIER_SEED: FamilleMetier[] = [
-  { code: 'EXPLOITATION', libelle: 'Exploitation / terrain assainissement', actif: true, systeme: true },
-  { code: 'GENIE_CIVIL', libelle: 'Génie civil / travaux', actif: true, systeme: true },
-  { code: 'DEV_LOGICIEL', libelle: 'Développement logiciel / SI', actif: true, systeme: true },
-  { code: 'SUPPORT_ADMIN', libelle: 'Support administratif', actif: true, systeme: true },
-  { code: 'MAINTENANCE', libelle: 'Maintenance technique', actif: true, systeme: true },
-  { code: 'HSE_QUALITE', libelle: 'HSE / qualité', actif: true, systeme: true },
-];
-
-export const NIVEAUX_SENIORITE: NiveauSeniorite[] = [
-  { code: 'JUNIOR', libelle: 'Junior' },
-  { code: 'CONFIRME', libelle: 'Confirmé' },
-  { code: 'SENIOR', libelle: 'Senior' },
-  { code: 'TEAM_LEAD', libelle: 'Team lead' },
-];
-
-const NIVEAU_ALIAS: Record<string, string> = {
-  CONFIRMED: 'CONFIRME',
-  MID: 'CONFIRME',
-};
-
+/** Code de niveau tel que stocké (casse normalisée) ; les alias historiques sont gérés par le serveur. */
 export function normalizeNiveauSeniorite(raw?: string | null): string | undefined {
   if (!raw) return undefined;
-  const upper = raw.trim().toUpperCase();
-  return NIVEAU_ALIAS[upper] ?? upper;
+  return raw.trim().toUpperCase() || undefined;
 }
 
-export function libelleFamilleMetier(code?: string | null, catalogue: FamilleMetier[] = FAMILLES_METIER_SEED): string {
+/** Libellé courant de la famille ; code absent → chaîne vide, code inconnu → « Valeur non reconnue ». */
+export function libelleFamilleMetier(code?: string | null): string {
   if (!code) return '';
-  return catalogue.find(f => f.code === code)?.libelle ?? 'Famille non reconnue';
+  return libelle('familleMetier', code);
 }
 
 export function libelleNiveauSeniorite(code?: string | null): string {
   const normalized = normalizeNiveauSeniorite(code);
   if (!normalized) return '';
-  return NIVEAUX_SENIORITE.find(n => n.code === normalized)?.libelle ?? 'Niveau non reconnu';
+  return libelle('niveauSeniorite', normalized);
 }
 
-export function profilMetierLabel(
-  familleCode?: string | null,
-  niveauCode?: string | null,
-  catalogue: FamilleMetier[] = FAMILLES_METIER_SEED,
-): string {
-  const famille = libelleFamilleMetier(familleCode, catalogue);
+export function profilMetierLabel(familleCode?: string | null, niveauCode?: string | null): string {
+  const famille = libelleFamilleMetier(familleCode);
   const niveau = libelleNiveauSeniorite(niveauCode);
   if (famille && niveau) return `${famille} × ${niveau}`;
   return famille || niveau || '';
@@ -65,11 +33,12 @@ export function profilMetierLabel(
 /** Appréciation score /20 — § 12.5 / UX § 6.1 */
 export function appreciationFromScore(scoreSur20?: number | null): string | undefined {
   if (scoreSur20 == null || Number.isNaN(scoreSur20)) return undefined;
-  if (scoreSur20 <= 7) return 'Insuffisant';
-  if (scoreSur20 <= 10) return 'À améliorer';
-  if (scoreSur20 <= 14) return 'Satisfaisant';
-  if (scoreSur20 <= 17) return 'Positif';
-  return 'Excellent';
+  const code = scoreSur20 <= 7 ? 'INSUFFISANT'
+    : scoreSur20 <= 10 ? 'A_AMELIORER'
+    : scoreSur20 <= 14 ? 'SATISFAISANT'
+    : scoreSur20 <= 17 ? 'POSITIF'
+    : 'EXCELLENT';
+  return libelleConnu('appreciation', code);
 }
 
 export type CouleurAlerte = 'VERT' | 'ORANGE' | 'ROUGE';

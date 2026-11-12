@@ -44,12 +44,19 @@ public class Evaluation {
     private Integer scoreSur20;
 
     /** Grade / niveau du collaborateur au moment de l'affectation (JUNIOR, SENIOR…). */
-    @Column(name = "niveau_seniorite", length = 32)
+    @Column(name = "niveau_seniorite", length = 40)
     private String niveauSeniorite;
 
     /** Snapshot famille métier (clé matching E4) — remplace l'usage produit de role_metier. */
     @Column(name = "famille_metier_code", length = 64)
     private String familleMetierCode;
+
+    /** Libellés de la famille et du niveau au moment de la création (D-R07) : repli si le référentiel est muet. */
+    @Column(name = "famille_metier_libelle", length = 200)
+    private String familleMetierLibelle;
+
+    @Column(name = "niveau_seniorite_libelle", length = 200)
+    private String niveauSenioriteLibelle;
 
     /** Legacy — ne plus écrire ; lecture migration. */
     @Column(name = "role_metier", length = 120)
@@ -162,6 +169,12 @@ public class Evaluation {
 
     public String getFamilleMetierCode() { return familleMetierCode; }
     public void setFamilleMetierCode(String familleMetierCode) { this.familleMetierCode = familleMetierCode; }
+
+    public String getFamilleMetierLibelle() { return familleMetierLibelle; }
+    public void setFamilleMetierLibelle(String familleMetierLibelle) { this.familleMetierLibelle = familleMetierLibelle; }
+
+    public String getNiveauSenioriteLibelle() { return niveauSenioriteLibelle; }
+    public void setNiveauSenioriteLibelle(String niveauSenioriteLibelle) { this.niveauSenioriteLibelle = niveauSenioriteLibelle; }
 
     public String getRoleMetier() { return roleMetier; }
     public void setRoleMetier(String roleMetier) { this.roleMetier = roleMetier; }

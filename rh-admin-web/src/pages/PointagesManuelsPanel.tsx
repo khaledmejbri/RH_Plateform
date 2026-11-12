@@ -2,7 +2,6 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   formatDateTunis,
   getDemandesManuelles,
-  LIBELLES_DEMANDE_MANUELLE,
   messagePresenceErreur,
   postRefuserDemandeManuelle,
   postValiderDemandeManuelle,
@@ -13,8 +12,8 @@ import BarreFiltres, { AucunResultat, ChampSelect } from '../components/BarreFil
 import { correspond, useFiltresUrl } from '../utils/filtres';
 import { useConfirm } from '../components/ConfirmDialog';
 import { COLLABORATEUR_INTROUVABLE, formatPersonne, ressembleAUnIdentifiant } from '../utils/format';
-import { VALEUR_NON_RECONNUE } from '../utils/libelles';
-import { LIBELLES_POINTAGE_STATUT } from '../api/presenceApi';
+import { styleCouleur } from '../utils/palette';
+import { couleurStatut, libelleReferentiel, useParametres } from '../utils/parametresStore';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 /** Seuil d'alerte RH (D-P04) — l'API renvoie déjà `alerteSeuil` ; affiché pour l'explication. */
@@ -24,7 +23,7 @@ const FILTRES_DEFAUT = { q: '', statut: 'EN_ATTENTE', type: '' };
 /** Motif du refus automatique : libellé du statut si c'est un code, sinon le texte du serveur. */
 function motifLisible(m: string | null): string {
   if (!m) return '—';
-  if (/^[A-Z][A-Z0-9_]+$/.test(m)) return LIBELLES_POINTAGE_STATUT[m] ?? VALEUR_NON_RECONNUE;
+  if (/^[A-Z][A-Z0-9_]+$/.test(m)) return libelleReferentiel('STATUT_POINTAGE', m);
   return m;
 }
 
@@ -36,7 +35,8 @@ function decideur(v: string): string {
 function StatutBadge({ statut }: { statut: StatutDemandeManuelle }) {
   const cls =
     statut === 'VALIDEE' ? 'badge badge--success' : statut === 'REFUSEE' ? 'badge badge--warning' : 'badge badge--default';
-  return <span className={cls}>{LIBELLES_DEMANDE_MANUELLE[statut] ?? VALEUR_NON_RECONNUE}</span>;
+  const couleur = couleurStatut('STATUT_DEMANDE_MANUELLE', statut);
+  return <span className={cls} style={couleur ? { ...styleCouleur(couleur), border: '1px solid' } : undefined}>{libelleReferentiel('STATUT_DEMANDE_MANUELLE', statut)}</span>;
 }
 
 /**
@@ -44,6 +44,7 @@ function StatutBadge({ statut }: { statut: StatutDemandeManuelle }) {
  * collaborateur avec alerte au-delà de 3, décision RH quand aucun responsable n'est trouvé.
  */
 export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: boolean }) {
+  useParametres();
   const confirm = useConfirm();
   const filtres = useFiltresUrl(FILTRES_DEFAUT, 'm_');
   const f = filtres.valeurs;

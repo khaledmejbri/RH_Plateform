@@ -1,33 +1,20 @@
 import { useState, useEffect } from 'react';
 import { templateApi, type EvaluationTemplate } from '../api/evaluationApi';
 import {
-  FAMILLES_METIER_SEED,
-  NIVEAUX_SENIORITE,
   libelleNiveauSeniorite,
   libelleFamilleMetier, profilMetierLabel,
-  type FamilleMetier,
 } from '../api/evaluationCatalog';
-import { getFamillesMetier } from '../api/rhClient';
+import { optionsFiltre, rafraichirParametres, useParametres } from '../utils/parametresStore';
 import TemplateBuilder from '../components/TemplateBuilder';
 import { useConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/format';
+import { libelle } from '../utils/libelles';
 import { currentUserId } from '../auth/jwtRoles';
 
 interface EnhancedTemplatesTabProps {
   templateType: 'GENERIC' | 'TECHNICAL';
   lectureSeule?: boolean;
 }
-
-const QUESTION_TYPE_LABELS: Record<string, string> = {
-  TEXT: 'Texte court',
-  PARAGRAPH: 'Paragraphe',
-  MULTIPLE_CHOICE: 'Choix unique',
-  CHECKBOX: 'Cases à cocher',
-  RATING: 'Note',
-  SCALE: 'Échelle',
-  NUMBER: 'Nombre',
-  DATE: 'Date',
-};
 
 export default function EnhancedTemplatesTab({
   templateType,
@@ -42,25 +29,11 @@ export default function EnhancedTemplatesTab({
   const [filterStatut, setFilterStatut] = useState<string>('');
   const [filterFamille, setFilterFamille] = useState<string>('');
   const [filterNiveau, setFilterNiveau] = useState<string>('');
-  const [familles, setFamilles] = useState<FamilleMetier[]>(FAMILLES_METIER_SEED);
+  useParametres();
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    void getFamillesMetier(true)
-      .then((rows) => {
-        if (cancelled || !Array.isArray(rows) || rows.length === 0) return;
-        setFamilles(rows.filter(f => f.actif !== false).map(f => ({
-          code: f.code,
-          libelle: f.libelle,
-          actif: f.actif !== false,
-          systeme: f.systeme,
-        })));
-      })
-      .catch(() => {
-        if (!cancelled) setFamilles(FAMILLES_METIER_SEED);
-      });
-    return () => { cancelled = true; };
+    void rafraichirParametres();
   }, []);
 
   useEffect(() => {
@@ -187,8 +160,8 @@ export default function EnhancedTemplatesTab({
                 aria-label="Filtrer par famille métier"
               >
                 <option value="">Toutes les familles</option>
-                {familles.map(f => (
-                  <option key={f.code} value={f.code}>{f.libelle}</option>
+                {optionsFiltre('FAMILLE_METIER', templates.flatMap(t => (t.familleMetierCode ? [t.familleMetierCode] : []))).map(o => (
+                  <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
                 ))}
               </select>
               <select
@@ -199,8 +172,8 @@ export default function EnhancedTemplatesTab({
                 aria-label="Filtrer par niveau"
               >
                 <option value="">Tous les niveaux</option>
-                {NIVEAUX_SENIORITE.map(n => (
-                  <option key={n.code} value={n.code}>{n.libelle}</option>
+                {optionsFiltre('NIVEAU_SENIORITE', templates.flatMap(t => (t.niveauSeniorite ? [t.niveauSeniorite.toUpperCase()] : []))).map(o => (
+                  <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
                 ))}
               </select>
             </>
@@ -246,7 +219,7 @@ export default function EnhancedTemplatesTab({
 
       <div className="grid grid--2">
         {visibleTemplates.map(template => {
-          const profil = profilMetierLabel(template.familleMetierCode, template.niveauSeniorite, familles);
+          const profil = profilMetierLabel(template.familleMetierCode, template.niveauSeniorite);
           return (
             <div key={template.identifiant} className="card">
               <div className="card__header">
@@ -268,7 +241,7 @@ export default function EnhancedTemplatesTab({
                   ) : (
                     <>
                       {template.familleMetierCode && (
-                        <div><strong>Famille :</strong> {libelleFamilleMetier(template.familleMetierCode, familles)}</div>
+                        <div><strong>Famille :</strong> {libelleFamilleMetier(template.familleMetierCode)}</div>
                       )}
                       {template.niveauSeniorite && (
                         <div>
@@ -333,7 +306,7 @@ export default function EnhancedTemplatesTab({
                           <div className="question-label">{question.libelle}</div>
                           <div className="question-meta">
                             <span className="badge badge--info">
-                              {QUESTION_TYPE_LABELS[question.typeQuestion] ?? question.typeQuestion}
+                              {libelle('typeQuestion', question.typeQuestion)}
                             </span>
                             {question.sectionLibelle && (
                               <span className="badge badge--default">{question.sectionLibelle}</span>

@@ -2,7 +2,6 @@ package com.hr.referentiel.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hr.referentiel.domain.StatutDocumentAdministratifDemandeRh;
-import com.hr.referentiel.domain.TypeDocumentAdministratifDemandeRh;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -30,10 +29,18 @@ public class DemandeDocumentAdministratifRhResponse {
 	private String demandeurUnite;
 
 	@JsonProperty("type_document")
-	private TypeDocumentAdministratifDemandeRh typeDocument;
+	private String typeDocument;
+
+	/** Libellé courant du type (lot 3) : un type désactivé s'affiche avec son libellé. */
+	@JsonProperty("type_document_libelle")
+	private String typeDocumentLibelle;
 
 	@JsonProperty("statut")
 	private StatutDocumentAdministratifDemandeRh statut;
+
+	/** Libellé courant du statut (lot 3, paramétrable). */
+	@JsonProperty("statut_libelle")
+	private String statutLibelle;
 
 	/** Toujours FIFO : premier enregistré, premier traité par le RRH (file unique). */
 	@JsonProperty("regle_priorite")
@@ -82,7 +89,7 @@ public class DemandeDocumentAdministratifRhResponse {
 	}
 
 	public DemandeDocumentAdministratifRhResponse(UUID identifiant, UUID demandeurIdentifiant,
-			TypeDocumentAdministratifDemandeRh typeDocument, StatutDocumentAdministratifDemandeRh statut,
+			String typeDocument, StatutDocumentAdministratifDemandeRh statut,
 			String reglePriorite, int delaiSlaHeures, Instant dateEcheanceTraitement, String commentaireDemandeur,
 			String commentaireRh, String referenceLivrable, Instant creeLe, Instant modifieLe,
 			Integer rangDansFile, boolean enRetard, boolean estProchaineFifo,
@@ -122,8 +129,24 @@ public class DemandeDocumentAdministratifRhResponse {
 		return demandeurIdentifiant;
 	}
 
-	public TypeDocumentAdministratifDemandeRh getTypeDocument() {
+	public String getTypeDocument() {
 		return typeDocument;
+	}
+
+	public String getTypeDocumentLibelle() {
+		return typeDocumentLibelle;
+	}
+
+	public void setTypeDocumentLibelle(String typeDocumentLibelle) {
+		this.typeDocumentLibelle = typeDocumentLibelle;
+	}
+
+	public String getStatutLibelle() {
+		return statutLibelle;
+	}
+
+	public void setStatutLibelle(String statutLibelle) {
+		this.statutLibelle = statutLibelle;
 	}
 
 	public StatutDocumentAdministratifDemandeRh getStatut() {

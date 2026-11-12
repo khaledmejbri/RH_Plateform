@@ -2249,9 +2249,6 @@ textarea {
 
 /* M07 alertes d'écart (SCRUM-55) : couleur + mot écrit, contraste >= 4,5:1 */
 .badge--ecart-aligne { background: #e3f4e8; color: #14532d; }
-.badge--ecart-orange { background: #ffedd0; color: #7c3a00; border: 1px solid #c2610c; }
-.badge--ecart-rouge { background: #fde2e2; color: #8f1111; border: 1px solid #b91c1c; }
-.badge--ecart-urgente { background: #991b1b; color: #ffffff; border: 1px solid #7f1d1d; }
 .field-error { color: #b91c1c; font-size: 0.8rem; margin: 0.25rem 0 0; }
 .detail-badges { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .historique-alerte { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }

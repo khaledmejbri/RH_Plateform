@@ -1,4 +1,3 @@
-import '../../../core/libelles/libelles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/format/formats.dart';
@@ -60,7 +59,7 @@ class FormationDetailScreen extends ConsumerWidget {
   }
 
   Widget _buildHeaderCard(FormationItem formation) {
-    final status = _statusMeta(formation.statut);
+    final status = _statusMeta(formation);
 
     return Material(
       color: AppTheme.surface,
@@ -328,9 +327,9 @@ class FormationDetailScreen extends ConsumerWidget {
 
   String _formatDate(String dateString) => formatDateHeureIso(dateString);
 
-  (String, Color, Color) _statusMeta(String statut) {
-    final libelle = Libelles.statutFormation(statut);
-    return switch (statut) {
+  (String, Color, Color) _statusMeta(FormationItem formation) {
+    final libelle = formation.statutLibelle;
+    return switch (formation.statut) {
       'INTEGREE_PLAN' => (libelle, AppTheme.successSurface, AppTheme.success),
       'REFUSEE' => (libelle, AppTheme.errorSurface, AppTheme.errorDark),
       'ANNULEE' => (libelle, AppTheme.surfaceMuted, AppTheme.textSecondary),

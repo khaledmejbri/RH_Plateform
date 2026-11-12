@@ -17,6 +17,7 @@ import { DialogPanel } from '../components/useDialogA11y';
 import { Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge } from '../components/ui';
 import { formatDateHeure, formatPersonne } from '../utils/format';
 import { libelle } from '../utils/libelles';
+import { libelleReferentiel, optionsFiltre } from '../utils/parametresStore';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', type: '', statut: '' };
@@ -136,7 +137,7 @@ export default function DocumentsAdministratifsPage() {
   const blockedByOther = hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH';
 
   const retenues = useMemo(() => unitesRetenues(unites, f), [unites, f]);
-  const typesDoc = useMemo(() => Array.from(new Set(rows.map((r) => r.type_document))).sort(), [rows]);
+  const typesDoc = useMemo(() => Array.from(new Set(rows.map((r) => r.type_document))), [rows]);
   const statutsDoc = useMemo(() => Array.from(new Set(rows.map((r) => r.statut))).sort(), [rows]);
   const affichees = useMemo(
     () =>
@@ -204,7 +205,7 @@ export default function DocumentsAdministratifsPage() {
           id="docs-type"
           libelle="Type de document"
           valeur={f.type}
-          options={typesDoc.map((t) => ({ valeur: t, libelle: libelleTypeDocument(t) }))}
+          options={optionsFiltre('TYPE_DOCUMENT', typesDoc)}
           onChange={(v) => filtres.definir({ type: v })}
         />
         <ChampSelect
@@ -213,7 +214,7 @@ export default function DocumentsAdministratifsPage() {
           valeur={f.statut}
           options={[
             { valeur: 'A_TRAITER', libelle: 'À traiter (en attente + en traitement)' },
-            ...statutsDoc.map((t) => ({ valeur: t, libelle: docStatusLabel(t) })),
+            ...optionsFiltre('STATUT_DOCUMENT', statutsDoc),
           ]}
           onChange={(v) => filtres.definir({ statut: v })}
         />
@@ -267,11 +268,11 @@ export default function DocumentsAdministratifsPage() {
                       <td data-label="Demandée le" className="cell-meta">{formatDateHeure(d.cree_le)}</td>
                       <td data-label="Demandeur"><LienPersonne id={d.demandeur_identifiant} nom={d.demandeur_nom} matricule={d.demandeur_matricule} /></td>
                       <td data-label="Type"><Chip tone="info" icon="file">{libelleTypeDocument(d.type_document)}</Chip></td>
-                      <td data-label="Statut"><StatusBadge statut={d.statut} label={docStatusLabel(d.statut)} /></td>
+                      <td data-label="Statut"><StatusBadge referentiel="STATUT_DOCUMENT" statut={d.statut} label={docStatusLabel(d.statut)} /></td>
                       <td data-label="SLA" className="cell-meta">{d.delai_sla_heures} h</td>
                       <td data-label="Retard">
                         {d.en_retard
-                          ? <StatusBadge statut="REJETEE" label="En retard" />
+                          ? <StatusBadge referentiel="STATUT_DOCUMENT" statut="REJETEE" label="En retard" />
                           : <span className="cell-meta">—</span>}
                       </td>
                       <td data-label="Action" style={{ textAlign: 'right' }}>
@@ -329,7 +330,7 @@ export default function DocumentsAdministratifsPage() {
 
               <dl className="detail-grid">
                 <div><dt>Type de document</dt><dd><Chip tone="info" icon="file">{libelleTypeDocument(pickedDemande.type_document)}</Chip></dd></div>
-                <div><dt>Statut</dt><dd><StatusBadge statut={pickedDemande.statut} label={docStatusLabel(pickedDemande.statut)} /></dd></div>
+                <div><dt>Statut</dt><dd><StatusBadge referentiel="STATUT_DOCUMENT" statut={pickedDemande.statut} label={docStatusLabel(pickedDemande.statut)} /></dd></div>
                 <div>
                   <dt>Demandeur</dt>
                   <dd>
@@ -345,7 +346,7 @@ export default function DocumentsAdministratifsPage() {
                 <div><dt>Délai de traitement</dt><dd>{pickedDemande.delai_sla_heures} h</dd></div>
                 <div>
                   <dt>Retard</dt>
-                  <dd>{pickedDemande.en_retard ? <StatusBadge statut="REJETEE" label="En retard" /> : 'Non'}</dd>
+                  <dd>{pickedDemande.en_retard ? <StatusBadge referentiel="STATUT_DOCUMENT" statut="REJETEE" label="En retard" /> : 'Non'}</dd>
                 </div>
               </dl>
 
@@ -440,5 +441,5 @@ function libelleTypeDocument(code: string): string {
 }
 
 function docStatusLabel(statut: string): string {
-  return libelle('statut', statut);
+  return libelleReferentiel('STATUT_DOCUMENT', statut);
 }

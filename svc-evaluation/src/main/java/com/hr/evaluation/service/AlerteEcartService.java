@@ -3,7 +3,8 @@ package com.hr.evaluation.service;
 import com.hr.evaluation.client.FicheEvaluation;
 import com.hr.evaluation.client.ReferentielFicheClient;
 import com.hr.evaluation.domain.EvenementAlerteEcart;
-import com.hr.evaluation.domain.NiveauEcart;
+import com.hr.evaluation.domain.NiveauAlerte;
+import com.hr.evaluation.domain.ReferentielEvaluation;
 import com.hr.evaluation.domain.SensEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import com.hr.evaluation.entity.AlerteEcart;
@@ -52,17 +53,20 @@ public class AlerteEcartService {
     private final TemplateTechniqueEvaluation templateTechnique;
     private final ReferentielFicheClient ficheClient;
     private final ApplicationEventPublisher eventPublisher;
+    private final ParametresEvaluation parametres;
 
     public AlerteEcartService(AlerteEcartRepository alerteRepository,
                               EvaluationAnswerRepository answerRepository,
                               TemplateTechniqueEvaluation templateTechnique,
                               ReferentielFicheClient ficheClient,
-                              ApplicationEventPublisher eventPublisher) {
+                              ApplicationEventPublisher eventPublisher,
+                              ParametresEvaluation parametres) {
         this.alerteRepository = alerteRepository;
         this.answerRepository = answerRepository;
         this.templateTechnique = templateTechnique;
         this.ficheClient = ficheClient;
         this.eventPublisher = eventPublisher;
+        this.parametres = parametres;
     }
 
     /** Notes valides d'une compétence : collaborateur et RO en étoiles 1 à 5. */
@@ -74,7 +78,8 @@ public class AlerteEcartService {
     // ----------------------------------------------------------------------------------------------------------
 
     /**
-     * Crée l'alerte si au moins une compétence technique a un écart d'au moins 2 étoiles ; sinon ne fait rien.
+     * Crée l'alerte si au moins une compétence technique a un écart qui atteint le seuil du plus bas niveau actif
+     * (2 étoiles par défaut, paramétrable D-R04) ; sinon ne fait rien.
      * Ne recrée jamais une alerte existante (unicité par évaluation).
      */
     @Transactional
@@ -86,7 +91,8 @@ public class AlerteEcartService {
         Map<EvaluationQuestion, Notes> notes = notesParQuestion(evaluation, questions);
 
         List<Map.Entry<EvaluationQuestion, Notes>> enEcart = notes.entrySet().stream()
-                .filter(e -> EcartEtoiles.ecart(e.getValue().collaborateur(), e.getValue().ro()) >= EcartEtoiles.SEUIL_ORANGE)
+                .filter(e -> NiveauAlerte.estAlerte(
+                        parametres.niveau(EcartEtoiles.ecart(e.getValue().collaborateur(), e.getValue().ro()))))
                 .toList();
         if (enEcart.isEmpty()) {
             return Optional.empty();
@@ -105,11 +111,11 @@ public class AlerteEcartService {
         alerte.setSuperieurNom(evaluation.getSuperieurNom());
         completerSnapshot(alerte);
 
-        NiveauEcart niveauMax = NiveauEcart.ALIGNE;
+        String niveauMax = NiveauAlerte.ALIGNE;
         for (Map.Entry<EvaluationQuestion, Notes> entree : enEcart) {
             AlerteEcartLigne ligne = nouvelleLigne(entree.getKey(), entree.getValue(), maintenant);
             alerte.ajouterLigne(ligne);
-            niveauMax = NiveauEcart.max(niveauMax, ligne.getNiveauActuel());
+            niveauMax = parametres.max(niveauMax, ligne.getNiveauActuel());
         }
         alerte.setNiveauDetection(niveauMax);
         alerte.setNiveauCourant(niveauMax);
@@ -120,6 +126,7 @@ public class AlerteEcartService {
                 null, StatutAlerteEcart.OUVERTE, null, niveauMax));
 
         // La contrainte d'unicité reste le garde-fou ; le verrou de l'évaluation neutralise la course.
+        marquerNiveauxUtilises(alerte);
         AlerteEcart sauvee = alerteRepository.save(alerte);
         publierNotification(sauvee);
         return Optional.of(sauvee);
@@ -170,7 +177,7 @@ public class AlerteEcartService {
                     ligne.setEtoilesCollaborateurActuelles(n.collaborateur());
                     ligne.setEtoilesRoActuelles(n.ro());
                     ligne.setEcartActuel(ecart);
-                    ligne.setNiveauActuel(EcartEtoiles.niveau(ecart));
+                    ligne.setNiveauActuel(parametres.niveau(ecart));
                     ligne.setSensActuel(EcartEtoiles.sens(n.collaborateur(), n.ro()));
                     ligne.setModifieeLe(maintenant);
                     modifie = true;
@@ -179,18 +186,18 @@ public class AlerteEcartService {
                         || ligne.getEtoilesRoActuelles() != ligne.getEtoilesRoDetection()) {
                     alerte.setNotesModifieesApresDetection(true); // indicateur collant
                 }
-            } else if (ecart >= EcartEtoiles.SEUIL_ORANGE) {
+            } else if (NiveauAlerte.estAlerte(parametres.niveau(ecart))) {
                 alerte.ajouterLigne(nouvelleLigne(question, n, maintenant));
                 alerte.setNotesModifieesApresDetection(true);
                 modifie = true;
             }
         }
 
-        NiveauEcart ancien = alerte.getNiveauCourant();
-        NiveauEcart nouveau = alerte.getLignes().stream()
+        String ancien = alerte.getNiveauCourant();
+        String nouveau = alerte.getLignes().stream()
                 .map(AlerteEcartLigne::getNiveauActuel)
-                .reduce(NiveauEcart.ALIGNE, NiveauEcart::max);
-        boolean hausse = nouveau.compareTo(ancien) > 0;
+                .reduce(NiveauAlerte.ALIGNE, parametres::max);
+        boolean hausse = parametres.comparer(nouveau, ancien) > 0;
         boolean reouverture = false;
 
         if (hausse && alerte.getStatut() == StatutAlerteEcart.TRAITEE) {
@@ -199,23 +206,24 @@ public class AlerteEcartService {
             alerte.setStatut(StatutAlerteEcart.OUVERTE);
             alerte.setConclusion(null); // l'ancienne reste dans l'historique
             reouverture = true;
-        } else if (nouveau != ancien) {
+        } else if (!nouveau.equals(ancien)) {
             alerte.ajouterHistorique(AlerteEcartHistorique.systeme(EvenementAlerteEcart.RECALCUL,
                     alerte.getStatut(), alerte.getStatut(), ancien, nouveau));
         }
         alerte.setNiveauCourant(nouveau);
 
-        boolean notifier = nouveau.compareTo(alerte.getNiveauMaxNotifie()) > 0 || reouverture;
+        boolean notifier = parametres.comparer(nouveau, alerte.getNiveauMaxNotifie()) > 0 || reouverture;
         if (notifier) {
-            alerte.setNiveauMaxNotifie(NiveauEcart.max(alerte.getNiveauMaxNotifie(), nouveau));
+            alerte.setNiveauMaxNotifie(parametres.max(alerte.getNiveauMaxNotifie(), nouveau));
         }
 
         if (alerte.getCollaborateurMatricule() == null) {
             completerSnapshot(alerte); // nouvel essai tant que le référentiel n'a pas répondu
         }
-        if (modifie || nouveau != ancien || reouverture) {
+        if (modifie || !nouveau.equals(ancien) || reouverture) {
             alerte.setModifieeLe(maintenant);
         }
+        marquerNiveauxUtilises(alerte);
         alerteRepository.save(alerte);
         if (notifier) {
             publierNotification(alerte);
@@ -256,9 +264,9 @@ public class AlerteEcartService {
         return resultat;
     }
 
-    private static AlerteEcartLigne nouvelleLigne(EvaluationQuestion question, Notes n, Instant maintenant) {
+    private AlerteEcartLigne nouvelleLigne(EvaluationQuestion question, Notes n, Instant maintenant) {
         int ecart = EcartEtoiles.ecart(n.collaborateur(), n.ro());
-        NiveauEcart niveau = EcartEtoiles.niveau(ecart);
+        String niveau = parametres.niveau(ecart);
         SensEcart sens = EcartEtoiles.sens(n.collaborateur(), n.ro());
         AlerteEcartLigne ligne = new AlerteEcartLigne();
         ligne.setQuestionIdentifiant(question.getId());
@@ -315,9 +323,22 @@ public class AlerteEcartService {
         }
     }
 
+    /** Marque collante D-R02.d : tout niveau porté par l'alerte ou ses lignes devient « déjà utilisé » (même transaction). */
+    private void marquerNiveauxUtilises(AlerteEcart alerte) {
+        Set<String> codes = new java.util.LinkedHashSet<>();
+        codes.add(alerte.getNiveauDetection());
+        codes.add(alerte.getNiveauCourant());
+        codes.add(alerte.getNiveauMaxNotifie());
+        alerte.getLignes().forEach(l -> {
+            codes.add(l.getNiveauDetection());
+            codes.add(l.getNiveauActuel());
+        });
+        codes.forEach(code -> parametres.marquerUtilise(ReferentielEvaluation.NIVEAU_ALERTE, code));
+    }
+
     private void publierNotification(AlerteEcart alerte) {
         List<AlerteEcartLigne> enEcart = alerte.getLignes().stream()
-                .filter(l -> l.getNiveauActuel().estAlerte())
+                .filter(l -> NiveauAlerte.estAlerte(l.getNiveauActuel()))
                 .toList();
         int ecartMax = enEcart.stream().mapToInt(AlerteEcartLigne::getEcartActuel).max().orElse(0);
         Set<UUID> exclus = new HashSet<>();
@@ -330,6 +351,7 @@ public class AlerteEcartService {
         eventPublisher.publishEvent(new AlerteEcartANotifierEvent(
                 alerte.getId(),
                 alerte.getNiveauCourant(),
+                parametres.libelleNiveau(alerte.getNiveauCourant()),
                 alerte.getCollaborateurNom(),
                 alerte.getCampagneNom(),
                 enEcart.size(),

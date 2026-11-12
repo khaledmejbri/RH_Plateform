@@ -1,3 +1,5 @@
+import '../../../core/libelles/libelles.dart';
+
 class PlainteItem {
   PlainteItem({
     required this.id,
@@ -6,6 +8,7 @@ class PlainteItem {
     required this.typePlainte,
     this.description,
     this.numero,
+    this.statutLibelleApi,
   });
 
   final String id;
@@ -17,6 +20,11 @@ class PlainteItem {
   /// Numéro lisible `PLT-AAAAMM-NNNN` si le serveur l'envoie.
   final String? numero;
 
+  /// Libellé du statut servi avec la plainte (`statut_libelle`) ; à défaut, le référentiel chargé.
+  final String? statutLibelleApi;
+
+  String get statutLibelle => Libelles.avecRepli(statutLibelleApi, statut, Libelles.statutPlainte);
+
   factory PlainteItem.fromJson(Map<String, dynamic> j) {
     return PlainteItem(
       id: j['identifiant']?.toString() ?? '',
@@ -25,6 +33,7 @@ class PlainteItem {
       typePlainte: j['type_plainte'] as String? ?? '',
       description: j['description'] as String?,
       numero: j['numero'] as String?,
+      statutLibelleApi: j['statut_libelle'] as String?,
     );
   }
 }

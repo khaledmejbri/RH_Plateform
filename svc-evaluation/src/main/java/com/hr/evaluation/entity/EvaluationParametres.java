@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -24,6 +25,15 @@ public class EvaluationParametres {
     @Column(name = "duree_campagne_jours", nullable = false)
     private int dureeCampagneJours;
 
+    /** Note (1 à 5) en dessous de laquelle un critère est insuffisant ; null lu comme 3 (D-R06, ADR lot 3 § 2). */
+    @Column(name = "seuil_insuffisance")
+    private Integer seuilInsuffisance;
+
+    /** Nullable : ajoutée à une table existante, remplie par le runner d'amorçage (ADR lot 3 § 8). */
+    @Version
+    @Column(name = "version")
+    private Long version;
+
     @Column(name = "modifie_le")
     private Instant modifieLe;
 
@@ -35,6 +45,11 @@ public class EvaluationParametres {
 
     public int getDureeCampagneJours() { return dureeCampagneJours; }
     public void setDureeCampagneJours(int dureeCampagneJours) { this.dureeCampagneJours = dureeCampagneJours; }
+
+    public Integer getSeuilInsuffisance() { return seuilInsuffisance; }
+    public void setSeuilInsuffisance(Integer seuilInsuffisance) { this.seuilInsuffisance = seuilInsuffisance; }
+
+    public Long getVersion() { return version; }
 
     public Instant getModifieLe() { return modifieLe; }
     public void setModifieLe(Instant modifieLe) { this.modifieLe = modifieLe; }

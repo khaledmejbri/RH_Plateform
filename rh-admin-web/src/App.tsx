@@ -18,6 +18,7 @@ import AlerteEcartDetailPage from './pages/AlerteEcartDetailPage';
 import PointageSitesPage from './pages/PointageSitesPage';
 import HeuresSupPage from './pages/HeuresSupPage';
 import BornePage from './pages/BornePage';
+import ParametresPage from './pages/ParametresPage';
 import FichePage from './detail/FichePage';
 
 export default function App() {
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/app/pointage/manuels/:id" element={<FichePage type="pointage-manuel" />} />
           <Route path="/app/heures-sup" element={<HeuresSupPage />} />
           <Route path="/app/heures-sup/:id" element={<FichePage type="heures-sup" />} />
+          <Route path="/app/parametres" element={<ParametresPage />} />
           <Route element={<RequireWriteAccess />}>
             <Route path="/app/plaintes" element={<PlaintesSuiviPage />} />
             <Route path="/app/plaintes/:id" element={<FichePage type="plainte" />} />

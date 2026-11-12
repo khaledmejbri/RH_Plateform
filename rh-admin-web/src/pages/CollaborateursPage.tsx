@@ -1,21 +1,15 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   getTousCollaborateurs,
-  getFamillesMetier,
   getUnites,
-  isProfilAcces,
   libelleProfilAcces,
   nomCollaborateur,
   postCollaborateur,
   putCollaborateur,
-  PROFILS_ACCES,
   type CollaborateurRow,
-  type FamilleMetierRow,
   type Unite,
 } from '../api/rhClient';
 import {
-  FAMILLES_METIER_SEED,
-  NIVEAUX_SENIORITE,
   libelleFamilleMetier,
   libelleNiveauSeniorite,
   normalizeNiveauSeniorite,
@@ -26,14 +20,15 @@ import { ErrorAlert, Icon, LoadingState, StatusBadge } from '../components/ui';
 import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
 import { appartientSelection, cheminUnite, correspond, indexerUnites, useFiltresUrl } from '../utils/filtres';
 import { formatNombre, formatPersonne } from '../utils/format';
-import { libelle, optionsDomaine } from '../utils/libelles';
+import { libelle } from '../utils/libelles';
+import { optionsFiltre, optionsFormulaire, rafraichirParametres, useParametres } from '../utils/parametresStore';
 import { SaisieDate } from '../components/ChampsFr';
 import MenuLigne from '../components/MenuLigne';
 import DetailLink from '../detail/DetailLink';
 
 const PROFIL_DEFAUT = 'COLLABORATEUR' as const;
 const TAILLE_PAGE = 15;
-const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', profil: '', statut: '', metier: '' };
+const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', profil: '', statut: '', metier: '', famille: '', niveau: '' };
 
 /** D-E13.c : fiche active sans famille ou sans niveau. */
 function profilMetierIncomplet(r: CollaborateurRow): boolean {
@@ -47,6 +42,7 @@ function profilDepuisLigne(row: CollaborateurRow | null): string {
 }
 
 export default function CollaborateursPage() {
+  useParametres();
   const confirm = useConfirm();
   const lectureSeule = useLectureSeule();
   const [tab, setTab] = useState<'liste' | 'form'>('liste');
@@ -73,24 +69,13 @@ export default function CollaborateursPage() {
   const [profilAcces, setProfilAcces] = useState<string>(PROFIL_DEFAUT);
   const [familleMetierCode, setFamilleMetierCode] = useState('');
   const [niveauSeniorite, setNiveauSeniorite] = useState('');
-  const [familles, setFamilles] = useState<FamilleMetierRow[]>(FAMILLES_METIER_SEED);
-  const [catalogueStub, setCatalogueStub] = useState(false);
   const [motDePasseInitial, setMotDePasseInitial] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     void getUnites().then(setUnites).catch(() => {});
-    void getFamillesMetier(true)
-      .then((rows) => {
-        if (Array.isArray(rows) && rows.length > 0) {
-          setFamilles(rows);
-          setCatalogueStub(false);
-        }
-      })
-      .catch(() => {
-        setFamilles(FAMILLES_METIER_SEED);
-        setCatalogueStub(true);
-      });
+    // Familles, niveaux, profils et statuts : listes du paramétrage, relues à l'ouverture de la page (D-R02.j).
+    void rafraichirParametres();
   }, []);
 
   async function loadList() {
@@ -123,6 +108,8 @@ export default function CollaborateursPage() {
           appartientSelection(indexUnites, r.unite?.identifiant, f) &&
           (!f.profil || (r.profil_acces ?? PROFIL_DEFAUT).toUpperCase() === f.profil) &&
           (!f.statut || r.statut.toUpperCase() === f.statut) &&
+          (!f.famille || r.famille_metier_code === f.famille) &&
+          (!f.niveau || normalizeNiveauSeniorite(r.niveau_seniorite) === f.niveau) &&
           (f.metier !== 'A_COMPLETER' || profilMetierIncomplet(r)),
       ),
     [rows, f, indexUnites],
@@ -155,11 +142,13 @@ export default function CollaborateursPage() {
   }
 
   function openCreer() {
+    void rafraichirParametres();
     resetForm();
     setTab('form');
   }
 
   function openEditer(row: CollaborateurRow) {
+    void rafraichirParametres();
     setEditing(row);
     setMatricule(row.matricule);
     setPrenom(row.prenom);
@@ -308,15 +297,29 @@ export default function CollaborateursPage() {
                   id="collab-profil"
                   libelle="Profil d'accès"
                   valeur={f.profil}
-                  options={PROFILS_ACCES.map((p) => ({ valeur: p, libelle: libelle('profilAcces', p) }))}
+                  options={optionsFiltre('PROFIL_ACCES', rows.map((r) => (r.profil_acces ?? PROFIL_DEFAUT).toUpperCase()))}
                   onChange={(v) => { filtres.definir({ profil: v }); setPage(0); }}
                 />
                 <ChampSelect
                   id="collab-statut"
                   libelle="Statut"
                   valeur={f.statut}
-                  options={optionsDomaine('statutCollaborateur')}
+                  options={optionsFiltre('STATUT_COLLABORATEUR', rows.map((r) => r.statut.toUpperCase()))}
                   onChange={(v) => { filtres.definir({ statut: v }); setPage(0); }}
+                />
+                <ChampSelect
+                  id="collab-famille"
+                  libelle="Famille métier"
+                  valeur={f.famille}
+                  options={optionsFiltre('FAMILLE_METIER', rows.flatMap((r) => (r.famille_metier_code ? [r.famille_metier_code] : [])))}
+                  onChange={(v) => { filtres.definir({ famille: v }); setPage(0); }}
+                />
+                <ChampSelect
+                  id="collab-niveau"
+                  libelle="Niveau de séniorité"
+                  valeur={f.niveau}
+                  options={optionsFiltre('NIVEAU_SENIORITE', rows.flatMap((r) => { const n = normalizeNiveauSeniorite(r.niveau_seniorite); return n ? [n] : []; }))}
+                  onChange={(v) => { filtres.definir({ niveau: v }); setPage(0); }}
                 />
                 <ChampSelect
                   id="collab-metier"
@@ -358,7 +361,7 @@ export default function CollaborateursPage() {
                           {r.famille_metier_code || r.famille_metier_libelle || r.niveau_seniorite ? (
                             <span className="small">
                               {r.famille_metier_libelle
-                                ?? libelleFamilleMetier(r.famille_metier_code, familles)}
+                                ?? libelleFamilleMetier(r.famille_metier_code)}
                               {r.niveau_seniorite
                                 ? ` · ${libelleNiveauSeniorite(r.niveau_seniorite)}`
                                 : ''}
@@ -367,8 +370,8 @@ export default function CollaborateursPage() {
                             <span className="muted small">—</span>
                           )}
                         </td>
-                        <td><StatusBadge statut={r.statut} label={libelle('statutCollaborateur', r.statut)} /></td>
-                        <td>{r.compte_utilisateur_id ? <StatusBadge statut="VALIDE" label="Lié" /> : '—'}</td>
+                        <td><StatusBadge referentiel="STATUT_COLLABORATEUR" statut={r.statut} label={libelle('statutCollaborateur', r.statut)} /></td>
+                        <td>{r.compte_utilisateur_id ? <StatusBadge referentiel="STATUT_COLLABORATEUR" statut="VALIDE" label="Lié" /> : '—'}</td>
                         <td>
                           {lectureSeule ? (
                             <span className="muted small">Lecture seule</span>
@@ -453,7 +456,7 @@ export default function CollaborateursPage() {
             <div>
               <label htmlFor="collaborateurs-f5" className="field-label">Statut</label>
               <select id="collaborateurs-f5" className="field-input" value={statut} onChange={(e) => setStatut(e.target.value)} required>
-                {optionsDomaine('statutCollaborateur').map((o) => (
+                {optionsFormulaire('STATUT_COLLABORATEUR', statut).map((o) => (
                   <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
                 ))}
               </select>
@@ -466,13 +469,8 @@ export default function CollaborateursPage() {
                 onChange={(e) => setProfilAcces(e.target.value)}
                 required
               >
-                {!isProfilAcces(profilAcces) && profilAcces ? (
-                  <option value={profilAcces}>{libelle('profilAcces', profilAcces)}</option>
-                ) : null}
-                {PROFILS_ACCES.map((code) => (
-                  <option key={code} value={code}>
-                    {libelle('profilAcces', code)}
-                  </option>
+                {optionsFormulaire('PROFIL_ACCES', profilAcces).map((o) => (
+                  <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
                 ))}
               </select>
             </div>
@@ -485,17 +483,10 @@ export default function CollaborateursPage() {
                 onChange={(e) => setFamilleMetierCode(e.target.value)}
               >
                 <option value="">— Non renseigné —</option>
-                {familles.map((f) => (
-                  <option key={f.code} value={f.code}>
-                    {f.libelle}
-                  </option>
+                {optionsFormulaire('FAMILLE_METIER', familleMetierCode).map((o) => (
+                  <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
                 ))}
               </select>
-              {catalogueStub ? (
-                <p className="field-help" style={{ marginTop: 4 }}>
-                  Liste des familles métier temporairement indisponible : liste par défaut affichée.
-                </p>
-              ) : null}
             </div>
             <div>
               <label className="field-label" htmlFor="collab-niveau">Niveau de séniorité</label>
@@ -506,10 +497,8 @@ export default function CollaborateursPage() {
                 onChange={(e) => setNiveauSeniorite(e.target.value)}
               >
                 <option value="">— Non renseigné —</option>
-                {NIVEAUX_SENIORITE.map((n) => (
-                  <option key={n.code} value={n.code}>
-                    {n.libelle}
-                  </option>
+                {optionsFormulaire('NIVEAU_SENIORITE', niveauSeniorite).map((o) => (
+                  <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
                 ))}
               </select>
               <p className="field-help" style={{ marginTop: 4 }}>

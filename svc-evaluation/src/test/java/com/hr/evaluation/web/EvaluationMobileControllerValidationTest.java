@@ -72,6 +72,8 @@ class EvaluationMobileControllerValidationTest {
 	@MockitoBean
 	private com.hr.evaluation.service.EvaluationMobileLectureService lectureService;
 	@MockitoBean
+	private com.hr.evaluation.service.ParametresEvaluation parametres;
+	@MockitoBean
 	private JwtDecoder jwtDecoder;
 
 	private final UUID id = UUID.randomUUID();
@@ -109,6 +111,28 @@ class EvaluationMobileControllerValidationTest {
 				.andExpect(jsonPath("$.statut").value("VALIDEE"))
 				.andExpect(jsonPath("$.alerte").doesNotExist())
 				.andExpect(jsonPath("$.niveauEcart").doesNotExist());
+	}
+
+	@Test
+	void questionsTechniques_echelleToujoursCelleDuReferentiel_labelsDeLaQuestionIgnores() throws Exception {
+		Evaluation e = validee();
+		e.setEtapeActuelle(EvaluationStep.EVALUATION_TECHNIQUE);
+		com.hr.evaluation.entity.EvaluationTemplate template = new com.hr.evaluation.entity.EvaluationTemplate();
+		template.setId(UUID.randomUUID());
+		com.hr.evaluation.entity.EvaluationQuestion q = new com.hr.evaluation.entity.EvaluationQuestion();
+		q.setId(UUID.randomUUID());
+		q.setLibelle("Java");
+		q.setOrdre(1);
+		q.setLabelsEchelle(List.of("Débutant", "Supervisé", "Autonome", "Avancé", "Expert"));
+		when(workflowService.obtenirEvaluation(id)).thenReturn(e);
+		when(workflowService.obtenirReponsesEvaluation(id)).thenReturn(List.of());
+		when(templateTechnique.resoudre(e)).thenReturn(Optional.of(template));
+		when(questionRepository.findByTemplateIdAndActifTrueOrderByOrdreAsc(template.getId())).thenReturn(List.of(q));
+		when(parametres.libellesEchelle()).thenReturn(List.of("Débutant", "Supervisé", "Opérationnel", "Avancé", "Expert"));
+
+		mockMvc.perform(get("/api/rh/v1/mobile/evaluations/{id}/questions/techniques", id).with(utilisateur()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].niveauxAttendus").value("Débutant,Supervisé,Opérationnel,Avancé,Expert"));
 	}
 
 	@Test

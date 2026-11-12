@@ -433,7 +433,8 @@ public class RhNotificationPublisher {
             case "ATTESTATION_CNSS"         -> "attestation CNSS";
             case "FEUILLE_POINTAGE_MENSUELLE" -> "feuille de pointage mensuelle";
             case "DOCUMENT_INTERNE"         -> "document interne";
-            default                          -> type.toLowerCase().replace('_', ' ');
+            // Libellé courant déjà rédigé par l'appelant (lot 3) : transmis tel quel, sans changement de casse
+            default                          -> type;
         };
     }
 

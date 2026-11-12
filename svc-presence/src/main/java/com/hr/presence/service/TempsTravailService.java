@@ -84,6 +84,7 @@ public class TempsTravailService {
 	private final PresenceHeuresSupDemandeRepository demandeRepository;
 	private final ReferentielClient referentielClient;
 	private final PresenceProperties properties;
+	private final PresenceParametresService parametres;
 	private final Clock clock;
 
 	public TempsTravailService(
@@ -93,6 +94,7 @@ public class TempsTravailService {
 			PresenceHeuresSupDemandeRepository demandeRepository,
 			ReferentielClient referentielClient,
 			PresenceProperties properties,
+			PresenceParametresService parametres,
 			Clock clock) {
 		this.pointageRepository = pointageRepository;
 		this.siteRepository = siteRepository;
@@ -100,6 +102,7 @@ public class TempsTravailService {
 		this.demandeRepository = demandeRepository;
 		this.referentielClient = referentielClient;
 		this.properties = properties;
+		this.parametres = parametres;
 		this.clock = clock;
 	}
 
@@ -223,7 +226,7 @@ public class TempsTravailService {
 		};
 
 		int dureeMax = properties.getTempsTravail().getDureeMaxSansHoraireHeures();
-		Duration delaiGrace = Duration.ofMinutes(properties.getRetard().getDelaiGraceMinutes());
+		Duration delaiGrace = parametres.delaiGraceRetard();
 		List<JourTravail> jours = TempsTravailCalcul.regrouper(pointages, cle, dureeMax, delaiGrace).stream()
 				.filter(j -> !j.jour().isBefore(periode[0]) && !j.jour().isAfter(periode[1]))
 				.toList();

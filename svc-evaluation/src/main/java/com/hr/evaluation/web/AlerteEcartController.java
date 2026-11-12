@@ -1,6 +1,5 @@
 package com.hr.evaluation.web;
 
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import com.hr.evaluation.dto.AlerteEcartActionRequest;
 import com.hr.evaluation.dto.AlerteEcartCompteur;
@@ -44,7 +43,7 @@ public class AlerteEcartController {
     @GetMapping
     public ResponseEntity<AlerteEcartPage> lister(
             @RequestParam(required = false) StatutAlerteEcart statut,
-            @RequestParam(required = false) NiveauEcart niveau,
+            @RequestParam(required = false) String niveau,
             @RequestParam(required = false) UUID campagneId,
             @RequestParam(required = false) UUID uniteId,
             @RequestParam(required = false) UUID collaborateurId,

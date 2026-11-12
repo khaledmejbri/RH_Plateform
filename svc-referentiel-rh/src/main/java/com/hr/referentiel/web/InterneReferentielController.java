@@ -6,10 +6,12 @@ import com.hr.referentiel.dto.CollaborateurPointageResponse;
 import com.hr.referentiel.dto.FicheEvaluationResponse;
 import com.hr.referentiel.dto.LibellesProfilResponse;
 import com.hr.referentiel.dto.MembreUniteResponse;
+import com.hr.referentiel.dto.ParametreDto;
 import com.hr.referentiel.dto.ValideurControleResponse;
 import com.hr.referentiel.service.AffectationService;
 import com.hr.referentiel.service.HierarchieService;
 import com.hr.referentiel.service.FamilleMetierService;
+import com.hr.referentiel.service.ParametreService;
 import com.hr.referentiel.service.PerimetreValidationService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hr.referentiel.service.ReferentielRhService;
@@ -46,6 +48,7 @@ public class InterneReferentielController {
 	private final AffectationService affectationService;
 	private final FamilleMetierService familleMetierService;
 	private final HierarchieService hierarchieService;
+	private final ParametreService parametreService;
 	private final String jetonInterne;
 
 	public InterneReferentielController(
@@ -54,12 +57,14 @@ public class InterneReferentielController {
 			AffectationService affectationService,
 			FamilleMetierService familleMetierService,
 			HierarchieService hierarchieService,
+			ParametreService parametreService,
 			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne) {
 		this.referentielRhService = referentielRhService;
 		this.perimetreValidationService = perimetreValidationService;
 		this.affectationService = affectationService;
 		this.familleMetierService = familleMetierService;
 		this.hierarchieService = hierarchieService;
+		this.parametreService = parametreService;
 		this.jetonInterne = jetonInterne;
 	}
 
@@ -170,6 +175,21 @@ public class InterneReferentielController {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
 		return ResponseEntity.ok(hierarchieService.controlerValideur(collaborateurId, compteId));
+	}
+
+	/**
+	 * Lot 3 (ADR § 6) : svc-evaluation fait valider les familles et niveaux qu'un template technique cible, et pose
+	 * leur marque « déjà utilisé » (une valeur ciblée ne peut plus être supprimée). Les codes inconnus ou inactifs sont
+	 * rendus dans {@code inconnus} / {@code inactifs} ; l'appelant décide (400 / 422). Jeton interne obligatoire.
+	 */
+	@PostMapping("/parametres/utiliser")
+	public ResponseEntity<ParametreDto.UtiliserResponse> utiliserParametres(
+			@RequestHeader(value = "X-Internal-Token", required = false) String jeton,
+			@RequestBody ParametreDto.UtiliserRequest requete) {
+		if (!jetonValide(jeton)) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+		}
+		return ResponseEntity.ok(parametreService.utiliser(requete == null ? null : requete.references()));
 	}
 
 	private boolean jetonValide(String jeton) {

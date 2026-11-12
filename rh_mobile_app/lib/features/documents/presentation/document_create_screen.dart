@@ -1,4 +1,5 @@
 import '../../../core/libelles/libelles.dart';
+import '../../../core/libelles/libelles_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,7 +19,8 @@ class DocumentCreateScreen extends ConsumerStatefulWidget {
 }
 
 class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
-  String _type = 'ATTESTATION_TRAVAIL';
+  /// Code du type choisi parmi les types actifs servis par l'API ; null tant que rien n'est choisi.
+  String? _type;
   final _comment = TextEditingController();
 
   // Bulletin de paie fields
@@ -29,7 +31,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
 
   var _loading = false;
   bool _canSubmit = false;
-  bool _verifEnCours = true;
+  bool _verifEnCours = false;
   bool _verifEnErreur = false;
   String? _restrictionMessage;
 
@@ -110,12 +112,6 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
   }
 
   @override
-  void initState() {
-    super.initState();
-    _checkRestrictions();
-  }
-
-  @override
   void dispose() {
     _comment.dispose();
     super.dispose();
@@ -123,6 +119,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
 
   Future<void> _checkRestrictions() async {
     final type = _type;
+    if (type == null) return;
     setState(() {
       _verifEnCours = true;
       _verifEnErreur = false;
@@ -148,7 +145,8 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_canSubmit) {
+    final type = _type;
+    if (type == null || !_canSubmit) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_verifEnErreur
@@ -180,7 +178,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
       }
 
       await ref.read(documentRepositoryProvider).create(
-            typeDocument: _type,
+            typeDocument: type,
             commentaire: c.isEmpty ? null : c,
             contenu: contenu,
           );
@@ -202,15 +200,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const types = [
-      'ATTESTATION_TRAVAIL',
-      'ATTESTATION_SALAIRE',
-      'BULLETIN_PAIE',
-      'ATTESTATION_CNSS',
-      'DOCUMENT_INTERNE',
-      'AUTRE',
-    ];
-    const primaryBlue = AppTheme.primary;
+    final typesAsync = ref.watch(typesDocumentActifsProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -220,7 +210,43 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
         elevation: 0,
         centerTitle: true,
       ),
-      body: ListView(
+      body: typesAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => RhErrorState.depuis(
+          e,
+          onRetry: () => ref.invalidate(typesDocumentActifsProvider),
+        ),
+        data: (types) => types.isEmpty
+            ? Column(
+                children: [
+                  const Expanded(
+                    child: RhEmptyState(
+                      icon: Icons.folder_off_outlined,
+                      title: 'Aucun type de document disponible',
+                      message: 'Contactez la RH : aucun document n’est ouvert à la demande.',
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: FilledButton(
+                        onPressed: null,
+                        child: Text('Envoyer la demande'),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : _formulaire(types),
+      ),
+    );
+  }
+
+  Widget _formulaire(List<ParametreValeur> types) {
+    const primaryBlue = AppTheme.primary;
+    return ListView(
         padding: const EdgeInsets.all(24),
         children: [
           const Text(
@@ -229,7 +255,8 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
           ),
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
-            value: _type,
+            value: types.any((t) => t.code == _type) ? _type : null,
+            hint: const Text('Choisir un document'),
             decoration: InputDecoration(
               filled: true,
               fillColor: Colors.white,
@@ -248,9 +275,9 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
                 borderSide: const BorderSide(color: primaryBlue, width: 2),
               ),
             ),
-            items: types
-                .map((t) => DropdownMenuItem(value: t, child: Text(Libelles.typeDocument(t))))
-                .toList(),
+            items: [
+              for (final t in types) DropdownMenuItem(value: t.code, child: Text(t.libelle)),
+            ],
             onChanged: (v) {
               if (v != null) {
                 setState(() => _type = v);
@@ -432,7 +459,9 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
             ],
           ],
 
-          if (_verifEnCours) ...[
+          if (_type == null) ...[
+            const SizedBox(height: 8),
+          ] else if (_verifEnCours) ...[
             const SizedBox(height: 24),
             const Center(child: CircularProgressIndicator()),
           ] else if (_verifEnErreur) ...[
@@ -508,7 +537,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
               ),
             ),
           ),
-          const Spacer(),
+          const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -525,7 +554,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
               child: SizedBox(
                 height: 50,
                 child: FilledButton(
-                  onPressed: (!_loading && _canSubmit) ? _submit : null,
+                  onPressed: (!_loading && _type != null && _canSubmit) ? _submit : null,
                   style: FilledButton.styleFrom(
                     backgroundColor: _canSubmit ? primaryBlue : AppTheme.textTertiary,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -542,7 +571,6 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
             ),
           ),
         ],
-      ),
     );
   }
 }

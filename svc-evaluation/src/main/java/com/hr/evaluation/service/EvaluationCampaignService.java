@@ -232,6 +232,8 @@ public class EvaluationCampaignService {
         evaluation.setCollaborateurPoste(collab.posteLibelle());
         evaluation.setSuperieurCompteId(collab.superieurCompteUtilisateurId());
         evaluation.setSuperieurNom(collab.superieurNomComplet());
+        evaluation.setFamilleMetierLibelle(collab.familleMetierLibelle());
+        evaluation.setNiveauSenioriteLibelle(collab.niveauSenioriteLibelle());
         evaluationRepository.save(evaluation);
     }
 

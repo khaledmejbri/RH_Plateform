@@ -4,13 +4,9 @@ import {
   AlerteEcartApiError,
   getAlertesEcart,
   getCompteurAlertesEcart,
-  LIBELLES_NIVEAU_ECART,
   LIBELLES_SENS_GLOBAL,
-  LIBELLES_STATUT_ALERTE,
   type CompteurAlertes,
-  type NiveauEcart,
   type PageAlertes,
-  type StatutAlerteEcart,
 } from '../api/alertesEcartApi';
 import { campaignApi, type EvaluationCampaign } from '../api/evaluationApi';
 import { getUnites, type Unite } from '../api/rhClient';
@@ -20,6 +16,8 @@ import { formatDate, formatPersonne } from '../utils/format';
 import { routeAlerteEcart } from '../api/notificationContenu';
 import BarreFiltres, { AucunResultat, ChampSelect } from '../components/BarreFiltres';
 import { correspond, useFiltresUrl } from '../utils/filtres';
+import { libelleNiveauAlerte } from '../utils/libelles';
+import { optionsFiltre, rafraichirParametres, useParametres } from '../utils/parametresStore';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 const TAILLE = 20;
@@ -94,6 +92,16 @@ export default function AlertesEcartTab() {
     void charger();
   }, [charger]);
 
+  // Niveaux : actifs du paramétrage + niveaux inactifs encore portés par une alerte de la page (« inactif »).
+  useParametres();
+  useEffect(() => { void rafraichirParametres(); }, []);
+  const optionsNiveaux = useMemo(() => {
+    const utilises = (data?.elements ?? []).flatMap((a) => [a.niveau, a.niveauDetection]);
+    if (niveau) utilises.push(niveau);
+    const options = optionsFiltre('NIVEAU_ALERTE', utilises.filter((n) => n.toUpperCase() !== 'ALIGNE'));
+    return [...options, { valeur: 'ALIGNE', libelle: libelleNiveauAlerte('ALIGNE') }];
+  }, [data, niveau]);
+
   const filtresActifs = filtres.nbActifs > 0;
   const changer = (changement: Partial<typeof FILTRES_DEFAUT>) => {
     filtres.definir(changement);
@@ -148,7 +156,7 @@ export default function AlertesEcartTab() {
           toutesLibelle="Tous les statuts"
           options={[
             { valeur: 'NON_CLOSES', libelle: 'Non closes (ouvertes + en cours)' },
-            ...(Object.keys(LIBELLES_STATUT_ALERTE) as StatutAlerteEcart[]).map((x) => ({ valeur: x, libelle: LIBELLES_STATUT_ALERTE[x] })),
+            ...optionsFiltre('STATUT_ALERTE'),
           ]}
           onChange={(v) => changer({ statut: v })}
         />
@@ -157,7 +165,7 @@ export default function AlertesEcartTab() {
           libelle="Niveau"
           valeur={niveau}
           toutesLibelle="Tous les niveaux"
-          options={(['URGENTE', 'ROUGE', 'ORANGE', 'ALIGNE'] as NiveauEcart[]).map((x) => ({ valeur: x, libelle: LIBELLES_NIVEAU_ECART[x] }))}
+          options={optionsNiveaux}
           onChange={(v) => changer({ niveau: v })}
         />
         <ChampSelect

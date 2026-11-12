@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rh_mobile_app/features/evaluations/data/evaluation_models.dart';
 import 'package:rh_mobile_app/features/evaluations/presentation/skill_star_rating.dart';
+import '../../support/libelles_test_data.dart';
 
 Widget _host(Widget child) => MaterialApp(home: Scaffold(body: child));
 
 void main() {
+  setUp(chargerLibellesDeTest);
+
   testWidgets('affiche autant d’étoiles pleines que le niveau', (tester) async {
     await tester.pumpWidget(_host(const SkillStarRating(value: SkillLevel.autonome)));
     expect(find.byIcon(Icons.star_rounded), findsNWidgets(3));

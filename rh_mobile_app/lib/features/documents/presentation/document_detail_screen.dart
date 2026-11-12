@@ -80,7 +80,8 @@ class DocumentDetailScreen extends ConsumerWidget {
                 final enRetard = j['en_retard'] == true;
                 final delai = _libelleDelai(echeance, slaHeures, enRetard);
 
-                String statusLabel = Libelles.statutDocument(j['statut']?.toString());
+                String statusLabel = Libelles.avecRepli(
+                    j['statut_libelle']?.toString(), j['statut']?.toString(), Libelles.statutDocument);
                 String statusDescription = 'Votre demande a été envoyée et sera traitée prochainement.';
                 if (j['statut'] == 'EN_ATTENTE_FILE') {
                   final rang = j['rang_dans_file'];
@@ -150,7 +151,11 @@ class DocumentDetailScreen extends ConsumerWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      Libelles.typeDocument(j['type_document']?.toString()),
+                                      Libelles.avecRepli(
+                                        j['type_document_libelle']?.toString(),
+                                        j['type_document']?.toString(),
+                                        Libelles.typeDocument,
+                                      ),
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 18,

@@ -52,6 +52,7 @@ public class PresencePointageService {
 	private final FenetreHoraireService fenetreHoraire;
 	private final ReferentielClient referentielClient;
 	private final AlerteEchecsPointageService alerteEchecs;
+	private final PresenceParametresService parametres;
 	private final Clock clock;
 
 	/** QR résolu : site et credential statique (null pour une borne écran), ou rejet déjà enregistré. */
@@ -74,6 +75,7 @@ public class PresencePointageService {
 			FenetreHoraireService fenetreHoraire,
 			ReferentielClient referentielClient,
 			AlerteEchecsPointageService alerteEchecs,
+			PresenceParametresService parametres,
 			Clock clock) {
 		this.pointageRepository = pointageRepository;
 		this.siteRepository = siteRepository;
@@ -87,6 +89,7 @@ public class PresencePointageService {
 		this.fenetreHoraire = fenetreHoraire;
 		this.referentielClient = referentielClient;
 		this.alerteEchecs = alerteEchecs;
+		this.parametres = parametres;
 		this.clock = clock;
 	}
 
@@ -290,7 +293,7 @@ public class PresencePointageService {
 		int pageSize = Math.clamp(size, 1, 50);
 		Page<PresencePointage> result = pointageRepository.findByCollaborateurIdOrderByServerTsDesc(
 				collaborateurId, PageRequest.of(Math.max(page, 0), pageSize));
-		return toPage(result);
+		return avecLibellesStatut(toPage(result));
 	}
 
 	// Sans transaction englobante : la page appelle le référentiel (noms, compte du collaborateur).
@@ -302,7 +305,18 @@ public class PresencePointageService {
 				PresencePointageRepository.filtreAdminIdentites(siteId, statut, type, from, to, verificationFaciale,
 						identitesDe(collaborateurId)),
 				PageRequest.of(Math.max(page, 0), pageSize, Sort.by(Sort.Direction.DESC, "serverTs")));
-		return enrichirIdentites(toPage(result));
+		return enrichirIdentites(avecLibellesStatut(toPage(result)));
+	}
+
+	/** Ajoute le libellé courant du statut (paramètre D-R03) : un seul instantané pour toute la page. */
+	private PageResponse<PointageResponse> avecLibellesStatut(PageResponse<PointageResponse> page) {
+		if (page.content().isEmpty()) {
+			return page;
+		}
+		Map<PointageStatut, String> libelles = parametres.libellesStatutsPointage();
+		List<PointageResponse> lignes = page.content().stream()
+				.map(l -> l.avecStatutLibelle(libelles.get(l.statut()))).toList();
+		return new PageResponse<>(lignes, page.page(), page.size(), page.totalElements(), page.totalPages());
 	}
 
 	/** Fiche et, si le référentiel répond, compte du collaborateur filtré ; nul sans filtre. */

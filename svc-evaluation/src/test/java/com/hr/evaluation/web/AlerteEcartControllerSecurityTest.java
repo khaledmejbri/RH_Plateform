@@ -98,7 +98,8 @@ class AlerteEcartControllerSecurityTest {
 				.thenReturn(new AlerteEcartPage(List.of(), 0, 0, 20));
 		when(traitementService.compteur()).thenReturn(new AlerteEcartCompteur(0, 0));
 		when(traitementService.ouvertesParNiveau(any())).thenReturn(
-				com.hr.evaluation.dto.AlerteEcartOuvertesParNiveau.de(0, 0, 1));
+				com.hr.evaluation.dto.AlerteEcartOuvertesParNiveau.de(java.util.List.of(
+						new com.hr.evaluation.dto.AlerteEcartOuvertesParNiveau.Niveau("URGENTE", "Urgente", "VIOLET", 4, 1))));
 		when(traitementService.detail(eq(alerteId), any())).thenReturn(mock());
 		when(traitementService.prendreEnCharge(eq(alerteId), any(), any())).thenReturn(mock());
 		when(traitementService.cloturer(eq(alerteId), any(), any(), any())).thenReturn(mock());
@@ -179,10 +180,9 @@ class AlerteEcartControllerSecurityTest {
 
 	@Test
 	void filtreInconnuOuMalForme_400() throws Exception {
-		mockMvc.perform(get(BASE).param("niveau", "VERT").with(avec("RH")))
+		mockMvc.perform(get(BASE).param("statut", "FERMEE").with(avec("RH")))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("PARAMETRE_INVALIDE"));
-		mockMvc.perform(get(BASE).param("statut", "FERMEE").with(avec("RH"))).andExpect(status().isBadRequest());
 		mockMvc.perform(get(BASE).param("campagneId", "x").with(avec("RH"))).andExpect(status().isBadRequest());
 		mockMvc.perform(get(BASE).param("page", "abc").with(avec("RH"))).andExpect(status().isBadRequest());
 	}
@@ -194,7 +194,7 @@ class AlerteEcartControllerSecurityTest {
 						.param("campagneId", campagne.toString()).param("taille", "50").with(avec("DIRECTION")))
 				.andExpect(status().isOk());
 		verify(traitementService).lister(eq(com.hr.evaluation.domain.StatutAlerteEcart.OUVERTE),
-				eq(com.hr.evaluation.domain.NiveauEcart.URGENTE), eq(campagne), eq(null), eq(null), eq(0), eq(50));
+				eq("URGENTE"), eq(campagne), eq(null), eq(null), eq(0), eq(50));
 	}
 
 	@Test
@@ -244,9 +244,9 @@ class AlerteEcartControllerSecurityTest {
 		for (String role : List.of("RH", "DIRECTION", "ADMIN")) {
 			mockMvc.perform(get(BASE + "/ouvertes-par-niveau").with(avec(role)))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.ORANGE").value(0))
-					.andExpect(jsonPath("$.ROUGE").value(0))
-					.andExpect(jsonPath("$.URGENTE").value(1))
+					.andExpect(jsonPath("$.niveaux[0].code").value("URGENTE"))
+					.andExpect(jsonPath("$.niveaux[0].nombre").value(1))
+					.andExpect(jsonPath("$.niveaux[0].seuil").value(4))
 					.andExpect(jsonPath("$.total").value(1));
 		}
 		for (String role : List.of("RO", "RESPONSABLE")) {

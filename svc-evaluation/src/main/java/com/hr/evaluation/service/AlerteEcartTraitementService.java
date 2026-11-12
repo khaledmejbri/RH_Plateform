@@ -1,8 +1,8 @@
 package com.hr.evaluation.service;
 
-import com.hr.evaluation.domain.ConclusionAlerteEcart;
 import com.hr.evaluation.domain.EvenementAlerteEcart;
-import com.hr.evaluation.domain.NiveauEcart;
+import com.hr.evaluation.domain.NiveauAlerte;
+import com.hr.evaluation.domain.ReferentielEvaluation;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import com.hr.evaluation.dto.AlerteEcartCompteur;
 import com.hr.evaluation.dto.AlerteEcartDetail;
@@ -19,7 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -37,6 +38,7 @@ public class AlerteEcartTraitementService {
     public static final String ALERTE_ETAT_INVALIDE = "ALERTE_ETAT_INVALIDE";
     public static final String VALIDATION_ERROR = "VALIDATION_ERROR";
     public static final String PARAMETRE_INVALIDE = "PARAMETRE_INVALIDE";
+    public static final String CONCLUSION_INACTIVE = "CONCLUSION_INACTIVE";
 
     public static final int LONGUEUR_COMMENTAIRE_MAX = 1000;
     public static final int LONGUEUR_COMMENTAIRE_MIN_CLOTURE = 10;
@@ -44,15 +46,17 @@ public class AlerteEcartTraitementService {
     public static final int TAILLE_MAX = 100;
 
     private final AlerteEcartRepository alerteRepository;
+    private final ParametresEvaluation parametres;
 
-    public AlerteEcartTraitementService(AlerteEcartRepository alerteRepository) {
+    public AlerteEcartTraitementService(AlerteEcartRepository alerteRepository, ParametresEvaluation parametres) {
         this.alerteRepository = alerteRepository;
+        this.parametres = parametres;
     }
 
     // ---------------------------------------------------------------------------------------------- lecture
 
     @Transactional(readOnly = true)
-    public AlerteEcartPage lister(StatutAlerteEcart statut, NiveauEcart niveau, UUID campagneId, UUID uniteId,
+    public AlerteEcartPage lister(StatutAlerteEcart statut, String niveau, UUID campagneId, UUID uniteId,
                                   UUID collaborateurId, int page, int taille) {
         if (page < 0) {
             throw EvaluationMetierException.badRequest(PARAMETRE_INVALIDE, "Le paramètre page doit être positif ou nul.");
@@ -65,8 +69,12 @@ public class AlerteEcartTraitementService {
         if (statut != null) {
             filtre = filtre.and((r, q, cb) -> cb.equal(r.get("statut"), statut));
         }
-        if (niveau != null) {
-            filtre = filtre.and((r, q, cb) -> cb.equal(r.get("niveauCourant"), niveau));
+        if (niveau != null && !niveau.isBlank()) {
+            String code = niveau.strip();
+            if (!NiveauAlerte.ALIGNE.equals(code) && parametres.niveaux().stream().noneMatch(n -> n.code().equals(code))) {
+                throw EvaluationMetierException.badRequest(PARAMETRE_INVALIDE, "Niveau inconnu : " + code);
+            }
+            filtre = filtre.and((r, q, cb) -> cb.equal(r.get("niveauCourant"), code));
         }
         if (campagneId != null) {
             filtre = filtre.and((r, q, cb) -> cb.equal(r.get("campagneIdentifiant"), campagneId));
@@ -82,27 +90,35 @@ public class AlerteEcartTraitementService {
         }
         // Filtres en base ; tri par le comparateur testé seul, pagination en mémoire (volume : quelques centaines par an)
         List<AlerteEcart> triees = alerteRepository.findAll(filtre).stream()
-                .sorted(AlerteEcartComparateur.INSTANCE)
+                .sorted(new AlerteEcartComparateur(parametres::seuil))
                 .toList();
         long debut = (long) page * taille;
         List<AlerteEcartResume> elements = triees.stream()
                 .skip(debut)
                 .limit(taille)
-                .map(AlerteEcartMapper::resume)
+                .map(a -> AlerteEcartMapper.resume(parametres, a))
                 .toList();
         return new AlerteEcartPage(elements, triees.size(), page, taille);
     }
 
     @Transactional(readOnly = true)
     public AlerteEcartCompteur compteur() {
-        return new AlerteEcartCompteur(
-                alerteRepository.countByStatutNot(StatutAlerteEcart.TRAITEE),
-                alerteRepository.countByStatutNotAndNiveauCourant(StatutAlerteEcart.TRAITEE, NiveauEcart.URGENTE));
+        // « Urgentes » = alertes au niveau actif le plus haut (ou au-dessus si un niveau désactivé garde un seuil supérieur)
+        List<NiveauAlerte> actifs = parametres.niveauxActifs();
+        long urgentes = 0;
+        if (!actifs.isEmpty()) {
+            int seuilMax = actifs.get(actifs.size() - 1).seuil();
+            List<String> codes = parametres.niveaux().stream()
+                    .filter(n -> n.seuil() >= seuilMax).map(NiveauAlerte::code).toList();
+            urgentes = alerteRepository.countByStatutNotAndNiveauCourantIn(StatutAlerteEcart.TRAITEE, codes);
+        }
+        return new AlerteEcartCompteur(alerteRepository.countByStatutNot(StatutAlerteEcart.TRAITEE), urgentes);
     }
 
     /**
-     * D-E12.c : alertes d'écart ouvertes (OUVERTE + EN_COURS, jamais TRAITEE) par niveau, pour une campagne ou,
-     * si {@code campagneId} est nul, toutes campagnes. Les trois niveaux sont toujours présents (0 si aucune).
+     * D-E12.c : alertes d'écart ouvertes (OUVERTE + EN_COURS, jamais TRAITEE) par niveau, pour une campagne ou, si
+     * {@code campagneId} est nul, toutes campagnes. Tous les niveaux actifs sont présents (0 si aucune alerte) ; un
+     * niveau désactivé n'apparaît que s'il porte encore des alertes ouvertes.
      */
     @Transactional(readOnly = true)
     public AlerteEcartOuvertesParNiveau ouvertesParNiveau(UUID campagneId) {
@@ -110,24 +126,28 @@ public class AlerteEcartTraitementService {
         List<Object[]> lignes = campagneId == null
                 ? alerteRepository.compterParNiveau(statuts)
                 : alerteRepository.compterParNiveauEtCampagne(statuts, campagneId);
-        Map<NiveauEcart, Long> parNiveau = new EnumMap<>(NiveauEcart.class);
+        Map<String, Long> parNiveau = new HashMap<>();
         for (Object[] ligne : lignes) {
-            parNiveau.merge((NiveauEcart) ligne[0], ((Number) ligne[1]).longValue(), Long::sum);
+            parNiveau.merge((String) ligne[0], ((Number) ligne[1]).longValue(), Long::sum);
         }
-        return AlerteEcartOuvertesParNiveau.de(
-                parNiveau.getOrDefault(NiveauEcart.ORANGE, 0L),
-                parNiveau.getOrDefault(NiveauEcart.ROUGE, 0L),
-                parNiveau.getOrDefault(NiveauEcart.URGENTE, 0L));
+        List<AlerteEcartOuvertesParNiveau.Niveau> resultat = new ArrayList<>();
+        for (NiveauAlerte n : parametres.niveaux()) {
+            long nombre = parNiveau.getOrDefault(n.code(), 0L);
+            if (n.actif() || nombre > 0) {
+                resultat.add(new AlerteEcartOuvertesParNiveau.Niveau(n.code(), n.libelle(), n.couleur(), n.seuil(), nombre));
+            }
+        }
+        return AlerteEcartOuvertesParNiveau.de(resultat);
     }
 
     @Transactional(readOnly = true)
     public AlerteEcartDetail detail(UUID alerteId, IdentiteAppelant appelant) {
         AlerteEcart alerte = alerteRepository.findById(alerteId).orElseThrow(() -> introuvable(alerteId));
         if (!appelant.peutEcrire()) {
-            return AlerteEcartMapper.detail(alerte, false, AlerteEcartDetail.MOTIF_LECTURE_SEULE);
+            return AlerteEcartMapper.detail(parametres, alerte, false, AlerteEcartDetail.MOTIF_LECTURE_SEULE);
         }
         boolean concerne = estConcerne(alerte, appelant);
-        return AlerteEcartMapper.detail(alerte, !concerne, concerne ? AlerteEcartDetail.MOTIF_CONCERNE : null);
+        return AlerteEcartMapper.detail(parametres, alerte, !concerne, concerne ? AlerteEcartDetail.MOTIF_CONCERNE : null);
     }
 
     // --------------------------------------------------------------------------------------------- actions
@@ -148,7 +168,7 @@ public class AlerteEcartTraitementService {
         alerte.setStatut(StatutAlerteEcart.EN_COURS);
         alerte.setModifieeLe(Instant.now());
         alerteRepository.save(alerte);
-        return AlerteEcartMapper.detail(alerte, true, null);
+        return AlerteEcartMapper.detail(parametres, alerte, true, null);
     }
 
     @Transactional
@@ -156,7 +176,7 @@ public class AlerteEcartTraitementService {
                                       IdentiteAppelant appelant) {
         AlerteEcart alerte = chargerPourAction(alerteId, appelant);
 
-        ConclusionAlerteEcart conclusion = conclusion(conclusionBrute);
+        String conclusion = conclusion(conclusionBrute);
         String note = nettoyer(commentaire);
         if (note == null || note.length() < LONGUEUR_COMMENTAIRE_MIN_CLOTURE) {
             throw validation("Le commentaire est obligatoire (" + LONGUEUR_COMMENTAIRE_MIN_CLOTURE
@@ -174,9 +194,10 @@ public class AlerteEcartTraitementService {
                 avant, StatutAlerteEcart.TRAITEE, alerte.getNiveauCourant(), conclusion, note));
         alerte.setStatut(StatutAlerteEcart.TRAITEE);
         alerte.setConclusion(conclusion);
+        parametres.marquerUtilise(ReferentielEvaluation.CONCLUSION_ALERTE, conclusion);
         alerte.setModifieeLe(Instant.now());
         alerteRepository.save(alerte);
-        return AlerteEcartMapper.detail(alerte, true, null);
+        return AlerteEcartMapper.detail(parametres, alerte, true, null);
     }
 
     // ----------------------------------------------------------------------------------------------- outils
@@ -200,15 +221,20 @@ public class AlerteEcartTraitementService {
                 || appelant.correspond(alerte.getSuperieurCompteId(), alerte.getSuperieurFicheId());
     }
 
-    private static ConclusionAlerteEcart conclusion(String brute) {
+    /** Conclusion saisie : 400 si absente ou inconnue, 422 {@code CONCLUSION_INACTIVE} si désactivée (D-R02). */
+    private String conclusion(String brute) {
         if (brute == null || brute.isBlank()) {
             throw validation("La conclusion est obligatoire.");
         }
-        try {
-            return ConclusionAlerteEcart.valueOf(brute.strip());
-        } catch (IllegalArgumentException e) {
-            throw validation("Conclusion inconnue : " + brute);
+        String code = brute.strip();
+        // Validation d'écriture : lue en base, pas dans le cache de 30 s (une conclusion désactivée est refusée aussitôt)
+        var valeur = parametres.lireEnBase(ReferentielEvaluation.CONCLUSION_ALERTE, code)
+                .orElseThrow(() -> validation("Conclusion inconnue : " + brute));
+        if (!valeur.actif()) {
+            throw EvaluationMetierException.unprocessable(CONCLUSION_INACTIVE,
+                    "La conclusion « " + valeur.libelle() + " » est désactivée : choisissez-en une autre.");
         }
+        return code;
     }
 
     private static String nettoyer(String texte) {

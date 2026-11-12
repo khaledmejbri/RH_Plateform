@@ -11,6 +11,8 @@ class DocumentDemandeItem {
     this.dateCreation,
     this.motifRejet,
     this.numero,
+    this.typeLibelleApi,
+    this.statutLibelleApi,
   });
 
   final String id;
@@ -25,8 +27,13 @@ class DocumentDemandeItem {
   /// Numéro lisible `DOC-AAAAMM-NNNN` (D-L02), si le serveur l'envoie.
   final String? numero;
 
-  String get typeLibelle => Libelles.typeDocument(typeDocument);
-  String get statutLibelle => Libelles.statutDocument(statut);
+  /// Libellés servis avec l'objet (`*_libelle`, instantané du lot 3) : un type désactivé depuis
+  /// reste lisible. À défaut, le référentiel chargé ; sinon « Valeur non reconnue ».
+  final String? typeLibelleApi;
+  final String? statutLibelleApi;
+
+  String get typeLibelle => Libelles.avecRepli(typeLibelleApi, typeDocument, Libelles.typeDocument);
+  String get statutLibelle => Libelles.avecRepli(statutLibelleApi, statut, Libelles.statutDocument);
 
   static DocumentDemandeItem fromJson(Map<String, dynamic> j) {
     final rang = j['rang_dans_file'];
@@ -41,6 +48,8 @@ class DocumentDemandeItem {
       dateCreation: dateRaw != null ? DateTime.tryParse(dateRaw) : null,
       motifRejet: j['motif_rejet'] as String?,
       numero: j['numero'] as String?,
+      typeLibelleApi: j['type_document_libelle'] as String?,
+      statutLibelleApi: j['statut_libelle'] as String?,
     );
   }
 }

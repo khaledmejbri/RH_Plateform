@@ -1,7 +1,6 @@
 package com.hr.evaluation.kafka;
 
 import com.hr.evaluation.client.IdentiteClient;
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.service.AlerteEcartANotifierEvent;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -35,8 +34,16 @@ class AlerteEcartNotificationListenerTest {
     private final UUID ro = UUID.randomUUID();
     private final UUID alerteId = UUID.randomUUID();
 
-    private AlerteEcartANotifierEvent evenement(NiveauEcart niveau, int n, int ecartMax, Set<UUID> exclus) {
-        return new AlerteEcartANotifierEvent(alerteId, niveau, "Sarra Khemiri", "Campagne S2", n, ecartMax, exclus);
+    private static String libelle(String niveau) {
+        return switch (niveau) {
+            case "ORANGE" -> "Alerte";
+            case "ROUGE" -> "Critique";
+            default -> "Urgente";
+        };
+    }
+
+    private AlerteEcartANotifierEvent evenement(String niveau, int n, int ecartMax, Set<UUID> exclus) {
+        return new AlerteEcartANotifierEvent(alerteId, niveau, libelle(niveau), "Sarra Khemiri", "Campagne S2", n, ecartMax, exclus);
     }
 
     @Test
@@ -52,7 +59,7 @@ class AlerteEcartNotificationListenerTest {
     void unMessageParCompteRh_titreTexteEtIdentifiantDeLAlerte() {
         when(identite.comptesParRole("RH")).thenReturn(List.of(drh01, rh02));
 
-        listener.surAlerteANotifier(evenement(NiveauEcart.ORANGE, 1, 2, Set.of(collaborateur, ro)));
+        listener.surAlerteANotifier(evenement("ORANGE", 1, 2, Set.of(collaborateur, ro)));
 
         ArgumentCaptor<String> destinataire = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> sujet = ArgumentCaptor.forClass(String.class);
@@ -75,8 +82,8 @@ class AlerteEcartNotificationListenerTest {
     void libellesRougeEtUrgente() {
         when(identite.comptesParRole("RH")).thenReturn(List.of(drh01));
 
-        listener.surAlerteANotifier(evenement(NiveauEcart.ROUGE, 2, 3, Set.of()));
-        listener.surAlerteANotifier(evenement(NiveauEcart.URGENTE, 1, 4, Set.of()));
+        listener.surAlerteANotifier(evenement("ROUGE", 2, 3, Set.of()));
+        listener.surAlerteANotifier(evenement("URGENTE", 1, 4, Set.of()));
 
         ArgumentCaptor<String> sujet = ArgumentCaptor.forClass(String.class);
         verify(publisher, times(2)).notifier(anyString(), sujet.capture(), anyString(), any());
@@ -88,7 +95,7 @@ class AlerteEcartNotificationListenerTest {
     void collaborateurEtRoNeRecoiventRien_memeS_ilsSontRh() {
         when(identite.comptesParRole("RH")).thenReturn(List.of(drh01, rh02, collaborateur));
 
-        listener.surAlerteANotifier(evenement(NiveauEcart.ROUGE, 1, 3, Set.of(collaborateur, drh01)));
+        listener.surAlerteANotifier(evenement("ROUGE", 1, 3, Set.of(collaborateur, drh01)));
 
         ArgumentCaptor<String> destinataire = ArgumentCaptor.forClass(String.class);
         verify(publisher).notifier(destinataire.capture(), anyString(), anyString(), any());
@@ -100,7 +107,7 @@ class AlerteEcartNotificationListenerTest {
         when(identite.comptesParRole("RH")).thenReturn(List.of(collaborateur));
         when(identite.comptesParRole("ADMIN")).thenReturn(List.of(admin, ro));
 
-        listener.surAlerteANotifier(evenement(NiveauEcart.ROUGE, 1, 3, Set.of(collaborateur, ro)));
+        listener.surAlerteANotifier(evenement("ROUGE", 1, 3, Set.of(collaborateur, ro)));
 
         ArgumentCaptor<String> destinataire = ArgumentCaptor.forClass(String.class);
         verify(publisher).notifier(destinataire.capture(), anyString(), anyString(), any());
@@ -112,7 +119,7 @@ class AlerteEcartNotificationListenerTest {
         when(identite.comptesParRole("RH")).thenReturn(List.of());
         when(identite.comptesParRole("ADMIN")).thenReturn(List.of());
 
-        listener.surAlerteANotifier(evenement(NiveauEcart.ORANGE, 1, 2, Set.of()));
+        listener.surAlerteANotifier(evenement("ORANGE", 1, 2, Set.of()));
 
         verify(publisher, never()).notifier(anyString(), anyString(), anyString(), any());
     }
@@ -120,12 +127,12 @@ class AlerteEcartNotificationListenerTest {
     @Test
     void panneIdentiteOuKafka_aucuneExceptionNePropage() {
         when(identite.comptesParRole("RH")).thenThrow(new IllegalStateException("identité en panne"));
-        listener.surAlerteANotifier(evenement(NiveauEcart.ORANGE, 1, 2, Set.of()));
+        listener.surAlerteANotifier(evenement("ORANGE", 1, 2, Set.of()));
         verify(publisher, never()).notifier(anyString(), anyString(), anyString(), any());
 
         org.mockito.Mockito.doReturn(List.of(drh01)).when(identite).comptesParRole("RH");
         org.mockito.Mockito.doThrow(new IllegalStateException("kafka")).when(publisher)
                 .notifier(anyString(), anyString(), anyString(), any());
-        listener.surAlerteANotifier(evenement(NiveauEcart.ORANGE, 1, 2, Set.of()));
+        listener.surAlerteANotifier(evenement("ORANGE", 1, 2, Set.of()));
     }
 }

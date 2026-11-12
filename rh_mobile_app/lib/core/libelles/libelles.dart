@@ -1,38 +1,166 @@
 /// Table unique code -> libellé français de RH Connect (D-L01.b, règles R3, R5, R6).
 ///
-/// Tout code d'énumération renvoyé par l'API passe par ici. Un code inconnu donne
-/// [Libelles.valeurNonReconnue] : jamais le code brut, jamais un statut par défaut.
+/// Lot 3 (D-R02, D-R03) : les libellés des listes paramétrables (types de congé et de document,
+/// statuts, familles, niveaux, échelle des étoiles, appréciations) viennent du serveur
+/// (voir `LibellesService`) et sont chargés avec [charger]. Il n'existe AUCUNE liste de secours :
+/// tant qu'une liste n'est pas chargée, ou si le code n'y figure pas, le résultat est
+/// [Libelles.valeurNonReconnue], jamais le code brut ni un statut par défaut.
 /// Quand l'API fournit déjà un libellé (ex. `famille_metier_libelle`), il est prioritaire :
-/// voir [Libelles.avecRepli]. Au lot 3, cette table sera alimentée par le paramétrage serveur
-/// (voir [Libelles.surcharger]).
+/// voir [Libelles.avecRepli]. Seuls les libellés non paramétrables (étapes de suivi, actions
+/// d'historique, types de nœud, état du temps de travail) restent dans ce fichier.
 library;
+
+import 'package:flutter/foundation.dart';
+
+/// Noms des référentiels servis par les `GET libelles` des trois services (ADR lot 3, § 7).
+class Referentiel {
+  Referentiel._();
+
+  static const typeDemande = 'TYPE_DEMANDE';
+  static const typeConge = 'TYPE_CONGE';
+  static const statutDemande = 'STATUT_DEMANDE';
+  static const typeDocument = 'TYPE_DOCUMENT';
+  static const statutDocument = 'STATUT_DOCUMENT';
+  static const statutFormation = 'STATUT_FORMATION';
+  static const statutPlainte = 'STATUT_PLAINTE';
+  static const typePlainte = 'TYPE_PLAINTE';
+  static const profilAcces = 'PROFIL_ACCES';
+  static const familleMetier = 'FAMILLE_METIER';
+  static const niveauSeniorite = 'NIVEAU_SENIORITE';
+  static const statutEvaluation = 'STATUT_EVALUATION';
+  static const echelleEtoiles = 'ECHELLE_ETOILES';
+  static const appreciation = 'APPRECIATION';
+}
+
+/// Une valeur d'un référentiel paramétré, telle que reçue de l'API (snake_case).
+@immutable
+class ParametreValeur {
+  const ParametreValeur({
+    required this.code,
+    required this.libelle,
+    this.description,
+    this.couleur,
+    this.ordre = 0,
+    this.actif = true,
+    this.slaHeures,
+    this.pieceJointeObligatoire = false,
+  });
+
+  final String code;
+  final String libelle;
+  final String? description;
+  final String? couleur;
+  final int ordre;
+  final bool actif;
+  final int? slaHeures;
+
+  /// Types de congé : le serveur exige une pièce jointe (le bouton d'envoi la réclame aussi).
+  final bool pieceJointeObligatoire;
+
+  /// Lit une valeur ; renvoie null si `code` ou `libelle` manque (valeur ignorée, jamais devinée).
+  static ParametreValeur? depuisJson(Object? brut) {
+    if (brut is! Map) return null;
+    final code = brut['code']?.toString().trim() ?? '';
+    final libelle = brut['libelle']?.toString().trim() ?? '';
+    if (code.isEmpty || libelle.isEmpty) return null;
+    int entier(Object? v) => v is num ? v.toInt() : (int.tryParse('${v ?? ''}') ?? 0);
+    final sla = brut['sla_heures'];
+    return ParametreValeur(
+      code: code,
+      libelle: libelle,
+      description: brut['description']?.toString(),
+      couleur: brut['couleur']?.toString(),
+      ordre: entier(brut['ordre']),
+      actif: brut['actif'] is bool ? brut['actif'] as bool : true,
+      slaHeures: sla is num ? sla.toInt() : null,
+      pieceJointeObligatoire: brut['piece_jointe_obligatoire'] == true,
+    );
+  }
+}
+
+/// Réponse d'un `GET libelles` : version (ETag faible) et valeurs par référentiel.
+class ParametresReponse {
+  const ParametresReponse({required this.version, required this.referentiels});
+
+  final String? version;
+  final Map<String, List<ParametreValeur>> referentiels;
+
+  /// Lit `{ version, referentiels: { NOM: [valeur…] } }`. Une charge utile qui n'est pas un objet
+  /// ou sans `referentiels` est une erreur (FormatException) : on ne remplace pas une table par du vide.
+  static ParametresReponse depuisJson(Object? brut) {
+    if (brut is! Map || brut['referentiels'] is! Map) {
+      throw const FormatException('Réponse des libellés illisible.');
+    }
+    final res = <String, List<ParametreValeur>>{};
+    (brut['referentiels'] as Map).forEach((nom, liste) {
+      if (liste is! List) return;
+      final valeurs = <ParametreValeur>[];
+      for (final brutV in liste) {
+        final v = ParametreValeur.depuisJson(brutV);
+        if (v != null) valeurs.add(v);
+      }
+      valeurs.sort((a, b) => a.ordre.compareTo(b.ordre));
+      res['$nom'.toUpperCase()] = valeurs;
+    });
+    return ParametresReponse(version: brut['version']?.toString(), referentiels: res);
+  }
+}
 
 class Libelles {
   Libelles._();
 
   static const String valeurNonReconnue = 'Valeur non reconnue';
 
-  /// Surcharges fournies par l'API (lot 3) : catégorie -> code -> libellé.
-  static final Map<String, Map<String, String>> _surcharges = {};
+  /// Valeurs chargées depuis l'API : référentiel -> valeurs (ordre serveur).
+  static final Map<String, List<ParametreValeur>> _tables = {};
 
-  /// Remplace ou ajoute des libellés d'une catégorie (ex. `statut_demande`) à partir de l'API.
-  static void surcharger(String categorie, Map<String, String> libelles) {
-    _surcharges[categorie] = Map<String, String>.from(libelles);
+  /// Incrémenté à chaque changement de table (les écrans qui veulent se redessiner peuvent l'écouter).
+  static final ValueNotifier<int> version = ValueNotifier<int>(0);
+
+  /// Remplace les valeurs de [referentiels] (celles reçues d'un service). Les autres restent.
+  static void charger(Map<String, List<ParametreValeur>> referentiels) {
+    referentiels.forEach((nom, valeurs) {
+      _tables[nom.toUpperCase()] = List<ParametreValeur>.unmodifiable(valeurs);
+    });
+    version.value++;
   }
 
-  /// Vide les surcharges (tests, déconnexion).
-  static void reinitialiser() => _surcharges.clear();
+  /// Vide toutes les tables (tests, déconnexion).
+  static void reinitialiser() {
+    _tables.clear();
+    version.value++;
+  }
 
-  static String? _chercher(String categorie, String? code, Map<String, String> table) {
+  /// Valeurs actives d'un référentiel, dans l'ordre du serveur ; vide si non chargé.
+  static List<ParametreValeur> valeurs(String referentiel) =>
+      [for (final v in _tables[referentiel.toUpperCase()] ?? const <ParametreValeur>[]) if (v.actif) v];
+
+  /// Une valeur par son code ; null si le référentiel n'est pas chargé ou le code absent.
+  static ParametreValeur? valeur(String referentiel, String? code) {
     if (code == null) return null;
     final c = code.trim();
     if (c.isEmpty) return null;
-    return _surcharges[categorie]?[c] ?? table[c] ?? table[c.toUpperCase()];
+    final liste = _tables[referentiel.toUpperCase()];
+    if (liste == null) return null;
+    for (final v in liste) {
+      if (v.code == c) return v;
+    }
+    for (final v in liste) {
+      if (v.code.toUpperCase() == c.toUpperCase()) return v;
+    }
+    return null;
   }
 
-  /// Libellé d'une table ; [valeurNonReconnue] si le code est absent de la table.
-  static String _de(String categorie, String? code, Map<String, String> table) =>
-      _chercher(categorie, code, table) ?? valeurNonReconnue;
+  /// Libellé d'une table fixe (non paramétrable) ; [valeurNonReconnue] si le code est absent.
+  static String _fixe(Map<String, String> table, String? code) {
+    final c = code?.trim() ?? '';
+    if (c.isEmpty) return valeurNonReconnue;
+    return table[c] ?? table[c.toUpperCase()] ?? valeurNonReconnue;
+  }
+
+  /// Libellé d'un référentiel chargé ; [valeurNonReconnue] si le code est absent.
+  static String _de(String referentiel, String? code) =>
+      valeur(referentiel, code)?.libelle ?? valeurNonReconnue;
 
   /// Libellé fourni par l'API s'il est lisible, sinon celui de la table, sinon [valeurNonReconnue].
   static String avecRepli(String? libelleApi, String? code, String Function(String?) parTable) {
@@ -59,42 +187,23 @@ class Libelles {
 
   // ---------------------------------------------------------------- Demandes M01
 
-  static const Map<String, String> _typesDemande = {
-    'CONGE': 'Congé',
-    'AUTORISATION_SORTIE': 'Autorisation de sortie',
-    'ORDRE_MISSION': 'Ordre de mission',
-  };
+  static String typeDemande(String? code) => _de(Referentiel.typeDemande, code);
 
-  static String typeDemande(String? code) => _de('type_demande', code, _typesDemande);
-
-  static const Map<String, String> _typesConge = {
-    'ANNUEL': 'Congé annuel',
-    'MALADIE': 'Congé maladie',
-    'MATERNITE': 'Congé maternité',
-    'SANS_SOLDE': 'Congé sans solde',
-    'AUTRE': 'Autre',
-  };
-
-  static String typeConge(String? code) => _de('type_conge', code, _typesConge);
+  static String typeConge(String? code) => _de(Referentiel.typeConge, code);
 
   /// Titre d'une demande : « Congé annuel » pour un congé dont le type est connu, sinon le type de demande.
-  static String titreDemande(String? typeDemandeCode, {String? typeCongeCode}) {
-    if (typeDemandeCode == 'CONGE' && typeCongeCode != null && typeCongeCode.trim().isNotEmpty) {
-      return typeConge(typeCongeCode);
+  /// Le libellé du type de congé servi avec la demande ([typeCongeLibelleApi]) est prioritaire : il reste
+  /// juste pour un type désactivé depuis (absent du référentiel chargé).
+  static String titreDemande(String? typeDemandeCode, {String? typeCongeCode, String? typeCongeLibelleApi}) {
+    if (typeDemandeCode == 'CONGE') {
+      final aCode = typeCongeCode != null && typeCongeCode.trim().isNotEmpty;
+      final aLibelle = typeCongeLibelleApi != null && typeCongeLibelleApi.trim().isNotEmpty;
+      if (aCode || aLibelle) return avecRepli(typeCongeLibelleApi, typeCongeCode, typeConge);
     }
     return typeDemande(typeDemandeCode);
   }
 
-  static const Map<String, String> _statutsDemande = {
-    'SOUMISE': 'En attente de validation RH',
-    'EN_VALIDATION_SUPERIEUR': 'En attente du responsable',
-    'EN_VALIDATION_RRH': 'En attente de validation RH',
-    'APPROUVEE': 'Approuvée',
-    'REFUSEE': 'Refusée',
-    'ANNULEE': 'Annulée',
-  };
-
-  static String statutDemande(String? code) => _de('statut_demande', code, _statutsDemande);
+  static String statutDemande(String? code) => _de(Referentiel.statutDemande, code);
 
   static const Map<String, String> _etapesSuivi = {
     'DEPOT': 'Dépôt',
@@ -112,12 +221,12 @@ class Libelles {
   static String etapeSuivi(String? code, [String? libelleApi]) {
     final l = libelleApi?.trim();
     if (code == 'RRH' || code == 'DEPOT') {
-      return _de('etape_suivi', code, _etapesSuivi);
+      return _fixe(_etapesSuivi, code);
     }
     if (l != null && l.isNotEmpty && !ressembleAUnCode(l)) {
       return assainir(l);
     }
-    return _de('etape_suivi', code, _etapesSuivi);
+    return _fixe(_etapesSuivi, code);
   }
 
   static const Map<String, String> _actionsHistorique = {
@@ -140,7 +249,7 @@ class Libelles {
     'FORMATION_TERMINEE': 'Formation terminée',
   };
 
-  static String actionHistorique(String? code) => _de('action_historique', code, _actionsHistorique);
+  static String actionHistorique(String? code) => _fixe(_actionsHistorique, code);
 
   /// Codes à masquer dans un commentaire : `MOT_MOT`, `CONGE` et les sigles internes (RRH, RO).
   /// Les autres sigles (CNSS, DRH…) restent visibles.
@@ -159,133 +268,62 @@ class Libelles {
 
   // ---------------------------------------------------------------- Documents
 
-  static const Map<String, String> _typesDocument = {
-    'ATTESTATION_TRAVAIL': 'Attestation de travail',
-    'ATTESTATION_SALAIRE': 'Attestation de salaire',
-    'BULLETIN_PAIE': 'Bulletin de paie',
-    'ATTESTATION_CNSS': 'Attestation CNSS',
-    'FEUILLE_POINTAGE_MENSUELLE': 'Feuille de pointage mensuelle',
-    'DOCUMENT_INTERNE': 'Document interne',
-    'AUTRE': 'Autre document',
-  };
+  static String typeDocument(String? code) => _de(Referentiel.typeDocument, code);
 
-  static String typeDocument(String? code) => _de('type_document', code, _typesDocument);
-
-  static const Map<String, String> _statutsDocument = {
-    'EN_ATTENTE_FILE': 'En file d’attente',
-    'EN_TRAITEMENT_RH': 'En traitement par la RH',
-    'DISPONIBLE': 'Disponible',
-    'REJETEE': 'Refusée',
-  };
-
-  static String statutDocument(String? code) => _de('statut_document', code, _statutsDocument);
+  static String statutDocument(String? code) => _de(Referentiel.statutDocument, code);
 
   // ---------------------------------------------------------------- Formations
 
-  static const Map<String, String> _statutsFormation = {
-    'EN_VALIDATION_RRH': 'En attente de validation RH',
-    'INTEGREE_PLAN': 'Planifiée',
-    'REFUSEE': 'Refusée',
-    'ANNULEE': 'Annulée',
-  };
-
-  static String statutFormation(String? code) => _de('statut_formation', code, _statutsFormation);
+  static String statutFormation(String? code) => _de(Referentiel.statutFormation, code);
 
   // ---------------------------------------------------------------- Plaintes
 
-  static const Map<String, String> _statutsPlainte = {
-    'NOUVEAU': 'Nouvelle',
-    'EN_ANALYSE': 'En analyse',
-    'EN_TRAITEMENT': 'En traitement',
-    'RESOLU': 'Résolue',
-    'FERME': 'Fermée',
-    // Anciennes valeurs tolérées par l'écran de liste.
-    'EN_COURS': 'En cours',
-    'EN_ATTENTE': 'En attente',
-    'RESOLUE': 'Résolue',
-    'TRAITEE': 'Traitée',
-    'REJETEE': 'Rejetée',
-    'REFUSEE': 'Rejetée',
-  };
+  static String statutPlainte(String? code) => _de(Referentiel.statutPlainte, code);
 
-  static String statutPlainte(String? code) => _de('statut_plainte', code, _statutsPlainte);
-
-  static const Map<String, String> _typesPlainte = {
-    'INTERNE': 'Interne',
-    'EXTERNE': 'Externe',
-  };
-
-  static String typePlainte(String? code) => _de('type_plainte', code, _typesPlainte);
+  static String typePlainte(String? code) => _de(Referentiel.typePlainte, code);
 
   // ---------------------------------------------------------------- Évaluations
 
-  static const Map<String, String> _statutsEvaluation = {
-    'EN_COURS': 'En cours',
-    'EN_ATTENTE_COLLABORATEUR': 'En attente du collaborateur',
-    'VALIDEE_COLLABORATEUR': 'Validée par le collaborateur',
-    'VALIDEE_SUPERIEUR': 'Validée par le responsable',
-    'VALIDEE': 'Validée',
-    'EN_ATTENTE_VALIDATION_CROISEE': 'En cours',
-    'ARCHIVEE': 'Archivée',
-  };
+  /// Pseudo-statut propre au mobile (M-74) : le serveur ne le sert pas, c'est la vue du responsable
+  /// quand le collaborateur n'a pas encore validé. Libellé local fixe, hors référentiel.
+  static const String statutEnAttenteCollaborateur = 'EN_ATTENTE_COLLABORATEUR';
+  static const String _libelleEnAttenteCollaborateur = 'En attente du collaborateur';
 
-  static String statutEvaluation(String? code) => _de('statut_evaluation', code, _statutsEvaluation);
+  static String statutEvaluation(String? code) {
+    if (code?.trim() == statutEnAttenteCollaborateur) return _libelleEnAttenteCollaborateur;
+    return _de(Referentiel.statutEvaluation, code);
+  }
 
-  static const Map<String, String> _niveauxSeniorite = {
-    'JUNIOR': 'Junior',
-    'CONFIRME': 'Confirmé',
-    'CONFIRMED': 'Confirmé',
-    'MID': 'Confirmé',
-    'SENIOR': 'Sénior',
-    'TEAM_LEAD': "Chef d'équipe",
-    'EXPERT': 'Expert',
-  };
+  static String niveauSeniorite(String? code) => _de(Referentiel.niveauSeniorite, code);
 
-  static String niveauSeniorite(String? code) => _de('niveau_seniorite', code, _niveauxSeniorite);
-
-  /// Familles métier : table de repli quand l'API ne fournit pas `famille_metier_libelle`.
-  static const Map<String, String> _famillesMetier = {
-    'EXPLOITATION': 'Exploitation et terrain assainissement',
-    'GENIE_CIVIL': 'Génie civil et travaux',
-    'DEV_LOGICIEL': 'Développement logiciel',
-    'DEV_BACKEND': 'Développement backend',
-    'DEV_FRONTEND': 'Développement frontend',
-    'DEV_MOBILE': 'Développement mobile',
-    'SUPPORT_ADMIN': 'Support administratif',
-    'MAINTENANCE': 'Maintenance technique',
-    'HSE_QUALITE': 'Hygiène, sécurité, environnement et qualité',
-  };
-
-  /// Famille métier : libellé de l'API (prioritaire), sinon table de repli, sinon [valeurNonReconnue].
+  /// Famille métier : libellé de l'API (prioritaire), sinon référentiel chargé, sinon [valeurNonReconnue].
   static String familleMetier(String? code, [String? libelleApi]) =>
-      avecRepli(libelleApi, code, (c) => _de('famille_metier', c, _famillesMetier));
+      avecRepli(libelleApi, code, (c) => _de(Referentiel.familleMetier, c));
 
-  static const Map<int, String> _niveauxNote = {
-    1: 'Débutant',
-    2: 'Notions',
-    3: 'Autonome',
-    4: 'Confirmé',
-    5: 'Expert',
-  };
-
-  /// Nom du niveau d'une note de 1 à 5.
-  static String niveauNote(int note) => _niveauxNote[note] ?? valeurNonReconnue;
+  /// Nom du niveau d'une note de 1 à 5 (référentiel `ECHELLE_ETOILES`, codes `1` à `5`).
+  static String niveauNote(int note) => _de(Referentiel.echelleEtoiles, '$note');
 
   /// « 3 — Autonome » (R9).
   static String noteAvecNiveau(int note) => '$note — ${niveauNote(note)}';
 
-  // ---------------------------------------------------------------- Pointage manuel, heures sup
+  // ---------------------------------------------------------------- Temps de travail
 
-  static const Map<String, String> _statutsDemandeSimple = {
-    'EN_ATTENTE': 'En attente',
-    'VALIDEE': 'Validée',
-    'REFUSEE': 'Refusée',
-    'ANNULEE': 'Annulée',
-    'EXPIREE': 'Expirée',
-  };
-
-  static String statutDemandeSimple(String? code) =>
-      _de('statut_demande_simple', code, _statutsDemandeSimple);
+  /// Appréciation d'une note sur 20. Les bornes (7, 10, 14, 17) sont des règles de calcul non
+  /// paramétrables ; le libellé de chaque code vient du référentiel `APPRECIATION`.
+  /// Chaîne vide sans note ; [valeurNonReconnue] si le référentiel n'est pas chargé.
+  static String appreciation(int? scoreSur20) {
+    if (scoreSur20 == null) return '';
+    final code = scoreSur20 <= 7
+        ? 'INSUFFISANT'
+        : scoreSur20 <= 10
+            ? 'A_AMELIORER'
+            : scoreSur20 <= 14
+                ? 'SATISFAISANT'
+                : scoreSur20 <= 17
+                    ? 'POSITIF'
+                    : 'EXCELLENT';
+    return _de(Referentiel.appreciation, code);
+  }
 
   static const Map<String, String> _etatsTempsTravail = {
     'COMPLET': 'Complet',
@@ -293,20 +331,11 @@ class Libelles {
     'INCOMPLET': 'Pointage incomplet',
   };
 
-  static String etatTempsTravail(String? code) => _de('etat_temps_travail', code, _etatsTempsTravail);
+  static String etatTempsTravail(String? code) => _fixe(_etatsTempsTravail, code);
 
   // ---------------------------------------------------------------- Rôles (D-H06, R7)
 
-  static const Map<String, String> _profilsAcces = {
-    'COLLABORATEUR': 'Collaborateur',
-    'RO': 'Responsable opérationnel',
-    'RESPONSABLE': 'Responsable',
-    'RH': 'Ressources humaines',
-    'DIRECTION': 'Direction (consultation)',
-    'ADMIN': 'Administrateur',
-  };
-
-  static String profilAcces(String? code) => _de('profil_acces', code, _profilsAcces);
+  static String profilAcces(String? code) => _de(Referentiel.profilAcces, code);
 
   /// Normalise un type de nœud (« Direction Générale », `DIRECTION_GENERALE`) en code (`DIRECTION_GENERALE`).
   static String codeTypeNoeud(String? brut) {
@@ -326,7 +355,7 @@ class Libelles {
   };
 
   /// Libellé du type d'un nœud d'organigramme ; [valeurNonReconnue] si inconnu.
-  static String typeNoeud(String? brut) => _de('type_noeud', codeTypeNoeud(brut), _typesNoeud);
+  static String typeNoeud(String? brut) => _fixe(_typesNoeud, codeTypeNoeud(brut));
 
   /// Intitulé du responsable d'un nœud (D-H06) : `titre_poste` du nœud s'il est renseigné, sinon
   /// dérivé du type du nœud managé (D-H04). [feminin] accorde « Directrice » quand le genre est connu.

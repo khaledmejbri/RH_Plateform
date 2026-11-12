@@ -53,6 +53,8 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 
 	@Mock
 	private NumeroLisibleService numeroLisibleService;
+	@Mock
+	private ParametreService parametreService;
 
 	@InjectMocks
 	private DemandeAdministrativeRhService service;
@@ -68,6 +70,8 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 
 	@BeforeEach
 	void setUp() {
+		org.mockito.Mockito.lenient().when(parametreService.libelleOuDefaut(org.mockito.ArgumentMatchers.eq("TYPE_CONGE"),
+				org.mockito.ArgumentMatchers.any())).thenReturn("Congé annuel");
 		jwt = Jwt.withTokenValue("token")
 				.header("alg", "none")
 				.subject("M-MGR")
@@ -114,6 +118,26 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 
 		assertThat(response.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
 		verify(notificationPublisher).notifierValidationRo(eq(demandeur), eq("CONGE"), eq(managerActif), any(), isNull());
+	}
+
+	@Test
+	@DisplayName("lot 3 : la réponse porte statut_libelle et type_conge_libelle (libellé courant, code inconnu signalé)")
+	void reponsePorteLesLibellesParametres() throws Exception {
+		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
+		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(managerActif);
+		when(collaborateurRepository.findDetailById(demandeur.getId())).thenReturn(Optional.of(demandeur));
+		when(demandeRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		when(workflowHistoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		when(parametreService.libelleOuInconnu("STATUT_DEMANDE", "EN_VALIDATION_RRH")).thenReturn("Chez les RH");
+		when(parametreService.libelleOuInconnu("TYPE_CONGE", "ANNUEL")).thenReturn("Congé payé");
+
+		DemandeAdministrativeRhResponse response = service.validerSuperieur(demandeId, jwt);
+
+		assertThat(response.getStatutLibelle()).isEqualTo("Chez les RH");
+		assertThat(response.getTypeCongeLibelle()).isEqualTo("Congé payé");
+		String json = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(response);
+		assertThat(json).contains("\"type_conge_libelle\":\"Congé payé\"")
+				.contains("\"statut_libelle\":\"Chez les RH\"");
 	}
 
 	@Test
@@ -333,11 +357,12 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 	@Test
 	@DisplayName("D-L01.b : commentaires de création pour chaque type")
 	void commentaireCreationParType() {
-		assertThat(DemandeAdministrativeRhService.commentaireCreation(TypeDemandeAdministrativeRh.AUTORISATION_SORTIE, Map.of()))
+		assertThat(DemandeAdministrativeRhService.commentaireCreation(TypeDemandeAdministrativeRh.AUTORISATION_SORTIE, Map.of(), c -> null))
 				.isEqualTo("Demande d'autorisation de sortie créée");
-		assertThat(DemandeAdministrativeRhService.commentaireCreation(TypeDemandeAdministrativeRh.ORDRE_MISSION, Map.of()))
+		assertThat(DemandeAdministrativeRhService.commentaireCreation(TypeDemandeAdministrativeRh.ORDRE_MISSION, Map.of(), c -> null))
 				.isEqualTo("Demande d'ordre de mission créée");
-		assertThat(DemandeAdministrativeRhService.commentaireCreation(TypeDemandeAdministrativeRh.CONGE, Map.of("type_conge", "MALADIE")))
+		assertThat(DemandeAdministrativeRhService.commentaireCreation(TypeDemandeAdministrativeRh.CONGE, Map.of("type_conge", "MALADIE"),
+				c -> ParametreService.enMinuscule("Congé maladie")))
 				.isEqualTo("Demande de congé maladie créée");
 	}
 

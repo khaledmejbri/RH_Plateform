@@ -16,7 +16,7 @@ import {
   type EvaluationTemplate,
 } from '../api/evaluationApi';
 import { libelleNiveauSeniorite, profilMetierLabel } from '../api/evaluationCatalog';
-import { getAlertesOuvertesParNiveau, LIBELLES_NIVEAU_ECART } from '../api/alertesEcartApi';
+import { getAlertesOuvertesParNiveau, type OuvertesParNiveau } from '../api/alertesEcartApi';
 import { DiscrepancyLabel, EvalAlertBadge } from '../components/EvalAlertBadge';
 import EnhancedTemplatesTab from './EnhancedTemplatesTab';
 import AlertesEcartTab from './AlertesEcartTab';
@@ -27,6 +27,7 @@ import { useDialogA11y } from '../components/useDialogA11y';
 import { EmptyState, Icon, LoadingState, StatusBadge as Status } from '../components/ui';
 import { COLLABORATEUR_INTROUVABLE, formatDate, formatNombre, formatNote, formatPersonne, formatPourcentage, jourIso, TIRET } from '../utils/format';
 import { VALEUR_NON_RECONNUE } from '../utils/libelles';
+import { optionsFiltre, rafraichirParametres } from '../utils/parametresStore';
 import { getTousCollaborateurs, getUnites, nomCollaborateur, type CollaborateurRow, type Unite } from '../api/rhClient';
 import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
 import { appartientSelection, correspond, indexerUnites, pluriel, selectionActive, useFiltresUrl } from '../utils/filtres';
@@ -220,14 +221,16 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
   });
 
   const [parametres, setParametres] = useState<EvaluationParametres | null>(null);
-  const [dureeSociete, setDureeSociete] = useState('');
 
   useEffect(() => { void loadData(); }, []);
-  useEffect(() => {
+  const lireParametres = () => {
     parametresApi.get()
-      .then(p => { setParametres(p); setDureeSociete(String(p.dureeCampagneJours)); })
+      .then(p => setParametres(p))
       .catch(() => setParametres(null));
-  }, []);
+  };
+  useEffect(lireParametres, []);
+  // Durée par défaut : relue à l'ouverture du formulaire (elle se règle désormais dans Paramètres, D-R02.j).
+  useEffect(() => { if (showForm) { lireParametres(); void rafraichirParametres(); } }, [showForm]);
 
   const dureeEffective = formData.dureeJours ? Number(formData.dureeJours) : parametres?.dureeCampagneJours ?? null;
   const apercu = apercuCalendrier(
@@ -236,19 +239,6 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
     formData.jourDebut ? Number(formData.jourDebut) : null,
     dureeEffective,
   );
-
-  const enregistrerDureeSociete = async () => {
-    setActionError(null);
-    setActionSuccess(null);
-    try {
-      const p = await parametresApi.update(Number(dureeSociete));
-      setParametres(p);
-      setActionSuccess(`Durée par défaut des campagnes : ${p.dureeCampagneJours} jours.`);
-    } catch (error: unknown) {
-      const ax = error as { response?: { data?: { message?: string } }; message?: string };
-      setActionError(ax?.response?.data?.message || ax.message || 'Enregistrement impossible');
-    }
-  };
 
   const generalTemplates = templates.filter(t => t.type === 'GENERIC' && t.statut === 'PUBLISHED');
   const competencyTemplates = templates.filter(t => t.type === 'TECHNICAL' && t.statut === 'PUBLISHED');
@@ -398,33 +388,10 @@ function CampaignsTab({ lectureSeule = false }: { lectureSeule?: boolean }) {
         <div className="card">
           <h3>Durée des campagnes</h3>
           <p className="text-muted">
-            Durée par défaut d’une campagne, à partir de son jour de commencement. Elle est pré-remplie à la création
-            et reste modifiable pour une campagne donnée (par ex. 10, 20 ou 30 jours pour 1 mois).
+            Durée par défaut d’une campagne : <strong>{parametres.dureeCampagneJours} jours</strong>, pré-remplie à la création
+            et modifiable pour une campagne donnée. Ce réglage se modifie désormais dans{' '}
+            <Link to="/app/parametres?element=reglages:evaluation">Paramètres, Évaluations</Link>.
           </p>
-          {lectureSeule ? (
-            <p><strong>{parametres.dureeCampagneJours} jours</strong></p>
-          ) : (
-            <div className="inline-row">
-              <label htmlFor="duree-societe">Durée par défaut (jours)</label>
-              <input
-                id="duree-societe"
-                type="number"
-                min={parametres.dureeMinJours}
-                max={parametres.dureeMaxJours}
-                value={dureeSociete}
-                onChange={e => setDureeSociete(e.target.value)}
-                style={{ width: '6rem' }}
-              />
-              <button
-                type="button"
-                className="btn btn--secondary btn--sm"
-                disabled={!dureeSociete || Number(dureeSociete) === parametres.dureeCampagneJours}
-                onClick={() => void enregistrerDureeSociete()}
-              >
-                Enregistrer
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -634,8 +601,9 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
     <div className="card">
       <div className="card__header">
         <h3 className="struct-title__name"><DetailLink type="campagne" id={campaign.identifiant} libelle={campaign.nom} /></h3>
-        <StatusBadge
-          status={campaign.statut}
+        <Status
+          referentiel="STATUT_CAMPAGNE"
+          statut={campaign.statut}
           label={campaign.statut === 'PLANIFIEE' ? `Planifiée · lancement le ${jourFr(campaign.dateDebut)}` : undefined}
         />
       </div>
@@ -711,7 +679,7 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
             )}
             {campaign.statut === 'ACTIVE' && (
               <>
-                <Status statut="ACTIVE" label="En cours" />
+                <Status referentiel="STATUT_CAMPAGNE" statut="ACTIVE" label="En cours" />
                 <button type="button" className="btn btn--warning btn--sm" onClick={onTerminate}>
                   Terminer
                 </button>
@@ -720,11 +688,11 @@ function CampaignCard({ campaign, analytics, lectureSeule = false, onActivate, o
           </>
         ) : (
           campaign.statut === 'ACTIVE' ? (
-            <Status statut="ACTIVE" label="En cours" />
+            <Status referentiel="STATUT_CAMPAGNE" statut="ACTIVE" label="En cours" />
           ) : null
         )}
         {campaign.statut === 'TERMINEE' && (
-          <Status statut="TERMINEE" />
+          <Status referentiel="STATUT_CAMPAGNE" statut="TERMINEE" />
         )}
 
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => setExpanded(!expanded)}>
@@ -803,7 +771,7 @@ function AssignTemplatesModal({ campaign, generalTemplates, competencyTemplates,
 
           <div className="callout inline-row">
             <strong>{campaign.nom}</strong>
-            <Status statut={campaign.statut} />
+            <Status referentiel="STATUT_CAMPAGNE" statut={campaign.statut} />
           </div>
 
           {error && (
@@ -966,7 +934,7 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
   }, [duPerimetre]);
 
   // D-E12.c : alertes d'écart ouvertes (OUVERTE + EN_COURS) par niveau, pour la campagne sélectionnée.
-  const [alertesOuvertes, setAlertesOuvertes] = useState<Record<NiveauAlerte, number> | 'erreur' | null>(null);
+  const [alertesOuvertes, setAlertesOuvertes] = useState<OuvertesParNiveau | 'erreur' | null>(null);
   const campagneIdChoisie = campagneChoisie ? campagnes.find(c => c.nom === campagneChoisie)?.identifiant : undefined;
   const attendCampagne = !campagnesChargees || (!!campagneChoisie && campagnes.length === 0);
   useEffect(() => {
@@ -976,7 +944,7 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
     void (async () => {
       try {
         const r = await getAlertesOuvertesParNiveau(campagneIdChoisie);
-        if (!annule) setAlertesOuvertes({ ORANGE: r.ORANGE, ROUGE: r.ROUGE, URGENTE: r.URGENTE });
+        if (!annule) setAlertesOuvertes(r);
       } catch {
         if (!annule) setAlertesOuvertes('erreur');
       }
@@ -984,7 +952,7 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
     return () => { annule = true; };
   }, [campagneIdChoisie, attendCampagne]);
   const totalAlertesOuvertes = alertesOuvertes && alertesOuvertes !== 'erreur'
-    ? alertesOuvertes.ORANGE + alertesOuvertes.ROUGE + alertesOuvertes.URGENTE
+    ? alertesOuvertes.total
     : null;
 
   const openAnalytics = async (id: string) => {
@@ -1021,7 +989,7 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
           label="Alertes d’écart ouvertes"
           value={alertesOuvertes === 'erreur' ? '—' : totalAlertesOuvertes === null ? '…' : String(totalAlertesOuvertes)}
           detail={alertesOuvertes && alertesOuvertes !== 'erreur'
-            ? NIVEAUX_ALERTE.map(n => `${LIBELLES_NIVEAU_ECART[n]} ${alertesOuvertes[n]}`).join(' · ')
+            ? alertesOuvertes.niveaux.map(n => `${n.libelle} ${n.nombre}`).join(' · ')
             : alertesOuvertes === 'erreur' ? 'Compteur indisponible' : undefined}
           onClick={() => onOuvrirAlertes({ campagneId: campagneIdChoisie })}
           aide="Ouvrir l’onglet Alertes d’écart (alertes non closes)"
@@ -1063,12 +1031,7 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
           libelle="Statut"
           valeur={f.statut}
           toutesLibelle="Tous les statuts"
-          options={[
-            { valeur: 'EN_ATTENTE_VALIDATION_CROISEE', libelle: 'En attente' },
-            { valeur: 'VALIDEE_COLLABORATEUR', libelle: 'Validée par le collaborateur' },
-            { valeur: 'VALIDEE_SUPERIEUR', libelle: 'Validée par le responsable' },
-            { valeur: 'VALIDEE', libelle: 'Validée' },
-          ]}
+          options={optionsFiltre('STATUT_EVALUATION', evaluations.map(e => e.statut))}
           onChange={(v) => filtres.definir({ statut: v })}
         />
         <ChampSelect
@@ -1162,7 +1125,7 @@ function EvaluationsTab({ onOuvrirAlertes }: { onOuvrirAlertes: (filtre: { nivea
                     <td>{evaluation.collaborateurNom ? <LienPersonne id={evaluation.collaborateurIdentifiant} nom={evaluation.collaborateurNom} matricule={evaluation.collaborateurMatricule} /> : personLabel(evaluation.collaborateurNom, evaluation.collaborateurMatricule, COLLABORATEUR_INTROUVABLE)}</td>
                     <td>{evaluation.superieurNom ? <LienPersonne id={evaluation.superieurIdentifiant} nom={evaluation.superieurNom} /> : personLabel(evaluation.superieurNom, undefined, evaluation.superieurIdentifiant ? COLLABORATEUR_INTROUVABLE : undefined)}</td>
                     <td className="cell-meta">{etapeLabel(evaluation.etapeActuelle)}</td>
-                    <td><StatusBadge status={evaluation.statut} /></td>
+                    <td><Status referentiel="STATUT_EVALUATION" statut={evaluation.statut} /></td>
                     <td>
                       {evaluation.scoreSur20 != null ? (
                         <div>
@@ -1305,9 +1268,6 @@ function AnalyticsPanel({ analytics }: { analytics: EvaluationAnalytics }) {
   );
 }
 
-const NIVEAUX_ALERTE = ['ORANGE', 'ROUGE', 'URGENTE'] as const;
-type NiveauAlerte = typeof NIVEAUX_ALERTE[number];
-
 /** D-E12.b : « Non évaluée » tant que le responsable n'a noté aucune compétence. */
 function couleurEffective(e: EvaluationItem) {
   return e.aNoteResponsable === false ? undefined : e.couleurAlerte;
@@ -1339,21 +1299,6 @@ function MiniStat({ label, value }: { label: string; value: string }) {
       <div className="stat-label">{label}</div>
     </div>
   );
-}
-
-function StatusBadge({ status, label }: { status: string; label?: string }) {
-  const config: Record<string, { label: string; className: string }> = {
-    PLANIFIEE: { label: 'Planifiée', className: 'badge--info' },
-    ACTIVE: { label: 'Active', className: 'badge--success' },
-    TERMINEE: { label: 'Terminée', className: 'badge--default' },
-    ANNULEE: { label: 'Annulée', className: 'badge--default' },
-    EN_ATTENTE_VALIDATION_CROISEE: { label: 'En cours', className: 'badge--warning' },
-    VALIDEE_COLLABORATEUR: { label: 'Validée par le collaborateur', className: 'badge--info' },
-    VALIDEE_SUPERIEUR: { label: 'Validée par le responsable', className: 'badge--warning' },
-    VALIDEE: { label: 'Validée', className: 'badge--success' },
-  };
-  const meta = config[status] || { label: VALEUR_NON_RECONNUE, className: 'badge--default' };
-  return <span className={`badge ${meta.className}`}>{label ?? meta.label}</span>;
 }
 
 function getMonthName(month: number): string {

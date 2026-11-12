@@ -74,12 +74,12 @@ public class Collaborateur {
 	@Column(name = "profil_acces", nullable = false, length = 32)
 	private String profilAcces = "COLLABORATEUR";
 
-	/** Catalogue famille métier (clé matching M07) — code {@code rh_famille_metier}. */
+	/** Catalogue famille métier (clé matching M07) — code {@code rh_parametre_valeur} (référentiel FAMILLE_METIER). */
 	@Column(name = "famille_metier_code", length = 64)
 	private String familleMetierCode;
 
 	/** Catalogue fermé : JUNIOR, CONFIRME, SENIOR, TEAM_LEAD. */
-	@Column(name = "niveau_seniorite", length = 32)
+	@Column(name = "niveau_seniorite", length = 40)
 	private String niveauSeniorite;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)

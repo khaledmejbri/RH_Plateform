@@ -43,6 +43,7 @@ public class DemandeFormationRhService {
 	private final RhNotificationPublisher notificationPublisher;
 	private final FormationWorkflowHistoryRepository workflowHistoryRepository;
 	private final NumeroLisibleService numeroLisibleService;
+	private final ParametreService parametreService;
 
 	public DemandeFormationRhService(
 			DemandeFormationRhRepository demandeFormationRepository,
@@ -51,7 +52,8 @@ public class DemandeFormationRhService {
 			CollaborateurConnecteService collaborateurConnecteService,
 			RhNotificationPublisher notificationPublisher,
 			FormationWorkflowHistoryRepository workflowHistoryRepository,
-			NumeroLisibleService numeroLisibleService) {
+			NumeroLisibleService numeroLisibleService,
+			ParametreService parametreService) {
 		this.demandeFormationRepository = demandeFormationRepository;
 		this.collaborateurRepository = collaborateurRepository;
 		this.uniteRepository = uniteRepository;
@@ -59,6 +61,7 @@ public class DemandeFormationRhService {
 		this.notificationPublisher = notificationPublisher;
 		this.workflowHistoryRepository = workflowHistoryRepository;
 		this.numeroLisibleService = numeroLisibleService;
+		this.parametreService = parametreService;
 	}
 
 	@Transactional
@@ -463,6 +466,7 @@ public class DemandeFormationRhService {
 		r.setDateSouhaiteeDebut(demande.getDateSouhaiteeDebut());
 		r.setDateSouhaiteeFin(demande.getDateSouhaiteeFin());
 		r.setStatut(demande.getStatut());
+		r.setStatutLibelle(parametreService.libelleOuInconnu("STATUT_FORMATION", demande.getStatut().name()));
 		r.setCommentaireRh(demande.getCommentaireRh());
 		r.setCreeLe(demande.getCreeLe());
 		r.setModifieLe(demande.getModifieLe());

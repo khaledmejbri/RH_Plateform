@@ -5,7 +5,8 @@ import com.hr.evaluation.domain.CouleurAlerteEvaluationRh;
 import com.hr.evaluation.dto.EvaluationAnalyticsResponse;
 import com.hr.evaluation.entity.EvaluationAnswer;
 import com.hr.evaluation.entity.SkillAnswer;
-import org.springframework.beans.factory.annotation.Value;
+import com.hr.evaluation.domain.NiveauAlerte;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -18,14 +19,31 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.IntFunction;
+import java.util.function.IntSupplier;
 
 @Service
 public class EvaluationScoringService {
 
-	private final int seuilInsuffisant;
+	/** Seuil d'insuffisance lu à chaque calcul dans le paramétrage (D-R06), jamais figé à la construction. */
+	private final IntSupplier seuilInsuffisant;
+	private final IntFunction<String> niveauDeLEcart;
 
-	public EvaluationScoringService(@Value("${evaluation.alert.seuil-insuffisant:3}") int seuilInsuffisant) {
-		this.seuilInsuffisant = seuilInsuffisant;
+	@Autowired
+	public EvaluationScoringService(ParametresEvaluation parametres) {
+		this.seuilInsuffisant = parametres::seuilInsuffisance;
+		this.niveauDeLEcart = parametres::niveau;
+	}
+
+	/** Seuil fixe et niveaux d'alerte par défaut (2 / 3 / 4 étoiles) : calculs hors paramétrage et tests. */
+	public EvaluationScoringService(int seuilInsuffisant) {
+		this.seuilInsuffisant = () -> seuilInsuffisant;
+		this.niveauDeLEcart = ecart -> NiveauxAlerte.niveau(ecart, NiveauxAlerte.PAR_DEFAUT);
+	}
+
+	/** Code du niveau d'alerte d'un écart d'étoiles, selon les seuils courants ({@code ALIGNE} si aucun). */
+	public String niveauEcart(int ecart) {
+		return niveauDeLEcart.apply(ecart);
 	}
 
 	public EvaluationScore calculer(Integer... notes) {
@@ -109,7 +127,7 @@ public class EvaluationScoringService {
 							gap,
 							gapSeverity(gap),
 							technique,
-							technique ? EcartEtoiles.niveau(gap) : null
+							technique ? niveauDeLEcart.apply(gap) : null
 					);
 				})
 				.toList();
@@ -193,8 +211,9 @@ public class EvaluationScoringService {
 	}
 
 	private CouleurAlerteEvaluationRh couleur(List<Integer> valeurs) {
+		int seuil = seuilInsuffisant.getAsInt();
 		long insuffisants = valeurs.stream()
-				.filter(v -> v < seuilInsuffisant)
+				.filter(v -> v < seuil)
 				.count();
 		boolean tousExcellents = valeurs.stream().allMatch(v -> v == 5);
 		if (tousExcellents) {

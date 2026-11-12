@@ -3,7 +3,6 @@ import {
   getDemandesHeuresSup,
   getHeuresComptees,
   LIBELLES_ETAT_COMPTEES,
-  LIBELLES_STATUT_HEURES_SUP,
   postAnnulerHeuresSup,
   postCreerDemandeHeuresSup,
   postRefuserHeuresSup,
@@ -33,6 +32,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { SaisieDate } from '../components/ChampsFr';
 import { formatDuree, formatHeure, formatPeriode, formatPersonne, jourIso, ressembleAUnIdentifiant } from '../utils/format';
 import { VALEUR_NON_RECONNUE } from '../utils/libelles';
+import { libelleReferentiel, optionsFiltre } from '../utils/parametresStore';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 type Onglet = 'a-valider' | 'historique' | 'comptees';
@@ -112,7 +112,7 @@ function StatutBadge({ statut }: { statut: StatutHeuresSup }) {
         : statut === 'REFUSEE'
           ? 'badge badge--warning'
           : 'badge badge--default';
-  return <span className={cls}>{LIBELLES_STATUT_HEURES_SUP[statut] ?? VALEUR_NON_RECONNUE}</span>;
+  return <span className={cls}>{libelleReferentiel('STATUT_HEURES_SUP', statut)}</span>;
 }
 
 function Pager({
@@ -445,10 +445,7 @@ export default function HeuresSupPage() {
               libelle="Statut"
               valeur={statut}
               toutesLibelle="Tous les statuts"
-              options={(Object.keys(LIBELLES_STATUT_HEURES_SUP) as StatutHeuresSup[]).map((x) => ({
-                valeur: x,
-                libelle: LIBELLES_STATUT_HEURES_SUP[x],
-              }))}
+              options={optionsFiltre('STATUT_HEURES_SUP')}
               onChange={(v) => changerFiltre(() => filtres.definir({ statut: v }))}
             />
           ) : null}

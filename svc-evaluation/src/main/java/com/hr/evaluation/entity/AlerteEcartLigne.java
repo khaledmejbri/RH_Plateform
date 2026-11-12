@@ -1,6 +1,5 @@
 package com.hr.evaluation.entity;
 
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.SensEcart;
 import jakarta.persistence.*;
 
@@ -44,9 +43,8 @@ public class AlerteEcartLigne {
     @Column(name = "ecart_detection", nullable = false, updatable = false)
     private int ecartDetection;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "niveau_detection", nullable = false, updatable = false, length = 20)
-    private NiveauEcart niveauDetection;
+    @Column(name = "niveau_detection", nullable = false, updatable = false, length = 40)
+    private String niveauDetection;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "sens_detection", updatable = false, length = 20)
@@ -61,9 +59,8 @@ public class AlerteEcartLigne {
     @Column(name = "ecart_actuel", nullable = false)
     private int ecartActuel;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "niveau_actuel", nullable = false, length = 20)
-    private NiveauEcart niveauActuel;
+    @Column(name = "niveau_actuel", nullable = false, length = 40)
+    private String niveauActuel;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "sens_actuel", length = 20)
@@ -98,8 +95,8 @@ public class AlerteEcartLigne {
     public int getEcartDetection() { return ecartDetection; }
     public void setEcartDetection(int v) { this.ecartDetection = v; }
 
-    public NiveauEcart getNiveauDetection() { return niveauDetection; }
-    public void setNiveauDetection(NiveauEcart v) { this.niveauDetection = v; }
+    public String getNiveauDetection() { return niveauDetection; }
+    public void setNiveauDetection(String v) { this.niveauDetection = v; }
 
     public SensEcart getSensDetection() { return sensDetection; }
     public void setSensDetection(SensEcart v) { this.sensDetection = v; }
@@ -113,8 +110,8 @@ public class AlerteEcartLigne {
     public int getEcartActuel() { return ecartActuel; }
     public void setEcartActuel(int v) { this.ecartActuel = v; }
 
-    public NiveauEcart getNiveauActuel() { return niveauActuel; }
-    public void setNiveauActuel(NiveauEcart v) { this.niveauActuel = v; }
+    public String getNiveauActuel() { return niveauActuel; }
+    public void setNiveauActuel(String v) { this.niveauActuel = v; }
 
     public SensEcart getSensActuel() { return sensActuel; }
     public void setSensActuel(SensEcart v) { this.sensActuel = v; }

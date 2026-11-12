@@ -1,6 +1,5 @@
 package com.hr.evaluation.repository;
 
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import com.hr.evaluation.entity.AlerteEcart;
 import jakarta.persistence.LockModeType;
@@ -43,5 +42,14 @@ public interface AlerteEcartRepository extends JpaRepository<AlerteEcart, UUID>,
 
     long countByStatutNot(StatutAlerteEcart statut);
 
-    long countByStatutNotAndNiveauCourant(StatutAlerteEcart statut, NiveauEcart niveauCourant);
+    long countByStatutNotAndNiveauCourantIn(StatutAlerteEcart statut, Collection<String> niveauxCourants);
+
+    /** Utilisations d'un niveau (ADR lot 3 § 6) : alertes qui le portent à la détection, courant ou notifié. */
+    @Query("select count(a) from AlerteEcart a where a.niveauDetection = :code or a.niveauCourant = :code "
+            + "or a.niveauMaxNotifie = :code")
+    long compterUtilisationsNiveau(String code);
+
+    /** Utilisations d'une conclusion : clôtures tracées à l'historique. */
+    @Query("select count(h) from AlerteEcartHistorique h where h.conclusion = :code")
+    long compterUtilisationsConclusion(String code);
 }

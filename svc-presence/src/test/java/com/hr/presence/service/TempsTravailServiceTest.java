@@ -53,7 +53,8 @@ class TempsTravailServiceTest {
 	private final Clock clock = Clock.fixed(
 			LocalDateTime.of(2026, 11, 5, 10, 0).atZone(ClockConfig.ZONE_TUNIS).toInstant(), ClockConfig.ZONE_TUNIS);
 	private final TempsTravailService service = new TempsTravailService(pointageRepository, siteRepository,
-			heuresSupJourRepository, demandeRepository, referentiel, properties, clock);
+			heuresSupJourRepository, demandeRepository, referentiel, properties,
+			ParametresTestSupport.depuis(properties), clock);
 
 	private final UUID siteA = UUID.randomUUID();
 	private final UUID siteB = UUID.randomUUID();
@@ -338,7 +339,7 @@ class TempsTravailServiceTest {
 	private TempsTravailService serviceA(int mois, int jour, int heure, int minute) {
 		Clock c = Clock.fixed(t(mois, jour, heure, minute), ClockConfig.ZONE_TUNIS);
 		return new TempsTravailService(pointageRepository, siteRepository, heuresSupJourRepository, demandeRepository,
-				referentiel, properties, c);
+				referentiel, properties, ParametresTestSupport.depuis(properties), c);
 	}
 
 	private LigneTempsTravail uniqueLigne(TempsTravailService s) {

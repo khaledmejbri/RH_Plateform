@@ -324,27 +324,11 @@ export type DemandeDocument = {
   cree_le: string;
 };
 
-export const PROFILS_ACCES = [
-  'COLLABORATEUR',
-  'RO',
-  'RESPONSABLE',
-  'RH',
-  'DIRECTION',
-  'ADMIN',
-] as const;
-
-export type ProfilAcces = (typeof PROFILS_ACCES)[number];
-
-export const LIBELLES_PROFIL_ACCES: Record<ProfilAcces, string> = Object.fromEntries(
-  PROFILS_ACCES.map((p) => [p, libelle('profilAcces', p)]),
-) as Record<ProfilAcces, string>;
+/** Code d'un profil d'accès (référentiel PROFIL_ACCES, lot 3). */
+export type ProfilAcces = string;
 
 export function libelleProfilAcces(code: string | null | undefined): string {
   return libelle('profilAcces', code);
-}
-
-export function isProfilAcces(value: string | null | undefined): value is ProfilAcces {
-  return !!value && (PROFILS_ACCES as readonly string[]).includes(value.toUpperCase());
 }
 
 export type CollaborateurRow = {
@@ -374,32 +358,6 @@ export type CollaborateurRow = {
   compte_utilisateur_id?: string;
 };
 
-export type FamilleMetierRow = {
-  code: string;
-  libelle: string;
-  actif: boolean;
-  systeme?: boolean;
-};
-
-export type NiveauSenioriteRow = {
-  code: string;
-  libelle: string;
-};
-
-/** Catalogue familles métier (E2). Fallback seed côté UI si 404. */
-export function getFamillesMetier(actifOnly = true) {
-  const q = actifOnly ? '?actif=true' : '';
-  return apiFetch(`/api/referentiel/v1/familles-metier${q}`).then((r) =>
-    handleRhResponse<FamilleMetierRow[]>(r),
-  );
-}
-
-/** Niveaux de séniorité fermés (E2). */
-export function getNiveauxSeniorite() {
-  return apiFetch('/api/referentiel/v1/niveaux-seniorite').then((r) =>
-    handleRhResponse<NiveauSenioriteRow[]>(r),
-  );
-}
 
 export function nomCollaborateur(c: Pick<CollaborateurRow, 'nom' | 'name'>): string {
   return (c.nom ?? c.name ?? '').trim();

@@ -16,12 +16,15 @@ public class EvaluationTemplateService {
 
     private final EvaluationTemplateRepository templateRepository;
     private final EvaluationQuestionRepository questionRepository;
+    private final ParametresEvaluation parametres;
 
     public EvaluationTemplateService(
             EvaluationTemplateRepository templateRepository,
-            EvaluationQuestionRepository questionRepository) {
+            EvaluationQuestionRepository questionRepository,
+            ParametresEvaluation parametres) {
         this.templateRepository = templateRepository;
         this.questionRepository = questionRepository;
+        this.parametres = parametres;
     }
 
     @Transactional
@@ -48,6 +51,8 @@ public class EvaluationTemplateService {
             Integer valeurMaximale,
             UUID creePar) {
 
+        // D-R02 : un type de question désactivé ne peut plus être ajouté (422)
+        parametres.verifierTypeQuestionActif(typeQuestion);
         EvaluationTemplate template = chargerTemplate(templateId);
 
         EvaluationQuestion question = new EvaluationQuestion();

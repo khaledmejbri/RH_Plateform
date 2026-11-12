@@ -337,15 +337,8 @@ enum SkillLevel {
 }
 
 extension SkillLevelExtension on SkillLevel {
-  String get label {
-    return switch (this) {
-      SkillLevel.debutant => 'Débutant',
-      SkillLevel.supervise => 'Supervisé',
-      SkillLevel.autonome => 'Autonome',
-      SkillLevel.avance => 'Avancé',
-      SkillLevel.expert => 'Expert',
-    };
-  }
+  /// Nom du niveau, lu dans le référentiel `ECHELLE_ETOILES` (écran Paramètres).
+  String get label => Libelles.niveauNote(score);
 
   String get apiValue {
     return switch (this) {
@@ -567,18 +560,12 @@ class EvaluationLabels {
 
   static String niveauSeniorite(String code) => Libelles.niveauSeniorite(code);
 
-  /// Famille métier : libellé de l'API en priorité (voir [Libelles.familleMetier]).
+  /// Famille métier : libellé de l'API en priorité, puis référentiel chargé (voir [Libelles.familleMetier]).
   static String familleMetier(String codeOrLabel, [String? libelleApi]) =>
       Libelles.familleMetier(codeOrLabel, libelleApi);
 
-  static String appreciation(int? scoreSur20) {
-    if (scoreSur20 == null) return '';
-    if (scoreSur20 <= 7) return 'Insuffisant';
-    if (scoreSur20 <= 10) return 'À améliorer';
-    if (scoreSur20 <= 14) return 'Satisfaisant';
-    if (scoreSur20 <= 17) return 'Positif';
-    return 'Excellent';
-  }
+  /// Appréciation d'une note sur 20 : libellé du référentiel `APPRECIATION` (voir [Libelles.appreciation]).
+  static String appreciation(int? scoreSur20) => Libelles.appreciation(scoreSur20);
 
   static String alerte(String? code) {
     return switch (code?.toUpperCase()) {

@@ -1,6 +1,9 @@
 package com.hr.evaluation.service;
 
+import com.hr.evaluation.client.ReferentielParametresClient;
+import com.hr.evaluation.client.ReferentielParametresClient.Reference;
 import com.hr.evaluation.domain.NiveauSenioriteCodes;
+import com.hr.evaluation.domain.QuestionType;
 import com.hr.evaluation.domain.TemplateStatus;
 import com.hr.evaluation.domain.TemplateType;
 import com.hr.evaluation.dto.CreateTemplateRequest;
@@ -14,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -25,11 +29,17 @@ public class TemplateService {
 
     private final EvaluationTemplateRepository templateRepository;
     private final EvaluationQuestionRepository questionRepository;
+    private final ReferentielParametresClient referentielParametres;
+    private final ParametresEvaluation parametres;
 
     public TemplateService(EvaluationTemplateRepository templateRepository,
-                          EvaluationQuestionRepository questionRepository) {
+                          EvaluationQuestionRepository questionRepository,
+                          ReferentielParametresClient referentielParametres,
+                          ParametresEvaluation parametres) {
         this.templateRepository = templateRepository;
         this.questionRepository = questionRepository;
+        this.referentielParametres = referentielParametres;
+        this.parametres = parametres;
     }
 
     public EvaluationTemplate creerTemplate(CreateTemplateRequest request, UUID userId) {
@@ -54,9 +64,10 @@ public class TemplateService {
             template.setRole(famille);
             String niveau = NiveauSenioriteCodes.normalizeOrNull(request.getNiveauSeniorite());
             if (request.getNiveauSeniorite() != null && !request.getNiveauSeniorite().isBlank() && niveau == null) {
-                throw EvaluationMetierException.unprocessable("NIVEAU_SENIORITE_INVALIDE",
+                throw EvaluationMetierException.badRequest("NIVEAU_SENIORITE_INVALIDE",
                         "Niveau de séniorité invalide: " + request.getNiveauSeniorite());
             }
+            validerCiblage(famille, niveau);
             template.setNiveauSeniorite(niveau);
             template.setDomaine(request.getDomaine());
         }
@@ -204,12 +215,43 @@ public class TemplateService {
             .orElseThrow(() -> new IllegalArgumentException("Template not found"));
     }
 
+    /**
+     * ADR lot 3 § 6 : la famille et le niveau ciblés sont validés (existent, actifs) et marqués « déjà utilisés » par le
+     * référentiel. Inconnu : 400 ; inactif : 422 {@code VALEUR_INACTIVE} ; référentiel muet : 503.
+     */
+    private void validerCiblage(String famille, String niveau) {
+        List<Reference> references = new ArrayList<>();
+        if (famille != null && !famille.isBlank()) {
+            references.add(new Reference("FAMILLE_METIER", famille.trim()));
+        }
+        if (niveau != null) {
+            references.add(new Reference("NIVEAU_SENIORITE", niveau));
+        }
+        if (references.isEmpty()) {
+            return;
+        }
+        ReferentielParametresClient.Resultat resultat = referentielParametres.utiliser(references);
+        if (!resultat.inconnus().isEmpty()) {
+            String code = resultat.inconnus().get(0);
+            boolean estNiveau = niveau != null && niveau.equals(code);
+            throw EvaluationMetierException.badRequest(estNiveau ? "NIVEAU_SENIORITE_INVALIDE" : "FAMILLE_METIER_INVALIDE",
+                    (estNiveau ? "Niveau de séniorité inconnu : " : "Famille métier inconnue : ") + code);
+        }
+        if (!resultat.inactifs().isEmpty()) {
+            throw EvaluationMetierException.unprocessable("VALEUR_INACTIVE",
+                    "La famille ou le niveau choisi est désactivé (" + String.join(", ", resultat.inactifs())
+                            + ") : choisissez une valeur active.");
+        }
+    }
+
     private EvaluationQuestion convertToQuestion(CreateQuestionRequest dto, EvaluationTemplate template) {
+        QuestionType type = QuestionType.valueOf(dto.getTypeQuestion());
+        parametres.verifierTypeQuestionActif(type);
         EvaluationQuestion question = new EvaluationQuestion();
         question.setTemplate(template);
         question.setLibelle(dto.getLibelle());
         question.setDescription(dto.getDescription());
-        question.setTypeQuestion(com.hr.evaluation.domain.QuestionType.valueOf(dto.getTypeQuestion()));
+        question.setTypeQuestion(type);
         question.setOrdre(dto.getOrdre());
         question.setObligatoire(dto.getObligatoire() != null ? dto.getObligatoire() : false);
         question.setSectionCode(dto.getSectionCode());

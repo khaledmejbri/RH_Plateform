@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
-import { AlerteEcartApiError, CONCLUSIONS, messageErreurAction, type ConclusionAlerteEcart } from '../api/alertesEcartApi';
+import { useEffect, useRef, useState } from 'react';
+import { AlerteEcartApiError, messageErreurAction, type ConclusionAlerteEcart } from '../api/alertesEcartApi';
+import { rafraichirParametres, useParametres, valeursActives } from '../utils/parametresStore';
 import { DialogPanel } from './useDialogA11y';
 
 const MIN = 10;
@@ -16,6 +17,10 @@ type Props = {
 };
 
 export function ClotureAlerteDialog({ onClose, onSubmit, onErreurBloquante, confirmer }: Props) {
+  // Conclusions actives du paramétrage, relues à l'ouverture de la fenêtre (D-R02.j).
+  useParametres();
+  useEffect(() => { void rafraichirParametres(); }, []);
+  const conclusions = valeursActives('CONCLUSION_ALERTE');
   const [conclusion, setConclusion] = useState<ConclusionAlerteEcart | ''>('');
   const [commentaire, setCommentaire] = useState('');
   const [toucheConclusion, setToucheConclusion] = useState(false);
@@ -75,13 +80,13 @@ export function ClotureAlerteDialog({ onClose, onSubmit, onErreurBloquante, conf
                 aria-invalid={afficheConclusion}
                 aria-describedby={afficheConclusion ? 'cloture-conclusion-err' : undefined}
                 onChange={(e) => {
-                  setConclusion(e.target.value as ConclusionAlerteEcart | '');
+                  setConclusion(e.target.value);
                   setToucheConclusion(true);
                 }}
                 onBlur={() => setToucheConclusion(true)}
               >
                 <option value="">Choisir une conclusion…</option>
-                {CONCLUSIONS.map((c) => (
+                {conclusions.map((c) => (
                   <option key={c.code} value={c.code}>
                     {c.libelle}
                   </option>

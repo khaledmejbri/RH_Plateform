@@ -18,6 +18,9 @@ public record CollaborateurEvaluationSnapshotResponse(
 		@JsonProperty("nom_complet") String nomComplet,
 		@JsonProperty("poste_libelle") String posteLibelle,
 		@JsonProperty("superieur_compte_utilisateur_id") UUID superieurCompteUtilisateurId,
-		@JsonProperty("superieur_nom_complet") String superieurNomComplet
+		@JsonProperty("superieur_nom_complet") String superieurNomComplet,
+		/** Lot 3 (D-R07) : libellés courants gardés dans le snapshot de l'évaluation, avec les codes. */
+		@JsonProperty("famille_metier_libelle") String familleMetierLibelle,
+		@JsonProperty("niveau_seniorite_libelle") String niveauSenioriteLibelle
 ) {
 }

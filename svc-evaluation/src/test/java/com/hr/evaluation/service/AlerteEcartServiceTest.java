@@ -3,7 +3,6 @@ package com.hr.evaluation.service;
 import com.hr.evaluation.client.FicheEvaluation;
 import com.hr.evaluation.client.ReferentielFicheClient;
 import com.hr.evaluation.domain.EvenementAlerteEcart;
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.SensEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import com.hr.evaluation.entity.AlerteEcart;
@@ -54,7 +53,8 @@ class AlerteEcartServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AlerteEcartService(alerteRepository, answerRepository, templateTechnique, ficheClient, publisher);
+        service = new AlerteEcartService(alerteRepository, answerRepository, templateTechnique, ficheClient, publisher,
+                ParametresTestes.parDefaut());
         EvaluationCampaign campagne = new EvaluationCampaign();
         campagne.setId(UUID.randomUUID());
         campagne.setNom("Campagne S2 2026");
@@ -123,9 +123,9 @@ class AlerteEcartServiceTest {
 
         assertThat(alerte).isPresent();
         AlerteEcart a = alerte.get();
-        assertThat(a.getNiveauCourant()).isEqualTo(NiveauEcart.ORANGE);
-        assertThat(a.getNiveauDetection()).isEqualTo(NiveauEcart.ORANGE);
-        assertThat(a.getNiveauMaxNotifie()).isEqualTo(NiveauEcart.ORANGE);
+        assertThat(a.getNiveauCourant()).isEqualTo("ORANGE");
+        assertThat(a.getNiveauDetection()).isEqualTo("ORANGE");
+        assertThat(a.getNiveauMaxNotifie()).isEqualTo("ORANGE");
         assertThat(a.getStatut()).isEqualTo(StatutAlerteEcart.OUVERTE);
         assertThat(a.getCollaborateurMatricule()).isEqualTo("M-042");
         assertThat(a.getCollaborateurUniteLibelle()).isEqualTo("Service web");
@@ -142,11 +142,11 @@ class AlerteEcartServiceTest {
             assertThat(h.getAuteurCompteId()).isNull();
             assertThat(h.getAuteurLibelle()).isEqualTo("SYSTEME");
             assertThat(h.getStatutApres()).isEqualTo(StatutAlerteEcart.OUVERTE);
-            assertThat(h.getNiveauApres()).isEqualTo(NiveauEcart.ORANGE);
+            assertThat(h.getNiveauApres()).isEqualTo("ORANGE");
         });
         assertThat(evenementsPublies()).singleElement().satisfies(e -> {
             assertThat(e.alerteId()).isEqualTo(a.getId());
-            assertThat(e.niveau()).isEqualTo(NiveauEcart.ORANGE);
+            assertThat(e.niveau()).isEqualTo("ORANGE");
             assertThat(e.nbCompetencesEnEcart()).isEqualTo(1);
             assertThat(e.ecartMax()).isEqualTo(2);
             assertThat(e.comptesExclus()).containsExactlyInAnyOrder(collabCompte, roCompte);
@@ -159,19 +159,67 @@ class AlerteEcartServiceTest {
 
         AlerteEcart a = service.detecter(evaluation).orElseThrow();
 
-        assertThat(a.getNiveauCourant()).isEqualTo(NiveauEcart.ROUGE);
+        assertThat(a.getNiveauCourant()).isEqualTo("ROUGE");
         assertThat(a.getLignes().get(0).getSensDetection()).isEqualTo(SensEcart.RO_SUPERIEUR);
+    }
+
+    private AlerteEcartService serviceAvecNiveaux(ParametresTestes.Banc banc) {
+        return new AlerteEcartService(alerteRepository, answerRepository, templateTechnique, ficheClient, publisher,
+                banc.parametres());
+    }
+
+    private static ParametresInstantane avecNiveau(String code, String libelle, int seuil) {
+        return ParametresInstantane.de(ParametresTestes.initiales().stream()
+                .map(v -> v.referentiel().equals("NIVEAU_ALERTE") && v.code().equals(code)
+                        ? new ParametresInstantane.Valeur(v.referentiel(), v.code(), v.nature(), libelle,
+                                v.description(), v.couleur(), v.ordre(), true, v.systeme(), seuil)
+                        : v).toList(), null);
+    }
+
+    @Test
+    void seuilModifie_estAppliqueAuxDetectionsPosterieures_etLeTitreUtiliseLeLibelleCourant() {
+        // ORANGE passe au seuil 1 et devient « Vigilance » : un écart d'une étoile déclenche désormais l'alerte
+        var banc = ParametresTestes.avec(avecNiveau("ORANGE", "Vigilance", 1));
+        // l'ancien seuil 2 de ORANGE n'est plus occupé : l'instantané ne contient plus de seuil 2 actif
+        AlerteEcartService modifie = serviceAvecNiveaux(banc);
+        notes(question("Java", 1), 3, 2);
+
+        AlerteEcart a = modifie.detecter(evaluation).orElseThrow();
+
+        assertThat(a.getNiveauCourant()).isEqualTo("ORANGE");
+        assertThat(evenementsPublies()).singleElement().satisfies(e -> {
+            assertThat(e.niveau()).isEqualTo("ORANGE");
+            assertThat(e.niveauLibelle()).isEqualTo("Vigilance");
+        });
+        verify(banc.repository()).marquerUtilisee(org.mockito.ArgumentMatchers.eq("NIVEAU_ALERTE"),
+                org.mockito.ArgumentMatchers.eq("ORANGE"), any());
+    }
+
+    @Test
+    void seuilModifie_neRecalculePasLesAlertesExistantes_etSansChangementDeNotesLeNiveauResteLe() {
+        notes(question("Java", 1), 4, 2);
+        AlerteEcart a = service.detecter(evaluation).orElseThrow();
+        assertThat(a.getNiveauCourant()).isEqualTo("ORANGE");
+
+        // le seuil de ORANGE descend à 1 après la détection
+        var banc = ParametresTestes.avec(avecNiveau("ORANGE", "Alerte", 1));
+        AlerteEcartService modifie = serviceAvecNiveaux(banc);
+        evaluation.setValidationSuperieurPar(UUID.randomUUID());
+        modifie.recalculerSiNecessaire(evaluation, questions.get(0));
+
+        assertThat(a.getNiveauCourant()).isEqualTo("ORANGE"); // notes inchangées : la ligne n'est pas recalculée
+        assertThat(a.getLignes().get(0).getNiveauActuel()).isEqualTo("ORANGE");
     }
 
     @Test
     void cinqContreUnDansLesDeuxSens_urgente() {
         notes(question("Java", 1), 5, 1);
-        assertThat(service.detecter(evaluation).orElseThrow().getNiveauCourant()).isEqualTo(NiveauEcart.URGENTE);
+        assertThat(service.detecter(evaluation).orElseThrow().getNiveauCourant()).isEqualTo("URGENTE");
 
         stockee = null;
         reponses.clear();
         notes(questions.get(0), 1, 5);
-        assertThat(service.detecter(evaluation).orElseThrow().getNiveauCourant()).isEqualTo(NiveauEcart.URGENTE);
+        assertThat(service.detecter(evaluation).orElseThrow().getNiveauCourant()).isEqualTo("URGENTE");
     }
 
     @Test
@@ -182,7 +230,7 @@ class AlerteEcartServiceTest {
 
         AlerteEcart a = service.detecter(evaluation).orElseThrow();
 
-        assertThat(a.getNiveauCourant()).isEqualTo(NiveauEcart.ROUGE);
+        assertThat(a.getNiveauCourant()).isEqualTo("ROUGE");
         assertThat(a.getLignes()).hasSize(2);
         assertThat(evenementsPublies()).singleElement().satisfies(e -> {
             assertThat(e.nbCompetencesEnEcart()).isEqualTo(2);
@@ -240,7 +288,7 @@ class AlerteEcartServiceTest {
         EvaluationAnswer a = notes(q, null, 1);
         a.setNoteAttribuee(4);
 
-        assertThat(service.detecter(evaluation).orElseThrow().getNiveauCourant()).isEqualTo(NiveauEcart.ROUGE);
+        assertThat(service.detecter(evaluation).orElseThrow().getNiveauCourant()).isEqualTo("ROUGE");
     }
 
     @Test
@@ -328,12 +376,12 @@ class AlerteEcartServiceTest {
         assertThat(ligne.getEtoilesRoDetection()).isEqualTo(2);
         assertThat(ligne.getEtoilesRoActuelles()).isEqualTo(1);
         assertThat(ligne.getEcartActuel()).isEqualTo(3);
-        assertThat(a.getNiveauCourant()).isEqualTo(NiveauEcart.ROUGE);
-        assertThat(a.getNiveauDetection()).isEqualTo(NiveauEcart.ORANGE);
+        assertThat(a.getNiveauCourant()).isEqualTo("ROUGE");
+        assertThat(a.getNiveauDetection()).isEqualTo("ORANGE");
         assertThat(a.isNotesModifieesApresDetection()).isTrue();
         assertThat(a.getHistorique()).extracting(h -> h.getTypeEvenement())
                 .containsExactly(EvenementAlerteEcart.CREATION, EvenementAlerteEcart.RECALCUL);
-        assertThat(evenementsPublies()).singleElement().satisfies(e -> assertThat(e.niveau()).isEqualTo(NiveauEcart.ROUGE));
+        assertThat(evenementsPublies()).singleElement().satisfies(e -> assertThat(e.niveau()).isEqualTo("ROUGE"));
     }
 
     @Test
@@ -345,8 +393,8 @@ class AlerteEcartServiceTest {
         service.recalculerSiNecessaire(evaluation, q);
 
         assertThat(a.getLignes()).hasSize(1);
-        assertThat(a.getLignes().get(0).getNiveauActuel()).isEqualTo(NiveauEcart.ALIGNE);
-        assertThat(a.getNiveauCourant()).isEqualTo(NiveauEcart.ALIGNE);
+        assertThat(a.getLignes().get(0).getNiveauActuel()).isEqualTo("ALIGNE");
+        assertThat(a.getNiveauCourant()).isEqualTo("ALIGNE");
         assertThat(a.isNotesModifieesApresDetection()).isTrue();
         assertThat(a.getStatut()).isEqualTo(StatutAlerteEcart.OUVERTE);
         verifyNoInteractions(publisher);
@@ -361,7 +409,7 @@ class AlerteEcartServiceTest {
 
         service.recalculerSiNecessaire(evaluation, q);
 
-        assertThat(a.getNiveauCourant()).isEqualTo(NiveauEcart.ROUGE);
+        assertThat(a.getNiveauCourant()).isEqualTo("ROUGE");
         assertThat(a.getLignes().get(0).getEtoilesCollaborateurActuelles()).isEqualTo(5);
         assertThat(a.getLignes().get(0).getEtoilesCollaborateurDetection()).isEqualTo(4);
         assertThat(evenementsPublies()).hasSize(1);
@@ -372,7 +420,7 @@ class AlerteEcartServiceTest {
         EvaluationQuestion q = question("Java", 1);
         AlerteEcart a = alerteOrangeExistante(q);
         a.setStatut(StatutAlerteEcart.TRAITEE);
-        a.setConclusion(com.hr.evaluation.domain.ConclusionAlerteEcart.MANQUE_EFFORT);
+        a.setConclusion("MANQUE_EFFORT");
         reponses.get(0).setNoteManager(1);
 
         service.recalculerSiNecessaire(evaluation, q);
@@ -445,8 +493,8 @@ class AlerteEcartServiceTest {
 
         List<AlerteEcartANotifierEvent> envoyes = evenementsPublies();
         assertThat(envoyes).hasSize(1);
-        assertThat(envoyes.get(0).niveau()).isEqualTo(NiveauEcart.ROUGE);
-        assertThat(a.getNiveauMaxNotifie()).isEqualTo(NiveauEcart.ROUGE);
+        assertThat(envoyes.get(0).niveau()).isEqualTo("ROUGE");
+        assertThat(a.getNiveauMaxNotifie()).isEqualTo("ROUGE");
     }
 
     @Test
@@ -464,7 +512,7 @@ class AlerteEcartServiceTest {
         service.recalculerSiNecessaire(evaluation, q);
 
         assertThat(stockee).isNotNull();
-        assertThat(stockee.getNiveauCourant()).isEqualTo(NiveauEcart.ORANGE);
+        assertThat(stockee.getNiveauCourant()).isEqualTo("ORANGE");
         assertThat(evenementsPublies()).hasSize(1);
     }
 
@@ -480,7 +528,7 @@ class AlerteEcartServiceTest {
         assertThat(reponseSql).isNotNull();
         assertThat(a.getLignes()).hasSize(2);
         assertThat(a.isNotesModifieesApresDetection()).isTrue();
-        assertThat(a.getNiveauCourant()).isEqualTo(NiveauEcart.ROUGE);
+        assertThat(a.getNiveauCourant()).isEqualTo("ROUGE");
     }
 
     @Test

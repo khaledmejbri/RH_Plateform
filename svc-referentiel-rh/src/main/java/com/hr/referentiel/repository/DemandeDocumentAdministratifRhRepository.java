@@ -34,7 +34,7 @@ public interface DemandeDocumentAdministratifRhRepository extends JpaRepository<
 
 	/** D-F06.a : plus ancienne demande ouverte du collaborateur pour ce type. */
 	Optional<DemandeDocumentAdministratifRh> findFirstByDemandeurIdAndTypeDocumentAndStatutInOrderByCreeLeAsc(
-			UUID demandeurId, com.hr.referentiel.domain.TypeDocumentAdministratifDemandeRh typeDocument,
+			UUID demandeurId, String typeDocument,
 			List<StatutDocumentAdministratifDemandeRh> statuts);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)

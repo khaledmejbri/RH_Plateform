@@ -24,20 +24,36 @@ public class LibellesProfilService {
 	}
 
 	public String famille(String code) {
+		return famille(code, null);
+	}
+
+	/** @param repli libellé figé dans l'évaluation à sa création (D-R07), utilisé si le référentiel est muet */
+	public String famille(String code, String repli) {
 		if (code == null || code.isBlank()) {
 			return null;
 		}
 		String lu = client.lire().familles().get(code);
-		return lu != null && !lu.isBlank() ? lu : mettreEnForme(code);
+		if (lu != null && !lu.isBlank()) {
+			return lu;
+		}
+		return repli != null && !repli.isBlank() ? repli : mettreEnForme(code);
 	}
 
 	public String niveau(String code) {
+		return niveau(code, null);
+	}
+
+	/** @param repli libellé figé dans l'évaluation à sa création (D-R07), utilisé si le référentiel est muet */
+	public String niveau(String code, String repli) {
 		if (code == null || code.isBlank()) {
 			return null;
 		}
 		String lu = client.lire().niveaux().get(code);
 		if (lu != null && !lu.isBlank()) {
 			return lu;
+		}
+		if (repli != null && !repli.isBlank()) {
+			return repli;
 		}
 		String defaut = NIVEAUX_PAR_DEFAUT.get(code.trim().toUpperCase(Locale.ROOT));
 		return defaut != null ? defaut : mettreEnForme(code);

@@ -446,32 +446,9 @@ public class EvaluationAdminController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/technical-templates")
-    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
-    public ResponseEntity<Map<String, Object>> createTechnicalTemplate(
-            @Valid @RequestBody Map<String, Object> request) {
-        
-        String nom = (String) request.get("nom");
-        String description = (String) request.get("description");
-        String niveauSeniorite = (String) request.get("niveauSeniorite");
-        String role = (String) request.get("role");
-        String domaine = (String) request.get("domaine");
-        UUID creePar = UUID.fromString((String) request.get("creePar"));
-        
-        TechnicalTemplate template = technicalTemplateService.creerTemplate(
-            nom, description, niveauSeniorite, role, domaine, creePar
-        );
-        
-        Map<String, Object> response = new HashMap<>();
-        response.put("identifiant", template.getId().toString());
-        response.put("nom", template.getNom());
-        response.put("niveauSeniorite", template.getNiveauSeniorite());
-        response.put("role", template.getRoleMetier());
-        response.put("domaine", template.getDepartement());
-        response.put("creeLe", template.getCreeLe());
-        
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
+    // Lot 3 : l'ancienne création POST /technical-templates (table technical_template) est retirée. Elle contournait
+    // la validation du ciblage (famille / niveau contre les paramètres, marque « utilisée ») et aucun écran ne
+    // l'appelle ; les templates techniques se créent par POST /templates (TemplateService.creerTemplate).
 
     // ========== EVALUATION MONITORING ==========
 

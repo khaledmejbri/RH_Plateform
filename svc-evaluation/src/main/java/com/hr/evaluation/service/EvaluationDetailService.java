@@ -243,7 +243,7 @@ public class EvaluationDetailService {
 		String niveau = null;
 		if (technique && noteCollab != null && noteResp != null) {
 			ecart = Math.abs(noteResp - noteCollab);
-			niveau = EcartEtoiles.niveau(ecart).name();
+			niveau = scoringService.niveauEcart(ecart);
 		}
 		String section = q.getSectionLibelle() != null && !q.getSectionLibelle().isBlank()
 				? q.getSectionLibelle() : q.getSectionCode();
@@ -261,7 +261,7 @@ public class EvaluationDetailService {
 		return new EvaluationDetail.Question(c.getQuestionTechnique().getId(), c.getQuestionTechnique().getCompetence(),
 				"Compétences", "COMPETENCE", c.getCommentaireCollaborateur(), noteCollab,
 				c.getNiveauManager() != null ? c.getNiveauManager().label() : null, noteResp,
-				c.getCommentaireManager(), ecart, ecart == null ? null : EcartEtoiles.niveau(ecart).name());
+				c.getCommentaireManager(), ecart, ecart == null ? null : scoringService.niveauEcart(ecart));
 	}
 
 	private List<EvaluationDetail.Evenement> historique(Evaluation e, EvaluationLigne entete) {
@@ -322,11 +322,11 @@ public class EvaluationDetailService {
 					e.getScoreSur20(),
 					aNote ? n.couleur().name() : null,
 					aNote,
-					alerte != null ? alerte.getNiveauCourant().name() : null,
+					alerte != null ? alerte.getNiveauCourant() : null,
 					alerte != null ? alerte.getStatut().name() : null,
 					alerte != null ? alerte.getId() : null,
-					e.getFamilleMetierCode(), libellesProfil.famille(e.getFamilleMetierCode()),
-					e.getNiveauSeniorite(), libellesProfil.niveau(e.getNiveauSeniorite()),
+					e.getFamilleMetierCode(), libellesProfil.famille(e.getFamilleMetierCode(), e.getFamilleMetierLibelle()),
+					e.getNiveauSeniorite(), libellesProfil.niveau(e.getNiveauSeniorite(), e.getNiveauSenioriteLibelle()),
 					e.isProfilMetierIncomplet(), motif,
 					e.getValidationCollaborateurLe(), e.getValidationSuperieurLe(), e.getCreeLe(),
 					campagneNom, e.getCollaborateurIdentifiant(), e.getSuperieurIdentifiant()));

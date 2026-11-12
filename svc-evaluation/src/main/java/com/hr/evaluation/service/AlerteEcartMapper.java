@@ -1,5 +1,6 @@
 package com.hr.evaluation.service;
 
+import com.hr.evaluation.domain.NiveauAlerte;
 import com.hr.evaluation.domain.SensEcart;
 import com.hr.evaluation.dto.AlerteEcartDetail;
 import com.hr.evaluation.dto.AlerteEcartResume;
@@ -19,7 +20,7 @@ final class AlerteEcartMapper {
     }
 
     private static List<AlerteEcartLigne> lignesEnEcart(AlerteEcart a) {
-        return a.getLignes().stream().filter(l -> l.getNiveauActuel().estAlerte()).toList();
+        return a.getLignes().stream().filter(l -> NiveauAlerte.estAlerte(l.getNiveauActuel())).toList();
     }
 
     static String sensGlobal(AlerteEcart a) {
@@ -44,7 +45,7 @@ final class AlerteEcartMapper {
                 ? a.getCampagneNom() : "Campagne introuvable";
     }
 
-    static AlerteEcartResume resume(AlerteEcart a) {
+    static AlerteEcartResume resume(ParametresEvaluation parametres, AlerteEcart a) {
         return new AlerteEcartResume(
                 a.getId(), a.getEvaluationId(), a.getCampagneIdentifiant(), campagneNom(a),
                 a.getCollaborateurFicheId(), collaborateurNom(a), a.getCollaborateurMatricule(),
@@ -53,7 +54,8 @@ final class AlerteEcartMapper {
                 lignesEnEcart(a).size(), ecartMax(a), a.getDetecteeLe(), a.isNotesModifieesApresDetection());
     }
 
-    static AlerteEcartDetail detail(AlerteEcart a, boolean peutTraiter, String motifNonTraitable) {
+    static AlerteEcartDetail detail(ParametresEvaluation parametres, AlerteEcart a, boolean peutTraiter,
+                                    String motifNonTraitable) {
         String sens = sensGlobal(a);
         String libelleSens = null;
         String aideSens = null;
@@ -66,7 +68,7 @@ final class AlerteEcartMapper {
         }
         List<AlerteEcartDetail.Ligne> lignes = a.getLignes().stream().map(AlerteEcartMapper::ligne).toList();
         List<AlerteEcartDetail.Evenement> historique = a.getHistorique().stream()
-                .map(AlerteEcartMapper::evenement).toList();
+                .map(h -> evenement(parametres, h)).toList();
         return new AlerteEcartDetail(
                 a.getId(), a.getEvaluationId(), a.getCampagneIdentifiant(), campagneNom(a),
                 a.getCollaborateurFicheId(), collaborateurNom(a), a.getCollaborateurMatricule(),
@@ -74,7 +76,7 @@ final class AlerteEcartMapper {
                 a.getNiveauCourant(), a.getNiveauDetection(), a.getStatut(), sens,
                 lignesEnEcart(a).size(), ecartMax(a), a.getDetecteeLe(), a.isNotesModifieesApresDetection(),
                 libelleSens, aideSens, lignes,
-                a.getConclusion(), a.getConclusion() != null ? a.getConclusion().libelle() : null,
+                a.getConclusion(), parametres.libelleConclusion(a.getConclusion()),
                 historique, peutTraiter, motifNonTraitable);
     }
 
@@ -91,7 +93,7 @@ final class AlerteEcartMapper {
 
     static final String LIBELLE_CREATION = "Création";
 
-    private static AlerteEcartDetail.Evenement evenement(AlerteEcartHistorique h) {
+    private static AlerteEcartDetail.Evenement evenement(ParametresEvaluation parametres, AlerteEcartHistorique h) {
         boolean systeme = h.getAuteurCompteId() == null;
         return new AlerteEcartDetail.Evenement(
                 h.getId(), h.getTypeEvenement(), h.getTypeEvenement().libelle(),
@@ -100,7 +102,7 @@ final class AlerteEcartMapper {
                 h.getStatutAvant(), h.getStatutAvant() != null ? h.getStatutAvant().libelle() : LIBELLE_CREATION,
                 h.getStatutApres(), h.getStatutApres() != null ? h.getStatutApres().libelle() : null,
                 h.getNiveauAvant(), h.getNiveauApres(),
-                h.getConclusion(), h.getConclusion() != null ? h.getConclusion().libelle() : null,
+                h.getConclusion(), parametres.libelleConclusion(h.getConclusion()),
                 h.getCommentaire());
     }
 }

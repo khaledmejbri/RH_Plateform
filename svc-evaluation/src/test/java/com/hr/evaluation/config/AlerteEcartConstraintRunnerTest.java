@@ -22,23 +22,25 @@ class AlerteEcartConstraintRunnerTest {
     private final AlerteEcartConstraintRunner runner = new AlerteEcartConstraintRunner(jdbc);
 
     @Test
-    void recreeUneContrainteParColonneEnum() {
+    void recreeLesCheckDeComportementEtSupprimeceuxDesCodesParametres() {
         runner.run(null);
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(jdbc, times(AlerteEcartConstraintRunner.CIBLES.size() * 2)).execute(sql.capture());
+        verify(jdbc, times(AlerteEcartConstraintRunner.A_SUPPRIMER.size() + AlerteEcartConstraintRunner.CIBLES.size() * 2))
+                .execute(sql.capture());
         List<String> requetes = sql.getAllValues();
-        assertThat(requetes).anyMatch(s -> s.contains("DROP CONSTRAINT IF EXISTS evaluation_alerte_ecart_statut_check"));
         assertThat(requetes).anyMatch(s -> s.contains("ADD CONSTRAINT evaluation_alerte_ecart_statut_check")
                 && s.contains("'OUVERTE', 'EN_COURS', 'TRAITEE'"));
-        assertThat(requetes).anyMatch(s -> s.contains("evaluation_alerte_ecart_niveau_courant_check")
-                && s.contains("'ALIGNE', 'ORANGE', 'ROUGE', 'URGENTE'"));
         assertThat(requetes).anyMatch(s -> s.contains("evaluation_alerte_ecart_ligne_sens_actuel_check")
                 && s.contains("'RO_INFERIEUR', 'RO_SUPERIEUR'"));
         assertThat(requetes).anyMatch(s -> s.contains("evaluation_alerte_ecart_historique_type_evenement_check")
                 && s.contains("'REOUVERTURE_AUTOMATIQUE'"));
-        assertThat(requetes).anyMatch(s -> s.contains("evaluation_alerte_ecart_conclusion_check")
-                && s.contains("'NOTE_GONFLEE_RO'"));
+        // niveaux (7 colonnes) et conclusions (2 colonnes) : DROP seulement, jamais recréés
+        assertThat(AlerteEcartConstraintRunner.A_SUPPRIMER).hasSize(9);
+        for (var c : AlerteEcartConstraintRunner.A_SUPPRIMER) {
+            assertThat(requetes).anyMatch(s -> s.contains("DROP CONSTRAINT IF EXISTS " + c.nomContrainte()));
+            assertThat(requetes).noneMatch(s -> s.contains("ADD CONSTRAINT " + c.nomContrainte()));
+        }
     }
 
     @Test
@@ -48,7 +50,8 @@ class AlerteEcartConstraintRunnerTest {
         runner.run(null);
 
         verify(jdbc, atLeastOnce()).execute(contains("evaluation_alerte_ecart_niveau_courant_check"));
-        verify(jdbc, atLeastOnce()).execute(contains("evaluation_alerte_ecart_historique_niveau_apres_check"));
+        verify(jdbc, atLeastOnce()).execute(contains("evaluation_alerte_ecart_ligne_sens_actuel_check"));
+        verify(jdbc, atLeastOnce()).execute(contains("evaluation_alerte_ecart_historique_statut_apres_check"));
         verify(jdbc, atLeastOnce()).execute(anyString());
     }
 }

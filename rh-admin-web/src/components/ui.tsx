@@ -1,5 +1,6 @@
 import type { ReactNode, SVGProps } from 'react';
-import { libelle } from '../utils/libelles';
+import { couleurStatut, libelleReferentiel } from '../utils/parametresStore';
+import { styleCouleur } from '../utils/palette';
 
 /* ─── Icônes (tracé 1.75, style Lucide) ─────────────────────────────────────
    Remplacent les émojis : taille et couleur pilotées par le CSS (currentColor). */
@@ -90,19 +91,20 @@ const TONE_ICON: Record<Tone, IconName> = {
   neutral: 'info',
 };
 
-export function statusInfo(statut: string | null | undefined): { label: string; tone: Tone } {
+export function statusInfo(referentiel: string, statut: string | null | undefined): { label: string; tone: Tone } {
   const key = (statut ?? '').toUpperCase();
   if (!key) return { label: '—', tone: 'neutral' };
-  const label = libelle('statut', key);
+  const label = libelleReferentiel(referentiel, key);
   if (TONES[key]) return { label, tone: TONES[key] };
   return { label, tone: key.startsWith('REJETE') ? 'danger' : 'neutral' };
 }
 
 /** Badge de statut : couleur + icône + texte (jamais la couleur seule). */
-export function StatusBadge({ statut, label }: { statut: string | null | undefined; label?: string }) {
-  const info = statusInfo(statut);
+export function StatusBadge({ referentiel, statut, label }: { referentiel: string; statut: string | null | undefined; label?: string }) {
+  const info = statusInfo(referentiel, statut);
+  const couleur = couleurStatut(referentiel, statut);
   return (
-    <span className={`status status--${info.tone}`}>
+    <span className={`status status--${info.tone}`} style={couleur ? { ...styleCouleur(couleur), border: '1px solid' } : undefined}>
       <Icon name={TONE_ICON[info.tone]} size={12} />
       {label ?? info.label}
     </span>

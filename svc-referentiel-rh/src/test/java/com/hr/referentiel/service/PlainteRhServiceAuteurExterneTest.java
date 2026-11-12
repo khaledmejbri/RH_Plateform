@@ -37,6 +37,8 @@ class PlainteRhServiceAuteurExterneTest {
 	private CollaborateurConnecteService collaborateurConnecteService;
 	@Mock
 	private RhNotificationPublisher notificationPublisher;
+	@Mock
+	private ParametreService parametreService;
 
 	@InjectMocks
 	private PlainteRhService service;
@@ -83,6 +85,20 @@ class PlainteRhServiceAuteurExterneTest {
 		assertThat(r.getTypePlainte()).isEqualTo(TypePlainteRh.EXTERNE);
 		assertThat(r.getAuteurNom()).isEqualTo("Lina Test");
 		assertThat(r.getValidationRo()).isEqualTo("EN_ATTENTE");
+	}
+
+	@Test
+	@DisplayName("lot 3 : la réponse porte statut_libelle lu dans les paramètres (libellé renommé)")
+	void reponsePorteLeLibelleDuStatut() throws Exception {
+		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(auteur);
+		when(plainteRhRepository.save(any(PlainteRh.class))).thenAnswer(i -> i.getArgument(0));
+		when(parametreService.libelleOuInconnu("STATUT_PLAINTE", "NOUVEAU")).thenReturn("Reçue");
+
+		PlainteRhResponse r = service.creer(requete(TypePlainteRh.INTERNE), jwt, false);
+
+		assertThat(r.getStatutLibelle()).isEqualTo("Reçue");
+		String json = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(r);
+		assertThat(json).contains("\"statut_libelle\":\"Reçue\"");
 	}
 
 	@Test

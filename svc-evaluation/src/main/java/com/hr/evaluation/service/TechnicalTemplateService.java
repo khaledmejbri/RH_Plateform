@@ -25,27 +25,6 @@ public class TechnicalTemplateService {
     }
 
     @Transactional
-    public TechnicalTemplate creerTemplate(
-            String nom,
-            String description,
-            String niveauSeniorite,
-            String roleMetier,
-            String departement,
-            UUID creePar) {
-
-        TechnicalTemplate template = new TechnicalTemplate();
-        template.setName(nom);
-        template.setDescription(description);
-        template.setNiveauSeniorite(niveauSeniorite);
-        template.setRoleMetier(roleMetier);
-        template.setDepartement(departement);
-        template.setActif(true);
-        template.setCreePar(creePar);
-
-        return templateRepository.save(template);
-    }
-
-    @Transactional
     public void ajouterQuestionTechnique(
             UUID templateId,
             String competence,

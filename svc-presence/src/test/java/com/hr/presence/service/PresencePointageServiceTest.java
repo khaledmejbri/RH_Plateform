@@ -80,6 +80,7 @@ class PresencePointageServiceTest {
 				fenetreHoraire,
 				referentielClient,
 				alerteEchecs,
+				ParametresTestSupport.depuis(props),
 				java.time.Clock.systemUTC());
 
 		now = Instant.now();
@@ -650,5 +651,26 @@ class PresencePointageServiceTest {
 				any(org.springframework.data.domain.Pageable.class));
 		// le filtre s'élargit au compte du collaborateur (lignes anciennes), le référentiel est interrogé une fois
 		verify(referentielClient).affectations(java.util.List.of(collab));
+	}
+
+	@Test
+	void historiqueMoi_renvoieLeLibelleParametreDuStatut() {
+		PresenceParametresService parametres = org.mockito.Mockito.mock(PresenceParametresService.class);
+		when(parametres.libellesStatutsPointage()).thenReturn(java.util.Map.of(PointageStatut.REJETE_QR_INVALIDE, "QR non reconnu"));
+		PresencePointageService service = new PresencePointageService(pointageRepository, siteRepository, qrRepository,
+				qrTokenService, new HaversineService(), new PresenceProperties(), qrService, qrDynamique, verificationFaciale,
+				fenetreHoraire, referentielClient, alerteEchecs, parametres, java.time.Clock.systemUTC());
+		PresencePointage p = new PresencePointage();
+		p.setId(UUID.randomUUID());
+		p.setStatut(PointageStatut.REJETE_QR_INVALIDE);
+		p.setServerTs(Instant.now());
+		when(pointageRepository.findByCollaborateurIdOrderByServerTsDesc(any(), any(org.springframework.data.domain.Pageable.class)))
+				.thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(p)));
+
+		var page = service.historiqueMoi(UUID.randomUUID().toString(), 0, 20);
+
+		assertThat(page.content()).hasSize(1);
+		assertThat(page.content().get(0).statutLibelle()).isEqualTo("QR non reconnu");
+		assertThat(page.content().get(0).statut()).isEqualTo(PointageStatut.REJETE_QR_INVALIDE);
 	}
 }

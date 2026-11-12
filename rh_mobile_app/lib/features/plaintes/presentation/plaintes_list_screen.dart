@@ -149,8 +149,6 @@ class _PlainteCard extends StatelessWidget {
 
   const _PlainteCard({required this.plainte});
 
-  String _formatStatut(String statut) => Libelles.statutPlainte(statut);
-
   Color _getStatutColor(String statut) {
     switch (statut.toUpperCase()) {
       case 'NOUVEAU':
@@ -175,7 +173,7 @@ class _PlainteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = _getStatutColor(plainte.statut);
-    final statusLabel = _formatStatut(plainte.statut);
+    final statusLabel = plainte.statutLibelle;
 
     return Container(
       decoration: BoxDecoration(

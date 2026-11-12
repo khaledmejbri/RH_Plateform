@@ -64,7 +64,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
               error: (e, _) => Center(child: Text(rhErrorMessage(e))),
               data: (j) {
                 final statut = j['statut']?.toString();
-                final statusLabel = Libelles.statutDemande(statut);
+                final statusLabel = Libelles.avecRepli(j['statut_libelle']?.toString(), statut, Libelles.statutDemande);
                 final bool refusee = statut == 'REFUSEE';
                 final bool approuvee = statut == 'APPROUVEE';
                 final bool enAttente = statut == 'SOUMISE' ||
@@ -96,6 +96,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                 final titre = Libelles.titreDemande(
                   j['type_demande']?.toString(),
                   typeCongeCode: contenu['type_conge']?.toString(),
+                  typeCongeLibelleApi: j['type_conge_libelle']?.toString(),
                 );
                 final dateDepot = j['cree_le'] ?? j['date_creation'];
                 final numero = (j['numero']?.toString() ?? '').trim();

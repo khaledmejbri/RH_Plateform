@@ -75,7 +75,8 @@ public class AlerteEcartNotificationListener {
 	}
 
 	static String sujet(AlerteEcartANotifierEvent e) {
-		return "Alerte d'écart d'évaluation — " + e.niveau().libelle();
+		String niveau = e.niveauLibelle() != null ? e.niveauLibelle() : e.niveau();
+		return "Alerte d'écart d'évaluation — " + niveau;
 	}
 
 	static String contenu(AlerteEcartANotifierEvent e) {

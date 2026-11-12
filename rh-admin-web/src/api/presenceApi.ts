@@ -102,6 +102,7 @@ export type PresencePointage = {
   siteLibelle: string | null;
   type: PointageType | string;
   statut: PointageStatut;
+  statutLibelle?: string | null;
   serverTs: string;
   distanceMetres: number | null;
   accuracyMetres: number | null;
@@ -129,41 +130,6 @@ export type PagePresence<T> = {
   totalPages: number;
   page: number;
   taille: number;
-};
-
-export const POINTAGE_STATUTS_FILTRE: { value: string; label: string }[] = [
-  { value: '', label: 'Tous les statuts' },
-  { value: 'VALIDE', label: 'Validé' },
-  { value: 'VALIDE_MANUEL', label: 'Validé (manuel)' },
-  { value: 'REJETE_HORS_ZONE', label: 'Hors zone' },
-  { value: 'REJETE_QR_INVALIDE', label: 'QR non reconnu' },
-  { value: 'REJETE_QR_EXPIRE', label: 'QR expiré' },
-  { value: 'REJETE_QR_REVOQUE', label: 'QR remplacé' },
-  { value: 'REJETE_SITE_INACTIF', label: 'Site indisponible' },
-  { value: 'REJETE_EMPLACEMENT_ABSENT', label: 'Emplacement absent' },
-  { value: 'REJETE_PRECISION_GPS', label: 'GPS imprécis' },
-  { value: 'REJETE_POSITION_SIMULEE', label: 'Position simulée' },
-  { value: 'REJETE_VISAGE_NON_RECONNU', label: 'Visage non reconnu' },
-  { value: 'REJETE_VIVACITE', label: 'Vivacité non confirmée' },
-  { value: 'REJETE_VERIFICATION_FACIALE_ABSENTE', label: 'Vérification faciale absente' },
-  { value: 'REJETE_HORS_HORAIRE', label: 'Hors horaire' },
-];
-
-export const LIBELLES_POINTAGE_STATUT: Record<string, string> = {
-  VALIDE: 'Validé',
-  VALIDE_MANUEL: 'Validé (manuel)',
-  REJETE_HORS_ZONE: 'Hors zone',
-  REJETE_QR_INVALIDE: 'QR non reconnu',
-  REJETE_QR_EXPIRE: 'QR expiré',
-  REJETE_QR_REVOQUE: 'QR remplacé',
-  REJETE_SITE_INACTIF: 'Site indisponible',
-  REJETE_EMPLACEMENT_ABSENT: 'Emplacement absent',
-  REJETE_PRECISION_GPS: 'GPS imprécis',
-  REJETE_POSITION_SIMULEE: 'Position simulée',
-  REJETE_VISAGE_NON_RECONNU: 'Visage non reconnu',
-  REJETE_VIVACITE: 'Vivacité non confirmée',
-  REJETE_VERIFICATION_FACIALE_ABSENTE: 'Vérification faciale absente',
-  REJETE_HORS_HORAIRE: 'Hors horaire',
 };
 
 export async function handlePresenceResponse<T>(res: Response): Promise<T> {
@@ -280,6 +246,7 @@ function normalizePointage(raw: Record<string, unknown>): PresencePointage {
     siteLibelle: asStr(raw.siteLibelle ?? raw.site_libelle),
     type: String(raw.type ?? ''),
     statut: String(raw.statut ?? ''),
+    statutLibelle: asStr(raw.statut_libelle),
     serverTs: String(raw.serverTs ?? raw.server_ts ?? raw.creeLe ?? raw.cree_le ?? ''),
     distanceMetres: asNum(raw.distanceMetres ?? raw.distance_metres),
     accuracyMetres: asNum(raw.accuracyMetres ?? raw.accuracy_metres),
@@ -541,12 +508,6 @@ export type DemandeManuelle = {
   creeLe: string | null;
   manuelsDuMois: number | null;
   alerteSeuil: boolean;
-};
-
-export const LIBELLES_DEMANDE_MANUELLE: Record<StatutDemandeManuelle, string> = {
-  EN_ATTENTE: 'En attente',
-  VALIDEE: 'Validée',
-  REFUSEE: 'Refusée',
 };
 
 function normalizeDemandeManuelle(raw: Record<string, unknown>): DemandeManuelle {

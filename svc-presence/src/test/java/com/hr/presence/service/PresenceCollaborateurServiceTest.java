@@ -98,10 +98,11 @@ class PresenceCollaborateurServiceTest {
 	@BeforeEach
 	void setUp() {
 		TempsTravailService tempsTravail = new TempsTravailService(pointageRepository, siteRepository,
-				heuresSupJourRepository, heuresSupDemandeRepository, referentiel, properties, clock);
+				heuresSupJourRepository, heuresSupDemandeRepository, referentiel, properties,
+				ParametresTestSupport.depuis(properties), clock);
 		service = new PresenceCollaborateurService(tempsTravail, pointageRepository, siteRepository, demandeRepository,
 				heuresSupJourRepository, calculHeuresSup, demandeManuelleService, identiteService, referentiel,
-				properties, clock);
+				properties, ParametresTestSupport.depuis(properties), clock);
 		site = new PresenceSite();
 		site.setId(siteId);
 		site.setCode("SIEGE");

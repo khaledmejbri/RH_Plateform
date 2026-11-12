@@ -37,6 +37,14 @@ public class DemandeAdministrativeRhResponse {
 	@JsonProperty("statut")
 	private StatutDemandeAdministrativeRh statut;
 
+	/** Lot 3 : libellé courant du statut (paramétrable), lu dans l'instantané des paramètres. */
+	@JsonProperty("statut_libelle")
+	private String statutLibelle;
+
+	/** Lot 3 : libellé courant du type de congé (demande de congé seulement), même désactivé. */
+	@JsonProperty("type_conge_libelle")
+	private String typeCongeLibelle;
+
 	@JsonProperty("contenu")
 	private Map<String, Object> contenu;
 
@@ -158,6 +166,22 @@ public class DemandeAdministrativeRhResponse {
 
 	public void setDemandeurMatricule(String demandeurMatricule) {
 		this.demandeurMatricule = demandeurMatricule;
+	}
+
+	public String getStatutLibelle() {
+		return statutLibelle;
+	}
+
+	public void setStatutLibelle(String statutLibelle) {
+		this.statutLibelle = statutLibelle;
+	}
+
+	public String getTypeCongeLibelle() {
+		return typeCongeLibelle;
+	}
+
+	public void setTypeCongeLibelle(String typeCongeLibelle) {
+		this.typeCongeLibelle = typeCongeLibelle;
 	}
 
 	public String getDemandeurUnite() {

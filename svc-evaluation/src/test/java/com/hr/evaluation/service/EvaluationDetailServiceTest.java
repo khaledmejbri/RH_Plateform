@@ -1,7 +1,6 @@
 package com.hr.evaluation.service;
 
 import com.hr.evaluation.client.PersonneResumee;
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.QuestionType;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import com.hr.evaluation.dto.CampagneDetail;
@@ -87,8 +86,8 @@ class EvaluationDetailServiceTest {
 		evaluation.setFamilleMetierCode("DEV_BACKEND");
 		evaluation.setNiveauSeniorite("CONFIRME");
 		when(evaluationRepository.findByIdWithCampaign(evaluationId)).thenReturn(Optional.of(evaluation));
-		when(libelles.famille("DEV_BACKEND")).thenReturn("Dev backend");
-		when(libelles.niveau("CONFIRME")).thenReturn("Confirmé");
+		when(libelles.famille(org.mockito.ArgumentMatchers.eq("DEV_BACKEND"), org.mockito.ArgumentMatchers.any())).thenReturn("Dev backend");
+		when(libelles.niveau(org.mockito.ArgumentMatchers.eq("CONFIRME"), org.mockito.ArgumentMatchers.any())).thenReturn("Confirmé");
 		when(analyse.notesResponsable(any())).thenReturn(Map.of());
 		when(alerteRepository.findByEvaluationIdIn(any())).thenReturn(List.of());
 		when(templateTechnique.questions(evaluation)).thenReturn(List.of());
@@ -141,7 +140,7 @@ class EvaluationDetailServiceTest {
 		UUID alerteId = UUID.randomUUID();
 		when(alerte.getEvaluationId()).thenReturn(evaluationId);
 		when(alerte.getId()).thenReturn(alerteId);
-		when(alerte.getNiveauCourant()).thenReturn(NiveauEcart.URGENTE);
+		when(alerte.getNiveauCourant()).thenReturn("URGENTE");
 		when(alerte.getStatut()).thenReturn(StatutAlerteEcart.OUVERTE);
 		when(alerteRepository.findByEvaluationIdIn(any())).thenReturn(List.of(alerte));
 		EvaluationLigne l = service.lignes(List.of(evaluation)).get(0);

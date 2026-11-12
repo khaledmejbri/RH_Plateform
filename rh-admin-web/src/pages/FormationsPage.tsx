@@ -18,6 +18,7 @@ import { DialogPanel } from '../components/useDialogA11y';
 import { EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge } from '../components/ui';
 import { formatDateHeure, formatNombre, indexerPersonnes, personneParId, COLLABORATEUR_INTROUVABLE } from '../utils/format';
 import { libelle, libelleTypeFormation } from '../utils/libelles';
+import { libelleReferentiel, optionsFiltre } from '../utils/parametresStore';
 import DetailLink from '../detail/DetailLink';
 
 type StatutFilter = '' | 'EN_VALIDATION_RRH' | 'INTEGREE_PLAN' | 'REFUSEE' | 'ANNULEE';
@@ -175,12 +176,7 @@ export default function FormationsPage() {
           libelle="Statut"
           valeur={f.statut}
           toutesLibelle="Tous les statuts"
-          options={[
-            { valeur: 'EN_VALIDATION_RRH', libelle: 'En attente de validation RH' },
-            { valeur: 'INTEGREE_PLAN', libelle: 'Acceptées' },
-            { valeur: 'REFUSEE', libelle: 'Refusées' },
-            { valeur: 'ANNULEE', libelle: 'Annulées' },
-          ]}
+          options={optionsFiltre('STATUT_FORMATION', rows.map((r) => r.statut))}
           onChange={(v) => filtres.definir({ statut: v })}
         />
         <FiltresUnite idPrefixe="formations" unites={unites} selection={f} onChange={(sel) => filtres.definir(sel)} />
@@ -232,7 +228,7 @@ export default function FormationsPage() {
                     </td>
                     <td data-label="Cible">{d.cible === 'UNITE' && d.unite_cible_identifiant ? <DetailLink type="unite" id={d.unite_cible_identifiant} libelle={cibleLabel(d)} /> : cibleLabel(d)}</td>
                     <td data-label="Budget" style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{formatTnd(d.cout_estime)}</td>
-                    <td data-label="Statut"><StatusBadge statut={d.statut} label={labelStatut(d.statut)} /></td>
+                    <td data-label="Statut"><StatusBadge referentiel="STATUT_FORMATION" statut={d.statut} label={labelStatut(d.statut)} /></td>
                     <td data-label="Actions">
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <button type="button" className="btn btn--sm btn--ghost" onClick={() => viewDetail(d)}>
@@ -279,7 +275,7 @@ export default function FormationsPage() {
                 <div><dt>Demandeur</dt><dd>{demandeur(selectedFormation)}</dd></div>
                 <div><dt>Origine</dt><dd>{libelle('origineFormation', selectedFormation.origine)}</dd></div>
                 <div><dt>Cible</dt><dd>{cibleLabel(selectedFormation)}</dd></div>
-                <div><dt>Statut</dt><dd><StatusBadge statut={selectedFormation.statut} label={labelStatut(selectedFormation.statut)} /></dd></div>
+                <div><dt>Statut</dt><dd><StatusBadge referentiel="STATUT_FORMATION" statut={selectedFormation.statut} label={labelStatut(selectedFormation.statut)} /></dd></div>
                 <div><dt>Créée le</dt><dd>{formatDateHeure(selectedFormation.cree_le)}</dd></div>
               </dl>
 
@@ -358,7 +354,7 @@ export default function FormationsPage() {
 }
 
 function labelStatut(statut: string) {
-  return libelle('statut', statut);
+  return libelleReferentiel('STATUT_FORMATION', statut);
 }
 
 function formatTnd(v?: number | null) {

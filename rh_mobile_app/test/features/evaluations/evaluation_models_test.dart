@@ -1,9 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:rh_mobile_app/core/libelles/libelles.dart';
 import 'package:rh_mobile_app/features/evaluations/data/evaluation_models.dart';
 import 'package:rh_mobile_app/features/evaluations/data/evaluation_repository.dart';
 
+import '../../support/libelles_test_data.dart';
+
 void main() {
+  setUp(chargerLibellesDeTest);
+  tearDown(Libelles.reinitialiser);
+
   group('EvaluationNotificationLink', () {
     test('parse EVALUATION_CAMPAGNE_OUVERTE content', () {
       const content =

@@ -8,9 +8,11 @@ import 'dart:io';
 
 import '../data/demande_admin_errors.dart';
 import '../data/demande_admin_repository.dart';
-import '../data/type_conge.dart';
 import 'demandes_admin_list_screen.dart';
+import 'package:rh_mobile_app/core/libelles/libelles.dart';
+import 'package:rh_mobile_app/core/libelles/libelles_service.dart';
 import 'package:rh_mobile_app/core/theme/app_theme.dart';
+import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 class DemandeCongeCreateScreen extends ConsumerStatefulWidget {
   const DemandeCongeCreateScreen({super.key});
@@ -22,12 +24,21 @@ class DemandeCongeCreateScreen extends ConsumerStatefulWidget {
 class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScreen> {
   DateTime? _debut;
   DateTime? _fin;
-  String _typeConge = 'ANNUEL';
+  /// Code du type choisi parmi les types actifs servis par l'API ; null tant que rien n'est choisi.
+  String? _typeConge;
   File? _pieceJointe;
   var _loading = false;
   final ImagePicker _picker = ImagePicker();
 
-  bool get _pjRequise => typeCongeExigePieceJointe(_typeConge);
+  /// Pièce jointe exigée selon `piece_jointe_obligatoire` du type choisi (le serveur reste le garde).
+  bool _pjRequiseDe(List<ParametreValeur> types) {
+    final code = _typeConge;
+    if (code == null) return false;
+    for (final t in types) {
+      if (t.code == code) return t.pieceJointeObligatoire;
+    }
+    return false;
+  }
 
   @override
   void dispose() {
@@ -54,13 +65,12 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
     if (d != null) setState(() => _fin = d);
   }
 
-  void _onTypeChanged(String? value) {
+  void _onTypeChanged(String? value, List<ParametreValeur> types) {
     if (value == null) return;
     setState(() {
       _typeConge = value;
-      if (!typeCongeExigePieceJointe(value)) {
-        _pieceJointe = null;
-      }
+      final exige = types.any((t) => t.code == value && t.pieceJointeObligatoire);
+      if (!exige) _pieceJointe = null;
     });
   }
 
@@ -95,7 +105,14 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
     }
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit(List<ParametreValeur> types) async {
+    final type = _typeConge;
+    if (type == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez choisir le type de congé.')),
+      );
+      return;
+    }
     if (_debut == null || _fin == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Veuillez choisir la date de début et la date de fin.')),
@@ -108,14 +125,11 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
       );
       return;
     }
-    if (_pjRequise && _pieceJointe == null) {
-      final motif = _typeConge == 'MATERNITE'
-          ? 'un congé maternité'
-          : 'un congé maladie';
+    if (_pjRequiseDe(types) && _pieceJointe == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Un justificatif (certificat) est obligatoire pour $motif. Veuillez joindre le document avant d’envoyer.',
+            'Un justificatif est obligatoire pour « ${Libelles.typeConge(type)} ». Veuillez joindre le document avant d’envoyer.',
           ),
         ),
       );
@@ -127,7 +141,7 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
       await ref.read(demandeAdminRepositoryProvider).createConge(
             dateDebut: fmt.format(_debut!),
             dateFin: fmt.format(_fin!),
-            typeConge: _typeConge,
+            typeConge: type,
             certificatPath: _pieceJointe?.path,
           );
       ref.invalidate(demandesAdminListProvider);
@@ -157,7 +171,7 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
 
   @override
   Widget build(BuildContext context) {
-    const primaryBlue = AppTheme.primary;
+    final typesAsync = ref.watch(typesCongeActifsProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -167,7 +181,28 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
         elevation: 0,
         centerTitle: true,
       ),
-      body: ListView(
+      body: typesAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => RhErrorState.depuis(
+          e,
+          onRetry: () => ref.invalidate(typesCongeActifsProvider),
+        ),
+        data: (types) => types.isEmpty
+            ? const RhEmptyState(
+                icon: Icons.event_busy_outlined,
+                title: 'Aucun type de congé disponible',
+                message: 'Contactez la RH : aucun type de congé n’est ouvert à la demande.',
+              )
+            : _formulaire(types),
+      ),
+    );
+  }
+
+  Widget _formulaire(List<ParametreValeur> types) {
+    const primaryBlue = AppTheme.primary;
+    final pjRequise = _pjRequiseDe(types);
+    final peutEnvoyer = !_loading && types.any((t) => t.code == _typeConge) && (!pjRequise || _pieceJointe != null);
+    return ListView(
         padding: const EdgeInsets.all(24),
         children: [
           const Text(
@@ -203,7 +238,7 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
               border: Border.all(color: AppTheme.border),
             ),
             child: DropdownButtonFormField<String>(
-              value: _typeConge,
+              value: types.any((t) => t.code == _typeConge) ? _typeConge : null,
               decoration: InputDecoration(
                 filled: true,
                 fillColor: Colors.white,
@@ -214,24 +249,22 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
                 ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               ),
+              hint: const Text('Choisir un type de congé'),
               items: [
-                for (final t in kTypesConge)
-                  DropdownMenuItem(value: t.code, child: Text(t.label)),
+                for (final t in types) DropdownMenuItem(value: t.code, child: Text(t.libelle)),
               ],
-              onChanged: _onTypeChanged,
+              onChanged: (v) => _onTypeChanged(v, types),
             ),
           ),
-          if (_pjRequise) ...[
+          if (pjRequise) ...[
             const SizedBox(height: 24),
             Text(
-              _typeConge == 'MATERNITE' ? 'Justificatif (obligatoire)' : 'Certificat médical (obligatoire)',
+              'Justificatif (obligatoire)',
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textTertiary),
             ),
             const SizedBox(height: 4),
             Text(
-              _typeConge == 'MATERNITE'
-                  ? 'Joignez le certificat ou justificatif de maternité.'
-                  : 'Joignez le certificat médical pour ce congé maladie.',
+              'Joignez le justificatif demandé pour « ${Libelles.typeConge(_typeConge)} ».',
               style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 8),
@@ -296,7 +329,7 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
           SizedBox(
             height: 56,
             child: FilledButton(
-              onPressed: _loading ? null : _submit,
+              onPressed: peutEnvoyer ? () => _submit(types) : null,
               style: FilledButton.styleFrom(
                 backgroundColor: primaryBlue,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -311,7 +344,6 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
             ),
           ),
         ],
-      ),
     );
   }
 }

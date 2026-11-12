@@ -1,6 +1,6 @@
 package com.hr.evaluation.service;
 
-import com.hr.evaluation.domain.NiveauEcart;
+import com.hr.evaluation.domain.NiveauAlerte;
 import com.hr.evaluation.domain.SensEcart;
 import org.junit.jupiter.api.Test;
 
@@ -17,14 +17,14 @@ class EcartEtoilesTest {
         for (int collaborateur = 1; collaborateur <= 5; collaborateur++) {
             for (int ro = 1; ro <= 5; ro++) {
                 int ecart = Math.abs(collaborateur - ro);
-                NiveauEcart attendu = switch (ecart) {
-                    case 0, 1 -> NiveauEcart.ALIGNE;
-                    case 2 -> NiveauEcart.ORANGE;
-                    case 3 -> NiveauEcart.ROUGE;
-                    default -> NiveauEcart.URGENTE;
+                String attendu = switch (ecart) {
+                    case 0, 1 -> NiveauAlerte.ALIGNE;
+                    case 2 -> "ORANGE";
+                    case 3 -> "ROUGE";
+                    default -> "URGENTE";
                 };
                 assertThat(EcartEtoiles.ecart(collaborateur, ro)).as(collaborateur + "/" + ro).isEqualTo(ecart);
-                assertThat(EcartEtoiles.niveau(collaborateur, ro)).as(collaborateur + "/" + ro).isEqualTo(attendu);
+                assertThat(new EvaluationScoringService(3).niveauEcart(EcartEtoiles.ecart(collaborateur, ro))).as(collaborateur + "/" + ro).isEqualTo(attendu);
             }
         }
     }
@@ -37,12 +37,13 @@ class EcartEtoilesTest {
     }
 
     @Test
-    void niveauxOrdonnesAlignePuisOrangePuisRougePuisUrgente() {
-        assertThat(NiveauEcart.ALIGNE).isLessThan(NiveauEcart.ORANGE);
-        assertThat(NiveauEcart.ORANGE).isLessThan(NiveauEcart.ROUGE);
-        assertThat(NiveauEcart.ROUGE).isLessThan(NiveauEcart.URGENTE);
-        assertThat(NiveauEcart.ALIGNE.estAlerte()).isFalse();
-        assertThat(NiveauEcart.ORANGE.estAlerte()).isTrue();
+    void niveauxComparesParSeuilEtAligneNEstPasUneAlerte() {
+        var niveaux = ParametresTestes.parDefaut().niveaux();
+        assertThat(NiveauxAlerte.comparer(NiveauAlerte.ALIGNE, "ORANGE", niveaux)).isNegative();
+        assertThat(NiveauxAlerte.comparer("ORANGE", "ROUGE", niveaux)).isNegative();
+        assertThat(NiveauxAlerte.comparer("ROUGE", "URGENTE", niveaux)).isNegative();
+        assertThat(NiveauAlerte.estAlerte(NiveauAlerte.ALIGNE)).isFalse();
+        assertThat(NiveauAlerte.estAlerte("ORANGE")).isTrue();
     }
 
     @Test

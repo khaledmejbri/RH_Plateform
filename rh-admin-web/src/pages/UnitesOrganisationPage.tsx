@@ -66,7 +66,7 @@ export default function UnitesOrganisationPage() {
     <div className="page">
       <div className="page__head">
         <div>
-          <h2 className="page__title">Unités organisationnelles</h2>
+          <h2 className="page__title">Unités</h2>
           <p className="page__lead">Directions, départements et services de la société.</p>
         </div>
       </div>

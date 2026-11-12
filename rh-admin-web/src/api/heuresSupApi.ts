@@ -7,14 +7,6 @@ const BASE = '/api/rh/v1/admin/presence/heures-sup';
 
 export type StatutHeuresSup = 'EN_ATTENTE' | 'VALIDEE' | 'REFUSEE' | 'ANNULEE' | 'EXPIREE';
 
-export const LIBELLES_STATUT_HEURES_SUP: Record<StatutHeuresSup, string> = {
-  EN_ATTENTE: 'En attente',
-  VALIDEE: 'Validée',
-  REFUSEE: 'Refusée',
-  ANNULEE: 'Annulée',
-  EXPIREE: 'Expirée',
-};
-
 export type BeneficiaireHeuresSup = {
   collaborateur_id: string;
   matricule: string | null;

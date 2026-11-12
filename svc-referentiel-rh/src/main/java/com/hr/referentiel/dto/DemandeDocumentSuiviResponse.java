@@ -2,7 +2,6 @@ package com.hr.referentiel.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hr.referentiel.domain.StatutDocumentAdministratifDemandeRh;
-import com.hr.referentiel.domain.TypeDocumentAdministratifDemandeRh;
 
 import java.time.Instant;
 import java.util.List;
@@ -21,10 +20,17 @@ public class DemandeDocumentSuiviResponse {
 	private String numero;
 
 	@JsonProperty("type_document")
-	private TypeDocumentAdministratifDemandeRh typeDocument;
+	private String typeDocument;
+
+	@JsonProperty("type_document_libelle")
+	private String typeDocumentLibelle;
 
 	@JsonProperty("statut")
 	private StatutDocumentAdministratifDemandeRh statut;
+
+	/** Libellé courant du statut (lot 3, paramétrable). */
+	@JsonProperty("statut_libelle")
+	private String statutLibelle;
 
 	@JsonProperty("regle_priorite")
 	private String reglePriorite;
@@ -50,7 +56,7 @@ public class DemandeDocumentSuiviResponse {
 	public DemandeDocumentSuiviResponse() {
 	}
 
-	public DemandeDocumentSuiviResponse(UUID identifiant, TypeDocumentAdministratifDemandeRh typeDocument,
+	public DemandeDocumentSuiviResponse(UUID identifiant, String typeDocument,
 			StatutDocumentAdministratifDemandeRh statut, String reglePriorite, Integer rangDansFile,
 			Integer nombreEnAttenteDevant, int delaiSlaHeures, Instant dateEcheanceTraitement, boolean enRetard,
 			List<WorkflowEtapeResponse> etapes) {
@@ -78,8 +84,24 @@ public class DemandeDocumentSuiviResponse {
 		return identifiant;
 	}
 
-	public TypeDocumentAdministratifDemandeRh getTypeDocument() {
+	public String getTypeDocument() {
 		return typeDocument;
+	}
+
+	public String getTypeDocumentLibelle() {
+		return typeDocumentLibelle;
+	}
+
+	public void setTypeDocumentLibelle(String typeDocumentLibelle) {
+		this.typeDocumentLibelle = typeDocumentLibelle;
+	}
+
+	public String getStatutLibelle() {
+		return statutLibelle;
+	}
+
+	public void setStatutLibelle(String statutLibelle) {
+		this.statutLibelle = statutLibelle;
 	}
 
 	public StatutDocumentAdministratifDemandeRh getStatut() {

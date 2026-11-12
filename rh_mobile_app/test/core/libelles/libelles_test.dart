@@ -3,8 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rh_mobile_app/core/libelles/libelles.dart';
 import 'package:rh_mobile_app/features/demandes_admin/data/demande_admin_models.dart';
 import 'package:rh_mobile_app/features/evaluations/data/evaluation_models.dart';
+import 'package:rh_mobile_app/features/formations/data/formation_models.dart';
+import 'package:rh_mobile_app/features/plaintes/data/plainte_models.dart';
+
+import '../../support/libelles_test_data.dart';
 
 void main() {
+  setUp(chargerLibellesDeTest);
   tearDown(Libelles.reinitialiser);
 
   group('codes inconnus', () {
@@ -13,6 +18,78 @@ void main() {
       expect(Libelles.statutDemande('NOUVEAU_STATUT'), 'Valeur non reconnue');
       expect(Libelles.statutDocument(null), 'Valeur non reconnue');
       expect(EvaluationLabels.statut('STATUT_FUTUR'), 'Valeur non reconnue');
+    });
+  });
+
+  group('pseudo-statut et repli sur le libellé de l’objet (lot 3)', () {
+    test('EN_ATTENTE_COLLABORATEUR : libellé local fixe, même sans référentiel chargé', () {
+      expect(Libelles.statutEvaluation('EN_ATTENTE_COLLABORATEUR'), 'En attente du collaborateur');
+      Libelles.reinitialiser();
+      expect(Libelles.statutEvaluation('EN_ATTENTE_COLLABORATEUR'), 'En attente du collaborateur');
+      expect(Libelles.statutEvaluation('VALIDEE'), 'Valeur non reconnue');
+    });
+
+    test('le responsable voit « En attente du collaborateur » avant la validation du collaborateur', () {
+      final item = EvaluationItem.fromJson({
+        'identifiant': 'e1',
+        'campaignNom': 'T4',
+        'statut': 'EN_ATTENTE_VALIDATION_CROISEE',
+        'creeLe': '2026-11-01T10:00:00Z',
+      });
+      expect(item.statutLibelle(asManager: true), 'En attente du collaborateur');
+      expect(item.statutLibelle(), 'En cours');
+    });
+
+    test('type de congé désactivé (absent du référentiel actif) : libellé de la demande prioritaire', () {
+      expect(Libelles.typeConge('CONGE_SPECIAL'), 'Valeur non reconnue');
+      final item = DemandeAdminItem.fromJson({
+        'identifiant': 'd1',
+        'type_demande': 'CONGE',
+        'statut': 'APPROUVEE',
+        'statut_libelle': 'Approuvée',
+        'type_conge_libelle': 'Congé spécial',
+        'contenu': {'type_conge': 'CONGE_SPECIAL'},
+      });
+      expect(item.titre, 'Congé spécial');
+      expect(item.typeCongeLibelle, 'Congé spécial');
+      expect(Libelles.titreDemande('CONGE', typeCongeCode: 'CONGE_SPECIAL'), 'Valeur non reconnue');
+    });
+
+    test('type de congé actif : libellé de l’API, sinon référentiel', () {
+      DemandeAdminItem avec(Map<String, dynamic> extra) => DemandeAdminItem.fromJson({
+            'identifiant': 'd1',
+            'type_demande': 'CONGE',
+            'statut': 'SOUMISE',
+            'contenu': {'type_conge': 'ANNUEL'},
+            ...extra,
+          });
+      expect(avec({}).typeCongeLibelle, 'Congé annuel');
+      expect(avec({'type_conge_libelle': 'Congé payé'}).titre, 'Congé payé');
+      expect(avec({'type_conge_libelle': 'Congé payé'}).typeCongeLibelle, 'Congé payé');
+    });
+
+    test('libellé de statut de l’API prioritaire pour formations et plaintes', () {
+      final f = FormationItem.fromJson({'identifiant': 'f1', 'statut': 'FORMATION_FUTURE', 'statut_libelle': 'Planifiée'});
+      expect(f.statutLibelle, 'Planifiée');
+      final f2 = FormationItem.fromJson({'identifiant': 'f1', 'statut': 'INTEGREE_PLAN'});
+      expect(f2.statutLibelle, 'Intégrée au plan');
+      final p = PlainteItem.fromJson({'identifiant': 'p1', 'statut': 'ARCHIVEE_X', 'statut_libelle': 'Archivée'});
+      expect(p.statutLibelle, 'Archivée');
+    });
+  });
+
+  group('référentiels indexés séparément', () {
+    test('un renommage de STATUT_DEMANDE n’est pas écrasé par STATUT_FORMATION (même code)', () {
+      Libelles.charger({
+        'STATUT_DEMANDE': [const ParametreValeur(code: 'EN_VALIDATION_RRH', libelle: 'Chez les RH (demande)')],
+      });
+      expect(Libelles.statutDemande('EN_VALIDATION_RRH'), 'Chez les RH (demande)');
+      expect(Libelles.statutFormation('EN_VALIDATION_RRH'), 'En attente de validation RH');
+      Libelles.charger({
+        'STATUT_FORMATION': [const ParametreValeur(code: 'EN_VALIDATION_RRH', libelle: 'Chez les RH (formation)')],
+      });
+      expect(Libelles.statutDemande('EN_VALIDATION_RRH'), 'Chez les RH (demande)');
+      expect(Libelles.statutFormation('EN_VALIDATION_RRH'), 'Chez les RH (formation)');
     });
   });
 
@@ -82,7 +159,7 @@ void main() {
   });
 
   group('évaluations', () {
-    test('famille métier : libellé de l’API prioritaire, repli sur la table', () {
+    test('famille métier : libellé de l’API prioritaire, repli sur le référentiel chargé', () {
       expect(Libelles.familleMetier('DEV_BACKEND', 'Développement backend'), 'Développement backend');
       expect(Libelles.familleMetier('DEV_BACKEND'), 'Développement backend');
       expect(Libelles.familleMetier('DEV_BACKEND', 'DEV_BACKEND'), 'Développement backend');
@@ -103,7 +180,7 @@ void main() {
       expect(item.profilSnapshotLabel, isNot(contains('DEV_BACKEND')));
     });
 
-    test('niveau : libellé de l’API prioritaire, repli sur la table (Sénior, Chef d’équipe)', () {
+    test('niveau : libellé de l’API prioritaire, repli sur le référentiel chargé (Sénior, Chef d’équipe)', () {
       EvaluationItem avec(Map<String, dynamic> extra) => EvaluationItem.fromJson({
             'identifiant': 'e1',
             'campaignNom': 'T4',
@@ -173,12 +250,84 @@ void main() {
     });
   });
 
-  group('table alimentée par l’API (lot 3)', () {
-    test('une surcharge prime sur la table locale', () {
-      Libelles.surcharger('statut_demande', {'APPROUVEE': 'Acceptée'});
-      expect(Libelles.statutDemande('APPROUVEE'), 'Acceptée');
-      Libelles.reinitialiser();
+  group('listes paramétrées (lot 3)', () {
+    test('un renommage serveur est visible après rechargement', () {
       expect(Libelles.statutDemande('APPROUVEE'), 'Approuvée');
+      Libelles.charger({
+        'STATUT_DEMANDE': [const ParametreValeur(code: 'APPROUVEE', libelle: 'Acceptée')],
+      });
+      expect(Libelles.statutDemande('APPROUVEE'), 'Acceptée');
+      // Le rechargement d'un référentiel ne touche pas les autres.
+      expect(Libelles.typeDocument('BULLETIN_PAIE'), 'Bulletin de paie');
+    });
+
+    test('aucune liste de secours : sans chargement, tout est « Valeur non reconnue »', () {
+      Libelles.reinitialiser();
+      expect(Libelles.statutDemande('APPROUVEE'), 'Valeur non reconnue');
+      expect(Libelles.typeConge('ANNUEL'), 'Valeur non reconnue');
+      expect(Libelles.typeDocument('ATTESTATION_TRAVAIL'), 'Valeur non reconnue');
+      expect(Libelles.statutEvaluation('VALIDEE'), 'Valeur non reconnue');
+      expect(Libelles.niveauNote(3), 'Valeur non reconnue');
+      expect(Libelles.appreciation(16), 'Valeur non reconnue');
+      expect(Libelles.valeurs(Referentiel.typeConge), isEmpty);
+    });
+
+    test('un code absent de la liste chargée donne « Valeur non reconnue »', () {
+      expect(Libelles.typeConge('CONGE_FUTUR'), 'Valeur non reconnue');
+    });
+
+    test('appréciation : bornes fixes, libellé du référentiel', () {
+      expect(Libelles.appreciation(null), '');
+      expect(Libelles.appreciation(7), 'Insuffisant');
+      expect(Libelles.appreciation(8), 'À améliorer');
+      expect(Libelles.appreciation(14), 'Satisfaisant');
+      expect(Libelles.appreciation(17), 'Positif');
+      expect(Libelles.appreciation(18), 'Excellent');
+    });
+
+    test('mapping JSON : valeurs triées par ordre, entrées sans code ignorées, actives seulement', () {
+      final r = ParametresReponse.depuisJson({
+        'version': 'W/"abc"',
+        'referentiels': {
+          'type_conge': [
+            {'code': 'B', 'libelle': 'Second', 'ordre': 2, 'actif': true, 'piece_jointe_obligatoire': true},
+            {'code': 'A', 'libelle': 'Premier', 'ordre': 1},
+            {'libelle': 'Sans code', 'ordre': 3},
+            {'code': 'C', 'libelle': 'Désactivé', 'ordre': 4, 'actif': false},
+          ],
+          'TYPE_DOCUMENT': [
+            {'code': 'X', 'libelle': 'Doc X', 'ordre': 1, 'sla_heures': 48, 'couleur': 'BLEU'},
+          ],
+        },
+      });
+      expect(r.version, 'W/"abc"');
+      final conges = r.referentiels['TYPE_CONGE']!;
+      expect(conges.map((v) => v.code).toList(), ['A', 'B', 'C']);
+      expect(conges[0].pieceJointeObligatoire, isFalse);
+      expect(conges[1].pieceJointeObligatoire, isTrue);
+      expect(r.referentiels['TYPE_DOCUMENT']!.single.slaHeures, 48);
+      expect(r.referentiels['TYPE_DOCUMENT']!.single.couleur, 'BLEU');
+      Libelles.reinitialiser();
+      Libelles.charger(r.referentiels);
+      expect(Libelles.valeurs(Referentiel.typeConge).map((v) => v.code).toList(), ['A', 'B']);
+    });
+
+    test('charge utile illisible : erreur, jamais une table vide', () {
+      expect(() => ParametresReponse.depuisJson('oops'), throwsFormatException);
+      expect(() => ParametresReponse.depuisJson({'version': 'x'}), throwsFormatException);
+    });
+
+    test('libellé servi avec la demande prioritaire (type désactivé depuis)', () {
+      final d = DemandeAdminItem.fromJson({
+        'identifiant': 'x',
+        'type_demande': 'CONGE',
+        'statut': 'APPROUVEE',
+        'statut_libelle': 'Validée par la RH',
+        'type_conge_libelle': 'Congé de mariage',
+        'contenu': {'type_conge': 'DESACTIVE'},
+      });
+      expect(d.titre, 'Congé de mariage');
+      expect(d.statutLibelle, 'Validée par la RH');
     });
   });
 }

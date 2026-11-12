@@ -1,6 +1,7 @@
 package com.hr.referentiel.service;
 
-import com.hr.referentiel.domain.TypeConge;
+import com.hr.referentiel.domain.NatureParametre;
+import com.hr.referentiel.service.ParametresCache.ParametreVue;
 import com.hr.referentiel.domain.TypeDemandeAdministrativeRh;
 import com.hr.referentiel.web.ReferentielMetierException;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,75 +11,78 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DemandeAdministrativeValidationServiceTest {
 
 	private DemandeAdministrativeValidationService service;
+	private ParametreService parametres;
+
+	private static ParametreVue type(String code, boolean actif, boolean pj) {
+		return new ParametreVue("TYPE_CONGE", code, NatureParametre.VALEUR, "Congé " + code, null, null, 1, actif,
+				false, null, pj, pj);
+	}
 
 	@BeforeEach
 	void setUp() {
-		service = new DemandeAdministrativeValidationService();
-	}
-
-	@Test
-	@DisplayName("catalogue OK — chaque type_conge du catalogue est accepté (ANNUEL sans PJ)")
-	void conge_catalogueOk() {
-		for (TypeConge type : TypeConge.values()) {
-			Map<String, Object> contenu = baseConge(type.name());
-			if (type.exigePieceJointe()) {
-				contenu.put("certificat", "s3://bucket/certificat.pdf");
-			}
-			assertThatCode(() -> service.validerContenu(TypeDemandeAdministrativeRh.CONGE, contenu))
-					.doesNotThrowAnyException();
+		parametres = mock(ParametreService.class);
+		for (ParametreVue v : List.of(type("ANNUEL", true, false), type("AUTRE", true, false),
+				type("MALADIE", true, true), type("MATERNITE", true, true), type("MARIAGE", true, false),
+				type("ANCIEN", false, false))) {
+			when(parametres.lire("TYPE_CONGE", v.code())).thenReturn(Optional.of(v));
 		}
+		service = new DemandeAdministrativeValidationService(parametres);
 	}
 
 	@Test
-	@DisplayName("type_conge hors catalogue → 400 (IllegalArgumentException)")
-	void conge_typeInvalide() {
-		assertThatThrownBy(() -> service.validerContenu(
-						TypeDemandeAdministrativeRh.CONGE, baseConge("RTT")))
-				.isInstanceOf(IllegalArgumentException.class)
-				.hasMessage(TypeConge.MESSAGE_INVALIDE);
+	@DisplayName("types actifs lus dans le référentiel : acceptés, code canonique renvoyé (MALADIE avec PJ)")
+	void conge_typesActifsOk() {
+		for (String code : List.of("ANNUEL", "AUTRE", "MARIAGE")) {
+			assertThat(service.validerContenu(TypeDemandeAdministrativeRh.CONGE, baseConge(code))).isEqualTo(code);
+		}
+		Map<String, Object> contenu = baseConge("MALADIE");
+		contenu.put("certificat", "s3://bucket/certificat.pdf");
+		assertThat(service.validerContenu(TypeDemandeAdministrativeRh.CONGE, contenu)).isEqualTo("MALADIE");
 	}
 
 	@Test
-	@DisplayName("MALADIE sans PJ → 422 CERTIFICAT_OBLIGATOIRE")
-	void conge_maladieSansPj() {
-		assertThatThrownBy(() -> service.validerContenu(
-						TypeDemandeAdministrativeRh.CONGE, baseConge("MALADIE")))
+	@DisplayName("type_conge inconnu → 400 TYPE_CONGE_INVALIDE")
+	void conge_typeInconnu() {
+		assertThatThrownBy(() -> service.validerContenu(TypeDemandeAdministrativeRh.CONGE, baseConge("RTT")))
 				.isInstanceOf(ReferentielMetierException.class)
-				.hasMessage(TypeConge.MESSAGE_CERTIFICAT_OBLIGATOIRE)
-				.extracting(ex -> ((ReferentielMetierException) ex).getCode())
-				.isEqualTo("CERTIFICAT_OBLIGATOIRE");
+				.satisfies(ex -> {
+					assertThat(((ReferentielMetierException) ex).getHttpStatus()).isEqualTo(400);
+					assertThat(((ReferentielMetierException) ex).getCode()).isEqualTo("TYPE_CONGE_INVALIDE");
+				});
 	}
 
 	@Test
-	@DisplayName("MATERNITE sans PJ → 422 CERTIFICAT_OBLIGATOIRE")
-	void conge_materniteSansPj() {
-		assertThatThrownBy(() -> service.validerContenu(
-						TypeDemandeAdministrativeRh.CONGE, baseConge("MATERNITE")))
+	@DisplayName("type_conge désactivé → 422 TYPE_CONGE_INACTIF")
+	void conge_typeInactif() {
+		assertThatThrownBy(() -> service.validerContenu(TypeDemandeAdministrativeRh.CONGE, baseConge("ANCIEN")))
 				.isInstanceOf(ReferentielMetierException.class)
-				.hasMessage(TypeConge.MESSAGE_CERTIFICAT_OBLIGATOIRE);
+				.satisfies(ex -> {
+					assertThat(((ReferentielMetierException) ex).getHttpStatus()).isEqualTo(422);
+					assertThat(((ReferentielMetierException) ex).getCode()).isEqualTo("TYPE_CONGE_INACTIF");
+				});
 	}
 
 	@Test
-	@DisplayName("ANNUEL sans PJ → OK")
-	void conge_annuelSansPjOk() {
-		assertThatCode(() -> service.validerContenu(
-						TypeDemandeAdministrativeRh.CONGE, baseConge("ANNUEL")))
-				.doesNotThrowAnyException();
-	}
-
-	@Test
-	@DisplayName("AUTRE sans PJ → OK (PJ non obligatoire)")
-	void conge_autreSansPjOk() {
-		assertThatCode(() -> service.validerContenu(
-						TypeDemandeAdministrativeRh.CONGE, baseConge("AUTRE")))
-				.doesNotThrowAnyException();
+	@DisplayName("MALADIE / MATERNITE sans PJ → 422 CERTIFICAT_OBLIGATOIRE (selon piece_jointe_obligatoire)")
+	void conge_pieceJointeObligatoireSansPj() {
+		for (String code : List.of("MALADIE", "MATERNITE")) {
+			assertThatThrownBy(() -> service.validerContenu(TypeDemandeAdministrativeRh.CONGE, baseConge(code)))
+					.isInstanceOf(ReferentielMetierException.class)
+					.extracting(ex -> ((ReferentielMetierException) ex).getCode())
+					.isEqualTo("CERTIFICAT_OBLIGATOIRE");
+		}
 	}
 
 	@Test

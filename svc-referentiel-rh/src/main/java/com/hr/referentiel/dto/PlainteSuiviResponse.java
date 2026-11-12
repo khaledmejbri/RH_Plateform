@@ -18,6 +18,10 @@ public class PlainteSuiviResponse {
 	@JsonProperty("statut")
 	private StatutPlainteRh statut;
 
+	/** Libellé courant du statut (lot 3, paramétrable). */
+	@JsonProperty("statut_libelle")
+	private String statutLibelle;
+
 	@JsonProperty("etapes")
 	private List<WorkflowEtapeResponse> etapes;
 
@@ -30,6 +34,14 @@ public class PlainteSuiviResponse {
 		this.typePlainte = typePlainte;
 		this.statut = statut;
 		this.etapes = etapes;
+	}
+
+	public String getStatutLibelle() {
+		return statutLibelle;
+	}
+
+	public void setStatutLibelle(String statutLibelle) {
+		this.statutLibelle = statutLibelle;
 	}
 
 	public UUID getIdentifiant() {

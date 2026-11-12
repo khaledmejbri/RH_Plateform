@@ -1,7 +1,5 @@
 package com.hr.evaluation.entity;
 
-import com.hr.evaluation.domain.ConclusionAlerteEcart;
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import jakarta.persistence.*;
 
@@ -66,25 +64,21 @@ public class AlerteEcart {
     @Column(name = "superieur_nom", length = 200)
     private String superieurNom;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "niveau_detection", nullable = false, length = 20)
-    private NiveauEcart niveauDetection;
+    @Column(name = "niveau_detection", nullable = false, length = 40)
+    private String niveauDetection;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "niveau_courant", nullable = false, length = 20)
-    private NiveauEcart niveauCourant;
+    @Column(name = "niveau_courant", nullable = false, length = 40)
+    private String niveauCourant;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "niveau_max_notifie", nullable = false, length = 20)
-    private NiveauEcart niveauMaxNotifie;
+    @Column(name = "niveau_max_notifie", nullable = false, length = 40)
+    private String niveauMaxNotifie;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "statut", nullable = false, length = 20)
     private StatutAlerteEcart statut = StatutAlerteEcart.OUVERTE;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "conclusion", length = 40)
-    private ConclusionAlerteEcart conclusion;
+    private String conclusion;
 
     @Column(name = "notes_modifiees_apres_detection", nullable = false)
     private boolean notesModifieesApresDetection = false;
@@ -159,20 +153,20 @@ public class AlerteEcart {
     public String getSuperieurNom() { return superieurNom; }
     public void setSuperieurNom(String superieurNom) { this.superieurNom = superieurNom; }
 
-    public NiveauEcart getNiveauDetection() { return niveauDetection; }
-    public void setNiveauDetection(NiveauEcart niveauDetection) { this.niveauDetection = niveauDetection; }
+    public String getNiveauDetection() { return niveauDetection; }
+    public void setNiveauDetection(String niveauDetection) { this.niveauDetection = niveauDetection; }
 
-    public NiveauEcart getNiveauCourant() { return niveauCourant; }
-    public void setNiveauCourant(NiveauEcart niveauCourant) { this.niveauCourant = niveauCourant; }
+    public String getNiveauCourant() { return niveauCourant; }
+    public void setNiveauCourant(String niveauCourant) { this.niveauCourant = niveauCourant; }
 
-    public NiveauEcart getNiveauMaxNotifie() { return niveauMaxNotifie; }
-    public void setNiveauMaxNotifie(NiveauEcart niveauMaxNotifie) { this.niveauMaxNotifie = niveauMaxNotifie; }
+    public String getNiveauMaxNotifie() { return niveauMaxNotifie; }
+    public void setNiveauMaxNotifie(String niveauMaxNotifie) { this.niveauMaxNotifie = niveauMaxNotifie; }
 
     public StatutAlerteEcart getStatut() { return statut; }
     public void setStatut(StatutAlerteEcart statut) { this.statut = statut; }
 
-    public ConclusionAlerteEcart getConclusion() { return conclusion; }
-    public void setConclusion(ConclusionAlerteEcart conclusion) { this.conclusion = conclusion; }
+    public String getConclusion() { return conclusion; }
+    public void setConclusion(String conclusion) { this.conclusion = conclusion; }
 
     public boolean isNotesModifieesApresDetection() { return notesModifieesApresDetection; }
     public void setNotesModifieesApresDetection(boolean notesModifieesApresDetection) {

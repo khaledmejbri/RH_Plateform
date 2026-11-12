@@ -20,12 +20,13 @@ import { correspond, libelleDansSelection, unitesRetenues, useFiltresUrl } from 
 import { DialogPanel } from '../components/useDialogA11y';
 import { Avatar, Chip, EmptyState, ErrorAlert, Icon, LoadingState, PageHeader, StatusBadge, type IconName, type Tone } from '../components/ui';
 import { formatDateHeure, formatPersonne } from '../utils/format';
-import { libelle, libelleConnu, optionsDomaine } from '../utils/libelles';
+import { libelle, libelleConnu } from '../utils/libelles';
+import { optionsFiltre } from '../utils/parametresStore';
 import { commentaireLisible, contenuLignes, intituleDemande, periodeDemande } from '../utils/demandes';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 /** Par défaut la RH arrive sur sa file : demandes en attente de décision RH (§ 6.1). */
-type StatutFilter = '' | 'EN_VALIDATION_SUPERIEUR' | 'EN_VALIDATION_RRH' | 'APPROUVEE' | 'REFUSEE' | 'ANNULEE';
+type StatutFilter = string;
 
 const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', statut: 'EN_VALIDATION_RRH', type: '' };
 
@@ -191,13 +192,7 @@ export default function DemandesAdministrativesPage() {
           libelle="Statut"
           valeur={f.statut}
           toutesLibelle="Tous les statuts"
-          options={[
-            { valeur: 'EN_VALIDATION_RRH', libelle: 'À décider (validation RH)' },
-            { valeur: 'EN_VALIDATION_SUPERIEUR', libelle: 'Chez le responsable' },
-            { valeur: 'APPROUVEE', libelle: 'Approuvées' },
-            { valeur: 'REFUSEE', libelle: 'Refusées' },
-            { valeur: 'ANNULEE', libelle: 'Annulées' },
-          ]}
+          options={optionsFiltre('STATUT_DEMANDE', rows.map((r) => r.statut))}
           onChange={(v) => filtres.definir({ statut: v })}
         />
         <ChampSelect
@@ -205,7 +200,7 @@ export default function DemandesAdministrativesPage() {
           libelle="Type"
           valeur={f.type}
           toutesLibelle="Tous les types"
-          options={optionsDomaine('typeDemande')}
+          options={optionsFiltre('TYPE_DEMANDE', rows.map((r) => r.type_demande))}
           onChange={(v) => filtres.definir({ type: v })}
         />
         <FiltresUnite idPrefixe="demandes" unites={unites} selection={f} onChange={(sel) => filtres.definir(sel)} />
@@ -260,7 +255,7 @@ export default function DemandesAdministrativesPage() {
                         </Chip>
                       </td>
                       <td data-label="Statut">
-                        <StatusBadge statut={d.statut} />
+                        <StatusBadge referentiel="STATUT_DEMANDE" statut={d.statut} />
                       </td>
                       <td data-label="Période" className="cell-meta">{periodeDemande(d)}</td>
                       <td data-label="Demandeur">
@@ -304,7 +299,7 @@ export default function DemandesAdministrativesPage() {
 
             <div className="modal__scroll">
               <dl className="detail-grid">
-                <div><dt>Statut</dt><dd><StatusBadge statut={selected.statut} /></dd></div>
+                <div><dt>Statut</dt><dd><StatusBadge referentiel="STATUT_DEMANDE" statut={selected.statut} /></dd></div>
                 <div><dt>Période</dt><dd>{periodeDemande(selected)}</dd></div>
                 {selected.type_demande === 'CONGE' ? (
                   <div>
@@ -343,7 +338,7 @@ export default function DemandesAdministrativesPage() {
                     {suivi.etapes.map((e) => (
                       <li key={e.code}>
                         {libelleConnu('etapeDemande', e.code) ?? e.libelle}{' '}
-                        {e.terminee ? <StatusBadge statut="VALIDE" label="Terminée" /> : e.en_cours ? <StatusBadge statut="EN_COURS" label="En cours" /> : null}
+                        {e.terminee ? <StatusBadge referentiel="STATUT_DEMANDE" statut="VALIDE" label="Terminée" /> : e.en_cours ? <StatusBadge referentiel="STATUT_DEMANDE" statut="EN_COURS" label="En cours" /> : null}
                       </li>
                     ))}
                   </ol>

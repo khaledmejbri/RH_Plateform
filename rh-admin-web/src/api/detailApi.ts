@@ -307,7 +307,8 @@ export type CampagneDetail = {
   templateGeneral?: { identifiant: string; nom: string } | null;
   templateTechnique?: { identifiant: string; nom: string } | null;
   compteurs: { total: number; enCours: number; validees: number; tauxCompletion: number; sansQuestionnaireTechnique: number };
-  alertesOuvertesParNiveau: { ORANGE: number; ROUGE: number; URGENTE: number; total: number };
+  /** Lot 3 : liste de niveaux (codes paramétrés) ; seul `total` est lu ici. */
+  alertesOuvertesParNiveau: { total: number };
   creeLe?: string;
 };
 

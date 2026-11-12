@@ -1,8 +1,6 @@
 package com.hr.evaluation.config;
 
-import com.hr.evaluation.domain.ConclusionAlerteEcart;
 import com.hr.evaluation.domain.EvenementAlerteEcart;
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.SensEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import org.slf4j.Logger;
@@ -21,6 +19,10 @@ import java.util.stream.Collectors;
  * d'écart serait refusée. Recrée à chaque démarrage (idempotent) une contrainte
  * {@code <table>_<colonne>_check} depuis chaque enum. NULL reste accepté par SQL. Modèle :
  * {@link CampagneTypeConstraintRunner}.
+ * <p>
+ * Depuis le lot 3 (ADR § 3), les niveaux d'alerte et les conclusions sont des <b>codes paramétrés</b> : leurs CHECK
+ * ({@link #A_SUPPRIMER}) sont supprimés à chaque démarrage au lieu d'être recréés, sinon la création d'un niveau par la
+ * RH serait refusée par la base.
  */
 @Component
 public class AlerteEcartConstraintRunner implements ApplicationRunner {
@@ -38,22 +40,33 @@ public class AlerteEcartConstraintRunner implements ApplicationRunner {
         }
     }
 
+    /** Une colonne dont le CHECK d'enum est supprimé (code paramétré). */
+    record ASupprimer(String table, String colonne) {
+        String nomContrainte() {
+            return table + "_" + colonne + "_check";
+        }
+    }
+
+    /** Codes de comportement : les CHECK d'enum restent recréés. */
     static final List<Cible> CIBLES = List.of(
-            new Cible(ALERTE, "niveau_detection", NiveauEcart.class),
-            new Cible(ALERTE, "niveau_courant", NiveauEcart.class),
-            new Cible(ALERTE, "niveau_max_notifie", NiveauEcart.class),
             new Cible(ALERTE, "statut", StatutAlerteEcart.class),
-            new Cible(ALERTE, "conclusion", ConclusionAlerteEcart.class),
-            new Cible(LIGNE, "niveau_detection", NiveauEcart.class),
-            new Cible(LIGNE, "niveau_actuel", NiveauEcart.class),
             new Cible(LIGNE, "sens_detection", SensEcart.class),
             new Cible(LIGNE, "sens_actuel", SensEcart.class),
             new Cible(HISTORIQUE, "type_evenement", EvenementAlerteEcart.class),
             new Cible(HISTORIQUE, "statut_avant", StatutAlerteEcart.class),
-            new Cible(HISTORIQUE, "statut_apres", StatutAlerteEcart.class),
-            new Cible(HISTORIQUE, "niveau_avant", NiveauEcart.class),
-            new Cible(HISTORIQUE, "niveau_apres", NiveauEcart.class),
-            new Cible(HISTORIQUE, "conclusion", ConclusionAlerteEcart.class));
+            new Cible(HISTORIQUE, "statut_apres", StatutAlerteEcart.class));
+
+    /** Codes de niveau (7 colonnes) et de conclusion (2 colonnes) : valeurs paramétrables, aucun CHECK. */
+    static final List<ASupprimer> A_SUPPRIMER = List.of(
+            new ASupprimer(ALERTE, "niveau_detection"),
+            new ASupprimer(ALERTE, "niveau_courant"),
+            new ASupprimer(ALERTE, "niveau_max_notifie"),
+            new ASupprimer(ALERTE, "conclusion"),
+            new ASupprimer(LIGNE, "niveau_detection"),
+            new ASupprimer(LIGNE, "niveau_actuel"),
+            new ASupprimer(HISTORIQUE, "niveau_avant"),
+            new ASupprimer(HISTORIQUE, "niveau_apres"),
+            new ASupprimer(HISTORIQUE, "conclusion"));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -63,6 +76,13 @@ public class AlerteEcartConstraintRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        for (ASupprimer cible : A_SUPPRIMER) {
+            try {
+                jdbcTemplate.execute("ALTER TABLE " + cible.table() + " DROP CONSTRAINT IF EXISTS " + cible.nomContrainte());
+            } catch (Exception e) {
+                log.warn("Impossible de supprimer la contrainte {} : {}", cible.nomContrainte(), e.getMessage());
+            }
+        }
         for (Cible cible : CIBLES) {
             String valeurs = Arrays.stream(cible.enumeration().getEnumConstants())
                     .map(v -> "'" + v.name() + "'")
@@ -75,6 +95,7 @@ public class AlerteEcartConstraintRunner implements ApplicationRunner {
                 log.warn("Impossible d'aligner la contrainte {} : {}", cible.nomContrainte(), e.getMessage());
             }
         }
-        log.info("Contraintes CHECK des alertes d'écart alignées sur les enums ({} colonnes)", CIBLES.size());
+        log.info("Contraintes CHECK des alertes d'écart : {} alignées sur les enums, {} supprimées (codes paramétrés)",
+                CIBLES.size(), A_SUPPRIMER.size());
     }
 }

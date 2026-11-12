@@ -1,11 +1,10 @@
 package com.hr.referentiel.service;
 
-import com.hr.referentiel.config.ReferentielEvenementsProperties;
 import com.hr.referentiel.domain.StatutDocumentAdministratifDemandeRh;
-import com.hr.referentiel.domain.TypeDocumentAdministratifDemandeRh;
 import com.hr.referentiel.dto.CheckRestrictionDocumentResponse;
 import com.hr.referentiel.dto.DemandeDocumentAdministratifCreationRequest;
 import com.hr.referentiel.entity.Collaborateur;
+import com.hr.referentiel.service.ParametresCache.ParametreVue;
 import com.hr.referentiel.entity.DemandeDocumentAdministratifRh;
 import com.hr.referentiel.kafka.RhNotificationPublisher;
 import com.hr.referentiel.repository.DemandeDocumentAdministratifRhRepository;
@@ -28,8 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,7 +43,7 @@ class DemandeDocumentRestrictionServiceTest {
 	@Mock
 	private CollaborateurConnecteService collaborateurConnecteService;
 	@Mock
-	private ReferentielEvenementsProperties evenementsProperties;
+	private ParametreService parametreService;
 	@Mock
 	private RhNotificationPublisher notificationPublisher;
 	@Mock
@@ -61,9 +60,18 @@ class DemandeDocumentRestrictionServiceTest {
 		demandeur = new Collaborateur();
 		demandeur.setId(UUID.randomUUID());
 		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(demandeur);
+		lenient().when(parametreService.lire(eq("TYPE_DOCUMENT"), any())).thenAnswer(i -> {
+			String code = i.getArgument(1, String.class);
+			if (code == null || code.equals("INCONNU")) {
+				return Optional.empty();
+			}
+			return Optional.of(new ParametreVue("TYPE_DOCUMENT", code, com.hr.referentiel.domain.NatureParametre.VALEUR,
+					"Attestation de travail", null, null, 1, true, false, 120, null, null));
+		});
+		lenient().when(parametreService.libelleOuDefaut(eq("TYPE_DOCUMENT"), any())).thenReturn("Attestation de travail");
 	}
 
-	private DemandeDocumentAdministratifRh ouverte(TypeDocumentAdministratifDemandeRh type) {
+	private DemandeDocumentAdministratifRh ouverte(String type) {
 		DemandeDocumentAdministratifRh d = new DemandeDocumentAdministratifRh();
 		d.setDemandeur(demandeur);
 		d.setTypeDocument(type);
@@ -72,7 +80,7 @@ class DemandeDocumentRestrictionServiceTest {
 		return d;
 	}
 
-	private void demandeOuverteExiste(TypeDocumentAdministratifDemandeRh type, DemandeDocumentAdministratifRh d) {
+	private void demandeOuverteExiste(String type, DemandeDocumentAdministratifRh d) {
 		when(repository.findFirstByDemandeurIdAndTypeDocumentAndStatutInOrderByCreeLeAsc(
 				eq(demandeur.getId()), eq(type), eq(DemandeDocumentAdministratifRhService.STATUTS_OUVERTS)))
 				.thenReturn(Optional.ofNullable(d));
@@ -80,8 +88,8 @@ class DemandeDocumentRestrictionServiceTest {
 
 	@Test
 	void checkRestriction_demandeOuverte_canRequestFalseAvecMessageEtDate() {
-		demandeOuverteExiste(TypeDocumentAdministratifDemandeRh.ATTESTATION_TRAVAIL,
-				ouverte(TypeDocumentAdministratifDemandeRh.ATTESTATION_TRAVAIL));
+		demandeOuverteExiste("ATTESTATION_TRAVAIL",
+				ouverte("ATTESTATION_TRAVAIL"));
 
 		CheckRestrictionDocumentResponse r = service.verifierRestriction("ATTESTATION_TRAVAIL", jwt);
 
@@ -92,7 +100,7 @@ class DemandeDocumentRestrictionServiceTest {
 
 	@Test
 	void checkRestriction_aucuneOuverte_canRequestTrue() {
-		demandeOuverteExiste(TypeDocumentAdministratifDemandeRh.ATTESTATION_TRAVAIL, null);
+		demandeOuverteExiste("ATTESTATION_TRAVAIL", null);
 
 		CheckRestrictionDocumentResponse r = service.verifierRestriction("ATTESTATION_TRAVAIL", jwt);
 
@@ -108,10 +116,10 @@ class DemandeDocumentRestrictionServiceTest {
 
 	@Test
 	void soumettre_memeTypeDejaOuvert_409_rienNestCree() {
-		demandeOuverteExiste(TypeDocumentAdministratifDemandeRh.ATTESTATION_TRAVAIL,
-				ouverte(TypeDocumentAdministratifDemandeRh.ATTESTATION_TRAVAIL));
+		demandeOuverteExiste("ATTESTATION_TRAVAIL",
+				ouverte("ATTESTATION_TRAVAIL"));
 		DemandeDocumentAdministratifCreationRequest req = new DemandeDocumentAdministratifCreationRequest();
-		req.setTypeDocument(TypeDocumentAdministratifDemandeRh.ATTESTATION_TRAVAIL);
+		req.setTypeDocument("ATTESTATION_TRAVAIL");
 
 		ReferentielMetierException ex = assertThrows(ReferentielMetierException.class,
 				() -> service.soumettre(req, jwt));
@@ -124,11 +132,10 @@ class DemandeDocumentRestrictionServiceTest {
 
 	@Test
 	void soumettre_aucuneOuverteDeCeType_cree() {
-		demandeOuverteExiste(TypeDocumentAdministratifDemandeRh.AUTRE, null);
-		when(evenementsProperties.delaiSlaHeuresPourDocument(any(), anyInt())).thenReturn(120);
+		demandeOuverteExiste("AUTRE", null);
 		when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
 		DemandeDocumentAdministratifCreationRequest req = new DemandeDocumentAdministratifCreationRequest();
-		req.setTypeDocument(TypeDocumentAdministratifDemandeRh.AUTRE);
+		req.setTypeDocument("AUTRE");
 
 		service.soumettre(req, jwt);
 

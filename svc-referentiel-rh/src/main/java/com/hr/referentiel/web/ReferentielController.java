@@ -87,6 +87,7 @@ public class ReferentielController {
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<Object> obtenirCollaborateur(@PathVariable UUID identifiant) {
 		return referentielRhService.obtenirCollaborateur(identifiant)
+				.map(referentielRhService::avecLibelles)
 				.<ResponseEntity<Object>>map(ResponseEntity::ok)
 				.orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
 						.body(Map.of("erreur", "Collaborateur introuvable.")));
@@ -96,6 +97,7 @@ public class ReferentielController {
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<Object> obtenirCollaborateurParMatricule(@PathVariable String matricule) {
 		return referentielRhService.obtenirCollaborateurParMatricule(matricule)
+				.map(referentielRhService::avecLibelles)
 				.<ResponseEntity<Object>>map(ResponseEntity::ok)
 				.orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
 						.body(Map.of("erreur", "Collaborateur introuvable.")));

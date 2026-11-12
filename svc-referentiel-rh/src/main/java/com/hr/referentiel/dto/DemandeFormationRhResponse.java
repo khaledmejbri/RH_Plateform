@@ -91,6 +91,10 @@ public class DemandeFormationRhResponse {
 	@JsonProperty("statut")
 	private StatutDemandeFormationRh statut;
 
+	/** Libellé courant du statut (lot 3, paramétrable). */
+	@JsonProperty("statut_libelle")
+	private String statutLibelle;
+
 	@JsonProperty("commentaire_rh")
 	private String commentaireRh;
 
@@ -144,6 +148,8 @@ public class DemandeFormationRhResponse {
 	public void setDateSouhaiteeFin(LocalDate dateSouhaiteeFin) { this.dateSouhaiteeFin = dateSouhaiteeFin; }
 	public StatutDemandeFormationRh getStatut() { return statut; }
 	public void setStatut(StatutDemandeFormationRh statut) { this.statut = statut; }
+	public String getStatutLibelle() { return statutLibelle; }
+	public void setStatutLibelle(String statutLibelle) { this.statutLibelle = statutLibelle; }
 	public String getCommentaireRh() { return commentaireRh; }
 	public void setCommentaireRh(String commentaireRh) { this.commentaireRh = commentaireRh; }
 	public Instant getCreeLe() { return creeLe; }

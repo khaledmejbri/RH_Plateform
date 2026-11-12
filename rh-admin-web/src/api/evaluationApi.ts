@@ -252,7 +252,8 @@ export interface EvaluationAnalytics {
     severity: 'ALIGNED' | 'MODERATE' | 'HIGH' | 'CRITICAL';
     /** D-E09.c : calculé par le serveur ; absent ou false = question générale. */
     competenceTechnique?: boolean;
-    niveauEcart?: 'ALIGNE' | 'ORANGE' | 'ROUGE' | 'URGENTE' | null;
+    /** Code d'un niveau d'alerte paramétré, ou ALIGNE. */
+    niveauEcart?: string | null;
   }>;
   sections: Array<{
     section: string;
@@ -483,10 +484,6 @@ export const templateApi = {
   },
   async listTechnical(): Promise<TechnicalTemplate[]> {
     const response = await api.get('/api/rh/v1/admin/evaluations/technical-templates');
-    return response.data;
-  },
-  async createTechnical(data: CreateTechnicalTemplateRequest): Promise<TechnicalTemplate> {
-    const response = await api.post('/api/rh/v1/admin/evaluations/technical-templates', data);
     return response.data;
   },
   async getTechnicalQuestions(templateId: string): Promise<TechnicalQuestion[]> {

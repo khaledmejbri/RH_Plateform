@@ -5,6 +5,7 @@ import { canWriteBackoffice, isDirectionOnly } from '../auth/jwtRoles';
 import NotificationBell from './NotificationBell';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { DetailProvider } from '../detail/DetailProvider';
+import { demarrerParametres, rafraichirParametres, useParametres } from '../utils/parametresStore';
 
 type Icone = ComponentType<{ className?: string }>;
 
@@ -43,8 +44,9 @@ const MENU: Menu[] = [
   { kind: 'lien', id: 'documents', to: '/app/documents-administratifs', label: 'Documents administratifs', icon: IconDoc },
   {
     kind: 'groupe', id: 'parametrage', label: 'Paramétrage', icon: IconBuilding, enfants: [
+      { id: 'parametres', to: '/app/parametres', label: 'Paramètres' },
       { id: 'structure', to: '/app/structure', label: 'Structure RH', writeOnly: true },
-      { id: 'organisation', to: '/app/unites', label: 'Organisation', writeOnly: true },
+      { id: 'organisation', to: '/app/unites', label: 'Unités', writeOnly: true },
     ],
   },
   { kind: 'lien', id: 'formations', to: '/app/formations', label: 'Formations', icon: IconSchool },
@@ -71,6 +73,7 @@ export function entreeActive(pathname: string, search: string): string {
   if (p.startsWith('/app/plaintes')) return 'plaintes';
   if (p.startsWith('/app/structure')) return 'structure';
   if (p.startsWith('/app/unites')) return 'organisation';
+  if (p.startsWith('/app/parametres')) return 'parametres';
   if (p.startsWith('/app/accueil')) return 'accueil';
   return '';
 }
@@ -95,6 +98,15 @@ export default function AppShell() {
   const canWrite = canWriteBackoffice(token);
   const menuBtn = useRef<HTMLButtonElement>(null);
   const actif = entreeActive(location.pathname, location.search);
+  const parametres = useParametres();
+
+  // Libellés paramétrés (lot 3) : chargés à la connexion, revalidés toutes les 60 s.
+  useEffect(() => demarrerParametres(), []);
+  // Les pages qui lisent le contexte du routeur se rendent de nouveau quand un libellé change.
+  const contexteRoute = useMemo(
+    () => ({ lectureSeule: direction, parametresVersion: parametres.version }),
+    [direction, parametres.version],
+  );
 
   // Menu filtré par rôle ; un groupe sans sous-entrée visible n'est pas affiché.
   const menu = useMemo(() => {
@@ -221,9 +233,22 @@ export default function AppShell() {
             </div>
           ) : null}
           <main id="contenu" tabIndex={-1} className="shell__content anim-fade-in">
-            <ErrorBoundary resetKey={location.pathname}>
-              <Outlet context={{ lectureSeule: direction }} />
-            </ErrorBoundary>
+            {parametres.pret && parametres.erreur ? (
+              <div className="alert alert--warning" role="alert">
+                Certains libellés paramétrés sont indisponibles : des valeurs peuvent s’afficher « Valeur non reconnue ».{' '}
+                <button type="button" className="btn btn--secondary btn--sm" onClick={() => void rafraichirParametres()}>Réessayer</button>
+              </div>
+            ) : null}
+            {parametres.pret ? (
+              <ErrorBoundary resetKey={location.pathname}>
+                <Outlet context={contexteRoute} />
+              </ErrorBoundary>
+            ) : (
+              <div className="loading" role="status" aria-live="polite">
+                <span className="spinner" aria-hidden />
+                <span>Chargement…</span>
+              </div>
+            )}
           </main>
         </div>
       </div>

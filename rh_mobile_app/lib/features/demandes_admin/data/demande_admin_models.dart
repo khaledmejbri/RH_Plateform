@@ -15,6 +15,8 @@ class DemandeAdminItem {
     this.numero,
     this.valideurNom,
     this.creeLe,
+    this.statutLibelleApi,
+    this.typeCongeLibelleApi,
   });
 
   final String id;
@@ -39,14 +41,31 @@ class DemandeAdminItem {
   /// Date de dépôt (ISO).
   final String? creeLe;
 
+  /// Libellés servis avec la demande (`statut_libelle`, `type_conge_libelle`, instantané du lot 3) ;
+  /// à défaut, le référentiel chargé, sinon « Valeur non reconnue ».
+  final String? statutLibelleApi;
+  final String? typeCongeLibelleApi;
+
   /// Type de congé (`contenu.type_conge`), pour un congé.
   String? get typeConge => contenu?['type_conge'] as String?;
 
   /// Titre lisible : « Congé annuel », « Autorisation de sortie »…
-  String get titre => Libelles.titreDemande(typeDemande, typeCongeCode: typeConge);
+  String get titre => Libelles.titreDemande(
+        typeDemande,
+        typeCongeCode: typeConge,
+        typeCongeLibelleApi: typeCongeLibelleApi,
+      );
+
+  /// Libellé du type de congé : celui de l'API, sinon le référentiel chargé ; null si pas de type.
+  String? get typeCongeLibelle {
+    final code = (typeConge ?? '').trim();
+    final api = (typeCongeLibelleApi ?? '').trim();
+    if (code.isEmpty && api.isEmpty) return null;
+    return Libelles.avecRepli(typeCongeLibelleApi, typeConge, Libelles.typeConge);
+  }
 
   /// Statut lisible, jamais le code.
-  String get statutLibelle => Libelles.statutDemande(statut);
+  String get statutLibelle => Libelles.avecRepli(statutLibelleApi, statut, Libelles.statutDemande);
 
   /// Référence affichée : le numéro s'il existe, jamais l'identifiant technique.
   String? get referenceAffichee {
@@ -77,6 +96,8 @@ class DemandeAdminItem {
       numero: j['numero'] as String?,
       valideurNom: j['valideur_attendu_nom_complet'] as String?,
       creeLe: (j['cree_le'] ?? j['date_creation']) as String?,
+      statutLibelleApi: j['statut_libelle'] as String?,
+      typeCongeLibelleApi: j['type_conge_libelle'] as String?,
     );
   }
 }

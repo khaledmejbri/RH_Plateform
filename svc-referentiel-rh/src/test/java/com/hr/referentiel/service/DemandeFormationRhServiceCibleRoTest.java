@@ -30,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,6 +54,8 @@ class DemandeFormationRhServiceCibleRoTest {
 
 	@Mock
 	private NumeroLisibleService numeroLisibleService;
+	@Mock
+	private ParametreService parametreService;
 
 	@InjectMocks
 	private DemandeFormationRhService service;
@@ -100,6 +103,21 @@ class DemandeFormationRhServiceCibleRoTest {
 		assertThat(r.getCible()).isEqualTo(CibleDemandeFormationRh.UNITE);
 		assertThat(r.getOrigine()).isEqualTo(OrigineDemandeFormationRh.RESPONSABLE_OPERATIONNEL);
 		assertThat(r.getUniteCibleIdentifiant()).isEqualTo(uniteRo.getId());
+	}
+
+	@Test
+	@DisplayName("lot 3 : la réponse porte statut_libelle (libellé courant des paramètres)")
+	void reponsePorteLeLibelleDuStatut() throws Exception {
+		when(demandeFormationRepository.save(any(DemandeFormationRh.class))).thenAnswer(i -> i.getArgument(0));
+		when(parametreService.libelleOuInconnu(eq("STATUT_FORMATION"), any())).thenReturn("À instruire");
+		DemandeFormationCreationRequest req = requete();
+		req.setUniteCibleIdentifiant(uniteRo.getId());
+
+		DemandeFormationRhResponse r = service.creer(req, jwt);
+
+		assertThat(r.getStatutLibelle()).isEqualTo("À instruire");
+		assertThat(tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(r))
+				.contains("\"statut_libelle\":\"À instruire\"");
 	}
 
 	@Test

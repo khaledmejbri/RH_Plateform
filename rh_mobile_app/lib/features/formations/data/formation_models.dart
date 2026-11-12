@@ -15,6 +15,7 @@ class FormationItem {
     this.commentaireRh,
     this.creeLe,
     this.numero,
+    this.statutLibelleApi,
   });
 
   final String id;
@@ -33,7 +34,10 @@ class FormationItem {
   /// Numéro lisible `FOR-AAAAMM-NNNN` (D-L02), si le serveur l'envoie.
   final String? numero;
 
-  String get statutLibelle => Libelles.statutFormation(statut);
+  /// Libellé du statut servi avec la formation (`statut_libelle`) ; à défaut, le référentiel chargé.
+  final String? statutLibelleApi;
+
+  String get statutLibelle => Libelles.avecRepli(statutLibelleApi, statut, Libelles.statutFormation);
 
   factory FormationItem.fromJson(Map<String, dynamic> json) {
     return FormationItem(
@@ -50,6 +54,7 @@ class FormationItem {
       commentaireRh: json['commentaire_rh'] as String?,
       creeLe: json['cree_le'] as String?,
       numero: json['numero'] as String?,
+      statutLibelleApi: json['statut_libelle'] as String?,
     );
   }
 }

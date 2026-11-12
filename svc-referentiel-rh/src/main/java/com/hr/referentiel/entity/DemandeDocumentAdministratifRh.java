@@ -1,7 +1,6 @@
 package com.hr.referentiel.entity;
 
 import com.hr.referentiel.domain.StatutDocumentAdministratifDemandeRh;
-import com.hr.referentiel.domain.TypeDocumentAdministratifDemandeRh;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -32,9 +31,9 @@ public class DemandeDocumentAdministratifRh {
 	@JoinColumn(name = "demandeur_identifiant", nullable = false)
 	private Collaborateur demandeur;
 
-	@Enumerated(EnumType.STRING)
+	/** Code du type de document (référentiel TYPE_DOCUMENT, paramétrable : ni énumération ni contrainte CHECK). */
 	@Column(name = "type_document", nullable = false, length = 40)
-	private TypeDocumentAdministratifDemandeRh typeDocument;
+	private String typeDocument;
 
 	@Enumerated(EnumType.STRING)
 	@Column(name = "statut", nullable = false, length = 32)
@@ -108,11 +107,11 @@ public class DemandeDocumentAdministratifRh {
 		this.demandeur = demandeur;
 	}
 
-	public TypeDocumentAdministratifDemandeRh getTypeDocument() {
+	public String getTypeDocument() {
 		return typeDocument;
 	}
 
-	public void setTypeDocument(TypeDocumentAdministratifDemandeRh typeDocument) {
+	public void setTypeDocument(String typeDocument) {
 		this.typeDocument = typeDocument;
 	}
 

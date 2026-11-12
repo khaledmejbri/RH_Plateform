@@ -65,7 +65,9 @@ public class RestReferentielCollaborateurClient implements ReferentielCollaborat
 							d.nomComplet,
 							d.posteLibelle,
 							d.superieurCompteUtilisateurId,
-							d.superieurNomComplet))
+							d.superieurNomComplet,
+							d.familleMetierLibelle,
+							d.niveauSenioriteLibelle))
 					.toList();
 		} catch (Exception ex) {
 			log.error("Échec lecture population ACTIF depuis référentiel: {}", ex.getMessage());
@@ -106,5 +108,11 @@ public class RestReferentielCollaborateurClient implements ReferentielCollaborat
 		UUID superieurCompteUtilisateurId;
 		@JsonProperty("superieur_nom_complet")
 		String superieurNomComplet;
+		@JsonProperty("famille_metier_libelle")
+		@com.fasterxml.jackson.annotation.JsonAlias("familleMetierLibelle")
+		String familleMetierLibelle;
+		@JsonProperty("niveau_seniorite_libelle")
+		@com.fasterxml.jackson.annotation.JsonAlias("niveauSenioriteLibelle")
+		String niveauSenioriteLibelle;
 	}
 }

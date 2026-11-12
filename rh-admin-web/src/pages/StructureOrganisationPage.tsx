@@ -633,7 +633,7 @@ function UniteCard({
                       <div className="struct-person__name struct-ellipsis"><DetailLink type="collaborateur" id={t.identifiant} libelle={`${t.prenom} ${nomCollaborateur(t)}`} /></div>
                       <div className="struct-person__meta">{t.poste_libelle ?? t.fonction ?? t.matricule}</div>
                     </div>
-                    <StatusBadge statut={t.statut} />
+                    <StatusBadge referentiel="STATUT_COLLABORATEUR" statut={t.statut} />
                   </li>
                 ))}
               </ul>

@@ -1,13 +1,15 @@
 /**
  * Table unique code → libellé français de la Plateforme RH (D-L01.b, D-L01.e).
- * Une seule source : le lot 3 la remplacera par le paramétrage servi par l'API
- * (`enregistrerLibelles`). Un code absent s'affiche « Valeur non reconnue », jamais le code brut.
+ * Lot 3 : les domaines paramétrables (types, statuts, familles, niveaux, conclusions…) sont alimentés
+ * par l'API (`GET .../parametres/libelles` des trois services, voir `parametresStore.ts`) ; aucune liste
+ * de secours. Un code absent s'affiche « Valeur non reconnue », jamais le code brut.
+ * Restent en dur seulement les libellés de structure (étapes, actions, types de nœud…) qui ne sont pas
+ * des référentiels paramétrables.
  */
 
 export const VALEUR_NON_RECONNUE = 'Valeur non reconnue';
 
 export type Domaine =
-  | 'statut'
   | 'typeDemande'
   | 'typeConge'
   | 'typeDocument'
@@ -22,89 +24,43 @@ export type Domaine =
   | 'origineFormation'
   | 'cibleFormation'
   | 'typeSite'
-  | 'typePointage';
+  | 'typePointage'
+  | 'familleMetier'
+  | 'niveauSeniorite'
+  | 'niveauAlerte'
+  | 'conclusionAlerte'
+  | 'typeQuestion'
+  | 'echelleEtoiles'
+  | 'appreciation'
+  | 'etatEcart';
+
+/** Domaines remplis par l'API de paramétrage (lot 3). */
+export const DOMAINES_PARAMETRES: readonly Domaine[] = [
+  'typeDemande',
+  'typeConge',
+  'typeDocument',
+  'profilAcces',
+  'statutCollaborateur',
+  'typePlainte',
+  'familleMetier',
+  'niveauSeniorite',
+  'niveauAlerte',
+  'conclusionAlerte',
+  'typeQuestion',
+  'echelleEtoiles',
+  'appreciation',
+  'etatEcart',
+];
 
 type Table = Record<string, string>;
 
 const TABLES: Record<Domaine, Table> = {
-  statut: {
-    NOUVEAU: 'Nouveau',
-    EN_ANALYSE: 'En analyse',
-    EN_TRAITEMENT: 'En traitement',
-    EN_TRAITEMENT_RH: 'En traitement',
-    EN_COURS: 'En cours',
-    EN_ATTENTE: 'En attente',
-    EN_ATTENTE_VALIDATION: 'En attente de validation',
-    EN_ATTENTE_FILE: 'En attente',
-    EN_VALIDATION_SUPERIEUR: 'Chez le responsable',
-    EN_VALIDATION_RRH: 'En attente de validation RH',
-    EN_VALIDATION_RH: 'En attente de validation RH',
-    PLANIFIEE: 'Planifiée',
-    INTEGREE_PLAN: 'Acceptée',
-    APPROUVEE: 'Approuvée',
-    VALIDEE: 'Validée',
-    VALIDE: 'Valide',
-    CONFIRME: 'Confirmé',
-    RESOLU: 'Résolu',
-    TERMINEE: 'Terminée',
-    FERME: 'Fermé',
-    ACTIF: 'Actif',
-    ACTIVE: 'Active',
-    INACTIVE: 'Inactive',
-    SUSPENDU: 'Suspendu',
-    PUBLISHED: 'Publié',
-    DRAFT: 'Brouillon',
-    ARCHIVE: 'Archivé',
-    ARCHIVED: 'Archivé',
-    REJETEE: 'Refusée',
-    REFUSEE: 'Refusée',
-    ANNULEE: 'Annulée',
-    EXPIRE: 'Expiré',
-    EXPIREE: 'Expirée',
-    DISPONIBLE: 'Disponible',
-    REVOQUE: 'Révoqué',
-    EN_ATTENTE_VALIDATION_CROISEE: 'En cours',
-    VALIDEE_COLLABORATEUR: 'Validée par le collaborateur',
-    VALIDEE_SUPERIEUR: 'Validée par le responsable',
-    ARCHIVEE: 'Archivée',
-    OUVERTE: 'Ouverte',
-    TRAITEE: 'Traitée',
-  },
-  typeDemande: {
-    CONGE: 'Congé',
-    AUTORISATION_SORTIE: 'Autorisation de sortie',
-    ORDRE_MISSION: 'Ordre de mission',
-  },
-  typeConge: {
-    ANNUEL: 'Congé annuel',
-    MALADIE: 'Congé maladie',
-    MATERNITE: 'Congé maternité',
-    SANS_SOLDE: 'Congé sans solde',
-    AUTRE: 'Autre congé',
-  },
-  typeDocument: {
-    ATTESTATION_TRAVAIL: 'Attestation de travail',
-    ATTESTATION_SALAIRE: 'Attestation de salaire',
-    BULLETIN_PAIE: 'Bulletin de paie',
-    ATTESTATION_CNSS: 'Attestation CNSS',
-    FEUILLE_POINTAGE_MENSUELLE: 'Feuille de pointage mensuelle',
-    DOCUMENT_INTERNE: 'Document interne',
-    AUTRE: 'Autre',
-  },
+  typeDemande: {},
+  typeConge: {},
+  typeDocument: {},
   // Profils d'accès (D-H06) : le profil ne s'affiche que dans « Droits d'accès ».
-  profilAcces: {
-    COLLABORATEUR: 'Collaborateur',
-    RO: 'Responsable opérationnel',
-    RESPONSABLE: 'Responsable (département ou direction)',
-    RH: 'Ressources humaines',
-    DIRECTION: 'Direction (consultation)',
-    ADMIN: 'Administrateur',
-  },
-  statutCollaborateur: {
-    ACTIF: 'Actif',
-    SUSPENDU: 'Suspendu',
-    ARCHIVE: 'Archivé',
-  },
+  profilAcces: {},
+  statutCollaborateur: {},
   etapeDemande: {
     DEPOT: 'Dépôt',
     RO: 'Validation par le responsable',
@@ -137,10 +93,7 @@ const TABLES: Record<Domaine, Table> = {
     EN_COURS: 'En cours',
     INCOMPLET: 'Incomplet',
   },
-  typePlainte: {
-    INTERNE: 'Interne',
-    EXTERNE: 'Externe',
-  },
+  typePlainte: {},
   origineFormation: {
     CHEF_DEPARTEMENT: 'Chef de département',
     RESPONSABLE_OPERATIONNEL: 'Responsable opérationnel',
@@ -157,6 +110,14 @@ const TABLES: Record<Domaine, Table> = {
     ENTREE: 'Entrée',
     SORTIE: 'Sortie',
   },
+  familleMetier: {},
+  niveauSeniorite: {},
+  niveauAlerte: {},
+  conclusionAlerte: {},
+  typeQuestion: {},
+  echelleEtoiles: {},
+  appreciation: {},
+  etatEcart: {},
 };
 
 function cle(code: string): string {
@@ -179,9 +140,21 @@ export function optionsDomaine(domaine: Domaine, codes?: readonly string[]): Arr
   return (codes ?? Object.keys(TABLES[domaine])).map((c) => ({ valeur: c, libelle: libelle(domaine, c) }));
 }
 
-/** Point d'entrée du lot 3 : l'API remplace ou complète une table. */
+/** Complète une table (les codes déjà présents sont remplacés). */
 export function enregistrerLibelles(domaine: Domaine, table: Table): void {
   TABLES[domaine] = { ...TABLES[domaine], ...Object.fromEntries(Object.entries(table).map(([k, v]) => [cle(k), v])) };
+}
+
+/** Remplace entièrement la table d'un domaine paramétré (lot 3) : un code supprimé disparaît. */
+export function remplacerLibelles(domaine: Domaine, table: Table): void {
+  TABLES[domaine] = Object.fromEntries(Object.entries(table).map(([k, v]) => [cle(k), v]));
+}
+
+/** Libellé d'un niveau d'alerte d'écart ; « Aligné » est la constante « pas d'écart », hors paramétrage. */
+export function libelleNiveauAlerte(code: string | null | undefined): string {
+  if (!code) return '—';
+  if (cle(code) === 'ALIGNE') return 'Aligné';
+  return libelle('niveauAlerte', code);
 }
 
 /** Libellé d'un type de nœud d'organigramme, quelle que soit la graphie (« Direction Générale », DIRECTION_GENERALE…). */
@@ -223,18 +196,10 @@ export function libelleTypeFormation(valeur: string | null | undefined): string 
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
-const APPRECIATIONS: Record<string, string> = {
-  INSUFFISANT: 'Insuffisant',
-  A_AMELIORER: 'À améliorer',
-  SATISFAISANT: 'Satisfaisant',
-  POSITIF: 'Positif',
-  EXCELLENT: 'Excellent',
-};
-
-/** Appréciation d'une évaluation : le libellé du serveur s'il existe, sinon traduction du code. */
+/** Appréciation d'une évaluation : le libellé du serveur s'il existe, sinon le libellé paramétré du code. */
 export function libelleAppreciation(valeur: string | null | undefined): string | undefined {
   const v = (valeur ?? '').trim();
   if (!v) return undefined;
-  const cle = v.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase().replace(/[\s-]/g, '_');
-  return APPRECIATIONS[cle] ?? v;
+  const norm = v.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase().replace(/[\s-]/g, '_');
+  return libelleConnu('appreciation', norm) ?? v;
 }

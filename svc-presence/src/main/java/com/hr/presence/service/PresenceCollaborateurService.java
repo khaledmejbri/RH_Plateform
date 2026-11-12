@@ -71,6 +71,7 @@ public class PresenceCollaborateurService {
 	private final FacialIdentiteService identiteService;
 	private final ReferentielClient referentielClient;
 	private final PresenceProperties properties;
+	private final PresenceParametresService parametres;
 	private final Clock clock;
 
 	public PresenceCollaborateurService(
@@ -84,6 +85,7 @@ public class PresenceCollaborateurService {
 			FacialIdentiteService identiteService,
 			ReferentielClient referentielClient,
 			PresenceProperties properties,
+			PresenceParametresService parametres,
 			Clock clock) {
 		this.tempsTravail = tempsTravail;
 		this.pointageRepository = pointageRepository;
@@ -95,6 +97,7 @@ public class PresenceCollaborateurService {
 		this.identiteService = identiteService;
 		this.referentielClient = referentielClient;
 		this.properties = properties;
+		this.parametres = parametres;
 		this.clock = clock;
 	}
 
@@ -362,14 +365,14 @@ public class PresenceCollaborateurService {
 		return new Calcul(lignes, journees);
 	}
 
-	private static PointageJournee versPointage(PresencePointage p, PresenceSite site, Set<UUID> dejaDemandes,
+	private PointageJournee versPointage(PresencePointage p, PresenceSite site, Set<UUID> dejaDemandes,
 												Instant limiteAnciennete) {
 		boolean refus = p.getStatut().name().startsWith("REJETE_");
 		// D-P04 / D-P12.a : tout refus sauf « hors horaire », sans demande déjà faite, assez récent
 		boolean eligible = refus && p.getStatut() != PointageStatut.REJETE_HORS_HORAIRE
 				&& !dejaDemandes.contains(p.getId()) && p.getServerTs().isAfter(limiteAnciennete);
 		return new PointageJournee(p.getId(), p.getType(), LibellesPresence.type(p.getType()), p.getStatut(),
-				LibellesPresence.statut(p.getStatut()), p.getServerTs(), TempsTravailCalcul.estManuel(p),
+				parametres.libelleStatutPointage(p.getStatut()), p.getServerTs(), TempsTravailCalcul.estManuel(p),
 				LibellesPresence.motifRejet(p, site), eligible);
 	}
 }

@@ -109,6 +109,8 @@ class EvaluationDetailControllersTest {
 	@MockitoBean
 	private AlerteEcartTraitementService alerteService;
 	@MockitoBean
+	private com.hr.evaluation.service.ParametresEvaluation parametres;
+	@MockitoBean
 	private JwtDecoder jwtDecoder;
 
 	private final UUID id = UUID.randomUUID();

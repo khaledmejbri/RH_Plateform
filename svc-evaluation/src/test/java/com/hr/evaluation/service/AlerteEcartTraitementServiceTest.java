@@ -1,8 +1,6 @@
 package com.hr.evaluation.service;
 
-import com.hr.evaluation.domain.ConclusionAlerteEcart;
 import com.hr.evaluation.domain.EvenementAlerteEcart;
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.SensEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import com.hr.evaluation.dto.AlerteEcartDetail;
@@ -58,14 +56,14 @@ class AlerteEcartTraitementServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AlerteEcartTraitementService(repository);
-        alerte = nouvelleAlerte(NiveauEcart.ROUGE, StatutAlerteEcart.OUVERTE, 3);
+        service = new AlerteEcartTraitementService(repository, ParametresTestes.parDefaut());
+        alerte = nouvelleAlerte("ROUGE", StatutAlerteEcart.OUVERTE, 3);
         when(repository.findByIdForUpdate(alerte.getId())).thenReturn(Optional.of(alerte));
         when(repository.findById(alerte.getId())).thenReturn(Optional.of(alerte));
         when(repository.save(any(AlerteEcart.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
-    private AlerteEcart nouvelleAlerte(NiveauEcart niveau, StatutAlerteEcart statut, int joursPasses) {
+    private AlerteEcart nouvelleAlerte(String niveau, StatutAlerteEcart statut, int joursPasses) {
         AlerteEcart a = new AlerteEcart();
         a.setId(UUID.randomUUID());
         a.setCollaborateurCompteId(collabCompte);
@@ -85,12 +83,12 @@ class AlerteEcartTraitementServiceTest {
         l.setEtoilesCollaborateurDetection(5);
         l.setEtoilesRoDetection(2);
         l.setEcartDetection(3);
-        l.setNiveauDetection(NiveauEcart.ROUGE);
+        l.setNiveauDetection("ROUGE");
         l.setSensDetection(SensEcart.RO_INFERIEUR);
         l.setEtoilesCollaborateurActuelles(5);
         l.setEtoilesRoActuelles(2);
         l.setEcartActuel(3);
-        l.setNiveauActuel(NiveauEcart.ROUGE);
+        l.setNiveauActuel("ROUGE");
         l.setSensActuel(SensEcart.RO_INFERIEUR);
         a.ajouterLigne(l);
         return a;
@@ -125,7 +123,7 @@ class AlerteEcartTraitementServiceTest {
         service.prendreEnCharge(alerte.getId(), "x".repeat(1000), rh());
         assertThat(alerte.getStatut()).isEqualTo(StatutAlerteEcart.EN_COURS);
 
-        AlerteEcart autre = nouvelleAlerte(NiveauEcart.ORANGE, StatutAlerteEcart.OUVERTE, 1);
+        AlerteEcart autre = nouvelleAlerte("ORANGE", StatutAlerteEcart.OUVERTE, 1);
         when(repository.findByIdForUpdate(autre.getId())).thenReturn(Optional.of(autre));
         assertThatThrownBy(() -> service.prendreEnCharge(autre.getId(), "x".repeat(1001), rh()))
                 .satisfies(t -> assertErreur(t, 400, "VALIDATION_ERROR"));
@@ -156,12 +154,12 @@ class AlerteEcartTraitementServiceTest {
         AlerteEcartDetail detail = service.cloturer(alerte.getId(), "MANQUE_EFFORT", COMMENTAIRE_OK, rh());
 
         assertThat(detail.statut()).isEqualTo(StatutAlerteEcart.TRAITEE);
-        assertThat(detail.conclusion()).isEqualTo(ConclusionAlerteEcart.MANQUE_EFFORT);
+        assertThat(detail.conclusion()).isEqualTo("MANQUE_EFFORT");
         assertThat(detail.conclusionLibelle()).isEqualTo("Manque d'effort confirmé");
         assertThat(alerte.getHistorique()).singleElement().satisfies(h -> {
             assertThat(h.getTypeEvenement()).isEqualTo(EvenementAlerteEcart.CLOTURE);
             assertThat(h.getStatutAvant()).isEqualTo(StatutAlerteEcart.OUVERTE);
-            assertThat(h.getConclusion()).isEqualTo(ConclusionAlerteEcart.MANQUE_EFFORT);
+            assertThat(h.getConclusion()).isEqualTo("MANQUE_EFFORT");
             assertThat(h.getCommentaire()).isEqualTo(COMMENTAIRE_OK);
             assertThat(h.getAuteurCompteId()).isEqualTo(rhCompte);
         });
@@ -176,12 +174,32 @@ class AlerteEcartTraitementServiceTest {
 
     @Test
     void lesSeptConclusionsSontAcceptees() {
-        for (ConclusionAlerteEcart c : ConclusionAlerteEcart.values()) {
+        String[] codes = {"MANQUE_EFFORT", "SURESTIMATION_COLLABORATEUR", "SUIVI_INSUFFISANT_RO",
+                "SOUS_ESTIMATION_COLLABORATEUR", "NOTE_GONFLEE_RO", "ECART_JUSTIFIE", "AUTRE"};
+        for (String c : codes) {
             alerte.setStatut(StatutAlerteEcart.OUVERTE);
-            service.cloturer(alerte.getId(), c.name(), COMMENTAIRE_OK, rh());
+            service.cloturer(alerte.getId(), c, COMMENTAIRE_OK, rh());
             assertThat(alerte.getConclusion()).isEqualTo(c);
         }
-        assertThat(ConclusionAlerteEcart.values()).hasSize(7);
+        assertThat(codes).hasSize(7);
+    }
+
+    @Test
+    void conclusionDesactiveeEnBase_refuseMemeSiLeCacheDe30sLaCroitActive() {
+        // le cache (instantané) voit la conclusion active ; la base vient de la désactiver
+        var banc = ParametresTestes.avec(ParametresInstantane.de(ParametresTestes.initiales(), null));
+        var desactivee = ParametresTestes.initiales().stream()
+                .filter(v -> v.referentiel().equals("CONCLUSION_ALERTE") && v.code().equals("MANQUE_EFFORT"))
+                .findFirst().orElseThrow();
+        var entite = ParametresTestes.enEntite(desactivee);
+        entite.setActif(false);
+        when(banc.repository().findByReferentielAndCode("CONCLUSION_ALERTE", "MANQUE_EFFORT"))
+                .thenReturn(Optional.of(entite));
+        service = new AlerteEcartTraitementService(repository, banc.parametres());
+
+        assertThatThrownBy(() -> service.cloturer(alerte.getId(), "MANQUE_EFFORT", COMMENTAIRE_OK, rh()))
+                .satisfies(t -> assertErreur(t, 422, "CONCLUSION_INACTIVE"));
+        assertThat(alerte.getStatut()).isEqualTo(StatutAlerteEcart.OUVERTE);
     }
 
     @Test
@@ -290,7 +308,7 @@ class AlerteEcartTraitementServiceTest {
     @Test
     void detailExposeLibellesSensLignesHistoriqueEtPeutTraiter() {
         alerte.ajouterHistorique(AlerteEcartHistorique.systeme(EvenementAlerteEcart.CREATION,
-                null, StatutAlerteEcart.OUVERTE, null, NiveauEcart.ROUGE));
+                null, StatutAlerteEcart.OUVERTE, null, "ROUGE"));
 
         AlerteEcartDetail d = service.detail(alerte.getId(), rh());
 
@@ -325,7 +343,7 @@ class AlerteEcartTraitementServiceTest {
         l2.setEtoilesCollaborateurActuelles(1);
         l2.setEtoilesRoActuelles(4);
         l2.setEcartActuel(3);
-        l2.setNiveauActuel(NiveauEcart.ROUGE);
+        l2.setNiveauActuel("ROUGE");
         l2.setSensActuel(SensEcart.RO_SUPERIEUR);
         alerte.ajouterLigne(l2);
 
@@ -359,9 +377,9 @@ class AlerteEcartTraitementServiceTest {
     void listeTrieeAvantPagination_20Puis5() {
         List<AlerteEcart> liste = new ArrayList<>();
         for (int i = 0; i < 25; i++) {
-            liste.add(nouvelleAlerte(NiveauEcart.ORANGE, StatutAlerteEcart.OUVERTE, i + 1));
+            liste.add(nouvelleAlerte("ORANGE", StatutAlerteEcart.OUVERTE, i + 1));
         }
-        AlerteEcart urgente = nouvelleAlerte(NiveauEcart.URGENTE, StatutAlerteEcart.OUVERTE, 0);
+        AlerteEcart urgente = nouvelleAlerte("URGENTE", StatutAlerteEcart.OUVERTE, 0);
         liste.set(24, urgente);
         alertesEnBase(liste);
 
@@ -394,10 +412,14 @@ class AlerteEcartTraitementServiceTest {
         service.lister(null, null, null, null, null, 0, 100);
     }
 
+    private static long nombre(com.hr.evaluation.dto.AlerteEcartOuvertesParNiveau r, String code) {
+        return r.niveaux().stream().filter(n -> n.code().equals(code)).findFirst().orElseThrow().nombre();
+    }
+
     @Test
     void compteur_nonClosesDontUrgentes() {
         when(repository.countByStatutNot(StatutAlerteEcart.TRAITEE)).thenReturn(4L);
-        when(repository.countByStatutNotAndNiveauCourant(StatutAlerteEcart.TRAITEE, NiveauEcart.URGENTE)).thenReturn(1L);
+        when(repository.countByStatutNotAndNiveauCourantIn(StatutAlerteEcart.TRAITEE, List.of("URGENTE"))).thenReturn(1L);
 
         var c = service.compteur();
 
@@ -410,7 +432,7 @@ class AlerteEcartTraitementServiceTest {
         // Le service de traitement n'a aucune dépendance sur l'évaluation, le score ou la couleur (D-E08.d) :
         // son seul collaborateur est le dépôt des alertes.
         assertThat(AlerteEcartTraitementService.class.getDeclaredConstructors()[0].getParameterTypes())
-                .containsExactly(AlerteEcartRepository.class);
+                .containsExactly(AlerteEcartRepository.class, ParametresEvaluation.class);
     }
 
     // --- Lot 0 UAT : D-E12.c (EVA-9) ---
@@ -418,13 +440,14 @@ class AlerteEcartTraitementServiceTest {
     @Test
     void ouvertesParNiveauCompteUneUrgenteOuverteEtInterrogeSeulementOuverteEtEnCours() {
         when(repository.compterParNiveau(any())).thenReturn(java.util.Collections.singletonList(
-                new Object[] {NiveauEcart.URGENTE, 1L}));
+                new Object[] {"URGENTE", 1L}));
 
         var r = service.ouvertesParNiveau(null);
 
-        assertThat(r.urgente()).isEqualTo(1);
-        assertThat(r.orange()).isZero();
-        assertThat(r.rouge()).isZero();
+        assertThat(nombre(r, "URGENTE")).isEqualTo(1);
+        assertThat(nombre(r, "ORANGE")).isZero();
+        assertThat(nombre(r, "ROUGE")).isZero();
+        assertThat(r.niveaux()).extracting(n -> n.code()).containsExactly("ORANGE", "ROUGE", "URGENTE");
         assertThat(r.total()).isEqualTo(1);
         // une alerte TRAITEE n'est jamais comptée : seuls OUVERTE et EN_COURS sont demandés au dépôt
         verify(repository).compterParNiveau(org.mockito.ArgumentMatchers.argThat(statuts ->
@@ -436,13 +459,13 @@ class AlerteEcartTraitementServiceTest {
     void ouvertesParNiveauAvecCampagneUtiliseLaRequeteParCampagne() {
         UUID campagne = UUID.randomUUID();
         when(repository.compterParNiveauEtCampagne(any(), eq(campagne))).thenReturn(List.of(
-                new Object[] {NiveauEcart.ORANGE, 2L}, new Object[] {NiveauEcart.ROUGE, 3L}));
+                new Object[] {"ORANGE", 2L}, new Object[] {"ROUGE", 3L}));
 
         var r = service.ouvertesParNiveau(campagne);
 
-        assertThat(r.orange()).isEqualTo(2);
-        assertThat(r.rouge()).isEqualTo(3);
-        assertThat(r.urgente()).isZero();
+        assertThat(nombre(r, "ORANGE")).isEqualTo(2);
+        assertThat(nombre(r, "ROUGE")).isEqualTo(3);
+        assertThat(nombre(r, "URGENTE")).isZero();
         assertThat(r.total()).isEqualTo(5);
         verify(repository, never()).compterParNiveau(any());
     }

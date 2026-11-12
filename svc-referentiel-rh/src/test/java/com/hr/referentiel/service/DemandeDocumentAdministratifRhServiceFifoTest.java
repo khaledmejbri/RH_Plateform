@@ -1,6 +1,5 @@
 package com.hr.referentiel.service;
 
-import com.hr.referentiel.config.ReferentielEvenementsProperties;
 import com.hr.referentiel.domain.StatutDocumentAdministratifDemandeRh;
 import com.hr.referentiel.dto.DemandeDocumentAdministratifRhResponse;
 import com.hr.referentiel.dto.DemandeDocumentDisponibleRequest;
@@ -51,7 +50,7 @@ class DemandeDocumentAdministratifRhServiceFifoTest {
 	private CollaborateurConnecteService collaborateurConnecteService;
 
 	@Mock
-	private ReferentielEvenementsProperties evenementsProperties;
+	private ParametreService parametreService;
 
 	@Mock
 	private RhNotificationPublisher notificationPublisher;

@@ -8,13 +8,13 @@ import {
 import { getDemandesHeuresSup } from '../../api/heuresSupApi';
 import { libelleProfilAcces } from '../../api/rhClient';
 import { libelleNiveauSeniorite } from '../../api/evaluationCatalog';
-import { LIBELLES_STATUT_HEURES_SUP } from '../../api/heuresSupApi';
 import { Chip, Icon, StatusBadge, type IconName, type Tone } from '../../components/ui';
 import {
   formatDate, formatDateHeure, formatDuree, formatHeuresMinutes, formatNote, nomComplet, TIRET,
 } from '../../utils/format';
 import { intituleDemande, periodeDemande } from '../../utils/demandes';
-import { libelle, libelleTypeFormation } from '../../utils/libelles';
+import { libelle, libelleNiveauAlerte, libelleTypeFormation } from '../../utils/libelles';
+import { libelleReferentiel } from '../../utils/parametresStore';
 import { Charge } from '../Etats';
 import Onglets from '../Onglets';
 import DetailLink, { LienPersonne } from '../DetailLink';
@@ -247,7 +247,7 @@ function OngletDemandes({ id }: { id: string }) {
               <td><DetailLink type="demande" id={d.identifiant} libelle={d.numero ?? intituleDemande(d)} /></td>
               <td>{intituleDemande(d)}</td>
               <td>{periodeDemande(d)}</td>
-              <td><StatusBadge statut={d.statut} /></td>
+              <td><StatusBadge referentiel="STATUT_DEMANDE" statut={d.statut} /></td>
               <td>{formatDateHeure(d.cree_le)}</td>
             </tr>
           ))}
@@ -267,7 +267,7 @@ function OngletDocuments({ id }: { id: string }) {
             <tr key={d.identifiant}>
               <td><DetailLink type="document" id={d.identifiant} libelle={d.numero ?? libelle('typeDocument', d.type_document)} /></td>
               <td>{libelle('typeDocument', d.type_document)}</td>
-              <td><StatusBadge statut={d.statut} /></td>
+              <td><StatusBadge referentiel="STATUT_DOCUMENT" statut={d.statut} /></td>
               <td>{formatDateHeure(d.cree_le)}</td>
             </tr>
           ))}
@@ -293,7 +293,7 @@ function OngletFormations({ id }: { id: string }) {
               <td>{libelleTypeFormation(f.type_formation)}</td>
               <td>{f.organisme}</td>
               <td>{roleFormation(f, id)}</td>
-              <td><StatusBadge statut={f.statut} /></td>
+              <td><StatusBadge referentiel="STATUT_FORMATION" statut={f.statut} /></td>
             </tr>
           ))}
         </Tableau>
@@ -346,7 +346,7 @@ function OngletPointages({ id, etat, recharger }: { id: string; etat: EtatPresen
                       <td><DetailLink type="pointage-manuel" id={m.id} libelle={m.numero ?? 'Pointage manuel'} /></td>
                       <td>{m.type === 'ENTREE' ? 'Entrée' : m.type === 'SORTIE' ? 'Sortie' : TIRET}</td>
                       <td>{formatDateHeure(m.heure_declaree)}</td>
-                      <td><StatusBadge statut={m.statut} /></td>
+                      <td><StatusBadge referentiel="STATUT_DEMANDE_MANUELLE" statut={m.statut} /></td>
                     </tr>
                   ))}
                 </Tableau>
@@ -407,7 +407,7 @@ function OngletTemps({ id, etat, recharger }: { id: string; etat: EtatPresence; 
                 <td><DetailLink type="heures-sup" id={d.id} libelle={d.numero ?? 'Heures supplémentaires'} /></td>
                 <td><DetailLink type="site" id={d.site_id} libelle={d.site_libelle} /></td>
                 <td>{formatDate(d.date_debut)}{d.date_fin !== d.date_debut ? ` au ${formatDate(d.date_fin)}` : ''}</td>
-                <td>{LIBELLES_STATUT_HEURES_SUP[d.statut] ?? TIRET}</td>
+                <td>{libelleReferentiel('STATUT_HEURES_SUP', d.statut)}</td>
               </tr>
             ))}
           </Tableau>
@@ -428,7 +428,7 @@ function OngletEvaluations({ id }: { id: string }) {
             {l.map((e) => (
               <tr key={e.identifiant}>
                 <td><DetailLink type="campagne" id={e.campagneId} libelle={e.campagneNom} /></td>
-                <td><StatusBadge statut={e.statut} /></td>
+                <td><StatusBadge referentiel="STATUT_EVALUATION" statut={e.statut} /></td>
                 <td>{e.scoreSur20 == null ? TIRET : formatNote(e.scoreSur20, 20, 0)}</td>
                 <td><DetailLink type="evaluation" id={e.identifiant} libelle={`Évaluation ${e.campagneNom ?? ''}`.trim()}>Voir l’évaluation</DetailLink></td>
               </tr>
@@ -443,8 +443,8 @@ function OngletEvaluations({ id }: { id: string }) {
             {l.elements.map((a) => (
               <tr key={a.identifiant}>
                 <td><DetailLink type="alerte" id={a.identifiant} libelle={`Alerte d’écart ${a.campagneNom ?? ''}`.trim()}>{a.campagneNom ?? 'Alerte d’écart'}</DetailLink></td>
-                <td>{niveauAlerteLibelle(a.niveau)}</td>
-                <td>{libelle('statut', a.statut)}</td>
+                <td>{libelleNiveauAlerte(a.niveau)}</td>
+                <td>{libelleReferentiel('STATUT_ALERTE', a.statut)}</td>
                 <td>{formatDate(a.detecteeLe)}</td>
               </tr>
             ))}
@@ -453,10 +453,6 @@ function OngletEvaluations({ id }: { id: string }) {
       </Charge>
     </>
   );
-}
-
-function niveauAlerteLibelle(n: string): string {
-  return ({ ORANGE: 'Alerte', ROUGE: 'Critique', URGENTE: 'Urgente', ALIGNE: 'Aligné' } as Record<string, string>)[n] ?? 'Valeur non reconnue';
 }
 
 function OngletPlaintes({ id }: { id: string }) {
@@ -470,7 +466,7 @@ function OngletPlaintes({ id }: { id: string }) {
               <td><DetailLink type="plainte" id={p.identifiant} libelle={p.numero_ticket} /></td>
               <td>{p.titre}</td>
               <td>{libelle('typePlainte', p.type_plainte)}</td>
-              <td><StatusBadge statut={p.statut} /></td>
+              <td><StatusBadge referentiel="STATUT_PLAINTE" statut={p.statut} /></td>
               <td>{formatDateHeure(p.cree_le)}</td>
             </tr>
           ))}

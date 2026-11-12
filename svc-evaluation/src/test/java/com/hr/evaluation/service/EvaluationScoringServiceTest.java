@@ -63,11 +63,11 @@ class EvaluationScoringServiceTest {
 		var parQuestion = analyse.gaps().stream().collect(java.util.stream.Collectors.toMap(
 				g -> g.questionId(), g -> g));
 		assertThat(parQuestion.get(t42.toString()).niveauEcart())
-				.isEqualTo(com.hr.evaluation.domain.NiveauEcart.ORANGE);
+				.isEqualTo("ORANGE");
 		assertThat(parQuestion.get(t51.toString()).niveauEcart())
-				.isEqualTo(com.hr.evaluation.domain.NiveauEcart.URGENTE);
+				.isEqualTo("URGENTE");
 		assertThat(parQuestion.get(t32.toString()).niveauEcart())
-				.isEqualTo(com.hr.evaluation.domain.NiveauEcart.ALIGNE);
+				.isEqualTo("ALIGNE");
 		assertThat(parQuestion.get(t42.toString()).competenceTechnique()).isTrue();
 		assertThat(parQuestion.get(g42.toString()).niveauEcart()).isNull();
 		assertThat(parQuestion.get(g42.toString()).competenceTechnique()).isFalse();

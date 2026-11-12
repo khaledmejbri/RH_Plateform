@@ -68,6 +68,10 @@ public class CollaborateurResponse {
 	@JsonProperty("niveau_seniorite")
 	private String niveauSeniorite;
 
+	/** Libellé courant du niveau (lot 3) : ajouté après le cache des fiches, jamais mis en cache. */
+	@JsonProperty("niveau_seniorite_libelle")
+	private String niveauSenioriteLibelle;
+
 	@JsonProperty("cree_le")
 	private Instant creeLe;
 
@@ -243,6 +247,46 @@ public class CollaborateurResponse {
 
 	public void setFamilleMetierLibelle(String familleMetierLibelle) {
 		this.familleMetierLibelle = familleMetierLibelle;
+	}
+
+	public String getNiveauSenioriteLibelle() {
+		return niveauSenioriteLibelle;
+	}
+
+	public void setNiveauSenioriteLibelle(String niveauSenioriteLibelle) {
+		this.niveauSenioriteLibelle = niveauSenioriteLibelle;
+	}
+
+	/**
+	 * Copie portant les libellés courants. La réponse mise en cache ne contient que des codes (ADR-UAT-lot3 § 4) :
+	 * l'instance du cache n'est jamais modifiée.
+	 */
+	public CollaborateurResponse avecLibelles(String familleLibelle, String niveauLibelle) {
+		CollaborateurResponse c = new CollaborateurResponse();
+		c.identifiant = identifiant;
+		c.matricule = matricule;
+		c.prenom = prenom;
+		c.nom = nom;
+		c.courrielProfessionnel = courrielProfessionnel;
+		c.posteLibelle = posteLibelle;
+		c.fonction = fonction;
+		c.qualificationAffectation = qualificationAffectation;
+		c.qualite = qualite;
+		c.affectation = affectation;
+		c.departementLibelle = departementLibelle;
+		c.dateRecrutement = dateRecrutement;
+		c.statut = statut;
+		c.unite = unite;
+		c.superieurIdentifiant = superieurIdentifiant;
+		c.compteUtilisateurId = compteUtilisateurId;
+		c.profilAcces = profilAcces;
+		c.familleMetierCode = familleMetierCode;
+		c.familleMetierLibelle = familleLibelle;
+		c.niveauSeniorite = niveauSeniorite;
+		c.niveauSenioriteLibelle = niveauLibelle;
+		c.creeLe = creeLe;
+		c.modifieLe = modifieLe;
+		return c;
 	}
 
 	public String getNiveauSeniorite() {

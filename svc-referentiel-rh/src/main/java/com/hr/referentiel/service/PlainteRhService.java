@@ -47,10 +47,13 @@ public class PlainteRhService {
 	private final PlainteRhRepository plainteRhRepository;
 	private final CollaborateurConnecteService collaborateurConnecteService;
 	private final RhNotificationPublisher notificationPublisher;
+	private final ParametreService parametreService;
 
 	public PlainteRhService(PlainteRhRepository plainteRhRepository,
 			CollaborateurConnecteService collaborateurConnecteService,
-			RhNotificationPublisher notificationPublisher) {
+			RhNotificationPublisher notificationPublisher,
+			ParametreService parametreService) {
+		this.parametreService = parametreService;
 		this.plainteRhRepository = plainteRhRepository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
 		this.notificationPublisher = notificationPublisher;
@@ -133,7 +136,10 @@ public class PlainteRhService {
 	@Transactional(readOnly = true)
 	public PlainteSuiviResponse suivi(UUID id, Jwt jwt, boolean rh) {
 		PlainteRh p = chargerAutorisee(id, jwt, rh);
-		return new PlainteSuiviResponse(p.getId(), p.getTypePlainte(), p.getStatut(), etapesPlainte(p.getStatut()));
+		PlainteSuiviResponse suivi = new PlainteSuiviResponse(p.getId(), p.getTypePlainte(), p.getStatut(),
+				etapesPlainte(p.getStatut()));
+		suivi.setStatutLibelle(parametreService.libelleOuInconnu("STATUT_PLAINTE", p.getStatut().name()));
+		return suivi;
 	}
 
 	@Transactional
@@ -292,7 +298,7 @@ public class PlainteRhService {
 	}
 
 	private PlainteRhResponse toResponse(PlainteRh p) {
-		return new PlainteRhResponse(
+		PlainteRhResponse r = new PlainteRhResponse(
 				p.getId(),
 				p.getNumeroTicket(),
 				p.getTypePlainte(),
@@ -309,5 +315,7 @@ public class PlainteRhService {
 				etatValidationRo(p),
 				p.getCreeLe(),
 				p.getModifieLe());
+		r.setStatutLibelle(parametreService.libelleOuInconnu("STATUT_PLAINTE", p.getStatut().name()));
+		return r;
 	}
 }

@@ -7,7 +7,6 @@ import com.hr.referentiel.dto.*;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.entity.DemandeAdministrativeRh;
 import com.hr.referentiel.entity.DemandeAdminWorkflowHistory;
-import com.hr.referentiel.domain.TypeConge;
 import com.hr.referentiel.kafka.RhNotificationPublisher;
 import com.hr.referentiel.repository.CollaborateurRepository;
 import com.hr.referentiel.repository.DemandeAdministrativeRhRepository;
@@ -47,6 +46,7 @@ public class DemandeAdministrativeRhService {
 	private final RhNotificationPublisher notificationPublisher;
 	private final DemandeAdminWorkflowHistoryRepository workflowHistoryRepository;
 	private final NumeroLisibleService numeroLisibleService;
+	private final ParametreService parametreService;
 
 	public DemandeAdministrativeRhService(
 			DemandeAdministrativeRhRepository demandeRepo,
@@ -55,7 +55,9 @@ public class DemandeAdministrativeRhService {
 			DemandeAdministrativeValidationService validationService,
 			RhNotificationPublisher notificationPublisher,
 			DemandeAdminWorkflowHistoryRepository workflowHistoryRepository,
-			NumeroLisibleService numeroLisibleService) {
+			NumeroLisibleService numeroLisibleService,
+			ParametreService parametreService) {
+		this.parametreService = parametreService;
 		this.demandeRepo = demandeRepo;
 		this.collaborateurRepository = collaborateurRepository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
@@ -70,7 +72,7 @@ public class DemandeAdministrativeRhService {
 	@Transactional
 	public DemandeAdministrativeRhResponse creer(DemandeAdministrativeRhCreationRequest req, Jwt jwt) {
 		Collaborateur demandeur = exigerCollaborateurDetail(jwt);
-		validationService.validerContenu(req.getTypeDemande(),
+		String codeConge = validationService.validerContenu(req.getTypeDemande(),
 				req.getContenu() != null ? req.getContenu() : new HashMap<>());
 
 		DemandeAdministrativeRh d = new DemandeAdministrativeRh();
@@ -81,6 +83,11 @@ public class DemandeAdministrativeRhService {
 		d.setTypeDemande(req.getTypeDemande());
 		d.setDemandeur(demandeur);
 		d.setContenu(new HashMap<>(req.getContenu()));
+		if (codeConge != null) {
+			// graphie canonique du code, et marque « déjà utilisé » du type de congé (ADR-UAT-lot3 § 6)
+			d.getContenu().put("type_conge", codeConge);
+			parametreService.marquerUtilisee("TYPE_CONGE", codeConge);
+		}
 		DemandeAdministrativePeriodeHelper.appliquerPeriodeIndexee(d);
 
 		Collaborateur valideurAttendu = managerNoeudActif(demandeur);
@@ -94,7 +101,8 @@ public class DemandeAdministrativeRhService {
 		// Enregistrer l'historique de workflow
 		enregistrerWorkflow(saved, ActionWorkflowAdministratif.CREATION_DEMANDE,
 			demandeur.getId(), demandeur.getPrenom() + " " + demandeur.getNom(),
-			commentaireCreation(req.getTypeDemande(), d.getContenu()));
+			commentaireCreation(req.getTypeDemande(), d.getContenu(),
+				code -> ParametreService.enMinuscule(parametreService.libelleOuDefaut("TYPE_CONGE", code))));
 		enregistrerWorkflow(saved, ActionWorkflowAdministratif.SOUMISE_A_RO,
 			demandeur.getId(), demandeur.getPrenom() + " " + demandeur.getNom(),
 			"Demande soumise pour validation");
@@ -427,11 +435,15 @@ public class DemandeAdministrativeRhService {
 	}
 
 	/** D-L01.b : commentaire d'historique sans code, ex. « Demande de congé annuel créée ». */
-	static String commentaireCreation(TypeDemandeAdministrativeRh type, Map<String, Object> contenu) {
+	static String commentaireCreation(TypeDemandeAdministrativeRh type, Map<String, Object> contenu,
+			java.util.function.Function<String, String> libelleConge) {
 		if (type == TypeDemandeAdministrativeRh.CONGE && contenu != null
 				&& contenu.get("type_conge") instanceof String brut) {
 			try {
-				return "Demande de " + TypeConge.parse(brut).getLibelle() + " créée";
+				String libelle = libelleConge.apply(brut);
+				if (libelle != null && !libelle.isBlank()) {
+					return "Demande de " + libelle + " créée";
+				}
 			} catch (IllegalArgumentException ignore) {
 				// type de congé non reconnu : libellé générique ci-dessous
 			}
@@ -524,6 +536,12 @@ public class DemandeAdministrativeRhService {
 				d.getContenu(), d.getPeriodeDebut(), d.getPeriodeFin(),
 				d.getMotifRefus(), d.getCreeLe(), d.getModifieLe());
 		r.setNumero(d.getNumero());
+		r.setStatutLibelle(parametreService.libelleOuInconnu("STATUT_DEMANDE", d.getStatut().name()));
+		if (d.getTypeDemande() == TypeDemandeAdministrativeRh.CONGE && d.getContenu() != null
+				&& d.getContenu().get("type_conge") != null) {
+			r.setTypeCongeLibelle(parametreService.libelleOuInconnu("TYPE_CONGE",
+					String.valueOf(d.getContenu().get("type_conge"))));
+		}
 		Collaborateur demandeur = d.getDemandeur();
 		r.setDemandeurNom(nomComplet(demandeur));
 		r.setDemandeurMatricule(demandeur.getMatricule());

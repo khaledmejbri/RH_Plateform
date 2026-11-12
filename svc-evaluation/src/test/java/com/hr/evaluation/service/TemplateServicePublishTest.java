@@ -38,7 +38,11 @@ class TemplateServicePublishTest {
 
     @BeforeEach
     void setUp() {
-        templateService = new TemplateService(templateRepository, questionRepository);
+        var client = org.mockito.Mockito.mock(com.hr.evaluation.client.ReferentielParametresClient.class);
+        org.mockito.Mockito.lenient().when(client.utiliser(org.mockito.ArgumentMatchers.anyList())).thenReturn(
+                new com.hr.evaluation.client.ReferentielParametresClient.Resultat(java.util.List.of(), java.util.List.of(), java.util.List.of()));
+        templateService = new TemplateService(templateRepository, questionRepository, client,
+                ParametresTestes.parDefaut());
     }
 
     @Test

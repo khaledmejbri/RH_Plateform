@@ -1,8 +1,6 @@
 package com.hr.evaluation.entity;
 
-import com.hr.evaluation.domain.ConclusionAlerteEcart;
 import com.hr.evaluation.domain.EvenementAlerteEcart;
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import jakarta.persistence.*;
 import org.hibernate.annotations.Immutable;
@@ -57,24 +55,21 @@ public class AlerteEcartHistorique {
     @Column(name = "statut_apres", updatable = false, length = 20)
     private StatutAlerteEcart statutApres;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "niveau_avant", updatable = false, length = 20)
-    private NiveauEcart niveauAvant;
+    @Column(name = "niveau_avant", updatable = false, length = 40)
+    private String niveauAvant;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "niveau_apres", updatable = false, length = 20)
-    private NiveauEcart niveauApres;
+    @Column(name = "niveau_apres", updatable = false, length = 40)
+    private String niveauApres;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "conclusion", updatable = false, length = 40)
-    private ConclusionAlerteEcart conclusion;
+    private String conclusion;
 
     @Column(name = "commentaire", updatable = false, length = 1000)
     private String commentaire;
 
     /** Événement automatique (auteur SYSTEME) : création, recalcul, réouverture. */
     public static AlerteEcartHistorique systeme(EvenementAlerteEcart type, StatutAlerteEcart statutAvant,
-            StatutAlerteEcart statutApres, NiveauEcart niveauAvant, NiveauEcart niveauApres) {
+            StatutAlerteEcart statutApres, String niveauAvant, String niveauApres) {
         AlerteEcartHistorique h = new AlerteEcartHistorique();
         h.typeEvenement = type;
         h.auteurCompteId = null;
@@ -89,8 +84,8 @@ public class AlerteEcartHistorique {
 
     /** Action d'un utilisateur RH / ADMIN : prise en charge ou clôture (auteur lu dans le JWT). */
     public static AlerteEcartHistorique par(EvenementAlerteEcart type, UUID auteurCompteId, String auteurLibelle,
-            StatutAlerteEcart statutAvant, StatutAlerteEcart statutApres, NiveauEcart niveau,
-            ConclusionAlerteEcart conclusion, String commentaire) {
+            StatutAlerteEcart statutAvant, StatutAlerteEcart statutApres, String niveau,
+            String conclusion, String commentaire) {
         AlerteEcartHistorique h = new AlerteEcartHistorique();
         h.typeEvenement = type;
         h.auteurCompteId = auteurCompteId;
@@ -114,8 +109,8 @@ public class AlerteEcartHistorique {
     public Instant getCreeLe() { return creeLe; }
     public StatutAlerteEcart getStatutAvant() { return statutAvant; }
     public StatutAlerteEcart getStatutApres() { return statutApres; }
-    public NiveauEcart getNiveauAvant() { return niveauAvant; }
-    public NiveauEcart getNiveauApres() { return niveauApres; }
-    public ConclusionAlerteEcart getConclusion() { return conclusion; }
+    public String getNiveauAvant() { return niveauAvant; }
+    public String getNiveauApres() { return niveauApres; }
+    public String getConclusion() { return conclusion; }
     public String getCommentaire() { return commentaire; }
 }

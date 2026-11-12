@@ -1,7 +1,6 @@
 package com.hr.evaluation.service;
 
 import com.hr.evaluation.domain.EvenementAlerteEcart;
-import com.hr.evaluation.domain.NiveauEcart;
 import com.hr.evaluation.domain.StatutAlerteEcart;
 import com.hr.evaluation.dto.AlerteEcartDetail;
 import com.hr.evaluation.dto.AlerteEcartResume;
@@ -20,8 +19,8 @@ class AlerteEcartMapperLisibiliteTest {
     private static AlerteEcart alerte() {
         AlerteEcart a = new AlerteEcart();
         a.setId(UUID.randomUUID());
-        a.setNiveauCourant(NiveauEcart.ORANGE);
-        a.setNiveauDetection(NiveauEcart.ORANGE);
+        a.setNiveauCourant("ORANGE");
+        a.setNiveauDetection("ORANGE");
         a.setStatut(StatutAlerteEcart.EN_COURS);
         a.setDetecteeLe(Instant.now());
         return a;
@@ -33,11 +32,11 @@ class AlerteEcartMapperLisibiliteTest {
         a.setCollaborateurNom("Sarra Khemiri");
         a.setCampagneNom("T4 2026");
         a.ajouterHistorique(AlerteEcartHistorique.systeme(EvenementAlerteEcart.CREATION,
-                null, StatutAlerteEcart.OUVERTE, null, NiveauEcart.ORANGE));
+                null, StatutAlerteEcart.OUVERTE, null, "ORANGE"));
         a.ajouterHistorique(AlerteEcartHistorique.par(EvenementAlerteEcart.PRISE_EN_CHARGE, UUID.randomUUID(),
-                "Amel Trabelsi", StatutAlerteEcart.OUVERTE, StatutAlerteEcart.EN_COURS, NiveauEcart.ORANGE, null, null));
+                "Amel Trabelsi", StatutAlerteEcart.OUVERTE, StatutAlerteEcart.EN_COURS, "ORANGE", null, null));
 
-        AlerteEcartDetail d = AlerteEcartMapper.detail(a, true, null);
+        AlerteEcartDetail d = AlerteEcartMapper.detail(ParametresTestes.parDefaut(), a, true, null);
 
         assertThat(d.historique()).hasSize(2);
         AlerteEcartDetail.Evenement creation = d.historique().get(0);
@@ -57,11 +56,11 @@ class AlerteEcartMapperLisibiliteTest {
     void nomAbsentRemplaceParUnLibelleJamaisParUnIdentifiant() {
         AlerteEcart a = alerte();
 
-        AlerteEcartResume r = AlerteEcartMapper.resume(a);
+        AlerteEcartResume r = AlerteEcartMapper.resume(ParametresTestes.parDefaut(), a);
 
         assertThat(r.collaborateurNom()).isEqualTo("Collaborateur introuvable");
         assertThat(r.campagneNom()).isEqualTo("Campagne introuvable");
-        assertThat(AlerteEcartMapper.detail(a, false, "LECTURE_SEULE").collaborateurNom())
+        assertThat(AlerteEcartMapper.detail(ParametresTestes.parDefaut(), a, false, "LECTURE_SEULE").collaborateurNom())
                 .isEqualTo("Collaborateur introuvable");
     }
 
@@ -73,8 +72,8 @@ class AlerteEcartMapperLisibiliteTest {
         a.setCollaborateurFicheId(collaborateur);
         a.setSuperieurFicheId(superieur);
 
-        AlerteEcartResume r = AlerteEcartMapper.resume(a);
-        AlerteEcartDetail d = AlerteEcartMapper.detail(a, true, null);
+        AlerteEcartResume r = AlerteEcartMapper.resume(ParametresTestes.parDefaut(), a);
+        AlerteEcartDetail d = AlerteEcartMapper.detail(ParametresTestes.parDefaut(), a, true, null);
 
         assertThat(r.collaborateurId()).isEqualTo(collaborateur);
         assertThat(r.superieurId()).isEqualTo(superieur);

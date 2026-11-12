@@ -44,6 +44,10 @@ public class PlainteRhResponse {
 	@JsonProperty("statut")
 	private final StatutPlainteRh statut;
 
+	/** Libellé courant du statut (lot 3, paramétrable) ; renseigné par le service après construction. */
+	@JsonProperty("statut_libelle")
+	private String statutLibelle;
+
 	@JsonProperty("commentaire_rh")
 	private final String commentaireRh;
 
@@ -95,6 +99,8 @@ public class PlainteRhResponse {
 	public List<String> getPiecesJointes() { return piecesJointes; }
 	public String getTranscriptionAudio() { return transcriptionAudio; }
 	public StatutPlainteRh getStatut() { return statut; }
+	public String getStatutLibelle() { return statutLibelle; }
+	public void setStatutLibelle(String statutLibelle) { this.statutLibelle = statutLibelle; }
 	public String getCommentaireRh() { return commentaireRh; }
 	public List<Map<String, String>> getLogActions() { return logActions; }
 	public Instant getCreeLe() { return creeLe; }

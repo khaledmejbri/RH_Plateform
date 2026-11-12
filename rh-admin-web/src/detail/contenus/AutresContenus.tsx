@@ -4,12 +4,12 @@ import {
   getEvaluationsCampagne, getFicheUnite, getFormation, getFormationHistorique, getHeuresSupComptees, getPlainte,
   getSyntheseSite, getDemandesDeUnite, type QuestionEvaluation,
 } from '../../api/detailApi';
-import { getAlerteEcart, getAlertesEcart, LIBELLES_NIVEAU_ECART, LIBELLES_STATUT_ALERTE, LIBELLES_EVENEMENT } from '../../api/alertesEcartApi';
+import { getAlerteEcart, getAlertesEcart, LIBELLES_EVENEMENT } from '../../api/alertesEcartApi';
 import {
   getDemandeAdministrativeHistorique, getDemandeAdministrativeSuivi,
 } from '../../api/rhClient';
 import { getHoraireSite, getPresencePointages, getPresenceSite, JOURS_SEMAINE } from '../../api/presenceApi';
-import { LIBELLES_ETAT_COMPTEES, LIBELLES_STATUT_HEURES_SUP, type HeuresComptees } from '../../api/heuresSupApi';
+import { LIBELLES_ETAT_COMPTEES, type HeuresComptees } from '../../api/heuresSupApi';
 import { LIBELLES_TYPE_CAMPAGNE, type CampaignType } from '../../api/evaluationApi';
 import { ALERTE_META, appreciationFromScore, type CouleurAlerte } from '../../api/evaluationCatalog';
 import { StatusBadge } from '../../components/ui';
@@ -17,7 +17,8 @@ import {
   formatDate, formatDateHeure, formatDuree, formatHeuresMinutes, formatPeriode, formatPourcentage, TIRET,
 } from '../../utils/format';
 import { commentaireLisible, contenuLignes, intituleDemande, periodeDemande } from '../../utils/demandes';
-import { libelle, libelleAppreciation, libelleConnu, libelleTypeFormation } from '../../utils/libelles';
+import { libelle, libelleAppreciation, libelleConnu, libelleNiveauAlerte, libelleTypeFormation } from '../../utils/libelles';
+import { libelleReferentiel } from '../../utils/parametresStore';
 import { Charge } from '../Etats';
 import Onglets from '../Onglets';
 import DetailLink, { LienPersonne } from '../DetailLink';
@@ -197,7 +198,7 @@ export function CampagneContenu({ id, onglet, onOnglet }: Props) {
         <>
           <Champs>
             <Champ label="Type">{LIBELLES_TYPE_CAMPAGNE[c.type as CampaignType] ?? TIRET}</Champ>
-            <Champ label="Statut"><StatusBadge statut={c.statut} /></Champ>
+            <Champ label="Statut"><StatusBadge referentiel="STATUT_CAMPAGNE" statut={c.statut} /></Champ>
             <Champ label="Période">{c.dateDebut && c.dateFin ? formatPeriode(c.dateDebut, c.dateFin) : null}</Champ>
             <Champ label="Questionnaire général">{c.templateGeneral?.nom}</Champ>
             <Champ label="Questionnaire technique">{c.templateTechnique?.nom}</Champ>
@@ -223,8 +224,8 @@ export function CampagneContenu({ id, onglet, onOnglet }: Props) {
                 <tr key={a.identifiant}>
                   <td><DetailLink type="alerte" id={a.identifiant} libelle={`Alerte d’écart — ${a.collaborateurNom ?? 'collaborateur'}`}>Voir l’alerte</DetailLink></td>
                   <td>{a.collaborateurId ? <LienPersonne id={a.collaborateurId} nom={a.collaborateurNom} matricule={a.collaborateurMatricule} /> : (a.collaborateurNom ?? 'Nom indisponible')}</td>
-                  <td>{LIBELLES_NIVEAU_ECART[a.niveau]}</td>
-                  <td>{LIBELLES_STATUT_ALERTE[a.statut]}</td>
+                  <td>{libelleNiveauAlerte(a.niveau)}</td>
+                  <td>{libelleReferentiel('STATUT_ALERTE', a.statut)}</td>
                   <td>{formatDate(a.detecteeLe)}</td>
                 </tr>
               ))}
@@ -241,7 +242,7 @@ export function CampagneContenu({ id, onglet, onOnglet }: Props) {
                   <tr key={e.identifiant}>
                     <td><LienPersonne id={e.collaborateurId} nom={e.collaborateurNom ?? 'Nom indisponible'} matricule={e.collaborateurMatricule} /></td>
                     <td><LienPersonne id={e.superieurId} nom={e.superieurNom} matricule={e.superieurMatricule} /></td>
-                    <td><StatusBadge statut={e.statut} /></td>
+                    <td><StatusBadge referentiel="STATUT_EVALUATION" statut={e.statut} /></td>
                     <td>{e.scoreSur20 ?? TIRET}</td>
                     <td><DetailLink type="evaluation" id={e.identifiant} libelle={`Évaluation de ${e.collaborateurNom ?? ''}`.trim()}>Voir</DetailLink></td>
                   </tr>
@@ -282,7 +283,7 @@ function TableQuestions({ questions, technique }: { questions: QuestionEvaluatio
             <>
               <td>{note(q.noteCollaborateur)}</td>
               <td>{note(q.noteResponsable)}</td>
-              <td>{q.ecart == null ? TIRET : `${q.ecart} (${LIBELLES_NIVEAU_ECART[q.niveauEcart as keyof typeof LIBELLES_NIVEAU_ECART] ?? TIRET})`}</td>
+              <td>{q.ecart == null ? TIRET : `${q.ecart} (${libelleNiveauAlerte(q.niveauEcart)})`}</td>
             </>
           ) : (
             <>
@@ -315,7 +316,7 @@ export function EvaluationContenu({ id, onglet, onOnglet }: Props) {
             <Champ label="Responsable"><LienPersonne id={e.superieurId} nom={e.superieurNom} matricule={e.superieurMatricule} /></Champ>
             <Champ label="Campagne"><DetailLink type="campagne" id={e.campagneId} libelle={e.campagneNom} /></Champ>
             <Champ label="Profil">{[e.familleMetierLibelle, e.niveauSenioriteLibelle].filter(Boolean).join(' · ')}</Champ>
-            <Champ label="Statut"><StatusBadge statut={e.statut} /></Champ>
+            <Champ label="Statut"><StatusBadge referentiel="STATUT_EVALUATION" statut={e.statut} /></Champ>
             <Champ label="Validée par le collaborateur">{e.validationCollaborateurLe ? formatDateHeure(e.validationCollaborateurLe) : null}</Champ>
             <Champ label="Validée par le responsable">{e.validationSuperieurLe ? formatDateHeure(e.validationSuperieurLe) : null}</Champ>
             <Champ label="Score">
@@ -325,7 +326,7 @@ export function EvaluationContenu({ id, onglet, onOnglet }: Props) {
             <Champ label="Alerte d’écart">
               {d.alerte ? (
                 <DetailLink type="alerte" id={d.alerte.identifiant} libelle="Alerte d’écart">
-                  {LIBELLES_NIVEAU_ECART[d.alerte.niveau as keyof typeof LIBELLES_NIVEAU_ECART] ?? 'Alerte'} · {libelle('statut', d.alerte.statut)}
+                  {libelleNiveauAlerte(d.alerte.niveau)} · {libelleReferentiel('STATUT_ALERTE', d.alerte.statut)}
                 </DetailLink>
               ) : 'Aucune'}
             </Champ>
@@ -383,8 +384,8 @@ export function AlerteContenu({ id, onglet, onOnglet }: Props) {
             </Champ>
             <Champ label="Campagne"><DetailLink type="campagne" id={a.campagneId} libelle={a.campagneNom} /></Champ>
             <Champ label="Évaluation"><DetailLink type="evaluation" id={a.evaluationId} libelle="Évaluation">Voir l’évaluation</DetailLink></Champ>
-            <Champ label="Niveau">{LIBELLES_NIVEAU_ECART[a.niveau]}</Champ>
-            <Champ label="Statut">{LIBELLES_STATUT_ALERTE[a.statut]}</Champ>
+            <Champ label="Niveau">{libelleNiveauAlerte(a.niveau)}</Champ>
+            <Champ label="Statut">{libelleReferentiel('STATUT_ALERTE', a.statut)}</Champ>
             <Champ label="Détectée le">{formatDateHeure(a.detecteeLe)}</Champ>
             <Champ label="Conclusion">{a.conclusionLibelle}</Champ>
           </Champs>
@@ -396,7 +397,7 @@ export function AlerteContenu({ id, onglet, onOnglet }: Props) {
                   <td>{l.competence}</td>
                   <td>{l.etoilesCollaborateurActuelles}/5</td>
                   <td>{l.etoilesRoActuelles}/5</td>
-                  <td>{l.ecartActuel} ({LIBELLES_NIVEAU_ECART[l.niveauActuel]})</td>
+                  <td>{l.ecartActuel} ({libelleNiveauAlerte(l.niveauActuel)})</td>
                 </tr>
               ))}
             </Tableau>
@@ -438,7 +439,7 @@ export function DemandeContenu({ id, onglet, onOnglet }: Props) {
           <Champs>
             <Champ label="Numéro">{d.numero}</Champ>
             <Champ label="Type">{intituleDemande(d)}</Champ>
-            <Champ label="Statut"><StatusBadge statut={d.statut} /></Champ>
+            <Champ label="Statut"><StatusBadge referentiel="STATUT_DEMANDE" statut={d.statut} /></Champ>
             <Champ label="Période">{periodeDemande(d)}</Champ>
             <Champ label="Demandeur"><LienPersonne id={d.demandeur_identifiant} nom={d.demandeur_nom} matricule={d.demandeur_matricule} /></Champ>
             <Champ label="Unité">{d.demandeur_unite}</Champ>
@@ -460,7 +461,7 @@ export function DemandeContenu({ id, onglet, onOnglet }: Props) {
                   {s.etapes.map((e) => (
                     <li key={e.code}>
                       {libelleConnu('etapeDemande', e.code) ?? e.libelle}{' '}
-                      {e.terminee ? <StatusBadge statut="VALIDE" label="Terminée" /> : e.en_cours ? <StatusBadge statut="EN_COURS" label="En cours" /> : null}
+                      {e.terminee ? <StatusBadge referentiel="STATUT_DEMANDE" statut="VALIDE" label="Terminée" /> : e.en_cours ? <StatusBadge referentiel="STATUT_DEMANDE" statut="EN_COURS" label="En cours" /> : null}
                     </li>
                   ))}
                 </ol>
@@ -504,7 +505,7 @@ export function DocumentContenu({ id, onglet, onOnglet }: Props) {
       <Champs>
         <Champ label="Numéro">{d.numero}</Champ>
         <Champ label="Type">{libelle('typeDocument', d.type_document)}</Champ>
-        <Champ label="Statut"><StatusBadge statut={d.statut} /></Champ>
+        <Champ label="Statut"><StatusBadge referentiel="STATUT_DOCUMENT" statut={d.statut} /></Champ>
         <Champ label="Demandeur"><LienPersonne id={d.demandeur_identifiant} nom={d.demandeur_nom} matricule={d.demandeur_matricule} /></Champ>
         <Champ label="Unité">{d.demandeur_unite}</Champ>
         <Champ label="Déposée le">{formatDateHeure(d.cree_le)}</Champ>
@@ -535,7 +536,7 @@ export function FormationContenu({ id, onglet, onOnglet }: Props) {
           <Champs>
             <Champ label="Numéro">{f.numero}</Champ>
             <Champ label="Formation">{libelleTypeFormation(f.type_formation)}</Champ>
-            <Champ label="Statut"><StatusBadge statut={f.statut} /></Champ>
+            <Champ label="Statut"><StatusBadge referentiel="STATUT_FORMATION" statut={f.statut} /></Champ>
             <Champ label="Demandeur"><LienPersonne id={f.demandeur_identifiant} nom={f.demandeur_nom} matricule={f.demandeur_matricule} /></Champ>
             <Champ label="Origine">{libelle('origineFormation', f.origine)}</Champ>
             <Champ label="Cible">
@@ -591,7 +592,7 @@ export function PlainteContenu({ id, onglet, onOnglet }: Props) {
             <Champ label="Numéro">{p.numero_ticket}</Champ>
             <Champ label="Titre">{p.titre}</Champ>
             <Champ label="Type">{libelle('typePlainte', p.type_plainte)}</Champ>
-            <Champ label="Statut"><StatusBadge statut={p.statut} /></Champ>
+            <Champ label="Statut"><StatusBadge referentiel="STATUT_PLAINTE" statut={p.statut} /></Champ>
             <Champ label="Auteur"><LienPersonne id={p.auteur_identifiant} nom={p.auteur_nom} matricule={p.auteur_matricule} /></Champ>
             <Champ label="Déposée le">{formatDateHeure(p.cree_le)}</Champ>
             <Champ label="Description">{p.description}</Champ>
@@ -606,7 +607,7 @@ export function PlainteContenu({ id, onglet, onOnglet }: Props) {
             {p.log_actions.map((a, i) => (
               <li key={i}>
                 <span className="cell-meta">{formatDateHeure(a.horodatage)}</span>
-                {a.nouveau_statut ? ` — ${libelle('statut', a.nouveau_statut)}` : ''}
+                {a.nouveau_statut ? ` — ${libelleReferentiel('STATUT_PLAINTE', a.nouveau_statut)}` : ''}
                 {a.acteur_nom ? ` · ${a.acteur_nom}` : ''}
                 {commentaireLisible(a.commentaire) ? <span className="muted"> · « {commentaireLisible(a.commentaire)} »</span> : null}
               </li>
@@ -633,7 +634,7 @@ export function HeuresSupContenu({ id, onglet, onOnglet }: Props) {
       {actif === 'detail' && (
         <Champs>
           <Champ label="Numéro">{d.numero}</Champ>
-          <Champ label="Statut">{LIBELLES_STATUT_HEURES_SUP[d.statut] ?? TIRET}</Champ>
+          <Champ label="Statut">{libelleReferentiel('STATUT_HEURES_SUP', d.statut)}</Champ>
           <Champ label="Site"><DetailLink type="site" id={d.site_id} libelle={d.site_libelle} /></Champ>
           <Champ label="Période">{formatPeriode(d.date_debut, d.date_fin)}</Champ>
           <Champ label="Ouverture">{d.ouverture_avant_minutes} min avant, {d.ouverture_apres_minutes} min après l’horaire</Champ>
@@ -696,7 +697,7 @@ export function PointageManuelContenu({ id, onglet, onOnglet }: Props) {
         <Champ label="Type">{d.type === 'ENTREE' ? 'Entrée' : d.type === 'SORTIE' ? 'Sortie' : null}</Champ>
         <Champ label="Heure déclarée">{d.heure_declaree ? formatDateHeure(d.heure_declaree) : null}</Champ>
         <Champ label="Justification">{d.justification}</Champ>
-        <Champ label="Statut"><StatusBadge statut={d.statut} /></Champ>
+        <Champ label="Statut"><StatusBadge referentiel="STATUT_DEMANDE_MANUELLE" statut={d.statut} /></Champ>
         <Champ label="Valideur">
           {d.valideur
             ? <DetailLink type="collaborateur" id={d.valideur.collaborateur_id} libelle={d.valideur.nom_complet} />

@@ -1,11 +1,7 @@
 import { useEffect, useState } from 'react';
 import { templateApi, type CreateQuestionRequest } from '../api/evaluationApi';
-import {
-  FAMILLES_METIER_SEED,
-  NIVEAUX_SENIORITE,
-  type FamilleMetier,
-} from '../api/evaluationCatalog';
-import { getFamillesMetier } from '../api/rhClient';
+import { optionsFormulaire, rafraichirParametres, useParametres, valeurReferentiel } from '../utils/parametresStore';
+import { libelle } from '../utils/libelles';
 import { currentUserId } from '../auth/jwtRoles';
 
 interface TemplateBuilderProps {
@@ -16,17 +12,6 @@ interface TemplateBuilderProps {
 }
 
 const COMPETENCY_SCALE_FR = ['Débutant', 'Supervisé', 'Autonome', 'Avancé', 'Expert'];
-
-const QUESTION_TYPES: Array<{ value: CreateQuestionRequest['typeQuestion']; label: string; hint: string }> = [
-  { value: 'TEXT', label: 'Texte court', hint: 'Une ligne' },
-  { value: 'PARAGRAPH', label: 'Paragraphe', hint: 'Réponse libre' },
-  { value: 'MULTIPLE_CHOICE', label: 'Choix unique', hint: 'Une seule option' },
-  { value: 'CHECKBOX', label: 'Cases à cocher', hint: 'Plusieurs options' },
-  { value: 'RATING', label: 'Note', hint: 'Score numérique' },
-  { value: 'SCALE', label: 'Échelle', hint: 'Ex. 1 à 5 + libellés' },
-  { value: 'NUMBER', label: 'Nombre', hint: 'Valeur' },
-  { value: 'DATE', label: 'Date', hint: 'Sélecteur' },
-];
 
 const GENERAL_SECTIONS = [
   { code: 'OBJECTIFS_N_1', libelle: 'Objectifs année précédente' },
@@ -43,13 +28,13 @@ export default function TemplateBuilder({ templateType, onSave, onCancel }: Temp
   const [showQuestionForm, setShowQuestionForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [familles, setFamilles] = useState<FamilleMetier[]>(FAMILLES_METIER_SEED);
-  const [catalogueStub, setCatalogueStub] = useState(false);
+  // Familles et niveaux actifs du paramétrage, relus à l'ouverture du formulaire (D-R07).
+  useParametres();
   const [templateInfo, setTemplateInfo] = useState({
     nom: '',
     description: '',
     familleMetierCode: '',
-    niveauSeniorite: 'JUNIOR',
+    niveauSeniorite: '',
     domaine: '',
   });
   const [newQuestion, setNewQuestion] = useState<Partial<CreateQuestionRequest>>({
@@ -64,25 +49,7 @@ export default function TemplateBuilder({ templateType, onSave, onCancel }: Temp
   });
 
   useEffect(() => {
-    let cancelled = false;
-    void getFamillesMetier(true)
-      .then((rows) => {
-        if (cancelled || !Array.isArray(rows) || rows.length === 0) return;
-        setFamilles(rows.filter(f => f.actif !== false).map(f => ({
-          code: f.code,
-          libelle: f.libelle,
-          actif: f.actif !== false,
-          systeme: f.systeme,
-        })));
-        setCatalogueStub(false);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFamilles(FAMILLES_METIER_SEED);
-          setCatalogueStub(true);
-        }
-      });
-    return () => { cancelled = true; };
+    void rafraichirParametres();
   }, []);
 
   const resetQuestionForm = () => {
@@ -228,13 +195,6 @@ export default function TemplateBuilder({ templateType, onSave, onCancel }: Temp
         </div>
       )}
 
-      {catalogueStub && templateType === 'TECHNICAL' && (
-        <div className="alert alert--info" style={{ marginBottom: '1rem' }}>
-          Catalogue familles métier temporairement indisponible — liste seed affichée.
-          Vérifiez que le référentiel RH est démarré.
-        </div>
-      )}
-
       <div className="form-grid">
         <div className="form-group">
           <label htmlFor="tpl-nom">Nom du template *</label>
@@ -271,8 +231,8 @@ export default function TemplateBuilder({ templateType, onSave, onCancel }: Temp
                 required
               >
                 <option value="">— Sélectionner —</option>
-                {familles.map(f => (
-                  <option key={f.code} value={f.code}>{f.libelle}</option>
+                {optionsFormulaire('FAMILLE_METIER', templateInfo.familleMetierCode).map(o => (
+                  <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
                 ))}
               </select>
             </div>
@@ -282,9 +242,11 @@ export default function TemplateBuilder({ templateType, onSave, onCancel }: Temp
                 id="tpl-niveau"
                 value={templateInfo.niveauSeniorite}
                 onChange={e => setTemplateInfo({ ...templateInfo, niveauSeniorite: e.target.value })}
+                required
               >
-                {NIVEAUX_SENIORITE.map(n => (
-                  <option key={n.code} value={n.code}>{n.libelle}</option>
+                <option value="">— Sélectionner —</option>
+                {optionsFormulaire('NIVEAU_SENIORITE', templateInfo.niveauSeniorite).map(o => (
+                  <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
                 ))}
               </select>
             </div>
@@ -360,12 +322,12 @@ export default function TemplateBuilder({ templateType, onSave, onCancel }: Temp
                 })}
                 aria-describedby="q-type-hint"
               >
-                {QUESTION_TYPES.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                {optionsFormulaire('TYPE_QUESTION', newQuestion.typeQuestion).map(o => (
+                  <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
                 ))}
               </select>
               <span id="q-type-hint" className="text-muted text-sm">
-                {QUESTION_TYPES.find(t => t.value === newQuestion.typeQuestion)?.hint}
+                {valeurReferentiel('TYPE_QUESTION', newQuestion.typeQuestion)?.description}
               </span>
             </div>
 
@@ -456,7 +418,7 @@ export default function TemplateBuilder({ templateType, onSave, onCancel }: Temp
               <div className="question-label">{question.libelle}</div>
               <div className="question-meta">
                 <span className="badge badge--info">
-                  {QUESTION_TYPES.find(t => t.value === question.typeQuestion)?.label || question.typeQuestion}
+                  {libelle('typeQuestion', question.typeQuestion)}
                 </span>
                 {question.sectionLibelle && <span className="badge badge--default">{question.sectionLibelle}</span>}
                 <span className="badge badge--default">Poids {question.poids || 1}</span>

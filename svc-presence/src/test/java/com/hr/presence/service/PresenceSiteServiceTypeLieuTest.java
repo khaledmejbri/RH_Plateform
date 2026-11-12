@@ -43,7 +43,8 @@ class PresenceSiteServiceTypeLieuTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new PresenceSiteService(siteRepository, qrRepository, new PresenceProperties(), accessService);
+		service = new PresenceSiteService(siteRepository, qrRepository, new PresenceProperties(), accessService,
+				ParametresTestSupport.depuis(new PresenceProperties()));
 		lenient().when(siteRepository.save(any(PresenceSite.class))).thenAnswer(inv -> {
 			PresenceSite s = inv.getArgument(0);
 			if (s.getId() == null) {

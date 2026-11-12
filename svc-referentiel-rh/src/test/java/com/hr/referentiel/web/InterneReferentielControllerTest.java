@@ -29,7 +29,7 @@ class InterneReferentielControllerTest {
 	private final AffectationService affectationService = mock(AffectationService.class);
 	private final FamilleMetierService familleService = mock(FamilleMetierService.class);
 	private final InterneReferentielController controller =
-			new InterneReferentielController(service, perimetre, affectationService, familleService, mock(com.hr.referentiel.service.HierarchieService.class), "secret-partage");
+			new InterneReferentielController(service, perimetre, affectationService, familleService, mock(com.hr.referentiel.service.HierarchieService.class), mock(com.hr.referentiel.service.ParametreService.class), "secret-partage");
 
 	@Test
 	void sansJeton_401() {

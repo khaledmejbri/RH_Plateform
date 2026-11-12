@@ -32,7 +32,8 @@ class EvaluationTemplateServiceTest {
 
     @BeforeEach
     void setUp() {
-        templateService = new EvaluationTemplateService(templateRepository, questionRepository);
+        templateService = new EvaluationTemplateService(templateRepository, questionRepository,
+                ParametresTestes.parDefaut());
     }
 
     @Test

@@ -23,6 +23,7 @@ import com.hr.evaluation.service.TemplateTechniqueEvaluation;
 import com.hr.evaluation.service.EvaluationAnalyseAdminService;
 import com.hr.evaluation.service.EvaluationWorkflowService;
 import com.hr.evaluation.service.LibellesProfilService;
+import com.hr.evaluation.service.ParametresEvaluation;
 import com.hr.evaluation.service.EvaluationMobileLectureService;
 import com.hr.evaluation.dto.AnalyseMobile;
 import com.hr.evaluation.dto.EvaluationDetailMobile;
@@ -59,6 +60,7 @@ public class EvaluationMobileController {
     private final IdentiteAppelantResolver identiteResolver;
     private final LibellesProfilService libellesProfil;
     private final EvaluationMobileLectureService lectureService;
+    private final ParametresEvaluation parametres;
 
     public EvaluationMobileController(
             EvaluationWorkflowService workflowService,
@@ -71,7 +73,8 @@ public class EvaluationMobileController {
             EvaluationValidationSuperieurService validationSuperieurService,
             IdentiteAppelantResolver identiteResolver,
             LibellesProfilService libellesProfil,
-            EvaluationMobileLectureService lectureService) {
+            EvaluationMobileLectureService lectureService,
+            ParametresEvaluation parametres) {
         this.workflowService = workflowService;
         this.questionRepository = questionRepository;
         this.technicalQuestionRepository = technicalQuestionRepository;
@@ -83,6 +86,7 @@ public class EvaluationMobileController {
         this.identiteResolver = identiteResolver;
         this.libellesProfil = libellesProfil;
         this.lectureService = lectureService;
+        this.parametres = parametres;
     }
 
     /**
@@ -182,7 +186,9 @@ public class EvaluationMobileController {
                 q.getSectionCode(),
                 q.getSectionLibelle(),
                 q.getPoids(),
-                q.getLabelsEchelle(),
+                q.getLabelsEchelle() != null && !q.getLabelsEchelle().isEmpty() ? q.getLabelsEchelle()
+                        : q.getTypeQuestion() == com.hr.evaluation.domain.QuestionType.RATING
+                                ? parametres.libellesEchelle() : q.getLabelsEchelle(),
                 existingAnswer.map(EvaluationAnswer::getReponseCollaborateur).orElse(null),
                 existingAnswer.map(a -> a.getNoteCollaborateur() != null ? a.getNoteCollaborateur() : a.getNoteAttribuee()).orElse(null)
             ));
@@ -246,9 +252,9 @@ public class EvaluationMobileController {
                         q.getId().toString(),
                         q.getLibelle(),
                         q.getDescription(),
-                        q.getLabelsEchelle() != null && !q.getLabelsEchelle().isEmpty()
-                                ? String.join(",", q.getLabelsEchelle())
-                                : "Débutant,Supervisé,Autonome,Avancé,Expert",
+                        // D-R09 / D-E04 : compétences notées en étoiles = TOUJOURS l'échelle du référentiel
+                        // ECHELLE_ETOILES (libellés courants) ; les labels_echelle stockés sur la question sont ignorés
+                        String.join(",", parametres.libellesEchelle()),
                         q.getOrdre(),
                         note != null ? skillName(note) : null,
                         existingAnswer.map(EvaluationAnswer::getReponseCollaborateur).orElse(null)
@@ -476,10 +482,10 @@ public class EvaluationMobileController {
                         : "EVALUATION_GENERALE",
                 cacher ? null : evaluation.getScoreSur20(),
                 evaluation.getFamilleMetierCode(),
-                libellesProfil.famille(evaluation.getFamilleMetierCode()),
+                libellesProfil.famille(evaluation.getFamilleMetierCode(), evaluation.getFamilleMetierLibelle()),
                 evaluation.getNiveauSeniorite(),
-                libellesProfil.niveau(evaluation.getNiveauSeniorite()),
-                libellesProfil.niveau(evaluation.getNiveauSeniorite()),
+                libellesProfil.niveau(evaluation.getNiveauSeniorite(), evaluation.getNiveauSenioriteLibelle()),
+                libellesProfil.niveau(evaluation.getNiveauSeniorite(), evaluation.getNiveauSenioriteLibelle()),
                 evaluation.getValidationCollaborateurLe(),
                 evaluation.getValidationSuperieurLe(),
                 evaluation.getCreeLe()

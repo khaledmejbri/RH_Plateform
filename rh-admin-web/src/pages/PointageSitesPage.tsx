@@ -10,11 +10,9 @@ import {
   getPresenceSites,
   isQrExpired,
   isServiceUnavailable,
-  LIBELLES_POINTAGE_STATUT,
   LIBELLES_VERIFICATION_FACIALE,
   messagePresenceErreur,
   patchPresenceSite,
-  POINTAGE_STATUTS_FILTRE,
   postGenerateQr,
   postGenererBorne,
   postPresenceSite,
@@ -32,6 +30,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { formatNombre, SITE_INTROUVABLE, COLLABORATEUR_INTROUVABLE } from '../utils/format';
 import { VALEUR_NON_RECONNUE } from '../utils/libelles';
 import { Icon } from '../components/ui';
+import { libelleReferentiel, optionsFiltre, useParametres } from '../utils/parametresStore';
 import { useSearchParams } from 'react-router-dom';
 import BarreFiltres, { AucunResultat, ChampDate, ChampSelect } from '../components/BarreFiltres';
 import FiltreCollaborateur, { libelleCollaborateur } from '../components/FiltreCollaborateur';
@@ -121,18 +120,18 @@ function QrExpiryBadge({ site }: { site: PresenceSite }) {
   return <span className="muted small">Aucun</span>;
 }
 
-function libelleStatutPointage(statut: string): string {
-  return LIBELLES_POINTAGE_STATUT[statut] ?? VALEUR_NON_RECONNUE;
+function libelleStatutPointage(statut: string, libelle?: string | null): string {
+  return libelle || libelleReferentiel('STATUT_POINTAGE', statut);
 }
 
 /** Motif en clair pour la RH ; le détail technique du serveur reste dans l'info-bulle (PTG-3). */
 function MotifPointage({ p }: { p: PresencePointage }) {
   if (!p.statut.startsWith('REJETE_')) return <>—</>;
-  return <span title={p.motifRejet ?? undefined}>{libelleStatutPointage(p.statut)}</span>;
+  return <span title={p.motifRejet ?? undefined}>{libelleStatutPointage(p.statut, p.statutLibelle)}</span>;
 }
 
-function PointageStatutBadge({ statut }: { statut: string }) {
-  const label = libelleStatutPointage(statut);
+function PointageStatutBadge({ statut, libelle }: { statut: string; libelle?: string | null }) {
+  const label = libelleStatutPointage(statut, libelle);
   const cls =
     statut === 'VALIDE' || statut === 'VALIDE_MANUEL'
       ? 'badge badge--success'
@@ -149,6 +148,7 @@ function PointageStatutBadge({ statut }: { statut: string }) {
 }
 
 export default function PointageSitesPage() {
+  useParametres();
   const lectureSeule = useLectureSeule();
   const confirm = useConfirm();
   const [params, setParams] = useSearchParams();
@@ -1152,7 +1152,7 @@ export default function PointageSitesPage() {
               libelle="Statut"
               valeur={ptStatut}
               sansTous
-              options={POINTAGE_STATUTS_FILTRE.map((o) => ({ valeur: o.value, libelle: o.label }))}
+              options={[{ valeur: '', libelle: 'Tous les statuts' }, ...optionsFiltre('STATUT_POINTAGE')]}
               onChange={(v) => {
                 setPtPage(0);
                 filtresPt.definir({ statut: v });
@@ -1250,7 +1250,7 @@ export default function PointageSitesPage() {
                         <td>{p.siteLibelle ? <DetailLink type="site" id={p.siteId} libelle={p.siteLibelle} /> : SITE_INTROUVABLE}</td>
                         <td>{p.type === 'ENTREE' ? 'Entrée' : p.type === 'SORTIE' ? 'Sortie' : VALEUR_NON_RECONNUE}</td>
                         <td>
-                          <PointageStatutBadge statut={p.statut} />
+                          <PointageStatutBadge statut={p.statut} libelle={p.statutLibelle} />
                           <PastilleSequence etat={p.etatSequence} statut={p.statut} />
                         </td>
                         <td className="small">
