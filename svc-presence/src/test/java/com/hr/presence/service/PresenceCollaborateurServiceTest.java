@@ -54,7 +54,7 @@ class PresenceCollaborateurServiceTest {
 	private final PresenceSiteRepository siteRepository = mock(PresenceSiteRepository.class);
 	private final PresenceHeuresSupJourRepository heuresSupJourRepository = mock(PresenceHeuresSupJourRepository.class);
 	private final PresenceHeuresSupDemandeRepository heuresSupDemandeRepository = mock(PresenceHeuresSupDemandeRepository.class);
-	private final PresenceDemandeManuelleRepository demandeRepository = mock(PresenceDemandeManuelleRepository.class);
+	private final EligibiliteManuelLecture eligibiliteLecture = mock(EligibiliteManuelLecture.class);
 	private final ReferentielClient referentiel = mock(ReferentielClient.class);
 	private final CalculHeuresSupService calculHeuresSup = mock(CalculHeuresSupService.class);
 	private final PresenceDemandeManuelleService demandeManuelleService = mock(PresenceDemandeManuelleService.class);
@@ -100,9 +100,9 @@ class PresenceCollaborateurServiceTest {
 		TempsTravailService tempsTravail = new TempsTravailService(pointageRepository, siteRepository,
 				heuresSupJourRepository, heuresSupDemandeRepository, referentiel, properties,
 				ParametresTestSupport.depuis(properties), clock);
-		service = new PresenceCollaborateurService(tempsTravail, pointageRepository, siteRepository, demandeRepository,
+		service = new PresenceCollaborateurService(tempsTravail, pointageRepository, siteRepository,
 				heuresSupJourRepository, calculHeuresSup, demandeManuelleService, identiteService, referentiel,
-				properties, ParametresTestSupport.depuis(properties), clock);
+				ParametresTestSupport.depuis(properties), eligibiliteLecture);
 		site = new PresenceSite();
 		site.setId(siteId);
 		site.setCode("SIEGE");
@@ -112,7 +112,6 @@ class PresenceCollaborateurServiceTest {
 		when(siteRepository.findById(siteId)).thenReturn(Optional.of(site));
 		when(heuresSupJourRepository.findAll(anyJourSpec())).thenReturn(List.of());
 		when(calculHeuresSup.compter(any())).thenReturn(List.of());
-		when(demandeRepository.findByPointageRejeteIdIn(any())).thenReturn(List.of());
 		when(demandeManuelleService.pourIdentites(any(), any(), any())).thenReturn(List.of());
 		when(referentiel.affectations(any())).thenReturn(List.of(
 				new Affectation(fiche, compte, "COL-WEB", "Sarra Khemiri", "Direction Technique", "Logiciel", "Web")));
@@ -134,6 +133,8 @@ class PresenceCollaborateurServiceTest {
 		PresencePointage entree = p(PointageType.ENTREE, PointageStatut.VALIDE, t(5, 8, 12, 40), t(5, 8, 0, 0));
 		PresencePointage sortie = p(PointageType.SORTIE, PointageStatut.VALIDE, t(5, 9, 12, 40), t(5, 8, 0, 0));
 		pointages(List.of(entree, sortie), List.of(refus, entree, sortie));
+		when(eligibiliteLecture.pour(any())).thenReturn(
+				java.util.Map.of(refus.getId(), new EligibiliteManuelLecture.Etat(true, null)));
 
 		List<JourneePresence> journees = service.mesJournees(null, null);
 
@@ -147,38 +148,44 @@ class PresenceCollaborateurServiceTest {
 		assertThat(j.pointages().get(0).motifRejet()).isEqualTo("Hors zone de pointage (179,8 m pour une zone de 50 m)");
 		assertThat(j.pointages().get(0).statutLibelle()).isEqualTo("Hors zone de pointage");
 		assertThat(j.pointages().get(0).eligiblePointageManuel()).isTrue();
+		assertThat(j.pointages().get(0).manuelPossible()).isTrue();
+		assertThat(j.pointages().get(0).manuelImpossibleMotif()).isNull();
 		assertThat(j.pointages().get(1).motifRejet()).isNull();
 		assertThat(j.pointages().get(1).eligiblePointageManuel()).isFalse();
+		// pointage accepté : ni possible ni motif (D-P22.a)
+		assertThat(j.pointages().get(1).manuelPossible()).isNull();
+		assertThat(j.pointages().get(1).manuelImpossibleMotif()).isNull();
 	}
 
 	@Test
 	void refusHorsHoraire_nonEligibleAuPointageManuel() {
 		PresencePointage refus = p(PointageType.ENTREE, PointageStatut.REJETE_HORS_HORAIRE, t(5, 6, 0, 0), null);
 		pointages(List.of(), List.of(refus));
+		when(eligibiliteLecture.pour(any())).thenReturn(java.util.Map.of(refus.getId(),
+				new EligibiliteManuelLecture.Etat(false, "pointage hors de l'horaire du site")));
 
 		JourneePresence j = service.mesJournees(null, null).get(0);
 
 		assertThat(j.etat()).isNull();
 		assertThat(j.retardMinutes()).isNull();
 		assertThat(j.pointages().get(0).eligiblePointageManuel()).isFalse();
+		assertThat(j.pointages().get(0).manuelPossible()).isFalse();
+		assertThat(j.pointages().get(0).manuelImpossibleMotif()).isEqualTo("pointage hors de l'horaire du site");
 	}
 
 	@Test
-	void refusDejaDemande_ouTropAncien_nonEligible() {
+	void refusNonRattrapable_leMotifDuServeurEstPropage() {
 		PresencePointage deja = p(PointageType.ENTREE, PointageStatut.REJETE_PRECISION_GPS, t(5, 7, 0, 0), null);
-		PresencePointage ancien = p(PointageType.ENTREE, PointageStatut.REJETE_PRECISION_GPS, t(2, 7, 0, 0), null);
-		pointages(List.of(), List.of(ancien, deja));
-		PresenceDemandeManuelle demande = new PresenceDemandeManuelle();
-		demande.setPointageRejeteId(deja.getId());
-		when(demandeRepository.findByPointageRejeteIdIn(any())).thenReturn(List.of(demande));
+		pointages(List.of(), List.of(deja));
+		when(eligibiliteLecture.pour(any())).thenReturn(java.util.Map.of(deja.getId(),
+				new EligibiliteManuelLecture.Etat(false, "une demande a déjà été faite pour ce refus (PM-202611-0001)")));
 
-		// "ancien" date de 3 jours : on resserre la limite d'ancienneté à 2 jours pour le rendre trop vieux
-		properties.getManuel().setAncienneteMaxJours(2);
 		List<JourneePresence> journees = service.mesJournees(LocalDate.of(2026, 10, 25), null);
 
-		assertThat(journees).flatExtracting(JourneePresence::pointages)
-				.hasSize(2)
-				.allSatisfy(pt -> assertThat(pt.eligiblePointageManuel()).isFalse());
+		assertThat(journees).flatExtracting(JourneePresence::pointages).hasSize(1).allSatisfy(pt -> {
+			assertThat(pt.eligiblePointageManuel()).isFalse();
+			assertThat(pt.manuelImpossibleMotif()).contains("PM-202611-0001");
+		});
 	}
 
 	@Test

@@ -90,6 +90,43 @@ class PresenceParametresServiceTest {
 	}
 
 	@Test
+	void reglagesDuPointageManuel_luParLesAccesseurs() {
+		ligne.setPlafondDistanceManuelMetres(150);
+		ligne.setDelaiDemandeManuelMinutes(60);
+		ligne.setDelaiDecisionManuelMinutes(480);
+
+		PresenceParametresService s = service();
+
+		assertThat(s.plafondDistanceManuelMetres()).isEqualTo(150);
+		assertThat(s.delaiDemandeManuel()).isEqualTo(Duration.ofMinutes(60));
+		assertThat(s.delaiDecisionManuel()).isEqualTo(Duration.ofMinutes(480));
+	}
+
+	@Test
+	void colonnesManuelAbsentes_replisSurLesProprietes() {
+		props.getManuel().setPlafondDistanceMetres(250);
+		props.getManuel().setDelaiDemandeMinutes(90);
+		props.getManuel().setDelaiDecisionMinutes(600);
+
+		PresenceParametresService s = service();
+
+		assertThat(s.plafondDistanceManuelMetres()).isEqualTo(250);
+		assertThat(s.delaiDemandeManuel()).isEqualTo(Duration.ofMinutes(90));
+		assertThat(s.delaiDecisionManuel()).isEqualTo(Duration.ofMinutes(600));
+	}
+
+	@Test
+	void baseCoupee_defautsDuProduitPourLePointageManuel() {
+		when(reglages.findById(PresenceParametres.ID_UNIQUE)).thenThrow(new IllegalStateException("base coupée"));
+
+		PresenceParametresService s = service();
+
+		assertThat(s.plafondDistanceManuelMetres()).isEqualTo(300);
+		assertThat(s.delaiDemandeManuel()).isEqualTo(Duration.ofMinutes(120));
+		assertThat(s.delaiDecisionManuel()).isEqualTo(Duration.ofMinutes(1440));
+	}
+
+	@Test
 	void baseIndisponible_replisSansErreur() {
 		when(reglages.findById(PresenceParametres.ID_UNIQUE)).thenThrow(new IllegalStateException("base coupée"));
 		props.getRetard().setDelaiGraceMinutes(3);

@@ -81,7 +81,13 @@ class PresenceParametresAdminServiceTest {
 			"rayon_defaut_interieur_metres,9,false", "rayon_defaut_interieur_metres,10,true",
 			"rayon_defaut_interieur_metres,100,true", "rayon_defaut_interieur_metres,101,false",
 			"seuil_pointages_manuels_mois,0,false", "seuil_pointages_manuels_mois,1,true",
-			"seuil_pointages_manuels_mois,31,true", "seuil_pointages_manuels_mois,32,false"})
+			"seuil_pointages_manuels_mois,31,true", "seuil_pointages_manuels_mois,32,false",
+			"plafond_distance_manuel_metres,99,false", "plafond_distance_manuel_metres,100,true",
+			"plafond_distance_manuel_metres,1000,true", "plafond_distance_manuel_metres,1001,false",
+			"delai_demande_manuel_minutes,14,false", "delai_demande_manuel_minutes,15,true",
+			"delai_demande_manuel_minutes,480,true", "delai_demande_manuel_minutes,481,false",
+			"delai_decision_manuel_minutes,239,false", "delai_decision_manuel_minutes,240,true",
+			"delai_decision_manuel_minutes,4320,true", "delai_decision_manuel_minutes,4321,false"})
 	void bornesDesReglages(String cle, int valeur, boolean accepte) {
 		if (accepte) {
 			Reglage r = service.modifierReglage(cle, valeur, 0L);

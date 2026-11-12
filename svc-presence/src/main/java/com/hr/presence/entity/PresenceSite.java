@@ -167,6 +167,11 @@ public class PresenceSite {
 		this.borneCreeLe = borneCreeLe;
 	}
 
+	/** Faux pour les sites antérieurs à D-P01 (type non renseigné). */
+	public boolean isTypeLieuDefini() {
+		return typeLieu != null;
+	}
+
 	public TypeLieu getTypeLieu() {
 		return typeLieu != null ? typeLieu : TypeLieu.EXTERIEUR;
 	}

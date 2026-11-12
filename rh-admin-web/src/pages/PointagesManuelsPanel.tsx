@@ -3,6 +3,7 @@ import {
   formatDateTunis,
   getDemandesManuelles,
   messagePresenceErreur,
+  PresenceApiError,
   postRefuserDemandeManuelle,
   postValiderDemandeManuelle,
   type DemandeManuelle,
@@ -13,12 +14,16 @@ import { correspond, useFiltresUrl } from '../utils/filtres';
 import { useConfirm } from '../components/ConfirmDialog';
 import { COLLABORATEUR_INTROUVABLE, formatPersonne, ressembleAUnIdentifiant } from '../utils/format';
 import { styleCouleur } from '../utils/palette';
-import { couleurStatut, libelleReferentiel, useParametres } from '../utils/parametresStore';
+import { couleurStatut, libelleReferentiel, optionsFiltre, useParametres } from '../utils/parametresStore';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
+import { BandeauSignaux, libelleEcheance, PastilleVigilance } from '../components/VigilanceManuelle';
 
 /** Seuil d'alerte RH (D-P04) — l'API renvoie déjà `alerteSeuil` ; affiché pour l'explication. */
 const SEUIL_MENSUEL = 3;
-const FILTRES_DEFAUT = { q: '', statut: 'EN_ATTENTE', type: '' };
+const FILTRES_DEFAUT = { q: '', statut: 'EN_ATTENTE', type: '', signal: '' };
+/** Commentaire du valideur (D-P24.b) : 10 à 500 caractères après suppression des espaces. */
+const COMMENTAIRE_MIN = 10;
+const COMMENTAIRE_MAX = 500;
 
 /** Motif du refus automatique : libellé du statut si c'est un code, sinon le texte du serveur. */
 function motifLisible(m: string | null): string {
@@ -49,6 +54,7 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
   const filtres = useFiltresUrl(FILTRES_DEFAUT, 'm_');
   const f = filtres.valeurs;
   const statut = f.statut as StatutDemandeManuelle | '';
+  const avecSignal = f.signal === 'true';
   const [demandes, setDemandes] = useState<DemandeManuelle[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -61,13 +67,13 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
     setLoading(true);
     setErr(null);
     try {
-      setDemandes(await getDemandesManuelles(statut));
+      setDemandes(await getDemandesManuelles(statut, avecSignal));
     } catch (e) {
       setErr(messagePresenceErreur(e, 'Impossible de charger les demandes'));
     } finally {
       setLoading(false);
     }
-  }, [statut]);
+  }, [statut, avecSignal]);
 
   useEffect(() => {
     void charger();
@@ -76,21 +82,52 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
   const nomDe = (d: DemandeManuelle) => formatPersonne(d.collaborateurNom, d.collaborateurMatricule);
 
   async function valider(d: DemandeManuelle) {
-    if (!(await confirm({ message: `Valider le pointage manuel de ${nomDe(d)} ?`, confirmLabel: 'Valider' }))) return;
-    setBusyId(d.id);
     setErr(null);
-    try {
-      const r = await postValiderDemandeManuelle(d.id);
-      setMsg(
-        `Pointage manuel de ${nomDe(d)} validé` +
-          (r.alerteSeuil ? ` — attention : ${r.manuelsDuMois} pointages manuels ce mois-ci.` : '.'),
-      );
-      await charger();
-    } catch (e) {
-      setErr(messagePresenceErreur(e));
-    } finally {
-      setBusyId(null);
+    setMsg(null);
+    let conflit: string | null = null;
+    let resultat: DemandeManuelle | null = null;
+    const ok = await confirm({
+      title: 'Valider le pointage manuel',
+      message: (
+        <>
+          <p>Valider le pointage manuel de {nomDe(d)} ?</p>
+          {d.avecSignal ? (
+            <BandeauSignaux signaux={d.signaux} titre="Cette demande porte des signaux de vigilance" />
+          ) : null}
+        </>
+      ),
+      confirmLabel: 'Valider',
+      motif: {
+        label: 'Commentaire',
+        obligatoire: d.avecSignal,
+        minLength: COMMENTAIRE_MIN,
+        maxLength: COMMENTAIRE_MAX,
+        placeholder: d.avecSignal ? 'Pourquoi validez-vous malgré ces signaux ?' : 'Facultatif',
+      },
+      envoyer: async (commentaire) => {
+        try {
+          resultat = await postValiderDemandeManuelle(d.id, commentaire);
+        } catch (e) {
+          const message = messagePresenceErreur(e);
+          // 409 (DEMANDE_EXPIREE, DEMANDE_DEJA_TRAITEE) : la demande a changé, la fenêtre se ferme.
+          if (e instanceof PresenceApiError && e.status === 409) conflit = message;
+          throw new Error(message);
+        }
+      },
+      echecDefinitif: () => conflit !== null,
+    });
+    if (conflit) {
+      await charger(); // charger() remet l'erreur à zéro : le message est posé après.
+      setErr(conflit);
+      return;
     }
+    if (!ok) return;
+    const r = resultat as DemandeManuelle | null;
+    setMsg(
+      `Pointage manuel de ${nomDe(d)} validé` +
+        (r?.alerteSeuil ? ` — attention : ${r.manuelsDuMois} pointages manuels ce mois-ci.` : '.'),
+    );
+    await charger();
   }
 
   async function refuser(e: FormEvent) {
@@ -112,7 +149,13 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
       setMotif('');
       await charger();
     } catch (er) {
-      setErr(messagePresenceErreur(er));
+      const message = messagePresenceErreur(er);
+      if (er instanceof PresenceApiError && er.status === 409) {
+        setRefusId(null);
+        setMotif('');
+        await charger();
+      }
+      setErr(message);
     } finally {
       setBusyId(null);
     }
@@ -147,12 +190,16 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
           libelle="Statut"
           valeur={f.statut}
           toutesLibelle="Toutes"
-          options={[
-            { valeur: 'EN_ATTENTE', libelle: 'En attente' },
-            { valeur: 'VALIDEE', libelle: 'Validées' },
-            { valeur: 'REFUSEE', libelle: 'Refusées' },
-          ]}
+          options={optionsFiltre('STATUT_DEMANDE_MANUELLE', f.statut ? [f.statut] : [])}
           onChange={(v) => filtres.definir({ statut: v })}
+        />
+        <ChampSelect
+          id="manuels-signal"
+          libelle="Vigilance"
+          valeur={f.signal}
+          toutesLibelle="Toutes les demandes"
+          options={[{ valeur: 'true', libelle: 'Avec signal de vigilance' }]}
+          onChange={(v) => filtres.definir({ signal: v })}
         />
         <ChampSelect
           id="manuels-type"
@@ -199,6 +246,7 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
                 <th>Refus automatique du pointage</th>
                 <th>Responsable</th>
                 <th>Statut</th>
+                <th>Échéance</th>
                 <th>Manuels du mois</th>
                 <th><span className="sr-only">Actions</span></th>
               </tr>
@@ -220,7 +268,13 @@ export default function PointagesManuelsPanel({ lectureSeule }: { lectureSeule: 
                   </td>
                   <td>
                     <StatutBadge statut={d.statut} />
+                    {d.avecSignal ? (
+                      <div>
+                        <PastilleVigilance avecSignal signaux={d.signaux} />
+                      </div>
+                    ) : null}
                   </td>
+                  <td className="small">{libelleEcheance(d.statut, d.echeance) ?? '—'}</td>
                   <td>
                     {d.manuelsDuMois ?? 0}
                     {d.alerteSeuil ? (

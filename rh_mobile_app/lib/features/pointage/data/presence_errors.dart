@@ -122,6 +122,8 @@ String? messageParCodeErreur(String? code) {
       return 'Une demande existe déjà pour un collaborateur, ce site et cette date.';
     case 'STATUT_INCOMPATIBLE':
       return 'Cette demande n’est plus modifiable (statut changé).';
+    case 'DEMANDE_EXPIREE':
+      return 'Cette demande a expiré : elle ne peut plus être validée ni refusée.';
     case 'REFERENTIEL_INDISPONIBLE':
       return 'Service temporairement indisponible. Réessayez dans un instant.';
     default:

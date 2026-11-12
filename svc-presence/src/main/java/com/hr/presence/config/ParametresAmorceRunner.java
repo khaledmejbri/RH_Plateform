@@ -72,7 +72,9 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 	}
 
 	private void amorcerReglages() {
-		if (parametresRepository.existsById(PresenceParametres.ID_UNIQUE)) {
+		PresenceParametres existante = parametresRepository.findById(PresenceParametres.ID_UNIQUE).orElse(null);
+		if (existante != null) {
+			completerReglagesManuel(existante);
 			return;
 		}
 		PresenceParametres ligne = new PresenceParametres();
@@ -82,12 +84,43 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 				properties.getGeofence().getDefaultRadiusExterieurMetres()));
 		ligne.setRayonDefautInterieurMetres(borne(ReglagePresence.RAYON_DEFAUT_INTERIEUR_METRES,
 				properties.getGeofence().getDefaultRadiusInterieurMetres()));
+		remplirReglagesManuel(ligne);
 		ligne.setModifieLe(Instant.now());
 		ligne.setModifiePar("Système (automatique)");
 		try {
 			parametresRepository.saveAndFlush(ligne);
 		} catch (RuntimeException ex) {
 			log.info("Réglages de présence déjà amorcés par une autre instance");
+		}
+	}
+
+	/** Les trois réglages D-P22 / D-P23 viennent des propriétés ; une valeur déjà posée n'est jamais réécrite. */
+	private void remplirReglagesManuel(PresenceParametres ligne) {
+		if (ligne.getPlafondDistanceManuelMetres() == null) {
+			ligne.setPlafondDistanceManuelMetres(borne(ReglagePresence.PLAFOND_DISTANCE_MANUEL_METRES,
+					properties.getManuel().getPlafondDistanceMetres()));
+		}
+		if (ligne.getDelaiDemandeManuelMinutes() == null) {
+			ligne.setDelaiDemandeManuelMinutes(borne(ReglagePresence.DELAI_DEMANDE_MANUEL_MINUTES,
+					properties.getManuel().getDelaiDemandeMinutes()));
+		}
+		if (ligne.getDelaiDecisionManuelMinutes() == null) {
+			ligne.setDelaiDecisionManuelMinutes(borne(ReglagePresence.DELAI_DECISION_MANUEL_MINUTES,
+					properties.getManuel().getDelaiDecisionMinutes()));
+		}
+	}
+
+	/** Base déjà amorcée par le lot 3 : complète les colonnes ajoutées par D-P22 / D-P23, sans toucher aux autres. */
+	private void completerReglagesManuel(PresenceParametres ligne) {
+		if (ligne.getPlafondDistanceManuelMetres() != null && ligne.getDelaiDemandeManuelMinutes() != null
+				&& ligne.getDelaiDecisionManuelMinutes() != null) {
+			return;
+		}
+		remplirReglagesManuel(ligne);
+		try {
+			parametresRepository.saveAndFlush(ligne);
+		} catch (RuntimeException ex) {
+			log.info("Réglages du pointage manuel déjà complétés par une autre instance");
 		}
 	}
 
@@ -159,7 +192,7 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 		return switch (code) {
 			case "VALIDEE" -> "VERT";
 			case "REFUSEE" -> "ROUGE";
-			case "EN_ATTENTE" -> "AMBRE";
+			case "EN_ATTENTE", "EXPIREE" -> "AMBRE";
 			default -> "NEUTRE";
 		};
 	}

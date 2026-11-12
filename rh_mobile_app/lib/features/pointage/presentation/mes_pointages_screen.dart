@@ -263,7 +263,16 @@ class _LignePointage extends StatelessWidget {
               padding: const EdgeInsets.only(top: 2),
               child: Text(motif, style: const TextStyle(fontSize: 12, color: AppTheme.errorDark)),
             ),
-          if (p.eligiblePointageManuel && onDemanderManuel != null)
+          if (!p.manuelPossible && p.estRejet && p.manuelImpossibleMotif != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Pointage manuel impossible : ${p.manuelImpossibleMotif}.',
+                key: const Key('manuel_impossible_motif'),
+                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+            ),
+          if (p.manuelPossible && onDemanderManuel != null)
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(

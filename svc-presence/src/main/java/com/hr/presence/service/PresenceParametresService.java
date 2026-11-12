@@ -43,7 +43,8 @@ public class PresenceParametresService {
 
 	/** Réglages en vigueur (valeurs entières déjà résolues, repli sur les propriétés). */
 	public record Reglages(int seuilPointagesManuelsMois, int delaiGraceRetardMinutes, int rayonDefautExterieurMetres,
-						   int rayonDefautInterieurMetres) {
+						   int rayonDefautInterieurMetres, int plafondDistanceManuelMetres,
+						   int delaiDemandeManuelMinutes, int delaiDecisionManuelMinutes) {
 	}
 
 	/** Copie immuable de tous les paramètres, partagée entre les requêtes. */
@@ -112,7 +113,10 @@ public class PresenceParametresService {
 				valeurOu(ligne.getRayonDefautExterieurMetres(),
 						properties.getGeofence().getDefaultRadiusExterieurMetres()),
 				valeurOu(ligne.getRayonDefautInterieurMetres(),
-						properties.getGeofence().getDefaultRadiusInterieurMetres()));
+						properties.getGeofence().getDefaultRadiusInterieurMetres()),
+				valeurOu(ligne.getPlafondDistanceManuelMetres(), properties.getManuel().getPlafondDistanceMetres()),
+				valeurOu(ligne.getDelaiDemandeManuelMinutes(), properties.getManuel().getDelaiDemandeMinutes()),
+				valeurOu(ligne.getDelaiDecisionManuelMinutes(), properties.getManuel().getDelaiDecisionMinutes()));
 		Map<String, List<ValeurLibelle>> referentiels = new LinkedHashMap<>();
 		for (String ref : REFERENTIELS) {
 			referentiels.put(ref, valeurRepository.findByReferentielOrderByOrdreAscCodeAsc(ref).stream()
@@ -133,17 +137,31 @@ public class PresenceParametresService {
 	private Reglages reglagesParDefaut() {
 		return new Reglages(properties.getManuel().getSeuilAlerteMois(), properties.getRetard().getDelaiGraceMinutes(),
 				properties.getGeofence().getDefaultRadiusExterieurMetres(),
-				properties.getGeofence().getDefaultRadiusInterieurMetres());
+				properties.getGeofence().getDefaultRadiusInterieurMetres(),
+				properties.getManuel().getPlafondDistanceMetres(), properties.getManuel().getDelaiDemandeMinutes(),
+				properties.getManuel().getDelaiDecisionMinutes());
 	}
 
 	// ------------------------------------------------------------------ accesseurs métier
 
-	/**
-	 * Seuil mensuel de pointages manuels validés (D-P04), 1 à 31. À brancher dans {@code PresenceDemandeManuelleService}
-	 * à la place de {@code properties.getManuel().getSeuilAlerteMois()}.
-	 */
+	/** Seuil mensuel de pointages manuels validés (D-P04), 1 à 31. */
 	public int seuilPointagesManuelsMois() {
 		return instantane().reglages().seuilPointagesManuelsMois();
+	}
+
+	/** Plafond de distance et de précision d'un refus rattrapable (D-P22), 100 à 1 000 m. */
+	public int plafondDistanceManuelMetres() {
+		return instantane().reglages().plafondDistanceManuelMetres();
+	}
+
+	/** Délai pour demander un pointage manuel après le refus (D-P23.a), 15 à 480 minutes. */
+	public Duration delaiDemandeManuel() {
+		return Duration.ofMinutes(instantane().reglages().delaiDemandeManuelMinutes());
+	}
+
+	/** Délai de décision avant expiration d'une demande (D-P23.b), 240 à 4 320 minutes. */
+	public Duration delaiDecisionManuel() {
+		return Duration.ofMinutes(instantane().reglages().delaiDecisionManuelMinutes());
 	}
 
 	/** Délai de grâce ajouté au début de l'horaire avant de compter un retard (D-P19.d), 0 à 60 minutes. */

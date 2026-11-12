@@ -486,7 +486,7 @@ export function getPresencePointages(params: PointagesListParams = {}) {
 
 // --- Pointage manuel validé par le responsable (D-P04 — SCRUM-38) ---
 
-export type StatutDemandeManuelle = 'EN_ATTENTE' | 'VALIDEE' | 'REFUSEE';
+export type StatutDemandeManuelle = 'EN_ATTENTE' | 'VALIDEE' | 'REFUSEE' | 'EXPIREE';
 
 export type DemandeManuelle = {
   id: string;
@@ -508,7 +508,60 @@ export type DemandeManuelle = {
   creeLe: string | null;
   manuelsDuMois: number | null;
   alerteSeuil: boolean;
+} & VigilanceManuelle;
+
+/** Signal de vigilance (D-P24.a) : le libellé vient du serveur, affiché tel quel. */
+export type SignalVigilance = { code: string; libelle: string };
+
+/**
+ * Informations réservées à qui décide (D-P24, D-P24.d) — toutes facultatives : absentes pour une
+ * demande ancienne ou si le serveur ne les sert pas, alors rien n'est affiché. Jamais de coordonnées.
+ */
+export type VigilanceManuelle = {
+  signaux: SignalVigilance[];
+  avecSignal: boolean;
+  statutRefusLibelle: string | null;
+  distanceMetres: number | null;
+  rayonMetres: number | null;
+  precisionMetres: number | null;
+  modeQr: ModeQr | null;
+  heureTentative: string | null;
+  delaiDemandeMinutes: number | null;
+  echeance: string | null;
+  seuilMois: number | null;
+  refusDuJour: number | null;
+  commentaireValideur: string | null;
+  delaiDecisionMinutes: number | null;
 };
+
+/** Lit les champs de vigilance d'une réponse brute (liste ou détail) ; absent ou nul → rien. */
+export function lireVigilance(raw: Record<string, unknown>): VigilanceManuelle {
+  const rejete = (raw.pointage_rejete ?? null) as Record<string, unknown> | null;
+  const signaux = (Array.isArray(raw.signaux) ? raw.signaux : [])
+    .map((x) => {
+      const o = (x ?? {}) as Record<string, unknown>;
+      const libelle = asStr(o.libelle);
+      return libelle ? { code: String(o.code ?? ''), libelle } : null;
+    })
+    .filter((x): x is SignalVigilance => x !== null);
+  const mode = asStr(raw.mode_qr);
+  return {
+    signaux,
+    avecSignal: raw.avec_signal != null ? asBool(raw.avec_signal, false) : signaux.length > 0,
+    statutRefusLibelle: asStr(raw.refus_statut_libelle) ?? asStr(rejete?.statut_libelle),
+    distanceMetres: asNum(raw.distance_metres) ?? asNum(rejete?.distance_metres),
+    rayonMetres: asNum(raw.rayon_metres),
+    precisionMetres: asNum(raw.precision_metres),
+    modeQr: mode === 'ECRAN' || mode === 'PAPIER' ? mode : null,
+    heureTentative: asStr(raw.heure_declaree) ?? asStr(rejete?.server_ts),
+    delaiDemandeMinutes: asNum(raw.delai_demande_minutes),
+    echeance: asStr(raw.echeance),
+    seuilMois: asNum(raw.seuil_mois),
+    refusDuJour: asNum(raw.refus_du_jour),
+    commentaireValideur: asStr(raw.commentaire_valideur),
+    delaiDecisionMinutes: asNum(raw.delai_decision_minutes),
+  };
+}
 
 function normalizeDemandeManuelle(raw: Record<string, unknown>): DemandeManuelle {
   return {
@@ -530,18 +583,27 @@ function normalizeDemandeManuelle(raw: Record<string, unknown>): DemandeManuelle
     creeLe: asStr(raw.cree_le),
     manuelsDuMois: asNum(raw.manuels_du_mois),
     alerteSeuil: asBool(raw.alerte_seuil, false),
+    ...lireVigilance(raw),
   };
 }
 
-export function getDemandesManuelles(statut?: StatutDemandeManuelle | '') {
-  const q = statut ? `?statut=${encodeURIComponent(statut)}` : '';
+export function getDemandesManuelles(statut?: StatutDemandeManuelle | '', avecSignal = false) {
+  const params = new URLSearchParams();
+  if (statut) params.set('statut', statut);
+  if (avecSignal) params.set('avecSignal', 'true');
+  const q = params.toString() ? `?${params.toString()}` : '';
   return apiFetch(`${BASE}/demandes-manuelles${q}`)
     .then((r) => handlePresenceResponse<unknown[]>(r))
     .then((raw) => (Array.isArray(raw) ? raw : []).map((x) => normalizeDemandeManuelle((x ?? {}) as Record<string, unknown>)));
 }
 
-export function postValiderDemandeManuelle(id: string) {
-  return apiFetch(`${BASE}/demandes-manuelles/${encodeURIComponent(id)}/valider`, { method: 'POST' })
+/** Validation (D-P24.b) : commentaire du valideur, obligatoire seulement pour une demande signalée. */
+export function postValiderDemandeManuelle(id: string, commentaire = '') {
+  return apiFetch(`${BASE}/demandes-manuelles/${encodeURIComponent(id)}/valider`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commentaire }),
+  })
     .then((r) => handlePresenceResponse<Record<string, unknown>>(r))
     .then((raw) => normalizeDemandeManuelle(raw ?? {}));
 }

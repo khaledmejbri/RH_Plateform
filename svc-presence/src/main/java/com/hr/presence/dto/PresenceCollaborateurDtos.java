@@ -51,7 +51,11 @@ public final class PresenceCollaborateurDtos {
 			/** Ex. « Hors zone de pointage (179,8 m pour une zone de 50 m) » ; absent pour un pointage accepté. */
 			@JsonProperty("motif_rejet") String motifRejet,
 			/** Refus pour lequel une demande de pointage manuel peut être déposée (D-P04, D-P12.a), calculé ici. */
-			@JsonProperty("eligible_pointage_manuel") boolean eligiblePointageManuel) {
+			@JsonProperty("eligible_pointage_manuel") boolean eligiblePointageManuel,
+			/** D-P22.a : identique à {@code eligible_pointage_manuel} pour un refus, nul pour un pointage accepté. */
+			@JsonProperty("manuel_possible") Boolean manuelPossible,
+			/** Raison en clair quand le pointage manuel n'est pas possible (D-P21.d). */
+			@JsonProperty("manuel_impossible_motif") String manuelImpossibleMotif) {
 	}
 
 	/**

@@ -150,9 +150,12 @@ class PresenceRepository {
     return _parseList(res.data, DemandeManuelle.fromJson);
   }
 
-  Future<DemandeManuelle> validerDemandeManuelle(String id) async {
+  /// [commentaire] : obligatoire côté serveur si la demande porte un signal (D-P24.b), sinon facultatif.
+  Future<DemandeManuelle> validerDemandeManuelle(String id, {String? commentaire}) async {
+    final texte = commentaire?.trim();
     final res = await _dio.post<Map<String, dynamic>>(
       '$_mobileBase/demandes-manuelles/$id/valider',
+      data: {if (texte != null && texte.isNotEmpty) 'commentaire': texte},
     );
     return DemandeManuelle.fromJson(res.data ?? const {});
   }

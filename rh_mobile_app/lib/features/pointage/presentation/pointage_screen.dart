@@ -214,9 +214,20 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
     );
   }
 
+  /// Identifiant du refus sur lequel demander un pointage manuel : seulement si le serveur l'a déclaré
+  /// rattrapable (`manuel_possible`, D-P22.a), sinon `null` (aucune décision locale).
+  String? get _rejetRattrapableId {
+    final r = _result;
+    if (r != null && r.isRejet) {
+      // Refus courant : rattrapable seulement si le serveur le déclare ; sinon pas de repli sur un ancien refus.
+      return r.manuelPossible && r.id != null ? r.id : null;
+    }
+    return _dernierRejetId;
+  }
+
   /// D-P04 : demande de pointage manuel (sur le dernier rejet) ou accès à la liste des demandes.
   Widget _boutonsManuel() {
-    final rejetId = _result?.id ?? _dernierRejetId;
+    final rejetId = _rejetRattrapableId;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -391,14 +402,22 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
       action: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // D-P04 : un rejet de bonne foi est rattrapé par le responsable
-          if (!ok && result?.id != null && PointageStatut.manuelPossible(result?.statut)) ...[
+          // D-P22.a : bouton seulement si le serveur déclare le refus rattrapable, sinon la raison en clair.
+          if (!ok && result != null && result.id != null && result.manuelPossible) ...[
             FilledButton.icon(
               onPressed: _demandeEnvoyee || _busy ? null : _demanderPointageManuel,
               icon: const Icon(Icons.edit_calendar_rounded),
               label: Text(
                 _demandeEnvoyee ? 'Demande envoyée' : 'Demander un pointage manuel',
               ),
+            ),
+            const SizedBox(height: 8),
+          ] else if (!ok && result?.manuelImpossibleMotif != null) ...[
+            Text(
+              'Pointage manuel impossible : ${result!.manuelImpossibleMotif}.',
+              key: const Key('manuel_impossible_motif'),
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
           ],
@@ -412,7 +431,7 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
   }
 
   Future<void> _demanderPointageManuel() async {
-    final rejetId = _result?.id ?? _dernierRejetId;
+    final rejetId = _rejetRattrapableId;
     if (rejetId == null) return;
     final justification = await showDialog<String>(
       context: context,
@@ -628,8 +647,8 @@ class _PointageScreenState extends ConsumerState<PointageScreen> {
         _busy = false;
         _result = result;
         _step = _PointageStep.result;
-        // Un rejet hors horaire n'est pas rattrapable par un pointage manuel (décision 5).
-        if (PointageStatut.manuelPossible(result.statut) && result.id != null) {
+        // Seul le serveur dit si le refus est rattrapable par un pointage manuel (D-P22.a).
+        if (result.manuelPossible && result.id != null) {
           _dernierRejetId = result.id;
         }
         if (result.bloqueJusquA != null) _bloqueJusqua = result.bloqueJusquA;

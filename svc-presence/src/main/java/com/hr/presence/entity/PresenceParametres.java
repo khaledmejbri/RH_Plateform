@@ -33,6 +33,15 @@ public class PresenceParametres {
 	@Column(name = "rayon_defaut_interieur_metres")
 	private Integer rayonDefautInterieurMetres;
 
+	@Column(name = "plafond_distance_manuel_metres")
+	private Integer plafondDistanceManuelMetres;
+
+	@Column(name = "delai_demande_manuel_minutes")
+	private Integer delaiDemandeManuelMinutes;
+
+	@Column(name = "delai_decision_manuel_minutes")
+	private Integer delaiDecisionManuelMinutes;
+
 	@Version
 	private Long version;
 
@@ -51,6 +60,12 @@ public class PresenceParametres {
 	public void setRayonDefautExterieurMetres(Integer v) { this.rayonDefautExterieurMetres = v; }
 	public Integer getRayonDefautInterieurMetres() { return rayonDefautInterieurMetres; }
 	public void setRayonDefautInterieurMetres(Integer v) { this.rayonDefautInterieurMetres = v; }
+	public Integer getPlafondDistanceManuelMetres() { return plafondDistanceManuelMetres; }
+	public void setPlafondDistanceManuelMetres(Integer v) { this.plafondDistanceManuelMetres = v; }
+	public Integer getDelaiDemandeManuelMinutes() { return delaiDemandeManuelMinutes; }
+	public void setDelaiDemandeManuelMinutes(Integer v) { this.delaiDemandeManuelMinutes = v; }
+	public Integer getDelaiDecisionManuelMinutes() { return delaiDecisionManuelMinutes; }
+	public void setDelaiDecisionManuelMinutes(Integer v) { this.delaiDecisionManuelMinutes = v; }
 	public Long getVersion() { return version; }
 	public Instant getModifieLe() { return modifieLe; }
 	public void setModifieLe(Instant modifieLe) { this.modifieLe = modifieLe; }

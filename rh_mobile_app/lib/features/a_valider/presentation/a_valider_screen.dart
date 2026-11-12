@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/format/formats.dart';
+import '../../pointage/presentation/validation_manuelle_dialog.dart' show PastilleVigilance;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/rh_ui.dart';
 import '../../demandes_admin/data/demande_admin_models.dart';
@@ -137,7 +138,13 @@ class _CartePointage extends StatelessWidget {
           [d.collaborateurNom ?? '', d.typeLibelle].where((e) => e.isNotEmpty).join(' — '),
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
-        subtitle: Text(heure),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(heure),
+            if (d.avecSignal) ...[const SizedBox(height: 4), const PastilleVigilance()],
+          ],
+        ),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: d.id.isEmpty ? null : () => context.push('/pointage/manuels/${d.id}'),
       ),

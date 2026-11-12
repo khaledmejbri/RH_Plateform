@@ -56,6 +56,25 @@ class ConstraintRunnersTest {
 	}
 
 	@Test
+	void contrainteStatutDemandeManuelle_inclutExpiree_etSeRecreeSansDoublon() {
+		List<String> requetes = executer(j -> new DemandeManuelleStatutConstraintRunner(j).run(null));
+
+		assertThat(requetes.get(0)).contains("DROP CONSTRAINT IF EXISTS presence_demande_manuelle_statut_check");
+		String ajout = requetes.stream().filter(s -> s.contains("ADD CONSTRAINT")).findFirst().orElseThrow();
+		assertThat(ajout).contains("'EN_ATTENTE'", "'VALIDEE'", "'REFUSEE'", "'EXPIREE'");
+		assertThat(requetes.stream().filter(s -> s.contains("DROP CONSTRAINT IF EXISTS")).count())
+				.isEqualTo(requetes.stream().filter(s -> s.contains("ADD CONSTRAINT")).count());
+	}
+
+	@Test
+	void runnerStatutDemandeManuelle_toleraTableAbsente_sansEchouer() {
+		JdbcTemplate jdbc = mock(JdbcTemplate.class);
+		org.mockito.Mockito.doThrow(new RuntimeException("table absente")).when(jdbc).execute(anyString());
+
+		new DemandeManuelleStatutConstraintRunner(jdbc).run(null);
+	}
+
+	@Test
 	void contrainteStatutPointage_inclutLeRejetHorsHoraire() {
 		List<String> requetes = executer(j -> new PointageStatutConstraintRunner(j).run(null));
 

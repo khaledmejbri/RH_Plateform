@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { BandeauQrPapier } from '../components/VigilanceManuelle';
 import {
   downloadSiteQrPng,
   formatDateCourteTunis,
@@ -741,6 +742,7 @@ export default function PointageSitesPage() {
             </div>
           ) : sitesAffiches.length > 0 ? (
             <>
+              {sitesAffiches.some((s) => s.modeQr !== 'ECRAN') ? <BandeauQrPapier /> : null}
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -749,6 +751,7 @@ export default function PointageSitesPage() {
                       <th>Libellé</th>
                       <th>Statut</th>
                       <th>Emplacement</th>
+                      <th>Mode QR</th>
                       <th>QR</th>
                       <th>Expiration</th>
                       <th><span className="sr-only">Actions</span></th>
@@ -775,6 +778,7 @@ export default function PointageSitesPage() {
                             </span>
                           )}
                         </td>
+                        <td className="small">{s.modeQr === 'ECRAN' ? 'Écran' : 'Papier'}</td>
                         <td>
                           {s.hasQrActif ? (
                             <span className="small">
@@ -993,6 +997,7 @@ export default function PointageSitesPage() {
                       }.`
                     : 'QR papier — imprimé, valable 90 jours.'}
                 </p>
+                {detail.modeQr !== 'ECRAN' ? <BandeauQrPapier /> : null}
                 {detail.modeQr === 'ECRAN' && !detail.borneActive ? (
                   <div className="alert alert--warning" role="status">
                     Aucune borne active : les collaborateurs ne peuvent pas pointer sur ce site.

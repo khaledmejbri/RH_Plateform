@@ -118,6 +118,14 @@ export function formatDuree(minutes?: number | null): string {
   return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, '0')}`;
 }
 
+/** Délai d'une décision (D-P24.e) : « 40 min » sous 1 h, sinon « 1 h 40 » (« 2 h 00 », « 26 h 05 »). */
+export function formatDelai(minutes?: number | null): string {
+  if (minutes === null || minutes === undefined || Number.isNaN(minutes)) return TIRET;
+  const total = Math.max(0, Math.trunc(minutes));
+  if (total < 60) return `${total} min`;
+  return `${Math.floor(total / 60)} h ${String(total % 60).padStart(2, '0')}`;
+}
+
 /** Durée en minutes au format `hh:mm` (tableaux de temps de travail). */
 export function formatHeuresMinutes(minutes?: number | null): string {
   if (minutes === null || minutes === undefined || Number.isNaN(minutes)) return TIRET;

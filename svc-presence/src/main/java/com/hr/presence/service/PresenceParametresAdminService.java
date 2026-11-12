@@ -275,6 +275,9 @@ public class PresenceParametresAdminService {
 			case DELAI_GRACE_RETARD_MINUTES -> ligne.getDelaiGraceRetardMinutes();
 			case RAYON_DEFAUT_EXTERIEUR_METRES -> ligne.getRayonDefautExterieurMetres();
 			case RAYON_DEFAUT_INTERIEUR_METRES -> ligne.getRayonDefautInterieurMetres();
+			case PLAFOND_DISTANCE_MANUEL_METRES -> ligne.getPlafondDistanceManuelMetres();
+			case DELAI_DEMANDE_MANUEL_MINUTES -> ligne.getDelaiDemandeManuelMinutes();
+			case DELAI_DECISION_MANUEL_MINUTES -> ligne.getDelaiDecisionManuelMinutes();
 		};
 		return v != null ? v : r.defaut();
 	}
@@ -285,6 +288,9 @@ public class PresenceParametresAdminService {
 			case DELAI_GRACE_RETARD_MINUTES -> ligne.setDelaiGraceRetardMinutes(valeur);
 			case RAYON_DEFAUT_EXTERIEUR_METRES -> ligne.setRayonDefautExterieurMetres(valeur);
 			case RAYON_DEFAUT_INTERIEUR_METRES -> ligne.setRayonDefautInterieurMetres(valeur);
+			case PLAFOND_DISTANCE_MANUEL_METRES -> ligne.setPlafondDistanceManuelMetres(valeur);
+			case DELAI_DEMANDE_MANUEL_MINUTES -> ligne.setDelaiDemandeManuelMinutes(valeur);
+			case DELAI_DECISION_MANUEL_MINUTES -> ligne.setDelaiDecisionManuelMinutes(valeur);
 		}
 	}
 

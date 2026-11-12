@@ -7,12 +7,12 @@ import com.hr.presence.repository.PresenceParametresRepository;
 import static org.mockito.Mockito.mock;
 
 /** Paramètres de test : dépôts vides, donc repli sur les propriétés et les libellés d'origine. */
-final class ParametresTestSupport {
+public final class ParametresTestSupport {
 
 	private ParametresTestSupport() {
 	}
 
-	static PresenceParametresService depuis(PresenceProperties properties) {
+	public static PresenceParametresService depuis(PresenceProperties properties) {
 		return new PresenceParametresService(mock(PresenceParametreValeurRepository.class),
 				mock(PresenceParametresRepository.class), properties, 30);
 	}
