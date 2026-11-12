@@ -244,7 +244,85 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
     );
   }
 
+  /// Formulaire défilant + barre d'envoi fixe en bas : le bouton reste visible quelle que soit
+  /// la longueur du formulaire (bulletin de paie, clavier ouvert).
   Widget _formulaire(List<ParametreValeur> types) {
+    return Column(
+      children: [
+        Expanded(child: _champs(types)),
+        _barreEnvoi(),
+      ],
+    );
+  }
+
+  /// Raison affichée sous le bouton tant que l'envoi est impossible et que le formulaire ne
+  /// l'explique pas déjà (l'erreur de vérification et la restriction ont leur encadré).
+  String? get _raisonEnvoiImpossible {
+    if (_type == null) return 'Choisissez d’abord un type de document.';
+    if (_verifEnCours) return 'Vérification en cours…';
+    return null;
+  }
+
+  Widget _barreEnvoi() {
+    final actif = !_loading && _type != null && _canSubmit;
+    final raison = _loading ? null : _raisonEnvoiImpossible;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.textPrimary.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (raison != null) ...[
+              Text(
+                raison,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: AppTheme.textTertiary),
+              ),
+              const SizedBox(height: 8),
+            ],
+            SizedBox(
+              height: 50,
+              child: FilledButton(
+                onPressed: actif ? _submit : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: AppTheme.border,
+                  disabledForegroundColor: AppTheme.textTertiary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 0,
+                ),
+                child: _loading
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                      )
+                    : const Text(
+                        'Envoyer la demande',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _champs(List<ParametreValeur> types) {
     const primaryBlue = AppTheme.primary;
     return ListView(
         padding: const EdgeInsets.all(24),
@@ -537,39 +615,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.textPrimary.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -5),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              child: SizedBox(
-                height: 50,
-                child: FilledButton(
-                  onPressed: (!_loading && _type != null && _canSubmit) ? _submit : null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _canSubmit ? primaryBlue : AppTheme.textTertiary,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    elevation: 0,
-                  ),
-                  child: _loading
-                      ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
-                      : const Text(
-                          'Envoyer la demande',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                        ),
-                ),
-              ),
-            ),
-          ),
+          const SizedBox(height: 8),
         ],
     );
   }

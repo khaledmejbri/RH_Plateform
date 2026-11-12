@@ -56,4 +56,20 @@ void main() {
     expect(find.text('Attestation de stage'), findsOneWidget);
     expect(find.text('Bulletin de paie'), findsNothing);
   });
+
+  testWidgets('bouton d’envoi toujours visible en bas, sans défiler, avec la raison de l’inactivité', (tester) async {
+    tester.view.physicalSize = const Size(360, 560);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_ecran(typesDocumentActifsProvider.overrideWith((ref) async => const [
+          ParametreValeur(code: 'ATTESTATION_TRAVAIL', libelle: 'Attestation de travail', ordre: 1),
+        ])));
+    await tester.pumpAndSettle();
+
+    final bouton = find.widgetWithText(FilledButton, 'Envoyer la demande');
+    expect(bouton.hitTestable(), findsOneWidget);
+    expect(tester.widget<FilledButton>(bouton).onPressed, isNull);
+    expect(find.text('Choisissez d’abord un type de document.'), findsOneWidget);
+  });
 }
