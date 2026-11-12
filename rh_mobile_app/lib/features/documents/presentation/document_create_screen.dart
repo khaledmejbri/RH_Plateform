@@ -334,7 +334,8 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
             value: types.any((t) => t.code == _type) ? _type : null,
-            hint: const Text('Choisir un document'),
+            isExpanded: true,
+            hint: const Text('Choisir un document', overflow: TextOverflow.ellipsis),
             decoration: InputDecoration(
               filled: true,
               fillColor: Colors.white,
@@ -354,7 +355,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
               ),
             ),
             items: [
-              for (final t in types) DropdownMenuItem(value: t.code, child: Text(t.libelle)),
+              for (final t in types) DropdownMenuItem(value: t.code, child: Text(t.libelle, overflow: TextOverflow.ellipsis)),
             ],
             onChanged: (v) {
               if (v != null) {
