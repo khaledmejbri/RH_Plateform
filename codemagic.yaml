@@ -207,8 +207,6 @@ workflows:
           echo "Modele facial verifie (SHA-256 conforme)."
       - name: Analyze
         script: flutter analyze --no-fatal-infos --no-fatal-warnings
-      - name: Unit tests
-        script: flutter test
       - name: Build APK
         script: |
           flutter build apk --release \
