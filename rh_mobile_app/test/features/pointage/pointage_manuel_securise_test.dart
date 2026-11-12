@@ -185,7 +185,7 @@ void main() {
   });
 
   group('jourHeureTunis', () {
-    test('convertit depuis l'UTC avec un décalage fixe de +1 h', () {
+    test("convertit depuis l'UTC avec un décalage fixe de +1 h", () {
       expect(jourHeureTunis(DateTime.utc(2026, 11, 11, 7, 2)), '11/11 à 08:02');
       expect(jourHeureTunis(DateTime.utc(2026, 7, 1, 12, 5)), '01/07 à 13:05');
     });
@@ -194,7 +194,7 @@ void main() {
       expect(jourHeureTunis(DateTime.utc(2026, 11, 11, 23, 30)), '12/11 à 00:30');
     });
 
-    test('ne dépend pas du fuseau de l'appareil', () {
+    test("ne dépend pas du fuseau de l'appareil", () {
       final utc = DateTime.utc(2026, 11, 11, 7, 2);
       expect(jourHeureTunis(utc.toLocal()), jourHeureTunis(utc));
     });

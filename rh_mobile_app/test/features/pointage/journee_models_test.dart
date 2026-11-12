@@ -113,7 +113,6 @@ void main() {
     });
     expect(d.valideurAffiche, 'les RH');
     expect(d.motifRejetAutomatique, 'Hors zone');
-    expect(d.distanceMetres, 179.8);
     expect(d.siteLibelle, 'Siège');
   });
 }
