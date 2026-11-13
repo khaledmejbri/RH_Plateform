@@ -31,6 +31,7 @@ public class UserProvisioningService {
 	private final PasswordEncoder passwordEncoder;
 	private final KafkaTemplate<String, CollaborateurCompteCreeEvent> collaborateurCompteCreeKafkaTemplate;
 	private final CollaborateurWelcomeMailService collaborateurWelcomeMailService;
+	private final GenerateurMotDePasse generateurMotDePasse;
 
 	@Transactional
 	public void provisionCollaborateurCompte(CollaborateurCompteDemandeEvent event) {
@@ -43,7 +44,7 @@ public class UserProvisioningService {
 			return;
 		}
 
-		if (estMajRoles(event) || motDePasseInitialAbsent(event)) {
+		if (estMajRoles(event) || (motDePasseInitialAbsent(event) && !event.genereLeMotDePasse())) {
 			if (event.compteUtilisateurId() != null) {
 				log.warn(
 						"Compte identité introuvable id={} matricule={} collaborateur={} : MAJ rôles ignorée",
@@ -65,16 +66,23 @@ public class UserProvisioningService {
 			return;
 		}
 
+		if (event.courriel() == null || event.courriel().isBlank()) {
+			// import : le mot de passe généré n'a nulle part où aller, la fiche reste sans compte (D-I13.g)
+			log.error("Courriel manquant, création de compte ignorée pour collaborateur {}", event.collaborateurIdentifiant());
+			return;
+		}
 		if (userRepository.existsByEmail(event.courriel().trim())) {
 			log.error("Courriel déjà utilisé pour un autre compte : {}", event.courriel());
 			return;
 		}
 
 		Set<String> roles = resolveRoles(event.profilAcces());
+		// D-I09 : mot de passe généré ici pour un import, transmis au seul courriel de bienvenue (jamais journalisé)
+		String motDePasse = event.genereLeMotDePasse() ? generateurMotDePasse.generer() : event.motDePasseInitial();
 		User user = User.builder()
 				.username(matricule)
 				.email(event.courriel().trim())
-				.password(passwordEncoder.encode(event.motDePasseInitial()))
+				.password(passwordEncoder.encode(motDePasse))
 				.roles(roles)
 				.build();
 		user = userRepository.save(user);
@@ -85,7 +93,7 @@ public class UserProvisioningService {
 				event.prenom(),
 				event.nom(),
 				matricule,
-				event.motDePasseInitial());
+				motDePasse);
 	}
 
 	private Optional<User> trouverCompteExistant(CollaborateurCompteDemandeEvent event) {

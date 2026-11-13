@@ -188,3 +188,25 @@ const MOTIF_UUID = /\b[0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 export function ressembleAUnIdentifiant(s: string | null | undefined): boolean {
   return !!s && MOTIF_UUID.test(s);
 }
+
+/** Jours de congé avec accord : « 0,5 jour », « 1,5 jour », « 2 jours » (pluriel dès 2). */
+export function formatJours(n?: number | null): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return TIRET;
+  const abs = Math.abs(n);
+  return `${formatNombre(abs, 2)} ${abs >= 2 ? 'jours' : 'jour'}`;
+}
+
+/** Variation signée : « + 1,5 jour », « − 5 jours » (vrai signe moins) ; zéro sans signe. */
+export function formatJoursSigne(n?: number | null): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return TIRET;
+  if (n === 0) return formatJours(0);
+  return `${n > 0 ? '+' : '−'} ${formatJours(n)}`;
+}
+
+/** Nombre de jours sans unité, avec signe optionnel (colonnes de tableau). */
+export function formatJoursNombre(n?: number | null, signe = false): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return TIRET;
+  const t = formatNombre(Math.abs(n), 2);
+  if (!signe || n === 0) return n < 0 ? `− ${t}` : t;
+  return `${n > 0 ? '+' : '−'} ${t}`;
+}

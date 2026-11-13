@@ -19,6 +19,8 @@ import PointageSitesPage from './pages/PointageSitesPage';
 import HeuresSupPage from './pages/HeuresSupPage';
 import BornePage from './pages/BornePage';
 import ParametresPage from './pages/ParametresPage';
+import SoldesCongePage from './pages/SoldesCongePage';
+import ImportPage from './pages/imports/ImportPage';
 import FichePage from './detail/FichePage';
 
 export default function App() {
@@ -38,6 +40,8 @@ export default function App() {
           <Route path="/app/formations" element={<FormationsPage />} />
           <Route path="/app/formations/:id" element={<FichePage type="formation" />} />
           <Route path="/app/collaborateurs" element={<CollaborateursPage />} />
+          <Route path="/app/collaborateurs/historique-imports" element={<ImportPage type="COLLABORATEURS" />} />
+          <Route path="/app/conges/soldes" element={<SoldesCongePage />} />
           <Route path="/app/collaborateurs/:id" element={<FichePage type="collaborateur" />} />
           <Route path="/app/organisation/unites/:id" element={<FichePage type="unite" />} />
           <Route path="/app/organigramme" element={<OrganigrammePage />} />
@@ -52,6 +56,8 @@ export default function App() {
           <Route path="/app/heures-sup/:id" element={<FichePage type="heures-sup" />} />
           <Route path="/app/parametres" element={<ParametresPage />} />
           <Route element={<RequireWriteAccess />}>
+            <Route path="/app/collaborateurs/import" element={<ImportPage type="COLLABORATEURS" />} />
+            <Route path="/app/conges/soldes/import" element={<ImportPage type="SOLDES" />} />
             <Route path="/app/plaintes" element={<PlaintesSuiviPage />} />
             <Route path="/app/plaintes/:id" element={<FichePage type="plainte" />} />
             <Route path="/app/unites" element={<UnitesOrganisationPage />} />

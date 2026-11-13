@@ -4,6 +4,8 @@ import '../../../core/constants/api_constants.dart';
 import '../../../core/format/formats.dart';
 import '../../../core/libelles/libelles.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/widgets/confirmation_action.dart';
+import '../data/demande_admin_errors.dart';
 import '../data/demande_admin_models.dart';
 import '../data/demande_admin_repository.dart';
 import 'package:rh_mobile_app/core/theme/app_theme.dart';
@@ -67,6 +69,8 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                 final statusLabel = Libelles.avecRepli(j['statut_libelle']?.toString(), statut, Libelles.statutDemande);
                 final bool refusee = statut == 'REFUSEE';
                 final bool approuvee = statut == 'APPROUVEE';
+                final item = DemandeAdminItem.fromJson(j);
+                final annuleeRh = item.annuleeApresApprobation;
                 final bool enAttente = statut == 'SOUMISE' ||
                     statut == 'EN_VALIDATION_SUPERIEUR' ||
                     statut == 'EN_VALIDATION_RRH';
@@ -81,7 +85,8 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                 } else if (refusee) {
                   statusDescription = 'Votre demande a été refusée. Consultez le motif ci-dessous.';
                 } else if (statut == 'ANNULEE') {
-                  statusDescription = 'Cette demande a été annulée.';
+                  statusDescription =
+                      annuleeRh ? 'Cette demande a été annulée par la RH après son approbation.' : 'Cette demande a été annulée.';
                 }
 
                 Color statusColor = AppTheme.textTertiary;
@@ -178,7 +183,7 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    statusLabel,
+                                    annuleeRh ? 'Annulée après approbation' : statusLabel,
                                     style: TextStyle(
                                       color: statusColor,
                                       fontSize: 14,
@@ -217,9 +222,30 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                               ],
                             ),
                           ],
+                          ..._lignesSolde(item),
                         ],
                       ),
                     ),
+                    if (annuleeRh) ...[
+                      const SizedBox(height: 16),
+                      _BlocAnnulationRh(item: item),
+                    ],
+                    if (approuvee && item.typeDemande == 'CONGE') ...[
+                      const SizedBox(height: 16),
+                      const _MentionContacterRh(),
+                    ],
+                    if (enAttente && item.peutAnnuler) ...[
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: () => _annuler(context, ref, item),
+                        icon: const Icon(Icons.cancel_outlined),
+                        label: const Text('Annuler ma demande'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.error,
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                      ),
+                    ],
                     if (refusee && j['motif_refus'] != null) ...[
                       const SizedBox(height: 16),
                       Container(
@@ -326,6 +352,50 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
     );
   }
 
+  /// Jours décomptés, périodes de demi-journée et solde du demandeur (visible du seul décideur).
+  List<Widget> _lignesSolde(DemandeAdminItem d) {
+    final lignes = <String>[
+      if (d.joursDecomptes != null) 'Jours décomptés : ${formatJours(d.joursDecomptes!)}',
+      if (d.periodePremierJourLibelle != null) 'Premier jour : ${d.periodePremierJourLibelle}',
+      if (d.periodeDernierJourLibelle != null) 'Dernier jour : ${d.periodeDernierJourLibelle}',
+      if (d.soldeDecideurAffiche != null) d.soldeDecideurAffiche!,
+      if (d.soldeApresDemande != null) 'Solde après cette demande : ${formatJours(d.soldeApresDemande!)}',
+    ];
+    if (lignes.isEmpty) return const [];
+    return [
+      const SizedBox(height: 12),
+      for (final l in lignes)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(l, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary, fontWeight: FontWeight.w600)),
+        ),
+    ];
+  }
+
+  /// Annulation par le demandeur d'une demande en cours de validation ; un 403 / 409 est affiché en clair.
+  Future<void> _annuler(BuildContext context, WidgetRef ref, DemandeAdminItem d) async {
+    final ok = await confirmerAction(
+      context,
+      action: 'Voulez-vous annuler cette demande ?',
+      element: [d.titre, if (d.referenceAffichee != null) d.referenceAffichee!].join(' — '),
+      libelleConfirmer: 'Annuler ma demande',
+      destructive: true,
+    );
+    if (!ok || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(demandeAdminRepositoryProvider).annulerDemande(d.id);
+      ref.invalidate(demandeAdminDetailProvider(id));
+      ref.invalidate(demandeAdminSuiviProvider(id));
+      ref.invalidate(demandeAdminHistoriqueProvider(id));
+      messenger.showSnackBar(const SnackBar(content: Text('Demande annulée.')));
+    } catch (e) {
+      // Écran périmé (demande approuvée entre-temps) : le message du serveur est montré, puis l'écran est relu.
+      messenger.showSnackBar(SnackBar(content: Text(messageErreurDemandeAdmin(e, fallback: 'Impossible d’annuler la demande.'))));
+      ref.invalidate(demandeAdminDetailProvider(id));
+    }
+  }
+
   Widget _buildTimelineItem(WorkflowHistoryItem item, {required bool isLast}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -423,6 +493,74 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Congé approuvé : seule la RH peut l'annuler (D-S06.d), donc aucun bouton, une mention.
+class _MentionContacterRh extends StatelessWidget {
+  const _MentionContacterRh();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: AppTheme.primarySurface, borderRadius: BorderRadius.circular(12)),
+      child: const Row(
+        children: [
+          Icon(Icons.info_outline, size: 18, color: AppTheme.primaryDark),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Pour annuler un congé approuvé, contactez les RH.',
+              style: TextStyle(fontSize: 13, color: AppTheme.primaryDark),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Demande annulée par la RH après approbation : auteur, date, motif et jours recrédités.
+class _BlocAnnulationRh extends StatelessWidget {
+  const _BlocAnnulationRh({required this.item});
+
+  final DemandeAdminItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final qui = [
+      if (item.annuleParNom != null) 'par ${item.annuleParNom}',
+      if (item.annuleApresApprobationLe != null) 'le ${formatDateHeureIso(item.annuleApresApprobationLe)}',
+    ].join(' ');
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceMuted,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            qui.isEmpty ? 'Annulée après approbation' : 'Annulée après approbation $qui',
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          ),
+          if ((item.motifAnnulation ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('Motif : ${item.motifAnnulation}', style: const TextStyle(fontSize: 13, height: 1.4)),
+          ],
+          if (item.joursRecredites != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${formatJours(item.joursRecredites!)} recrédité${item.joursRecredites!.abs() < 2 ? '' : 's'} sur votre solde.',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

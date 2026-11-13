@@ -12,6 +12,9 @@ import {
   type DemandeAdministrativeSuivi,
   type Unite,
 } from '../api/rhClient';
+import { annulerApresApprobation, messageConges } from '../api/congesApi';
+import { ApiMetierError } from '../api/metierApi';
+import { BlocAnnulationApresApprobation, joursDecomptes, lignesConge } from '../components/CongeDemande';
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
 
@@ -130,6 +133,42 @@ export default function DemandesAdministrativesPage() {
     await load();
   }
 
+  /** Annulation RH d'un congé approuvé non commencé (D4) : motif 5 à 500 dans la même fenêtre. */
+  async function annulerConge() {
+    if (!selected) return;
+    const cible = selected;
+    const qui = `${intituleDemande(cible)}${cible.numero ? ` ${cible.numero}` : ''} de ${formatPersonne(cible.demandeur_nom, cible.demandeur_matricule)}`;
+    let echec: unknown = null;
+    const ok = await confirm({
+      title: 'Annuler ce congé ?',
+      message: `Annuler le congé approuvé : ${qui} ? Les jours décomptés seront recrédités et le demandeur sera notifié.`,
+      confirmLabel: 'Annuler le congé',
+      cancelLabel: 'Retour',
+      danger: true,
+      motif: { label: 'Motif de l’annulation', obligatoire: true, minLength: 5, maxLength: 500, placeholder: 'Expliquez la raison au collaborateur…' },
+      envoyer: async (texte) => {
+        try {
+          await annulerApresApprobation(cible.identifiant, texte);
+        } catch (e) {
+          echec = e;
+          throw new Error(messageConges(e));
+        }
+      },
+      // Un 409 (déjà décidée, déjà commencé…) : l'état a changé, on referme et on recharge.
+      echecDefinitif: () => echec instanceof ApiMetierError && echec.status === 409,
+    });
+    if (echec && !ok) {
+      setSelected(null);
+      await load();
+      setErr(messageConges(echec));
+      return;
+    }
+    if (!ok) return;
+    setMsg('Congé annulé. Le solde du collaborateur a été recrédité et il est notifié.');
+    setSelected(null);
+    await load();
+  }
+
   function formatTypeDemande(type: string): string {
     return libelle('typeDemande', type);
   }
@@ -234,6 +273,7 @@ export default function DemandesAdministrativesPage() {
                   <th scope="col">Type</th>
                   <th scope="col">Statut</th>
                   <th scope="col">Période</th>
+                  <th scope="col">Jours décomptés</th>
                   <th scope="col">Demandeur</th>
                   <th scope="col"><span className="sr-only">Actions</span></th>
                 </tr>
@@ -258,6 +298,7 @@ export default function DemandesAdministrativesPage() {
                         <StatusBadge referentiel="STATUT_DEMANDE" statut={d.statut} />
                       </td>
                       <td data-label="Période" className="cell-meta">{periodeDemande(d)}</td>
+                      <td data-label="Jours décomptés" className="cell-meta">{d.type_demande === 'CONGE' ? joursDecomptes(d) : '—'}</td>
                       <td data-label="Demandeur">
                         <span className="cell-user">
                           <Avatar name={d.demandeur_nom ?? '?'} size={28} />
@@ -315,6 +356,9 @@ export default function DemandesAdministrativesPage() {
                 </div>
                 <div><dt>Unité</dt><dd>{selected.demandeur_unite ?? '—'}</dd></div>
                 <div><dt>Créée le</dt><dd>{formatDateHeure(selected.cree_le)}</dd></div>
+                {lignesConge(selected).map(([libelle, valeur]) => (
+                  <div key={libelle}><dt>{libelle}</dt><dd>{valeur}</dd></div>
+                ))}
                 {contenuLignes(selected).map(([libelle, valeur]) => (
                   <div key={libelle}><dt>{libelle}</dt><dd>{valeur}</dd></div>
                 ))}
@@ -326,6 +370,8 @@ export default function DemandesAdministrativesPage() {
                   <p>{selected.motif_refus}</p>
                 </div>
               ) : null}
+
+              <BlocAnnulationApresApprobation d={selected} />
 
               {detailLoading ? <LoadingState label="Chargement du suivi…" /> : null}
               {detailErr ? <ErrorAlert>{detailErr}</ErrorAlert> : null}
@@ -376,7 +422,12 @@ export default function DemandesAdministrativesPage() {
                   </div>
                 </>
               ) : (
-                <button type="button" className="btn btn--secondary" onClick={closeDetail} style={{ marginLeft: 'auto' }}>Fermer</button>
+                <>
+                  {!lectureSeule && selected.peut_annuler_apres_approbation ? (
+                    <button type="button" className="btn btn--ghost" onClick={() => void annulerConge()}>Annuler le congé</button>
+                  ) : null}
+                  <button type="button" className="btn btn--secondary" onClick={closeDetail} style={{ marginLeft: 'auto' }}>Fermer</button>
+                </>
               )}
             </div>
           </DialogPanel>

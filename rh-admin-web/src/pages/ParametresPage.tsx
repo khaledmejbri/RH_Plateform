@@ -11,6 +11,7 @@ import {
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { LoadingState, PageHeader } from '../components/ui';
 import ReferentielPanel from './parametres/ReferentielPanel';
+import JoursFeriesPanel from './parametres/JoursFeriesPanel';
 import ReglagesPanel from './parametres/ReglagesPanel';
 import './parametres/parametres.css';
 
@@ -26,7 +27,7 @@ const DOMAINES: ReadonlyArray<{ code: string; titre: string }> = [
 
 /** Domaine d'affichage des réglages d'un service. */
 const DOMAINE_REGLAGES: Record<ServiceParametre, string> = {
-  referentiel: 'ORGANISATION',
+  referentiel: 'DEMANDES',
   evaluation: 'EVALUATIONS',
   presence: 'POINTAGE',
 };
@@ -39,7 +40,8 @@ const SERVICE_LIBELLE: Record<ServiceParametre, string> = {
 
 type Entree =
   | { genre: 'ref'; cle: string; domaine: string; titre: string; service: ServiceParametre; descripteur: DescripteurReferentiel }
-  | { genre: 'reglages'; cle: string; domaine: string; titre: string; service: ServiceParametre };
+  | { genre: 'reglages'; cle: string; domaine: string; titre: string; service: ServiceParametre }
+  | { genre: 'feries'; cle: string; domaine: string; titre: string };
 
 type Etat =
   | { statut: 'chargement' }
@@ -112,6 +114,7 @@ export default function ParametresPage() {
         });
       }
     }
+    entrees.push({ genre: 'feries', cle: 'jours-feries', domaine: 'DEMANDES', titre: 'Jours fériés' });
     const codes = Array.from(new Set([...DOMAINES.map((d) => d.code), ...entrees.map((e) => e.domaine)]));
     return codes
       .map((code) => ({ code, titre: titreDomaine(code), entrees: entrees.filter((e) => e.domaine === code) }))
@@ -196,6 +199,8 @@ export default function ParametresPage() {
                   descripteur={choisie.descripteur}
                   lectureSeule={lectureSeule}
                 />
+              ) : choisie?.genre === 'feries' ? (
+                <JoursFeriesPanel key={choisie.cle} lectureSeule={lectureSeule} />
               ) : choisie?.genre === 'reglages' ? (
                 <ReglagesPanel
                   key={choisie.cle}

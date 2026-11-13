@@ -191,4 +191,185 @@ public class DemandeAdministrativeRhResponse {
 	public void setDemandeurUnite(String demandeurUnite) {
 		this.demandeurUnite = demandeurUnite;
 	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("jours_decomptes")
+	private java.math.BigDecimal joursDecomptes;
+
+	public java.math.BigDecimal getJoursDecomptes() {
+		return joursDecomptes;
+	}
+
+	public void setJoursDecomptes(java.math.BigDecimal joursDecomptes) {
+		this.joursDecomptes = joursDecomptes;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("periode_premier_jour")
+	private String periodePremierJour;
+
+	public String getPeriodePremierJour() {
+		return periodePremierJour;
+	}
+
+	public void setPeriodePremierJour(String periodePremierJour) {
+		this.periodePremierJour = periodePremierJour;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("periode_premier_jour_libelle")
+	private String periodePremierJourLibelle;
+
+	public String getPeriodePremierJourLibelle() {
+		return periodePremierJourLibelle;
+	}
+
+	public void setPeriodePremierJourLibelle(String periodePremierJourLibelle) {
+		this.periodePremierJourLibelle = periodePremierJourLibelle;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("periode_dernier_jour")
+	private String periodeDernierJour;
+
+	public String getPeriodeDernierJour() {
+		return periodeDernierJour;
+	}
+
+	public void setPeriodeDernierJour(String periodeDernierJour) {
+		this.periodeDernierJour = periodeDernierJour;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("periode_dernier_jour_libelle")
+	private String periodeDernierJourLibelle;
+
+	public String getPeriodeDernierJourLibelle() {
+		return periodeDernierJourLibelle;
+	}
+
+	public void setPeriodeDernierJourLibelle(String periodeDernierJourLibelle) {
+		this.periodeDernierJourLibelle = periodeDernierJourLibelle;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("annulee_apres_approbation")
+	private Boolean annuleeApresApprobation;
+
+	public Boolean getAnnuleeApresApprobation() {
+		return annuleeApresApprobation;
+	}
+
+	public void setAnnuleeApresApprobation(Boolean annuleeApresApprobation) {
+		this.annuleeApresApprobation = annuleeApresApprobation;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("motif_annulation")
+	private String motifAnnulation;
+
+	public String getMotifAnnulation() {
+		return motifAnnulation;
+	}
+
+	public void setMotifAnnulation(String motifAnnulation) {
+		this.motifAnnulation = motifAnnulation;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("annule_apres_approbation_le")
+	private Instant annuleApresApprobationLe;
+
+	public Instant getAnnuleApresApprobationLe() {
+		return annuleApresApprobationLe;
+	}
+
+	public void setAnnuleApresApprobationLe(Instant annuleApresApprobationLe) {
+		this.annuleApresApprobationLe = annuleApresApprobationLe;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("annule_par_nom")
+	private String annuleParNom;
+
+	public String getAnnuleParNom() {
+		return annuleParNom;
+	}
+
+	public void setAnnuleParNom(String annuleParNom) {
+		this.annuleParNom = annuleParNom;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("jours_recredites")
+	private java.math.BigDecimal joursRecredites;
+
+	public java.math.BigDecimal getJoursRecredites() {
+		return joursRecredites;
+	}
+
+	public void setJoursRecredites(java.math.BigDecimal joursRecredites) {
+		this.joursRecredites = joursRecredites;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("peut_annuler_apres_approbation")
+	private Boolean peutAnnulerApresApprobation;
+
+	public Boolean getPeutAnnulerApresApprobation() {
+		return peutAnnulerApresApprobation;
+	}
+
+	public void setPeutAnnulerApresApprobation(Boolean peutAnnulerApresApprobation) {
+		this.peutAnnulerApresApprobation = peutAnnulerApresApprobation;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("solde_disponible_demandeur")
+	private java.math.BigDecimal soldeDisponibleDemandeur;
+
+	public java.math.BigDecimal getSoldeDisponibleDemandeur() {
+		return soldeDisponibleDemandeur;
+	}
+
+	public void setSoldeDisponibleDemandeur(java.math.BigDecimal soldeDisponibleDemandeur) {
+		this.soldeDisponibleDemandeur = soldeDisponibleDemandeur;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("solde_apres_demande")
+	private java.math.BigDecimal soldeApresDemande;
+
+	public java.math.BigDecimal getSoldeApresDemande() {
+		return soldeApresDemande;
+	}
+
+	public void setSoldeApresDemande(java.math.BigDecimal soldeApresDemande) {
+		this.soldeApresDemande = soldeApresDemande;
+	}
+
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("solde_reserve_autres_demandes")
+	private java.math.BigDecimal soldeReserveAutresDemandes;
+
+	public java.math.BigDecimal getSoldeReserveAutresDemandes() {
+		return soldeReserveAutresDemandes;
+	}
+
+	public void setSoldeReserveAutresDemandes(java.math.BigDecimal soldeReserveAutresDemandes) {
+		this.soldeReserveAutresDemandes = soldeReserveAutresDemandes;
+	}
+
+	/** Vrai seulement si l'appelant est le demandeur et la demande est encore en cours de validation (annulable par lui). */
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	@JsonProperty("peut_annuler")
+	private Boolean peutAnnuler;
+
+	public Boolean getPeutAnnuler() {
+		return peutAnnuler;
+	}
+
+	public void setPeutAnnuler(Boolean peutAnnuler) {
+		this.peutAnnuler = peutAnnuler;
+	}
 }

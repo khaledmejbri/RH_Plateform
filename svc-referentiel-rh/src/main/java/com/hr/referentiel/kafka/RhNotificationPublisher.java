@@ -156,6 +156,39 @@ public class RhNotificationPublisher {
                 nomComplet(demandeur) + " a annulé sa demande" + complementDemande(typeDemande) + ".", objet("DEMANDE", "DEMANDE_ANNULEE", demandeId, numero));
     }
 
+    // ─── Soldes de congé ────────────────────────────────────────────────────
+
+    /** Ajustement du solde (manuel ou import) : le collaborateur seulement, jamais l'auteur (D-S15.c). Ouvre « Mon solde ». */
+    public void notifierSoldeAjuste(Collaborateur collaborateur, java.math.BigDecimal ecart,
+            java.math.BigDecimal soldeApres, String motif) {
+        envoyer(collaborateur, "Solde de congé ajusté",
+                "Votre solde de congé a été ajusté : " + com.hr.referentiel.service.FormatJours.signe(ecart)
+                        + " (solde : " + com.hr.referentiel.service.FormatJours.jours(soldeApres) + "). Motif : " + motif,
+                objet("SOLDE_CONGE", "SOLDE_AJUSTE", null, null));
+    }
+
+    /**
+     * Congé approuvé annulé par la RH : le demandeur, et le valideur D-H03 figé s'il existe et n'est pas l'auteur.
+     * Une seule notification par compte ; l'auteur de l'annulation n'est jamais notifié.
+     */
+    public void notifierCongeAnnuleApresApprobation(Collaborateur demandeur, Collaborateur valideur,
+            UUID auteurFicheId, String auteurNom, java.time.LocalDate debut, java.time.LocalDate fin, String motif,
+            UUID demandeId, String numero) {
+        String periode = "du " + debut.format(FORMAT_JOUR) + " au " + fin.format(FORMAT_JOUR);
+        if (!demandeur.getId().equals(auteurFicheId)) {
+            envoyer(demandeur, "Congé annulé par la RH",
+                    "Votre congé " + periode + " a été annulé par " + auteurNom + ". Motif : " + motif,
+                    objet("DEMANDE", "CONGE_ANNULE_APRES_APPROBATION", demandeId, numero));
+        }
+        if (valideur != null && !valideur.getId().equals(auteurFicheId)
+                && !valideur.getId().equals(demandeur.getId())
+                && !adresse(valideur).equals(adresse(demandeur))) {
+            envoyer(valideur, "Congé annulé par la RH",
+                    "Le congé de " + nomComplet(demandeur) + " " + periode + " a été annulé par la RH.",
+                    objet("DEMANDE", "CONGE_ANNULE_APRES_APPROBATION", demandeId, numero));
+        }
+    }
+
     // ─── Documents Administratifs ───────────────────────────────────────────
 
     /**

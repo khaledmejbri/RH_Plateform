@@ -19,6 +19,8 @@ public enum ReferentielParametre {
 			List.of(new Attribut("piece_jointe_obligatoire", "BOOLEEN"))),
 	TYPE_DEMANDE("Types de demande", Domaines.DEMANDES, NatureParametre.COMPORTEMENT, true, List.of()),
 	STATUT_DEMANDE("Statuts des demandes", Domaines.DEMANDES, NatureParametre.COMPORTEMENT, true, List.of()),
+	TYPE_MOUVEMENT_SOLDE("Types de mouvement du solde de congé", Domaines.DEMANDES, NatureParametre.COMPORTEMENT, true,
+			List.of()),
 
 	TYPE_DOCUMENT("Types de document", Domaines.DOCUMENTS, NatureParametre.VALEUR, true,
 			List.of(new Attribut("sla_heures", "ENTIER"))),

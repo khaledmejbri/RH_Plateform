@@ -47,6 +47,10 @@ public class DemandeAdministrativeRhService {
 	private final DemandeAdminWorkflowHistoryRepository workflowHistoryRepository;
 	private final NumeroLisibleService numeroLisibleService;
 	private final ParametreService parametreService;
+	private final CongeDecompteService congeDecompteService;
+	private final AnnulationCongeService annulationCongeService;
+	private final ChampsDecideurSolde champsDecideurSolde;
+	private final AuteurParametreResolver auteurResolver;
 
 	public DemandeAdministrativeRhService(
 			DemandeAdministrativeRhRepository demandeRepo,
@@ -56,8 +60,16 @@ public class DemandeAdministrativeRhService {
 			RhNotificationPublisher notificationPublisher,
 			DemandeAdminWorkflowHistoryRepository workflowHistoryRepository,
 			NumeroLisibleService numeroLisibleService,
-			ParametreService parametreService) {
+			ParametreService parametreService,
+			CongeDecompteService congeDecompteService,
+			AnnulationCongeService annulationCongeService,
+			ChampsDecideurSolde champsDecideurSolde,
+			AuteurParametreResolver auteurResolver) {
 		this.parametreService = parametreService;
+		this.congeDecompteService = congeDecompteService;
+		this.annulationCongeService = annulationCongeService;
+		this.champsDecideurSolde = champsDecideurSolde;
+		this.auteurResolver = auteurResolver;
 		this.demandeRepo = demandeRepo;
 		this.collaborateurRepository = collaborateurRepository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
@@ -89,6 +101,10 @@ public class DemandeAdministrativeRhService {
 			parametreService.marquerUtilisee("TYPE_CONGE", codeConge);
 		}
 		DemandeAdministrativePeriodeHelper.appliquerPeriodeIndexee(d);
+		if (req.getTypeDemande() == TypeDemandeAdministrativeRh.CONGE) {
+			// D-S01 / D-S06 : périodes, jours décomptés, solde disponible et chevauchement (verrou du solde)
+			congeDecompteService.preparerCreation(demandeur, codeConge, d);
+		}
 
 		Collaborateur valideurAttendu = managerNoeudActif(demandeur);
 		d.setValideurAttendu(valideurAttendu);
@@ -130,16 +146,14 @@ public class DemandeAdministrativeRhService {
 			lignes = filtrerStatut(
 					demandeRepo.findByDemandeurIdAndTypeDemandeOrderByCreeLeDesc(c.getId(), type), statut);
 		}
-		return lignes.stream().map(this::toResponse).collect(Collectors.toList());
+		return versReponses(lignes);
 	}
 
 	@Transactional(readOnly = true)
 	public List<DemandeAdministrativeRhResponse> demandesEnAttenteRo(Jwt jwt) {
 		Collaborateur manager = collaborateurConnecteService.exigerCollaborateur(jwt);
-		return demandeRepo.findByValideurAttenduIdAndStatutOrderByCreeLeDesc(
-						manager.getId(), StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR).stream()
-				.map(this::toResponse)
-				.collect(Collectors.toList());
+		return versReponses(demandeRepo.findByValideurAttenduIdAndStatutOrderByCreeLeDesc(
+				manager.getId(), StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR));
 	}
 
 	@Transactional(readOnly = true)
@@ -173,11 +187,11 @@ public class DemandeAdministrativeRhService {
 		} else {
 			lignes = filtrerStatut(demandeRepo.findAllPourRhByTypeDemandeOrderByCreeLeDesc(type), statut);
 		}
-		return lignes.stream()
+		return versReponses(lignes.stream()
 				.filter(d -> collaborateurId == null || d.getDemandeur().getId().equals(collaborateurId))
 				.filter(d -> uniteId == null
 						|| SuperieurHierarchieRules.descendDe(d.getDemandeur().getUnite(), uniteId))
-				.map(this::toResponse).collect(Collectors.toList());
+				.collect(Collectors.toList()));
 	}
 
 	@Transactional(readOnly = true)
@@ -185,12 +199,15 @@ public class DemandeAdministrativeRhService {
 		DemandeAdministrativeRh d = charger(id);
 		if (!rh) {
 			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
-			if (!d.getDemandeur().getId().equals(c.getId())) {
+			boolean valideurAttendu = d.getValideurAttendu() != null && d.getValideurAttendu().getId().equals(c.getId());
+			if (!d.getDemandeur().getId().equals(c.getId()) && !valideurAttendu) {
 				// SCRUM-25 : demande d'un autre collaborateur = refus de droits (403), pas une donnée invalide
 				throw new AccessDeniedException("Accès refusé.");
 			}
 		}
-		return toResponse(d);
+		DemandeAdministrativeRhResponse r = toResponse(d);
+		champsDecideurSolde.annoter(d, r);
+		return r;
 	}
 
 	@Transactional(readOnly = true)
@@ -225,11 +242,13 @@ public class DemandeAdministrativeRhService {
 
 	@Transactional
 	public DemandeAdministrativeRhResponse validerSuperieur(UUID id, Jwt jwt) {
-		DemandeAdministrativeRh d = charger(id);
+		DemandeAdministrativeRh d = chargerPourDecision(id);
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR,
 				"Cette demande n'est pas en attente de validation du responsable.");
 		Collaborateur ro = verifierEstRoDuDemandeurEtRetourner(jwt, d);
 		Collaborateur demandeur = chargerDemandeurDetail(d);
+		// D-S06.a/b : jours recalculés, 422 SOLDE_INSUFFISANT (statut inchangé) si les jours dépassent l'acquis
+		congeDecompteService.controlerValidation(d);
 
 		d.setStatut(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
 		demandeRepo.save(d);
@@ -247,7 +266,7 @@ public class DemandeAdministrativeRhService {
 
 	@Transactional
 	public DemandeAdministrativeRhResponse refuserSuperieur(UUID id, Jwt jwt, DemandeRefusRequest req) {
-		DemandeAdministrativeRh d = charger(id);
+		DemandeAdministrativeRh d = chargerPourDecision(id);
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR,
 				"Cette demande n'est pas en attente de validation du responsable.");
 		Collaborateur ro = verifierEstRoDuDemandeurEtRetourner(jwt, d);
@@ -272,18 +291,22 @@ public class DemandeAdministrativeRhService {
 
 	@Transactional
 	public DemandeAdministrativeRhResponse validerRrh(UUID id, Jwt jwt) {
-		DemandeAdministrativeRh d = charger(id);
+		DemandeAdministrativeRh d = chargerPourDecision(id);
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_RRH,
 				"Cette demande n'est pas en attente de validation de la RH.");
 		Collaborateur rh = verifierPasPropreDemandeRrh(jwt, d);
 		Collaborateur demandeur = chargerDemandeurDetail(d);
 
+		// D-S06.c : contrôle de l'acquis, jours figés et mouvement « Congé pris » dans la même transaction
+		boolean anterieure = CongeDecompteService.estAnnuel(d) && d.getJoursDecomptes() == null;
+		congeDecompteService.approuver(d, auteurResolver.depuis(jwt));
 		d.setStatut(StatutDemandeAdministrativeRh.APPROUVEE);
 		demandeRepo.save(d);
 
 		// Enregistrer l'historique (approbateur tracé, SCRUM-24)
 		enregistrerWorkflow(d, ActionWorkflowAdministratif.APPROBATION_RRH,
-			rh != null ? rh.getId() : null, nomActeurRh(rh, jwt), "Approuvée par la RH");
+			rh != null ? rh.getId() : null, nomActeurRh(rh, jwt),
+			anterieure ? "Approuvée par la RH. " + CongeDecompteService.MENTION_ANTERIEURE : "Approuvée par la RH");
 
 		// Notification : RRH a approuvé → demandeur
 		notificationPublisher.notifierApprobationRrh(demandeur, d.getTypeDemande().name(), d.getId(), d.getNumero());
@@ -293,7 +316,7 @@ public class DemandeAdministrativeRhService {
 
 	@Transactional
 	public DemandeAdministrativeRhResponse refuserRrh(UUID id, Jwt jwt, DemandeRefusRequest req) {
-		DemandeAdministrativeRh d = charger(id);
+		DemandeAdministrativeRh d = chargerPourDecision(id);
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_RRH,
 				"Cette demande n'est pas en attente de validation de la RH.");
 		Collaborateur rh = verifierPasPropreDemandeRrh(jwt, d);
@@ -317,10 +340,15 @@ public class DemandeAdministrativeRhService {
 
 	@Transactional
 	public DemandeAdministrativeRhResponse annuler(UUID id, Jwt jwt) {
-		DemandeAdministrativeRh d = charger(id);
+		DemandeAdministrativeRh d = chargerPourDecision(id);
 		Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
 		if (!d.getDemandeur().getId().equals(c.getId())) {
 			throw new AccessDeniedException("Seul le demandeur peut annuler sa demande.");
+		}
+		if (d.getStatut() == StatutDemandeAdministrativeRh.APPROUVEE
+				&& d.getTypeDemande() == TypeDemandeAdministrativeRh.CONGE) {
+			// D-S06.d : seule la RH annule un congé approuvé
+			throw new AccessDeniedException("Pour annuler un congé approuvé, contactez les RH.");
 		}
 		if (d.getStatut() != StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR
 				&& d.getStatut() != StatutDemandeAdministrativeRh.EN_VALIDATION_RRH) {
@@ -343,7 +371,29 @@ public class DemandeAdministrativeRhService {
 		return toResponse(d);
 	}
 
+	// ─── Annulation par la RH d'un congé approuvé (D4) ───────────────────────
+
+	@Transactional
+	public DemandeAdministrativeRhResponse annulerApresApprobation(UUID id, String motif, Jwt jwt) {
+		DemandeAdministrativeRh d = annulationCongeService.annuler(id, motif, jwt);
+		DemandeAdministrativeRhResponse r = toResponse(d);
+		champsDecideurSolde.annoter(d, r);
+		return r;
+	}
+
 	// ─── Helpers privés ───────────────────────────────────────────────────────
+
+	private List<DemandeAdministrativeRhResponse> versReponses(List<DemandeAdministrativeRh> lignes) {
+		List<DemandeAdministrativeRhResponse> reponses = lignes.stream().map(this::toResponse).collect(Collectors.toList());
+		champsDecideurSolde.annoter(lignes, reponses);
+		return reponses;
+	}
+
+	/** Premier verrou de l'ordre « demande puis solde » : le statut est lu après le verrou (ADR § 4). */
+	private DemandeAdministrativeRh chargerPourDecision(UUID id) {
+		return demandeRepo.findByIdForUpdate(id)
+				.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable."));
+	}
 
 	private Collaborateur exigerCollaborateurDetail(Jwt jwt) {
 		Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
@@ -537,6 +587,7 @@ public class DemandeAdministrativeRhService {
 				d.getMotifRefus(), d.getCreeLe(), d.getModifieLe());
 		r.setNumero(d.getNumero());
 		r.setStatutLibelle(parametreService.libelleOuInconnu("STATUT_DEMANDE", d.getStatut().name()));
+		enrichirConge(r, d);
 		if (d.getTypeDemande() == TypeDemandeAdministrativeRh.CONGE && d.getContenu() != null
 				&& d.getContenu().get("type_conge") != null) {
 			r.setTypeCongeLibelle(parametreService.libelleOuInconnu("TYPE_CONGE",
@@ -552,6 +603,42 @@ public class DemandeAdministrativeRhService {
 			r.setValideurAttenduNomComplet(nomComplet(snapshot));
 		}
 		return r;
+	}
+
+	/** Jours décomptés, périodes (avec libellés) et annulation après approbation d'un congé (annexe A). */
+	private static void enrichirConge(DemandeAdministrativeRhResponse r, DemandeAdministrativeRh d) {
+		if (d.getTypeDemande() != TypeDemandeAdministrativeRh.CONGE) {
+			return;
+		}
+		r.setJoursDecomptes(d.getJoursDecomptes());
+		if (d.getContenu() != null && CongeDecompteService.estAnnuel(d)) {
+			Object premier = d.getContenu().get(CongeDecompteService.CLE_PREMIER);
+			Object dernier = d.getContenu().get(CongeDecompteService.CLE_DERNIER);
+			if (premier != null) {
+				r.setPeriodePremierJour(String.valueOf(premier));
+				r.setPeriodePremierJourLibelle(libellePeriode(premier));
+			}
+			if (dernier != null) {
+				r.setPeriodeDernierJour(String.valueOf(dernier));
+				r.setPeriodeDernierJourLibelle(libellePeriode(dernier));
+			}
+		}
+		boolean annulee = d.getAnnuleApresApprobationLe() != null;
+		r.setAnnuleeApresApprobation(annulee);
+		if (annulee) {
+			r.setMotifAnnulation(d.getMotifAnnulation());
+			r.setAnnuleApresApprobationLe(d.getAnnuleApresApprobationLe());
+			r.setAnnuleParNom(d.getAnnuleParNom());
+			r.setJoursRecredites(d.getJoursDecomptes());
+		}
+	}
+
+	private static String libellePeriode(Object brut) {
+		try {
+			return com.hr.referentiel.domain.PeriodeJour.valueOf(String.valueOf(brut)).getLibelle();
+		} catch (IllegalArgumentException e) {
+			return null;
+		}
 	}
 
 	// ─── Workflow History ─────────────────────────────────────────────────────

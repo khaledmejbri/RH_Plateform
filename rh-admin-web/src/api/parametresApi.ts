@@ -76,6 +76,8 @@ export type Reglage = {
   max: number;
   unite: string | null;
   defaut: number;
+  /** Pas de saisie (ex. 0,5 pour les jours acquis par mois) ; absent = 1. */
+  pas?: number | null;
   version: number;
 };
 
@@ -287,4 +289,44 @@ export function modifierReglage(service: ServiceParametre, cle: string, valeur: 
 
 export function getJournalReglages(service: ServiceParametre, page = 0, taille = 20): Promise<PageJournal> {
   return appeler<PageJournal>(`${BASES[service].admin}/reglages/journal?page=${page}&taille=${taille}`);
+}
+
+/* ─── Jours fériés et réglages des congés (lot soldes, annexe A P4 à P12) ─── */
+
+export type JourFerie = { id: string; date: string; libelle: string; actif: boolean; version: number };
+
+const REF = '/api/referentiel/v1/parametres';
+
+export function getJoursFeries(annee: number): Promise<JourFerie[]> {
+  return appeler<JourFerie[]>(`${REF}/jours-feries?annee=${annee}`);
+}
+
+export function creerJourFerie(date: string, libelle: string): Promise<JourFerie> {
+  return appeler<JourFerie>(`${REF}/jours-feries`, { method: 'POST', ...corpsJson({ date, libelle }) });
+}
+
+export function modifierJourFerie(id: string, corps: { date?: string; libelle?: string; version: number }): Promise<JourFerie> {
+  return appeler<JourFerie>(`${REF}/jours-feries/${encodeURIComponent(id)}`, { method: 'PUT', ...corpsJson(corps) });
+}
+
+export function desactiverJourFerie(id: string, version: number): Promise<JourFerie> {
+  return appeler<JourFerie>(`${REF}/jours-feries/${encodeURIComponent(id)}/desactiver`, { method: 'POST', ...corpsJson({ version }) });
+}
+
+export function reactiverJourFerie(id: string, version: number): Promise<JourFerie> {
+  return appeler<JourFerie>(`${REF}/jours-feries/${encodeURIComponent(id)}/reactiver`, { method: 'POST', ...corpsJson({ version }) });
+}
+
+export function supprimerJourFerie(id: string, version: number): Promise<void> {
+  return appeler<void>(`${REF}/jours-feries/${encodeURIComponent(id)}?version=${version}`, { method: 'DELETE' });
+}
+
+export function getJournalJoursFeries(page = 0, taille = 20): Promise<PageJournal> {
+  return appeler<PageJournal>(`${REF}/jours-feries/journal?page=${page}&taille=${taille}`);
+}
+
+export type ParametresConges = { debut_acquisitions_le: string | null; mois_courant: string | null; jours_mois_courant: number | null };
+
+export function getParametresConges(): Promise<ParametresConges> {
+  return appeler<ParametresConges>(`${REF}/conges`);
 }

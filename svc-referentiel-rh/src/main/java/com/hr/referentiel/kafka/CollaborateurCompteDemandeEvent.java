@@ -28,7 +28,10 @@ public record CollaborateurCompteDemandeEvent(
 
 		@JsonProperty("operation") String operation,
 
-		@JsonProperty("compte_utilisateur_id") UUID compteUtilisateurId
+		@JsonProperty("compte_utilisateur_id") UUID compteUtilisateurId,
+
+		/** Import : le mot de passe initial est généré par svc-identite-acces (jamais transporté par l'événement). */
+		@JsonProperty("mot_de_passe_genere") Boolean motDePasseGenere
 ) {
 
 	public static final String OPERATION_CREATION = "CREATION";
@@ -38,6 +41,25 @@ public record CollaborateurCompteDemandeEvent(
 		if (operation == null || operation.isBlank()) {
 			operation = OPERATION_CREATION;
 		}
+	}
+
+	/** Rétrocompat : événements à 9 composants (sans {@code mot_de_passe_genere}). */
+	public CollaborateurCompteDemandeEvent(
+			UUID collaborateurIdentifiant,
+			String matricule,
+			String courriel,
+			String prenom,
+			String nom,
+			String profilAcces,
+			String motDePasseInitial,
+			String operation,
+			UUID compteUtilisateurId) {
+		this(collaborateurIdentifiant, matricule, courriel, prenom, nom, profilAcces, motDePasseInitial, operation,
+				compteUtilisateurId, null);
+	}
+
+	public boolean genereLeMotDePasse() {
+		return Boolean.TRUE.equals(motDePasseGenere);
 	}
 
 	/** Rétrocompat : création de compte (pas d'{@code operation} ni d'id compte). */
@@ -50,6 +72,6 @@ public record CollaborateurCompteDemandeEvent(
 			String profilAcces,
 			String motDePasseInitial) {
 		this(collaborateurIdentifiant, matricule, courriel, prenom, nom, profilAcces,
-				motDePasseInitial, OPERATION_CREATION, null);
+				motDePasseInitial, OPERATION_CREATION, null, null);
 	}
 }

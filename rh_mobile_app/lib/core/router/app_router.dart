@@ -14,6 +14,7 @@ import '../../features/demandes_admin/presentation/demande_conge_create_screen.d
 import '../../features/demandes_admin/presentation/demande_autorisation_sortie_create_screen.dart';
 import '../../features/demandes_admin/presentation/demande_ordre_mission_create_screen.dart';
 import '../../features/demandes_admin/presentation/ro_validation_screen.dart';
+import '../../features/conges/presentation/mon_solde_screen.dart';
 import '../../features/documents/presentation/document_create_screen.dart';
 import '../../features/documents/presentation/document_detail_screen.dart';
 import '../../features/documents/presentation/documents_list_screen.dart';
@@ -172,6 +173,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/plaintes/:id',
         builder: (c, s) => PlainteDetailScreen(id: s.pathParameters['id']!),
       ),
+      GoRoute(path: '/conges/solde', builder: (_, __) => const MonSoldeScreen()),
       GoRoute(path: '/demandes-admin', builder: (_, __) => const DemandesAdminListScreen()),
       GoRoute(path: '/demandes-admin/autorisations', builder: (_, __) => const AutorisationsListScreen()),
       GoRoute(path: '/demandes-admin/ro/validation', builder: (_, __) => const RoValidationScreen()),

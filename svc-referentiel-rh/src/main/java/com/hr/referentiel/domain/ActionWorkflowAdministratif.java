@@ -9,6 +9,7 @@ public enum ActionWorkflowAdministratif {
 	REFUS_RRH("Refusée par la RH"),
 	APPROBATION_RRH("Approuvée par la RH"),
 	ANNULATION_DEMANDEUR("Annulée par le demandeur"),
+	ANNULATION_APRES_APPROBATION("Annulée après approbation"),
 	CLOTUREE("Clôturée");
 
 	private final String libelle;

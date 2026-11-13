@@ -49,6 +49,7 @@ public class InterneReferentielController {
 	private final FamilleMetierService familleMetierService;
 	private final HierarchieService hierarchieService;
 	private final ParametreService parametreService;
+	private final com.hr.referentiel.service.AcquisitionCongeService acquisitionCongeService;
 	private final String jetonInterne;
 
 	public InterneReferentielController(
@@ -58,6 +59,7 @@ public class InterneReferentielController {
 			FamilleMetierService familleMetierService,
 			HierarchieService hierarchieService,
 			ParametreService parametreService,
+			com.hr.referentiel.service.AcquisitionCongeService acquisitionCongeService,
 			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne) {
 		this.referentielRhService = referentielRhService;
 		this.perimetreValidationService = perimetreValidationService;
@@ -65,6 +67,7 @@ public class InterneReferentielController {
 		this.familleMetierService = familleMetierService;
 		this.hierarchieService = hierarchieService;
 		this.parametreService = parametreService;
+		this.acquisitionCongeService = acquisitionCongeService;
 		this.jetonInterne = jetonInterne;
 	}
 
@@ -190,6 +193,26 @@ public class InterneReferentielController {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
 		return ResponseEntity.ok(parametreService.utiliser(requete == null ? null : requete.references()));
+	}
+
+	/**
+	 * X1 : déclenche l'acquisition de congé d'un mois donné (recette et exploitation). Mêmes règles d'idempotence que le
+	 * passage quotidien ; accepte un mois futur (tracé en INFO). Jeton interne obligatoire, jamais routé par la gateway.
+	 */
+	@PostMapping("/conges/acquisitions/{mois}")
+	public ResponseEntity<?> acquisition(
+			@RequestHeader(value = "X-Internal-Token", required = false) String jeton,
+			@PathVariable String mois) {
+		if (!jetonValide(jeton)) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		java.time.YearMonth ym;
+		try {
+			ym = java.time.YearMonth.parse(mois);
+		} catch (java.time.format.DateTimeParseException e) {
+			throw ReferentielMetierException.badRequest("CORPS_INVALIDE", "Le mois doit être au format AAAA-MM.");
+		}
+		return ResponseEntity.ok(acquisitionCongeService.traiter(ym));
 	}
 
 	private boolean jetonValide(String jeton) {

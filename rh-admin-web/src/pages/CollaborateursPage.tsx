@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   getTousCollaborateurs,
   getUnites,
@@ -265,6 +266,7 @@ export default function CollaborateursPage() {
               Créer
             </button>
           ) : null}
+          {!lectureSeule ? <Link to="/app/collaborateurs/import" className="tab">Importer</Link> : null}
         </div>
       </div>
 

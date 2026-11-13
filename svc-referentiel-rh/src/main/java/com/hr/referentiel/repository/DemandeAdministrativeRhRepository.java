@@ -51,4 +51,28 @@ public interface DemandeAdministrativeRhRepository extends JpaRepository<Demande
 			+ "and (:statut is null or d.statut = :statut) order by d.periodeDebut asc, d.creeLe desc")
 	List<DemandeAdministrativeRh> findPourRhCouvrantJour(@Param("jour") LocalDate jour,
 			@Param("type") TypeDemandeAdministrativeRh type, @Param("statut") StatutDemandeAdministrativeRh statut);
+
+	/** Verrou d'écriture sur la demande (premier verrou de l'ordre demande puis solde, ADR § 4). */
+	@org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+	@Query("select d from DemandeAdministrativeRh d where d.id = :id")
+	java.util.Optional<DemandeAdministrativeRh> findByIdForUpdate(@Param("id") UUID id);
+
+	/** Réservé : jours des demandes ANNUEL décomptées en cours de validation (D-S04). */
+	@Query("select coalesce(sum(d.joursDecomptes), 0) from DemandeAdministrativeRh d "
+			+ "where d.demandeur.id = :id and d.statut in :statuts and d.joursDecomptes is not null")
+	java.math.BigDecimal sommeReserve(@Param("id") UUID collaborateurId,
+			@Param("statuts") java.util.Collection<StatutDemandeAdministrativeRh> statuts);
+
+	@Query("select d.demandeur.id, sum(d.joursDecomptes) from DemandeAdministrativeRh d "
+			+ "where d.demandeur.id in :ids and d.statut in :statuts and d.joursDecomptes is not null "
+			+ "group by d.demandeur.id")
+	List<Object[]> sommesReserve(@Param("ids") java.util.Collection<UUID> collaborateurIds,
+			@Param("statuts") java.util.Collection<StatutDemandeAdministrativeRh> statuts);
+
+	/** Congés (tout type) du collaborateur dans les statuts donnés, pour le contrôle de chevauchement. */
+	@Query("select d from DemandeAdministrativeRh d where d.demandeur.id = :id and d.typeDemande = :type "
+			+ "and d.statut in :statuts")
+	List<DemandeAdministrativeRh> findPourChevauchement(@Param("id") UUID collaborateurId,
+			@Param("type") TypeDemandeAdministrativeRh type,
+			@Param("statuts") java.util.Collection<StatutDemandeAdministrativeRh> statuts);
 }

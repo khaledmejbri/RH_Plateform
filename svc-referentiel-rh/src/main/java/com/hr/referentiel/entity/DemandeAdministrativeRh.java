@@ -71,6 +71,22 @@ public class DemandeAdministrativeRh {
 	@Column(name = "periode_fin")
 	private LocalDate periodeFin;
 
+	/**
+	 * Jours ouvrés décomptés d'un congé ANNUEL créé après la mise en service des soldes (D-S06.g) : non nul = demande
+	 * décomptée (base du réservé) ; nul = demande antérieure, sans contrôle ni mouvement.
+	 */
+	@Column(name = "jours_decomptes", precision = 4, scale = 1)
+	private java.math.BigDecimal joursDecomptes;
+
+	@Column(name = "motif_annulation", length = 500)
+	private String motifAnnulation;
+
+	@Column(name = "annule_apres_approbation_le")
+	private Instant annuleApresApprobationLe;
+
+	@Column(name = "annule_par_nom", length = 160)
+	private String annuleParNom;
+
 	@Column(name = "cree_le", nullable = false, updatable = false)
 	private Instant creeLe;
 
@@ -186,5 +202,37 @@ public class DemandeAdministrativeRh {
 
 	public void setModifieLe(Instant modifieLe) {
 		this.modifieLe = modifieLe;
+	}
+
+	public java.math.BigDecimal getJoursDecomptes() {
+		return joursDecomptes;
+	}
+
+	public void setJoursDecomptes(java.math.BigDecimal joursDecomptes) {
+		this.joursDecomptes = joursDecomptes;
+	}
+
+	public String getMotifAnnulation() {
+		return motifAnnulation;
+	}
+
+	public void setMotifAnnulation(String motifAnnulation) {
+		this.motifAnnulation = motifAnnulation;
+	}
+
+	public Instant getAnnuleApresApprobationLe() {
+		return annuleApresApprobationLe;
+	}
+
+	public void setAnnuleApresApprobationLe(Instant annuleApresApprobationLe) {
+		this.annuleApresApprobationLe = annuleApresApprobationLe;
+	}
+
+	public String getAnnuleParNom() {
+		return annuleParNom;
+	}
+
+	public void setAnnuleParNom(String annuleParNom) {
+		this.annuleParNom = annuleParNom;
 	}
 }

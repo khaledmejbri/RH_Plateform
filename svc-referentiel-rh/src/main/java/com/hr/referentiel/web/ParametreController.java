@@ -12,6 +12,7 @@ import com.hr.referentiel.dto.ParametreDto.VersionRequest;
 import com.hr.referentiel.security.PreAuthorizeExpressions;
 import com.hr.referentiel.service.AuteurParametreResolver;
 import com.hr.referentiel.service.ParametreService;
+import com.hr.referentiel.service.ReglagesCongeService;
 import jakarta.validation.Valid;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
@@ -47,10 +48,13 @@ public class ParametreController {
 
 	private final ParametreService parametreService;
 	private final AuteurParametreResolver auteurResolver;
+	private final ReglagesCongeService reglagesService;
 
-	public ParametreController(ParametreService parametreService, AuteurParametreResolver auteurResolver) {
+	public ParametreController(ParametreService parametreService, AuteurParametreResolver auteurResolver,
+			ReglagesCongeService reglagesService) {
 		this.parametreService = parametreService;
 		this.auteurResolver = auteurResolver;
+		this.reglagesService = reglagesService;
 	}
 
 	/**
@@ -145,24 +149,32 @@ public class ParametreController {
 		return ResponseEntity.ok(parametreService.journal(referentiel, page, taille));
 	}
 
-	/** Le service référentiel n'a pas de réglage numérique : liste vide (contrat commun aux trois services). */
+	/** Réglage « Jours acquis par mois » (décimal : {@code pas} 0,5). */
 	@GetMapping("/reglages")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<List<Reglage>> reglages() {
-		return ResponseEntity.ok(parametreService.reglages());
+		return ResponseEntity.ok(reglagesService.reglages());
+	}
+
+	/** P12 : date de début des acquisitions et jours figés du mois courant (lecture seule, D-S07.b). */
+	@GetMapping("/conges")
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
+	public ResponseEntity<ReglagesCongeService.InfoConges> conges() {
+		return ResponseEntity.ok(reglagesService.info());
 	}
 
 	@PutMapping("/reglages/{cle}")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<Reglage> modifierReglage(@PathVariable String cle,
-			@Valid @RequestBody ReglageRequest requete) {
-		return ResponseEntity.ok(parametreService.modifierReglage(cle));
+			@Valid @RequestBody ReglageRequest requete, JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(reglagesService.modifier(cle, requete.valeur(), requete.version(),
+				auteurResolver.depuis(principal.getToken())));
 	}
 
 	@GetMapping("/reglages/journal")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<PageJournal> journalReglages(@RequestParam(name = "page", defaultValue = "0") int page,
 			@RequestParam(name = "taille", defaultValue = "20") int taille) {
-		return ResponseEntity.ok(parametreService.journalReglages(page, taille));
+		return ResponseEntity.ok(reglagesService.journal(page, taille));
 	}
 }

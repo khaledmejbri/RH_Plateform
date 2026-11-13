@@ -181,6 +181,26 @@ class _DemandeCard extends ConsumerWidget {
                 const SizedBox(height: 10),
                 // Period / heure info
                 _PeriodRow(item: item),
+                if (item.joursDecomptes != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Jours décomptés : ${formatJours(item.joursDecomptes!)}',
+                    style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary, fontWeight: FontWeight.w500),
+                  ),
+                ],
+                if (item.soldeDecideurAffiche != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    item.soldeDecideurAffiche!,
+                    key: const Key('solde-decideur'),
+                    style: const TextStyle(fontSize: 13, color: AppTheme.primaryDark, fontWeight: FontWeight.w700),
+                  ),
+                  if (item.soldeApresDemande != null)
+                    Text(
+                      'Solde après cette demande : ${formatJours(item.soldeApresDemande!)}',
+                      style: const TextStyle(fontSize: 13, color: AppTheme.primaryDark, fontWeight: FontWeight.w700),
+                    ),
+                ],
                 if (item.certificat != null) ...[
                   const SizedBox(height: 8),
                   Row(

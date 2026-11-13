@@ -23,6 +23,12 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
+    /** Identifiants (minuscules) qui ont déjà un compte, parmi une liste en minuscules (import des collaborateurs). */
+    @Transactional(readOnly = true)
+    public List<String> identifiantsExistants(List<String> identifiantsMinuscules) {
+        return identifiantsMinuscules.isEmpty() ? List.of() : userRepository.findUsernamesParMinuscules(identifiantsMinuscules);
+    }
+
     private UserResponse toUserResponse(User user) {
         return UserResponse.builder()
                 .id(user.getId())

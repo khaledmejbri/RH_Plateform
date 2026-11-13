@@ -55,7 +55,7 @@ public class DemandeAdministrativeValidationService {
 				LocalDate debut = parseDate(contenu, "date_debut");
 				LocalDate fin   = parseDate(contenu, "date_fin");
 				if (fin.isBefore(debut)) {
-					throw new IllegalArgumentException(
+					throw ReferentielMetierException.badRequest("CORPS_INVALIDE",
 							"La date de fin de congé ne peut pas être antérieure à la date de début.");
 				}
 				ParametreVue typeConge = parametreService.lire(REFERENTIEL_TYPE_CONGE,

@@ -15,6 +15,7 @@ import { LIBELLES_ETAT_COMPTEES, type HeuresComptees } from '../../api/heuresSup
 import { LIBELLES_TYPE_CAMPAGNE, type CampaignType } from '../../api/evaluationApi';
 import { ALERTE_META, appreciationFromScore, type CouleurAlerte } from '../../api/evaluationCatalog';
 import { StatusBadge } from '../../components/ui';
+import { BlocAnnulationApresApprobation, lignesConge } from '../../components/CongeDemande';
 import {
   formatDate, formatDateHeure, formatDuree, formatHeuresMinutes, formatPeriode, formatPourcentage, TIRET,
 } from '../../utils/format';
@@ -452,8 +453,10 @@ export function DemandeContenu({ id, onglet, onOnglet }: Props) {
                 : null}
             </Champ>
             <Champ label="Déposée le">{formatDateHeure(d.cree_le)}</Champ>
+            {lignesConge(d).map(([l, v]) => <Champ key={l} label={l}>{v}</Champ>)}
             {contenuLignes(d).map(([l, v]) => <Champ key={l} label={l}>{v}</Champ>)}
           </Champs>
+          <BlocAnnulationApresApprobation d={d} />
           {d.motif_refus ? <div className="callout"><p className="callout__title">Motif du refus</p><p>{d.motif_refus}</p></div> : null}
           <h3 className="detail-h3">Suivi</h3>
           <Charge etat={suivi.etat} recharger={suivi.recharger} vide={(s) => s.etapes.length === 0} messageVide="Aucune étape.">

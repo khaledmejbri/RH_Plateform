@@ -36,7 +36,7 @@ public final class ParametreDto {
 	}
 
 	public record ReglageRequest(
-			@NotNull @JsonProperty("valeur") Integer valeur,
+			@NotNull @JsonProperty("valeur") Object valeur,
 			@NotNull @JsonProperty("version") Long version) {
 	}
 
@@ -115,11 +115,12 @@ public final class ParametreDto {
 	public record Reglage(
 			@JsonProperty("cle") String cle,
 			@JsonProperty("libelle") String libelle,
-			@JsonProperty("valeur") int valeur,
-			@JsonProperty("min") int min,
-			@JsonProperty("max") int max,
+			@JsonProperty("valeur") java.math.BigDecimal valeur,
+			@JsonProperty("min") java.math.BigDecimal min,
+			@JsonProperty("max") java.math.BigDecimal max,
+			@JsonProperty("pas") java.math.BigDecimal pas,
 			@JsonProperty("unite") String unite,
-			@JsonProperty("defaut") int defaut,
+			@JsonProperty("defaut") java.math.BigDecimal defaut,
 			@JsonProperty("version") long version) {
 	}
 

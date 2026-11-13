@@ -2,7 +2,22 @@ import { useEffect, useState } from 'react';
 import { messageParametre, modifierReglage, ParametreApiError, type Reglage, type ServiceParametre } from '../../api/parametresApi';
 import Onglets from '../../detail/Onglets';
 import { EmptyState } from '../../components/ui';
+import { formatNombre } from '../../utils/format';
 import JournalPanel from './JournalPanel';
+
+const AIDES: Record<string, string> = {
+  jours_acquis_par_mois: 'Appliqué le 1er de chaque mois aux collaborateurs actifs ; 0 suspend l’acquisition.',
+};
+
+/** Saisie française : virgule ou point. NaN si le texte n'est pas un nombre. */
+function lireNombre(texte: string): number {
+  const t = texte.trim().replace(',', '.');
+  return t === '' || !/^-?\d+(\.\d+)?$/.test(t) ? Number.NaN : Number(t);
+}
+
+function texteNombre(n: number): string {
+  return formatNombre(n, 2).replace(/ | /g, '');
+}
 
 const UNITES: Record<string, string> = {
   MINUTES: 'minutes',
@@ -27,7 +42,7 @@ type LigneProps = {
 };
 
 function LigneReglage({ service, reglage, lectureSeule, onMaj, onRecharger }: LigneProps) {
-  const [saisie, setSaisie] = useState(String(reglage.valeur));
+  const [saisie, setSaisie] = useState(texteNombre(reglage.valeur));
   const [erreur, setErreur] = useState<string | null>(null);
   const [conflit, setConflit] = useState(false);
   const [succes, setSucces] = useState(false);
@@ -35,23 +50,30 @@ function LigneReglage({ service, reglage, lectureSeule, onMaj, onRecharger }: Li
   const unite = uniteLisible(reglage.unite);
   // Rechargement depuis le serveur : la saisie reprend la valeur courante.
   useEffect(() => {
-    setSaisie(String(reglage.valeur));
+    setSaisie(texteNombre(reglage.valeur));
     setConflit(false);
     setErreur(null);
   }, [reglage.valeur, reglage.version]);
   const id = `reglage-${reglage.cle}`;
-  const inchange = saisie.trim() === String(reglage.valeur);
+  const nombre = lireNombre(saisie);
+  const inchange = nombre === reglage.valeur;
+  const decimal = reglage.pas != null && !Number.isInteger(reglage.pas);
+  const aide = AIDES[reglage.cle];
 
   async function enregistrer() {
     if (envoi || saisie.trim() === '') return;
+    if (Number.isNaN(nombre)) {
+      setErreur('Saisissez un nombre (la virgule est acceptée).');
+      return;
+    }
     setEnvoi(true);
     setErreur(null);
     setConflit(false);
     setSucces(false);
     try {
-      const r = await modifierReglage(service, reglage.cle, Number(saisie), reglage.version);
+      const r = await modifierReglage(service, reglage.cle, nombre, reglage.version);
       onMaj(r);
-      setSaisie(String(r.valeur));
+      setSaisie(texteNombre(r.valeur));
       setSucces(true);
     } catch (e) {
       if (e instanceof ParametreApiError && e.code === 'PARAMETRE_MODIFIE_ENTRE_TEMPS') setConflit(true);
@@ -66,20 +88,19 @@ function LigneReglage({ service, reglage, lectureSeule, onMaj, onRecharger }: Li
       <div>
         <label htmlFor={id} className="field-label">{reglage.libelle}</label>
         <p className="field-help" style={{ margin: 0 }}>
-          Entre {reglage.min} et {reglage.max}{unite ? ` ${unite}` : ''} · valeur par défaut : {reglage.defaut}{unite ? ` ${unite}` : ''}
+          Entre {formatNombre(reglage.min, 2)} et {formatNombre(reglage.max, 2)}{reglage.pas ? `, par pas de ${formatNombre(reglage.pas, 2)}` : ''}{unite ? ` ${unite}` : ''} · valeur par défaut : {formatNombre(reglage.defaut, 2)}{unite ? ` ${unite}` : ''}
         </p>
+        {aide ? <p className="field-help" style={{ margin: 0 }}>{aide}</p> : null}
       </div>
       {lectureSeule ? (
-        <strong>{reglage.valeur}{unite ? ` ${unite}` : ''}</strong>
+        <strong>{formatNombre(reglage.valeur, 2)}{unite ? ` ${unite}` : ''}</strong>
       ) : (
         <div className="param-reglage__saisie">
           <input
             id={id}
             className="field-input"
-            type="number"
-            inputMode="numeric"
-            min={reglage.min}
-            max={reglage.max}
+            type="text"
+            inputMode={decimal ? 'decimal' : 'numeric'}
             value={saisie}
             aria-invalid={!!erreur && !conflit}
             aria-describedby={erreur ? `${id}-err` : undefined}

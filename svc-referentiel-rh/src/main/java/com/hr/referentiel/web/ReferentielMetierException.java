@@ -54,4 +54,12 @@ public class ReferentielMetierException extends RuntimeException {
 	public static ReferentielMetierException methodNotAllowed(String code, String message) {
 		return new ReferentielMetierException(code, message, 405);
 	}
+
+	public static ReferentielMetierException forbidden(String code, String message) {
+		return new ReferentielMetierException(code, message, 403);
+	}
+
+	public static ReferentielMetierException payloadTooLarge(String code, String message) {
+		return new ReferentielMetierException(code, message, 413);
+	}
 }

@@ -103,6 +103,11 @@ public final class ValeursInitialesReferentiel {
 				"APPROUVEE", "Approuvée", "VERT",
 				"REFUSEE", "Refusée", "ROUGE",
 				"ANNULEE", "Annulée", "NEUTRE");
+		comportement(v, "TYPE_MOUVEMENT_SOLDE",
+				"ACQUISITION", "Acquisition", "VERT",
+				"CONGE_PRIS", "Congé pris", "BLEU",
+				"RECREDIT_ANNULATION", "Recrédit d'annulation", "CYAN",
+				"AJUSTEMENT", "Ajustement", "AMBRE");
 		comportement(v, "STATUT_DOCUMENT",
 				"EN_ATTENTE_FILE", "En file d'attente", "AMBRE",
 				"EN_TRAITEMENT_RH", "En traitement par la RH", "BLEU",

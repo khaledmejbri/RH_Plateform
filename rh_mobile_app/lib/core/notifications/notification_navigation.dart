@@ -28,6 +28,9 @@ String? routePourNotification(AppNotification n) {
         return idValide ? '/evaluations/$id' : '/evaluations';
       case 'POINTAGE_MANUEL':
         return idValide ? '/pointage/manuels/$id' : '/pointage/manuel';
+      case 'SOLDE_CONGE':
+        // Ajustement du solde : « Mon solde de congé » (objet_id nul).
+        return '/conges/solde';
       case 'HEURES_SUP':
         return '/heures-sup/moi';
       case 'COLLABORATEUR':

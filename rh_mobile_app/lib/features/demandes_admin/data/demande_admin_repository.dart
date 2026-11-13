@@ -59,6 +59,8 @@ class DemandeAdminRepository {
     required String dateFin,
     required String typeConge,
     String? certificatPath,
+    String? periodePremierJour,
+    String? periodeDernierJour,
   }) async {
     // Story 7 : le serveur exige `contenu.certificat` ou `pieces_jointes` pour
     // MALADIE/MATERNITE. Pas d’endpoint multipart encore → JSON + marqueur fichier.
@@ -67,6 +69,9 @@ class DemandeAdminRepository {
       'date_fin': dateFin,
       'type_conge': typeConge,
     };
+    // Demi-journées : envoyées pour le congé annuel seulement (le serveur refuse une période sur un autre type).
+    if (periodePremierJour != null) contenu['periode_premier_jour'] = periodePremierJour;
+    if (periodeDernierJour != null) contenu['periode_dernier_jour'] = periodeDernierJour;
     if (certificatPath != null && certificatPath.isNotEmpty) {
       final name = certificatPath.replaceAll('\\', '/').split('/').last;
       contenu['certificat'] = name.isNotEmpty ? name : 'certificat_fourni';
@@ -83,6 +88,12 @@ class DemandeAdminRepository {
   /// CDC §M01 : annulation par le demandeur (statut EN_VALIDATION_SUPERIEUR ou EN_VALIDATION_RRH)
   Future<void> annulerDemande(String id) async {
     await _dio.post<Map<String, dynamic>>('${ApiConstants.demandesAdmin}/$id/annuler');
+  }
+
+  /// Détail d'une demande (lecture ouverte au demandeur et au valideur attendu).
+  Future<DemandeAdminItem> detail(String id) async {
+    final res = await _dio.get<Map<String, dynamic>>('${ApiConstants.demandesAdmin}/$id');
+    return DemandeAdminItem.fromJson(res.data!);
   }
 
   /// File M01 : demandes dont le connecté est le valideur attendu (manager nœud).

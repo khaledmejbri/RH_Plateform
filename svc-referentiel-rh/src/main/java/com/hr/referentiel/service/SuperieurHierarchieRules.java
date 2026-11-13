@@ -10,7 +10,7 @@ import java.util.UUID;
  * H3 — dérivation du champ fiche {@code superieur} depuis le manager ACTIF du nœud.
  * Ne touche jamais {@code valideur_attendu} des demandes M01.
  */
-final class SuperieurHierarchieRules {
+public final class SuperieurHierarchieRules {
 
 	private SuperieurHierarchieRules() {
 	}
@@ -19,7 +19,7 @@ final class SuperieurHierarchieRules {
 	 * H3-R01 / H3-R02 : supérieur = manager ACTIF du nœud ; si le collab est ce manager,
 	 * remonter au manager ACTIF du parent (jamais soi-même).
 	 */
-	static Collaborateur resoudreSuperieurFiche(Collaborateur collab, UniteOrganisation unite) {
+	public static Collaborateur resoudreSuperieurFiche(Collaborateur collab, UniteOrganisation unite) {
 		if (collab == null || unite == null) {
 			return null;
 		}
@@ -88,7 +88,7 @@ final class SuperieurHierarchieRules {
 	 *
 	 * @return true si une mutation a été faite
 	 */
-	static boolean appliquerSiChange(Collaborateur collab, Collaborateur nouveauSuperieur) {
+	public static boolean appliquerSiChange(Collaborateur collab, Collaborateur nouveauSuperieur) {
 		UUID actuel = collab.getSuperieur() != null ? collab.getSuperieur().getId() : null;
 		UUID cible = nouveauSuperieur != null ? nouveauSuperieur.getId() : null;
 		if (Objects.equals(actuel, cible)) {

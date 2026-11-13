@@ -55,6 +55,14 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 	private NumeroLisibleService numeroLisibleService;
 	@Mock
 	private ParametreService parametreService;
+	@Mock
+	private CongeDecompteService congeDecompteService;
+	@Mock
+	private AnnulationCongeService annulationCongeService;
+	@Mock
+	private ChampsDecideurSolde champsDecideurSolde;
+	@Mock
+	private AuteurParametreResolver auteurResolver;
 
 	@InjectMocks
 	private DemandeAdministrativeRhService service;
@@ -103,12 +111,13 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 				"date_debut", "2026-09-01",
 				"date_fin", "2026-09-05",
 				"type_conge", "ANNUEL")));
+		// les décisions prennent le verrou d'écriture de la demande (ordre des verrous : demande puis solde)
+		org.mockito.Mockito.lenient().when(demandeRepo.findByIdForUpdate(demandeId)).thenReturn(Optional.of(demande));
 	}
 
 	@Test
 	@DisplayName("manager ACTIF du nœud peut valider M01")
 	void validerSuperieur_managerActif_ok() {
-		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
 		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(managerActif);
 		when(collaborateurRepository.findDetailById(demandeur.getId())).thenReturn(Optional.of(demandeur));
 		when(demandeRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -123,7 +132,6 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 	@Test
 	@DisplayName("lot 3 : la réponse porte statut_libelle et type_conge_libelle (libellé courant, code inconnu signalé)")
 	void reponsePorteLesLibellesParametres() throws Exception {
-		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
 		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(managerActif);
 		when(collaborateurRepository.findDetailById(demandeur.getId())).thenReturn(Optional.of(demandeur));
 		when(demandeRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -143,7 +151,6 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 	@Test
 	@DisplayName("JWT RO d'un autre nœud → 403 (pas 400)")
 	void validerSuperieur_roAutreNoeud_403() {
-		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
 		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(roAutreNoeud);
 
 		assertThatThrownBy(() -> service.validerSuperieur(demandeId, jwt))
@@ -155,7 +162,6 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 	@DisplayName("manager du nœud inactif → 403")
 	void validerSuperieur_managerInactif_403() {
 		demande.setValideurAttendu(managerInactif);
-		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
 		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(managerInactif);
 
 		assertThatThrownBy(() -> service.validerSuperieur(demandeId, jwt))
@@ -294,7 +300,6 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 		// snapshot reste l'ancien manager
 		demande.setValideurAttendu(managerActif);
 
-		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
 		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(nouveauManager);
 
 		assertThatThrownBy(() -> service.validerSuperieur(demandeId, jwt))
@@ -399,7 +404,6 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 	@DisplayName("Approuver une demande déjà approuvée → 409 DEMANDE_DEJA_DECIDEE avec le libellé du statut")
 	void validerRrh_dejaApprouvee_409() {
 		demande.setStatut(StatutDemandeAdministrativeRh.APPROUVEE);
-		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
 
 		org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.validerRrh(demandeId, jwt))
 				.isInstanceOfSatisfying(com.hr.referentiel.web.ReferentielMetierException.class, e -> {
@@ -477,7 +481,6 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 	void validerSuperieur_propreDemande_403() {
 		demande.setDemandeur(managerActif);
 		demande.setValideurAttendu(managerActif);
-		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
 		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(managerActif);
 
 		assertThatThrownBy(() -> service.validerSuperieur(demandeId, jwt))
@@ -489,7 +492,6 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 	@DisplayName("SCRUM-24 : un RH n'approuve ni ne refuse sa propre demande à l'étape RRH")
 	void rrh_propreDemande_403() {
 		demande.setStatut(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
-		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
 		when(collaborateurConnecteService.resoudre(jwt)).thenReturn(Optional.of(demandeur));
 		var refus = new com.hr.referentiel.dto.DemandeRefusRequest();
 		refus.setMotifRefus("motif");
@@ -504,7 +506,6 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 	void rrh_autreRh_approuveEtTrace() {
 		Collaborateur autreRh = collab(UUID.randomUUID(), "M-RH", "Rita", "Hache", "ACTIF", "RH");
 		demande.setStatut(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
-		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
 		when(collaborateurConnecteService.resoudre(jwt)).thenReturn(Optional.of(autreRh));
 		when(collaborateurRepository.findDetailById(demandeur.getId())).thenReturn(Optional.of(demandeur));
 		when(demandeRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -517,6 +518,101 @@ class DemandeAdministrativeRhServiceValideurNoeudTest {
 		verify(workflowHistoryRepository).save(captor.capture());
 		assertThat(captor.getValue().getActeurIdentifiant()).isEqualTo(autreRh.getId());
 		assertThat(captor.getValue().getActeurNom()).contains("Rita Hache");
+	}
+
+	// ─── Soldes de congé (SCRUM-88) : branchements du décompte dans le circuit M01 ───────────────────────────
+
+	@Test
+	@DisplayName("D3 / critère 15 : le demandeur ne peut pas annuler son congé approuvé -> 403 « contactez les RH » ; statut inchangé")
+	void demandeurNAnnulePasUnCongeApprouve() {
+		demande.setStatut(StatutDemandeAdministrativeRh.APPROUVEE);
+		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(demandeur);
+		assertThatThrownBy(() -> service.annuler(demandeId, jwt)).isInstanceOf(AccessDeniedException.class)
+				.hasMessage("Pour annuler un congé approuvé, contactez les RH.");
+		assertThat(demande.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.APPROUVEE);
+		verify(demandeRepo, org.mockito.Mockito.never()).save(any());
+	}
+
+	@Test
+	@DisplayName("critère 17 (non-régression) : ordre de mission approuvé annulé par son demandeur -> 409 DEMANDE_DEJA_DECIDEE ; demande en cours annulée -> 200")
+	void annulationNonRegression() {
+		demande.setTypeDemande(TypeDemandeAdministrativeRh.ORDRE_MISSION);
+		demande.setStatut(StatutDemandeAdministrativeRh.APPROUVEE);
+		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(demandeur);
+		assertThatThrownBy(() -> service.annuler(demandeId, jwt)).isInstanceOf(
+				com.hr.referentiel.web.ReferentielMetierException.class).satisfies(e ->
+				assertThat(((com.hr.referentiel.web.ReferentielMetierException) e).getCode()).isEqualTo("DEMANDE_DEJA_DECIDEE"));
+		demande.setTypeDemande(TypeDemandeAdministrativeRh.CONGE);
+		demande.setStatut(StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR);
+		when(collaborateurRepository.findDetailById(demandeur.getId())).thenReturn(Optional.of(demandeur));
+		when(demandeRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		when(workflowHistoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		assertThat(service.annuler(demandeId, jwt).getStatut()).isEqualTo(StatutDemandeAdministrativeRh.ANNULEE);
+	}
+
+	@Test
+	@DisplayName("critère 8 : 422 SOLDE_INSUFFISANT à la validation du responsable -> statut inchangé, rien d'enregistré ni notifié")
+	void validationRefuseeParLeSolde() {
+		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(managerActif);
+		when(collaborateurRepository.findDetailById(demandeur.getId())).thenReturn(Optional.of(demandeur));
+		org.mockito.Mockito.doThrow(com.hr.referentiel.web.ReferentielMetierException.unprocessable("SOLDE_INSUFFISANT", "Solde insuffisant"))
+				.when(congeDecompteService).controlerValidation(demande);
+
+		assertThatThrownBy(() -> service.validerSuperieur(demandeId, jwt)).satisfies(e ->
+				assertThat(((com.hr.referentiel.web.ReferentielMetierException) e).getCode()).isEqualTo("SOLDE_INSUFFISANT"));
+
+		assertThat(demande.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR);
+		verify(demandeRepo, org.mockito.Mockito.never()).save(any());
+		verify(workflowHistoryRepository, org.mockito.Mockito.never()).save(any());
+		verify(notificationPublisher, org.mockito.Mockito.never()).notifierValidationRo(any(), any(), any(), any(), any());
+	}
+
+	@Test
+	@DisplayName("critère 9 : l'approbation RH passe par le décompte (mouvement « Congé pris ») avant le changement de statut")
+	void approbationDecompte() {
+		Collaborateur autreRh = collab(UUID.randomUUID(), "M-RH", "Rita", "Hache", "ACTIF", "RH");
+		demande.setStatut(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
+		demande.setJoursDecomptes(new java.math.BigDecimal("5.0"));
+		when(collaborateurConnecteService.resoudre(jwt)).thenReturn(Optional.of(autreRh));
+		when(collaborateurRepository.findDetailById(demandeur.getId())).thenReturn(Optional.of(demandeur));
+		when(demandeRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		when(workflowHistoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		when(auteurResolver.depuis(jwt)).thenReturn(new AuteurParametre(UUID.randomUUID(), "Rita Hache"));
+
+		service.validerRrh(demandeId, jwt);
+
+		verify(congeDecompteService).approuver(eq(demande), any());
+		assertThat(demande.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.APPROUVEE);
+	}
+
+	@Test
+	@DisplayName("critère 20 / C1-15 : congé annuel antérieur aux soldes approuvé -> mention « Demande antérieure aux soldes : non décomptée » dans l'historique")
+	void approbationAnterieureAuxSoldes() {
+		Collaborateur autreRh = collab(UUID.randomUUID(), "M-RH", "Rita", "Hache", "ACTIF", "RH");
+		demande.setStatut(StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
+		demande.setJoursDecomptes(null);
+		when(collaborateurConnecteService.resoudre(jwt)).thenReturn(Optional.of(autreRh));
+		when(collaborateurRepository.findDetailById(demandeur.getId())).thenReturn(Optional.of(demandeur));
+		when(demandeRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		when(workflowHistoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		when(auteurResolver.depuis(jwt)).thenReturn(new AuteurParametre(UUID.randomUUID(), "Rita Hache"));
+
+		service.validerRrh(demandeId, jwt);
+
+		var captor = org.mockito.ArgumentCaptor.forClass(com.hr.referentiel.entity.DemandeAdminWorkflowHistory.class);
+		verify(workflowHistoryRepository).save(captor.capture());
+		assertThat(captor.getValue().getCommentaire()).contains("Demande antérieure aux soldes : non décomptée");
+	}
+
+	@Test
+	@DisplayName("D5 : le valideur attendu lit la demande de son collaborateur (200), un autre collaborateur -> 403")
+	void lectureParLeValideurAttendu() {
+		when(demandeRepo.findById(demandeId)).thenReturn(Optional.of(demande));
+		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(managerActif);
+		assertThat(service.obtenir(demandeId, jwt, false)).isNotNull();
+		when(collaborateurConnecteService.exigerCollaborateur(jwt)).thenReturn(roAutreNoeud);
+		assertThatThrownBy(() -> service.obtenir(demandeId, jwt, false)).isInstanceOf(AccessDeniedException.class);
+		verify(champsDecideurSolde).annoter(eq(demande), any());
 	}
 
 	private static Collaborateur collab(UUID id, String matricule, String prenom, String nom,

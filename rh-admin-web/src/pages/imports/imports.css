@@ -1,0 +1,23 @@
+/* Assistant d'import et historique (SCRUM-91, SCRUM-92) */
+.import { max-width: 100%; }
+.import__etapes {
+  display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; margin: 0 0 1rem; padding: 0;
+}
+.import__etape {
+  padding: 4px 12px; border-radius: 999px; font-size: 0.85rem;
+  background: var(--color-muted, #eef1f5); color: var(--muted);
+}
+.import__etape--on { background: var(--primary, #2563eb); color: #fff; font-weight: 600; }
+.import__titre { margin: 0 0 0.75rem; font-size: 1.15rem; }
+.import__titre:focus { outline: 2px solid var(--primary, #2563eb); outline-offset: 2px; }
+.import__depot {
+  display: flex; flex-direction: column; align-items: center; gap: 0.25rem; text-align: center;
+  padding: 1.5rem; border: 2px dashed var(--border, #cbd5e1); border-radius: 10px; margin-bottom: 0.75rem;
+}
+.import__depot--survol { background: var(--color-muted, #eef1f5); border-color: var(--primary, #2563eb); }
+.import__case { display: block; margin: 0.5rem 0; }
+.import__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+.import__totaux { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; padding: 0; margin: 0.5rem 0 1rem; }
+.import__liste { margin: 0; padding-left: 1rem; }
+.import__motif { max-width: 520px; margin-bottom: 1rem; }
+.import .table-wrap td { overflow-wrap: anywhere; }

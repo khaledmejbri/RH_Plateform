@@ -135,6 +135,23 @@ public class DemandeAdministrativeRhController {
 				demandeAdministrativeRhService.annuler(identifiant, principal.getToken()));
 	}
 
+	/**
+	 * Annulation par la RH d'un congé déjà approuvé (D-S06.d) : RH / ADMIN autre que le demandeur, motif 5 à 500,
+	 * congé non commencé. Recrédit du solde pour un congé annuel décompté.
+	 */
+	@PostMapping("/{identifiant}/annuler-apres-approbation")
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
+	public ResponseEntity<DemandeAdministrativeRhResponse> annulerApresApprobation(
+			@PathVariable UUID identifiant,
+			@RequestBody AnnulationApresApprobationRequest requete,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(demandeAdministrativeRhService.annulerApresApprobation(
+				identifiant, requete == null ? null : requete.motif(), principal.getToken()));
+	}
+
+	public record AnnulationApresApprobationRequest(@com.fasterxml.jackson.annotation.JsonProperty("motif") String motif) {
+	}
+
 	/** Suivi du workflow avec étapes visuelles. */
 	@GetMapping("/{identifiant}/suivi")
 	@PreAuthorize("isAuthenticated()")

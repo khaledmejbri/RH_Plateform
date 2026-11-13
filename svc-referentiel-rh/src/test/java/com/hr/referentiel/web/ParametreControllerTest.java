@@ -53,6 +53,8 @@ class ParametreControllerTest {
 	@MockitoBean
 	private AuteurParametreResolver auteurResolver;
 	@MockitoBean
+	private com.hr.referentiel.service.ReglagesCongeService reglagesService;
+	@MockitoBean
 	private JwtDecoder jwtDecoder;
 	/** L'application active @EnableCaching : la tranche WebMvc n'a pas de CacheManager. */
 	@MockitoBean
@@ -208,7 +210,7 @@ class ParametreControllerTest {
 	@Test
 	@DisplayName("réglage inexistant du service référentiel : 404 ; DIRECTION ne peut pas écrire un réglage")
 	void reglages() throws Exception {
-		when(service.modifierReglage("inconnu")).thenThrow(
+		when(reglagesService.modifier(org.mockito.ArgumentMatchers.eq("inconnu"), any(), any(), any())).thenThrow(
 				ReferentielMetierException.notFound("REGLAGE_INCONNU", "Réglage inconnu."));
 		mockMvc.perform(put(B + "/reglages/inconnu").with(role("USER", "RH")).contentType(MediaType.APPLICATION_JSON)
 				.content("{\"valeur\":1,\"version\":0}")).andExpect(status().isNotFound());

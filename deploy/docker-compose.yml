@@ -126,6 +126,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/referentiel_rh_db
       # Appels de service à service (lancement automatique des campagnes, SCRUM-42)
       APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
+      # Import des collaborateurs : contrôle des comptes existants auprès de svc-identite-acces (adresse directe)
+      REFERENTIEL_IDENTITE_BASEURL: http://svc-identite-acces:8081
 
   svc-evaluation:
     <<: *service-java

@@ -38,6 +38,15 @@ public class ReferentielExceptionHandler {
 				"code", "PARAMETRE_MODIFIE_ENTRE_TEMPS", "erreur", msg, "message", msg));
 	}
 
+	/** Fichier d'import au-delà de la limite multipart : 413 en JSON (jamais la page HTML du serveur). */
+	@ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+	public ResponseEntity<Map<String, Object>> fichierTropVolumineux(
+			org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
+		String msg = "Le fichier dépasse 10 Mo.";
+		return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(Map.of(
+				"code", "FICHIER_TROP_VOLUMINEUX", "erreur", msg, "message", msg));
+	}
+
 	@ExceptionHandler(IllegalArgumentException.class)
 	public ResponseEntity<Map<String, String>> illegalArgument(IllegalArgumentException ex) {
 		String msg = ex.getMessage() != null ? ex.getMessage() : "Données invalides";

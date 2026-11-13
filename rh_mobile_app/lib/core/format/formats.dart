@@ -104,8 +104,30 @@ String formatRetard(int? minutes) {
   return '$minutes min de retard';
 }
 
+/// Nombre de jours de congé avec accord (D-S14) : « 0,5 jour », « 1 jour », « 1,5 jour », « 2 jours ».
+/// Singulier quand la valeur absolue est inférieure à 2.
+String formatJours(num valeur) {
+  final unite = valeur.abs() < 2 ? 'jour' : 'jours';
+  return '${formatDecimal(valeur)} $unite';
+}
+
+/// Mouvement de solde signé : « +1,5 jour », « −5 jours » (signe moins typographique), « 0 jour » à zéro.
+String formatJoursSigne(num valeur) {
+  if (valeur == 0) return formatJours(0);
+  final signe = valeur > 0 ? '+' : '−';
+  return '$signe${formatJours(valeur.abs())}';
+}
+
+/// Lecture tolérante d'un décimal JSON (nombre ou texte) ; null si absent ou illisible.
+double? lireDecimal(Object? brut) {
+  if (brut == null) return null;
+  if (brut is num) return brut.toDouble();
+  return double.tryParse(brut.toString().trim().replaceAll(',', '.'));
+}
+
 /// Compteur de badge : masqué (`null`) à 0, exact jusqu'à 99, « 99+ » au-delà.
 String? libelleBadge(int nombre) {
   if (nombre <= 0) return null;
   return nombre > 99 ? '99+' : '$nombre';
 }
+

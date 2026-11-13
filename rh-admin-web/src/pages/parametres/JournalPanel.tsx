@@ -32,6 +32,7 @@ const CHAMPS: Record<string, string> = {
   actif: 'Actif',
   valeur: 'Valeur',
   codes: 'Ordre des valeurs',
+  date: 'Date',
 };
 
 /** Champs techniques sans intérêt pour la RH. */
@@ -71,24 +72,28 @@ type Props = {
   referentiel?: string;
   /** Libellé courant d'un code, si la valeur existe encore. */
   libelleDe?: (code: string) => string | undefined;
+  /** Source personnalisée (ex. jours fériés) à la place du journal du service. */
+  source?: (page: number, taille: number) => Promise<PageJournal>;
 };
 
 /** Historique paginé des modifications (D-R02.g) : lecture seule, jamais modifiable. */
-export default function JournalPanel({ service, referentiel, libelleDe }: Props) {
+export default function JournalPanel({ service, referentiel, libelleDe, source }: Props) {
   const [page, setPage] = useState(0);
   const [etat, setEtat] = useState<{ statut: 'chargement' | 'erreur' | 'ok'; data?: PageJournal; message?: string }>({ statut: 'chargement' });
 
   const charger = useCallback(async () => {
     setEtat({ statut: 'chargement' });
     try {
-      const data = referentiel
+      const data = source
+        ? await source(page, TAILLE)
+        : referentiel
         ? await getJournalReferentiel(service, referentiel, page, TAILLE)
         : await getJournalReglages(service, page, TAILLE);
       setEtat({ statut: 'ok', data });
     } catch (e) {
       setEtat({ statut: 'erreur', message: messageParametre(e) });
     }
-  }, [service, referentiel, page]);
+  }, [service, referentiel, page, source]);
 
   useEffect(() => {
     void charger();

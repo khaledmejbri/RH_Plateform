@@ -81,6 +81,9 @@ class ApiConstants {
 
   static String get plaintes => '$prefixRh/plaintes';
   static String get demandesAdmin => '$prefixRh/demandes-administratives';
+  static String get congesSoldeMoi => '$prefixRh/conges/solde/moi';
+  static String get congesMouvementsMoi => '$prefixRh/conges/solde/moi/mouvements';
+  static String get congesSimulation => '$prefixRh/conges/simulation';
   static String get demandesFormations => '$prefixRh/demandes-formations';
   static String get demandesDocumentsAdmin => '$prefixRh/demandes-documents-administratifs';
   static String get demandesDocuments => '$prefixRh/demandes-documents-administratifs';

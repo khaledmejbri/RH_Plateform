@@ -17,6 +17,8 @@ type Entree = {
   writeOnly?: boolean;
   /** Visible uniquement pour RH et ADMIN (plaintes, D-N01.a). */
   rhAdmin?: boolean;
+  /** Visible uniquement en consultation (DIRECTION). */
+  lectureOnly?: boolean;
 };
 type Menu =
   | ({ kind: 'lien'; icon: Icone } & Entree)
@@ -38,6 +40,9 @@ const MENU: Menu[] = [
     kind: 'groupe', id: 'collaborateurs', label: 'Collaborateurs', icon: IconUsers, enfants: [
       { id: 'fiches', to: '/app/collaborateurs', label: 'Fiches collaborateurs' },
       { id: 'organigramme', to: '/app/organigramme', label: 'Organigramme' },
+      { id: 'soldes', to: '/app/conges/soldes', label: 'Soldes de congé' },
+      { id: 'import-collab', to: '/app/collaborateurs/import', label: 'Import des collaborateurs', writeOnly: true },
+      { id: 'historique-imports', to: '/app/collaborateurs/historique-imports', label: 'Historique des imports', lectureOnly: true },
     ],
   },
   { kind: 'lien', id: 'demandes', to: '/app/demandes-administratives', label: 'Demandes administratives', icon: IconFile },
@@ -64,6 +69,9 @@ export function entreeActive(pathname: string, search: string): string {
     return o === 'pointages' ? 'pointages' : o === 'temps' ? 'temps' : o === 'manuels' ? 'manuels' : 'sites';
   }
   if (p.startsWith('/app/heures-sup')) return 'heures-sup';
+  if (p.startsWith('/app/collaborateurs/import')) return 'import-collab';
+  if (p.startsWith('/app/collaborateurs/historique-imports')) return 'historique-imports';
+  if (p.startsWith('/app/conges/soldes')) return 'soldes';
   if (p.startsWith('/app/collaborateurs')) return 'fiches';
   if (p.startsWith('/app/organigramme') || p.startsWith('/app/organisation')) return 'organigramme';
   if (p.startsWith('/app/formations')) return 'formations';
@@ -110,7 +118,7 @@ export default function AppShell() {
 
   // Menu filtré par rôle ; un groupe sans sous-entrée visible n'est pas affiché.
   const menu = useMemo(() => {
-    const visible = (e: Entree) => (!e.writeOnly || canWrite) && (!e.rhAdmin || canWrite);
+    const visible = (e: Entree) => (!e.writeOnly || canWrite) && (!e.rhAdmin || canWrite) && (!e.lectureOnly || !canWrite);
     return MENU.flatMap((m): Menu[] => {
       if (m.kind === 'lien') return visible(m) ? [m] : [];
       const enfants = m.enfants.filter(visible);
@@ -127,7 +135,7 @@ export default function AppShell() {
 
   // Titre d'onglet : libellé de la sous-entrée (D-N03). Les fiches posent leur propre titre.
   useEffect(() => {
-    const estFiche = /^\/app\/(collaborateurs|formations|plaintes|demandes-administratives|documents-administratifs|heures-sup|evaluations|organisation|pointage\/(sites|manuels))\/.+/.test(location.pathname);
+    const estFiche = /^\/app\/(collaborateurs(?!\/(import|historique-imports))|formations|plaintes|demandes-administratives|documents-administratifs|heures-sup|evaluations|organisation|pointage\/(sites|manuels))\/.+/.test(location.pathname);
     if (!estFiche) document.title = `${libelleEntree(actif) ?? 'Accueil'} — RH-Évènement`;
   }, [actif, location.pathname]);
 

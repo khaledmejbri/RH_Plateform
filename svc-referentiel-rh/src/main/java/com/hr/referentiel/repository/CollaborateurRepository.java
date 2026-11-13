@@ -87,4 +87,14 @@ public interface CollaborateurRepository extends JpaRepository<Collaborateur, UU
 
 	@EntityGraph(attributePaths = {"unite"})
 	java.util.List<Collaborateur> findAllByCompteUtilisateurIdIn(java.util.Collection<UUID> compteIds);
+
+	/** D-S07.a : fiches ACTIVES existant avant la fin du 1er du mois, recrutées au plus tard le 1er (ou sans date). */
+	@Query("select c.id from Collaborateur c where upper(c.statut) = 'ACTIF' and c.creeLe < :limite "
+			+ "and (c.dateRecrutement is null or c.dateRecrutement <= :premierJour)")
+	java.util.List<UUID> idsEligiblesAcquisition(@Param("limite") java.time.Instant limite,
+			@Param("premierJour") java.time.LocalDate premierJour);
+
+	/** Lecture groupée par matricule (import : jamais une requête par ligne). */
+	@Query("select c from Collaborateur c where lower(c.matricule) in :matricules")
+	java.util.List<Collaborateur> findParMatricules(@Param("matricules") java.util.Collection<String> matriculesMinuscules);
 }

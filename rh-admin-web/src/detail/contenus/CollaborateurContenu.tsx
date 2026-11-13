@@ -20,6 +20,7 @@ import Onglets from '../Onglets';
 import DetailLink, { LienPersonne } from '../DetailLink';
 import { peutVoirPlaintes, useTitre } from '../contexte';
 import { useChargement } from '../useChargement';
+import CongesOnglet from './CongesOnglet';
 import { Cartes, Champ, Champs, periode31, Section, Tableau, titreOnglet } from './commun';
 import type { PersonneResume, UniteResume } from '../../api/detailApi';
 
@@ -29,6 +30,7 @@ export default function CollaborateurContenu({ id, onglet, onOnglet }: Props) {
   const plaintes = peutVoirPlaintes();
   const defs = [
     { id: 'profil', label: 'Profil' },
+    { id: 'conges', label: 'Congés' },
     { id: 'demandes', label: 'Demandes administratives' },
     { id: 'documents', label: 'Documents' },
     { id: 'evaluations', label: 'Évaluations' },
@@ -94,6 +96,7 @@ export default function CollaborateurContenu({ id, onglet, onOnglet }: Props) {
           )}
         </Charge>
       )}
+      {actif === 'conges' && <CongesOnglet id={id} />}
       {actif === 'demandes' && <OngletDemandes id={id} />}
       {actif === 'documents' && <OngletDocuments id={id} />}
       {actif === 'formations' && <OngletFormations id={id} />}

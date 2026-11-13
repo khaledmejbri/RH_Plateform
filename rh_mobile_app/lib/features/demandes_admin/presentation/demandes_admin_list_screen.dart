@@ -26,6 +26,9 @@ class _DemandesAdminListScreenState
     extends ConsumerState<DemandesAdminListScreen>
     with SingleTickerProviderStateMixin {
   int _currentPage = 0;
+
+  /// Filtre par type (titre affiché : « Congé annuel », « Ordre de mission »…) ; null = tous.
+  String? _typeFiltre;
   late final TabController _tabController =
       TabController(length: 4, vsync: this);
 
@@ -85,12 +88,15 @@ class _DemandesAdminListScreenState
                   ref.invalidate(demandesAdminListProvider);
                 }),
         data: (items) {
-          final enCours = items.where(_enCours).toList();
-          final approuvees = items.where(_approuvees).toList();
-          final refusees = items.where(_refusees).toList();
-          final annulees = items.where(_annulees).toList();
+          final types = items.map((i) => i.titre).toSet().toList()..sort();
+          final filtre = types.contains(_typeFiltre) ? _typeFiltre : null;
+          bool typeOk(DemandeAdminItem i) => filtre == null || i.titre == filtre;
+          final enCours = items.where(_enCours).where(typeOk).toList();
+          final approuvees = items.where(_approuvees).where(typeOk).toList();
+          final refusees = items.where(_refusees).where(typeOk).toList();
+          final annulees = items.where(_annulees).where(typeOk).toList();
 
-          return TabBarView(
+          final onglets = TabBarView(
             controller: _tabController,
             children: [
               _DemandeList(items: enCours, onRefresh: () async {
@@ -106,6 +112,25 @@ class _DemandesAdminListScreenState
               _DemandeList(items: annulees, onRefresh: () async {
                 ref.invalidate(demandesAdminListProvider);
               }),
+            ],
+          );
+          if (types.length < 2) return onglets;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: DropdownButtonFormField<String?>(
+                  key: const Key('filtre-type-demande'),
+                  value: filtre,
+                  decoration: const InputDecoration(labelText: 'Type de demande', isDense: true),
+                  items: [
+                    const DropdownMenuItem<String?>(value: null, child: Text('Tous les types')),
+                    for (final t in types) DropdownMenuItem<String?>(value: t, child: Text(t)),
+                  ],
+                  onChanged: (v) => setState(() => _typeFiltre = v),
+                ),
+              ),
+              Expanded(child: onglets),
             ],
           );
         },
@@ -268,8 +293,9 @@ class _DemandeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (statusLabel, statusBg, statusFg, iconBg, iconColor, icon) =
+    final (statusLabelBrut, statusBg, statusFg, iconBg, iconColor, icon) =
         _statusMeta(d.statut);
+    final statusLabel = d.annuleeApresApprobation ? 'Annulée après approbation' : statusLabelBrut;
 
     return Material(
       color: AppTheme.surface,
@@ -381,6 +407,7 @@ class _DemandeCard extends StatelessWidget {
   /// « DEM-202611-0003 · déposée le 06/11/2026 », puis « Validation par Omar Belhadj » si connu.
   static String? _sousTitre(DemandeAdminItem d) {
     final parts = <String>[
+      if (d.joursDecomptes != null) 'Jours décomptés : ${formatJours(d.joursDecomptes!)}',
       if (d.referenceAffichee != null) d.referenceAffichee!,
       if (d.creeLe != null) 'déposée le ${formatDateIso(d.creeLe)}',
     ];

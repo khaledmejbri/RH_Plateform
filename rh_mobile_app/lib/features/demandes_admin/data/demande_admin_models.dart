@@ -1,3 +1,4 @@
+import '../../../core/format/formats.dart';
 import '../../../core/libelles/libelles.dart';
 
 class DemandeAdminItem {
@@ -17,6 +18,18 @@ class DemandeAdminItem {
     this.creeLe,
     this.statutLibelleApi,
     this.typeCongeLibelleApi,
+    this.joursDecomptes,
+    this.periodePremierJourLibelle,
+    this.periodeDernierJourLibelle,
+    this.annuleeApresApprobation = false,
+    this.motifAnnulation,
+    this.annuleParNom,
+    this.annuleApresApprobationLe,
+    this.joursRecredites,
+    this.soldeDisponibleDemandeur,
+    this.soldeReserveAutresDemandes,
+    this.soldeApresDemande,
+    this.peutAnnuler = false,
   });
 
   final String id;
@@ -45,6 +58,33 @@ class DemandeAdminItem {
   /// à défaut, le référentiel chargé, sinon « Valeur non reconnue ».
   final String? statutLibelleApi;
   final String? typeCongeLibelleApi;
+
+  /// Jours décomptés du solde (congé annuel), absents pour les autres types et les demandes antérieures aux soldes.
+  final double? joursDecomptes;
+  final String? periodePremierJourLibelle;
+  final String? periodeDernierJourLibelle;
+
+  /// Annulée par la RH après approbation : motif, auteur, date et jours recrédités.
+  final bool annuleeApresApprobation;
+  final String? motifAnnulation;
+  final String? annuleParNom;
+  final String? annuleApresApprobationLe;
+  final double? joursRecredites;
+
+  /// Champs réservés au décideur de l'étape en cours : solde acquis du demandeur, part réservée par ses
+  /// autres demandes, solde après cette demande.
+  final double? soldeDisponibleDemandeur;
+  final double? soldeReserveAutresDemandes;
+  final double? soldeApresDemande;
+
+  /// Vrai seulement pour le demandeur d'une demande en cours (absent = faux : bouton masqué).
+  final bool peutAnnuler;
+
+  /// Vrai si le serveur a envoyé le solde du demandeur (le connecté est le décideur).
+  bool get aSoldeDecideur => soldeDisponibleDemandeur != null;
+
+  /// « Solde acquis : 10 jours, dont 2 jours réservés par d'autres demandes » ; null hors décideur.
+  String? get soldeDecideurAffiche => libelleSoldeDecideur(soldeDisponibleDemandeur, soldeReserveAutresDemandes);
 
   /// Type de congé (`contenu.type_conge`), pour un congé.
   String? get typeConge => contenu?['type_conge'] as String?;
@@ -98,6 +138,18 @@ class DemandeAdminItem {
       creeLe: (j['cree_le'] ?? j['date_creation']) as String?,
       statutLibelleApi: j['statut_libelle'] as String?,
       typeCongeLibelleApi: j['type_conge_libelle'] as String?,
+      joursDecomptes: lireDecimal(j['jours_decomptes']),
+      periodePremierJourLibelle: j['periode_premier_jour_libelle'] as String?,
+      periodeDernierJourLibelle: j['periode_dernier_jour_libelle'] as String?,
+      annuleeApresApprobation: j['annulee_apres_approbation'] == true,
+      motifAnnulation: j['motif_annulation'] as String?,
+      annuleParNom: j['annule_par_nom'] as String?,
+      annuleApresApprobationLe: j['annule_apres_approbation_le'] as String?,
+      joursRecredites: lireDecimal(j['jours_recredites']),
+      soldeDisponibleDemandeur: lireDecimal(j['solde_disponible_demandeur']),
+      soldeReserveAutresDemandes: lireDecimal(j['solde_reserve_autres_demandes']),
+      soldeApresDemande: lireDecimal(j['solde_apres_demande']),
+      peutAnnuler: j['peut_annuler'] == true,
     );
   }
 }
@@ -179,4 +231,14 @@ class WorkflowHistoryItem {
 
   /// Commentaire sans code (anciens commentaires stockés masqués).
   String? get commentaireAffiche => Libelles.commentaireHistorique(commentaire);
+}
+
+/// Texte du décideur : « Solde acquis : 10 jours, dont 2 jours réservés par d'autres demandes ».
+/// La part réservée n'apparaît que si elle est connue et non nulle. Null si le solde est inconnu.
+String? libelleSoldeDecideur(double? acquis, double? reserveAutres) {
+  if (acquis == null) return null;
+  final base = 'Solde acquis : ${formatJours(acquis)}';
+  if (reserveAutres == null || reserveAutres <= 0) return base;
+  final accord = reserveAutres < 2 ? 'réservé' : 'réservés';
+  return '$base, dont ${formatJours(reserveAutres)} $accord par d’autres demandes';
 }

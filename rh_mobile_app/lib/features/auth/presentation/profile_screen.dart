@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/notification_action.dart';
+import '../../../core/format/formats.dart';
+import '../../conges/providers/solde_providers.dart';
 import '../../facial/providers/facial_controller.dart';
 import '../providers/collaborateur_notifier.dart';
 import '../providers/auth_notifier.dart';
@@ -155,6 +157,8 @@ class ProfileScreen extends ConsumerWidget {
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     const SizedBox(height: 8),
+                    const CarteJoursConge(),
+                    const SizedBox(height: 12),
                     _MenuSection(items: [
                       _MenuItem(
                           icon: Icons.folder_shared_outlined,
@@ -203,6 +207,61 @@ class ProfileScreen extends ConsumerWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Carte « Jours de congé » = solde disponible réel (D-T02.b). Indicateur pendant le chargement,
+/// message + « Réessayer » en erreur : jamais « 0 » tant que le serveur n'a pas répondu.
+class CarteJoursConge extends ConsumerWidget {
+  const CarteJoursConge({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final solde = ref.watch(monSoldeProvider);
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border, width: 0.5),
+      ),
+      child: solde.when(
+        loading: () => const Padding(
+          padding: EdgeInsets.all(16),
+          child: Row(children: [
+            SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+            SizedBox(width: 12),
+            Text('Jours de congé…'),
+          ]),
+        ),
+        error: (e, _) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            Expanded(child: Text('Jours de congé : ${rhErrorMessage(e)}')),
+            TextButton(onPressed: () => ref.invalidate(monSoldeProvider), child: const Text('Réessayer')),
+          ]),
+        ),
+        data: (s) => InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => context.push('/conges/solde'),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(children: [
+              const Icon(Icons.beach_access_outlined, color: AppTheme.primary),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text('Jours de congé', style: TextStyle(fontWeight: FontWeight.w500)),
+              ),
+              Text(
+                formatJours(s.disponible),
+                key: const Key('carte-jours-conge'),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.primary),
+              ),
+              const Icon(Icons.chevron_right_rounded, size: 18, color: AppTheme.textSecondary),
+            ]),
+          ),
+        ),
       ),
     );
   }

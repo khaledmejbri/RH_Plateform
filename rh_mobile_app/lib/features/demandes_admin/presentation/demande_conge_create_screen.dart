@@ -6,6 +6,8 @@ import '../../../core/format/formats.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
+import '../../conges/data/solde_models.dart';
+import '../../conges/data/solde_repository.dart';
 import '../data/demande_admin_errors.dart';
 import '../data/demande_admin_repository.dart';
 import 'demandes_admin_list_screen.dart';
@@ -28,6 +30,67 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
   String? _typeConge;
   File? _pieceJointe;
   var _loading = false;
+
+  /// Code système du congé annuel : seul type soumis au solde (D-S03).
+  static const String _codeAnnuel = 'ANNUEL';
+  String _periodePremier = PeriodeJour.journee;
+  String _periodeDernier = PeriodeJour.journee;
+  SimulationConge? _simulation;
+  Object? _simulationErreur;
+  var _simulationEnCours = false;
+  var _simulationSeq = 0;
+
+  bool get _estAnnuel => _typeConge == _codeAnnuel;
+  bool get _unSeulJour =>
+      _debut != null && _fin != null && _debut!.year == _fin!.year && _debut!.month == _fin!.month && _debut!.day == _fin!.day;
+  bool get _periodeValide => _debut != null && _fin != null && !_fin!.isBefore(_debut!);
+
+  /// Recale les périodes sur les choix permis par les dates (un jour : trois choix ; plusieurs : deux par bout).
+  void _recalerPeriodes() {
+    if (_unSeulJour) {
+      _periodeDernier = _periodePremier;
+    } else {
+      if (!PeriodeJour.premierJour(unSeulJour: false).contains(_periodePremier)) _periodePremier = PeriodeJour.journee;
+      if (!PeriodeJour.dernierJour.contains(_periodeDernier)) _periodeDernier = PeriodeJour.journee;
+    }
+  }
+
+  /// Simulation serveur (A3) à chaque changement ; une réponse périmée est ignorée.
+  Future<void> _simuler() async {
+    final seq = ++_simulationSeq;
+    if (!_estAnnuel || !_periodeValide) {
+      setState(() {
+        _simulation = null;
+        _simulationErreur = null;
+        _simulationEnCours = false;
+      });
+      return;
+    }
+    setState(() {
+      _simulationEnCours = true;
+      _simulationErreur = null;
+      _simulation = null;
+    });
+    try {
+      final r = await ref.read(soldeRepositoryProvider).simuler(
+            dateDebut: _debut!,
+            dateFin: _fin!,
+            periodePremierJour: _periodePremier,
+            periodeDernierJour: _unSeulJour ? _periodePremier : _periodeDernier,
+          );
+      if (!mounted || seq != _simulationSeq) return;
+      setState(() {
+        _simulation = r;
+        _simulationEnCours = false;
+      });
+    } catch (e) {
+      if (!mounted || seq != _simulationSeq) return;
+      setState(() {
+        _simulationErreur = e;
+        _simulationEnCours = false;
+      });
+    }
+  }
   final ImagePicker _picker = ImagePicker();
 
   /// Pièce jointe exigée selon `piece_jointe_obligatoire` du type choisi (le serveur reste le garde).
@@ -52,7 +115,13 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
       lastDate: DateTime(2040),
       initialDate: _debut ?? DateTime.now(),
     );
-    if (d != null) setState(() => _debut = d);
+    if (d != null) {
+      setState(() {
+        _debut = d;
+        _recalerPeriodes();
+      });
+      _simuler();
+    }
   }
 
   Future<void> _pickFin() async {
@@ -62,7 +131,13 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
       lastDate: DateTime(2040),
       initialDate: _fin ?? _debut ?? DateTime.now(),
     );
-    if (d != null) setState(() => _fin = d);
+    if (d != null) {
+      setState(() {
+        _fin = d;
+        _recalerPeriodes();
+      });
+      _simuler();
+    }
   }
 
   void _onTypeChanged(String? value, List<ParametreValeur> types) {
@@ -72,6 +147,7 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
       final exige = types.any((t) => t.code == value && t.pieceJointeObligatoire);
       if (!exige) _pieceJointe = null;
     });
+    _simuler();
   }
 
   Future<void> _pickPieceJointe() async {
@@ -143,6 +219,8 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
             dateFin: fmt.format(_fin!),
             typeConge: type,
             certificatPath: _pieceJointe?.path,
+            periodePremierJour: _estAnnuel ? _periodePremier : null,
+            periodeDernierJour: _estAnnuel ? (_unSeulJour ? _periodePremier : _periodeDernier) : null,
           );
       ref.invalidate(demandesAdminListProvider);
       if (mounted) {
@@ -198,10 +276,79 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
     );
   }
 
+  Widget _menuPeriode({
+    required String label,
+    required String valeur,
+    required List<String> choix,
+    required ValueChanged<String> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      key: ValueKey('periode-$label'),
+      value: choix.contains(valeur) ? valeur : null,
+      decoration: InputDecoration(labelText: label, filled: true, fillColor: Colors.white),
+      items: [for (final c in choix) DropdownMenuItem(value: c, child: Text(PeriodeJour.libelle(c)))],
+      onChanged: (v) {
+        if (v != null) onChanged(v);
+      },
+    );
+  }
+
+  Widget _blocPeriodes() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_unSeulJour)
+          _menuPeriode(
+            label: 'Période',
+            valeur: _periodePremier,
+            choix: PeriodeJour.premierJour(unSeulJour: true),
+            onChanged: (v) {
+              setState(() {
+                _periodePremier = v;
+                _periodeDernier = v;
+              });
+              _simuler();
+            },
+          )
+        else ...[
+          _menuPeriode(
+            label: 'Premier jour',
+            valeur: _periodePremier,
+            choix: PeriodeJour.premierJour(unSeulJour: false),
+            onChanged: (v) {
+              setState(() => _periodePremier = v);
+              _simuler();
+            },
+          ),
+          const SizedBox(height: 12),
+          _menuPeriode(
+            label: 'Dernier jour',
+            valeur: _periodeDernier,
+            choix: PeriodeJour.dernierJour,
+            onChanged: (v) {
+              setState(() => _periodeDernier = v);
+              _simuler();
+            },
+          ),
+        ],
+        const SizedBox(height: 12),
+        _ResumeSimulation(
+          simulation: _simulation,
+          erreur: _simulationErreur,
+          enCours: _simulationEnCours,
+          onRetry: _simuler,
+        ),
+      ],
+    );
+  }
+
   Widget _formulaire(List<ParametreValeur> types) {
     const primaryBlue = AppTheme.primary;
     final pjRequise = _pjRequiseDe(types);
-    final peutEnvoyer = !_loading && types.any((t) => t.code == _typeConge) && (!pjRequise || _pieceJointe != null);
+    // Congé annuel : l'envoi attend une simulation sans blocage (le serveur reste le garde).
+    final simulationOk = !_estAnnuel || (_simulation != null && !_simulation!.bloquee);
+    final peutEnvoyer =
+        !_loading && types.any((t) => t.code == _typeConge) && (!pjRequise || _pieceJointe != null) && simulationOk;
     return ListView(
         padding: const EdgeInsets.all(24),
         children: [
@@ -256,6 +403,10 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
               onChanged: (v) => _onTypeChanged(v, types),
             ),
           ),
+          if (_estAnnuel && _periodeValide) ...[
+            const SizedBox(height: 24),
+            _blocPeriodes(),
+          ],
           if (pjRequise) ...[
             const SizedBox(height: 24),
             Text(
@@ -344,6 +495,62 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
             ),
           ),
         ],
+    );
+  }
+}
+
+/// Résumé d'une simulation : jours décomptés, solde après, ou message bloquant / erreur avec « Réessayer ».
+class _ResumeSimulation extends StatelessWidget {
+  const _ResumeSimulation({
+    required this.simulation,
+    required this.erreur,
+    required this.enCours,
+    required this.onRetry,
+  });
+
+  final SimulationConge? simulation;
+  final Object? erreur;
+  final bool enCours;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (enCours) {
+      return const Row(children: [
+        SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+        SizedBox(width: 10),
+        Text('Calcul des jours en cours…'),
+      ]);
+    }
+    if (erreur != null) {
+      return Row(children: [
+        Expanded(child: Text(rhErrorMessage(erreur), style: const TextStyle(color: AppTheme.error))),
+        TextButton(onPressed: onRetry, child: const Text('Réessayer')),
+      ]);
+    }
+    final s = simulation;
+    if (s == null) return const SizedBox.shrink();
+    if (s.bloquee) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: AppTheme.errorSurface, borderRadius: BorderRadius.circular(12)),
+        child: Row(children: [
+          const Icon(Icons.block_rounded, color: AppTheme.error, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(s.blocage!.libelle, style: const TextStyle(color: AppTheme.error, fontWeight: FontWeight.w600)),
+          ),
+        ]),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: AppTheme.primarySurface, borderRadius: BorderRadius.circular(12)),
+      child: Text(
+        '${s.joursOuvres}, solde après : ${formatJours(s.disponibleApres)}',
+        key: const Key('resume-simulation'),
+        style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primaryDark),
+      ),
     );
   }
 }

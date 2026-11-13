@@ -256,6 +256,22 @@ export type DemandeAdministrative = {
   motif_refus?: string;
   contenu?: Record<string, unknown>;
   cree_le: string;
+  /* Soldes de congé (annexe A de l'ADR soldes) : champs absents quand ils sont nuls. */
+  jours_decomptes?: number;
+  periode_premier_jour?: string;
+  periode_premier_jour_libelle?: string;
+  periode_dernier_jour?: string;
+  periode_dernier_jour_libelle?: string;
+  annulee_apres_approbation?: boolean;
+  motif_annulation?: string;
+  annule_apres_approbation_le?: string;
+  annule_par_nom?: string;
+  jours_recredites?: number;
+  peut_annuler_apres_approbation?: boolean;
+  /** Décideur de l'étape en cours seulement : solde acquis du demandeur, dont une part réservée par d'autres demandes. */
+  solde_disponible_demandeur?: number;
+  solde_reserve_autres_demandes?: number;
+  solde_apres_demande?: number;
 };
 
 export type DemandeAdministrativeSuivi = {

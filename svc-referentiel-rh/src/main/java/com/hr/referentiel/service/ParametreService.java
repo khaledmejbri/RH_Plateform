@@ -103,19 +103,6 @@ public class ParametreService {
 		return new PageJournal(contenu, p, t, resultat.getTotalElements());
 	}
 
-	/** Le service référentiel n'a pas de réglage numérique : liste vide (contrat commun aux trois services). */
-	public List<Reglage> reglages() {
-		return List.of();
-	}
-
-	public PageJournal journalReglages(int page, int taille) {
-		return new PageJournal(List.of(), Math.max(0, page), Math.min(JOURNAL_TAILLE_MAX, Math.max(1, taille)), 0);
-	}
-
-	public Reglage modifierReglage(String cle) {
-		throw ReferentielMetierException.notFound("REGLAGE_INCONNU", "Réglage inconnu : " + cle + ".");
-	}
-
 	// ─── Libellés (lecture simple, tout utilisateur authentifié) ────────────────────
 
 	/**
