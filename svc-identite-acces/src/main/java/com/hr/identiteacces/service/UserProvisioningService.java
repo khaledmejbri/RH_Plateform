@@ -1,5 +1,6 @@
 package com.hr.identiteacces.service;
 
+import com.hr.commun.societe.SocieteContexte;
 import com.hr.identiteacces.entity.User;
 import com.hr.identiteacces.kafka.CollaborateurCompteCreeEvent;
 import com.hr.identiteacces.kafka.CollaborateurCompteDemandeEvent;
@@ -35,7 +36,9 @@ public class UserProvisioningService {
 
 	@Transactional
 	public void provisionCollaborateurCompte(CollaborateurCompteDemandeEvent event) {
-		Optional<User> existing = trouverCompteExistant(event);
+		Optional<UUID> societeCourante = SocieteContexte.couranteOuVide()
+				.filter(id -> !SocieteContexte.AUCUNE.equals(id));
+		Optional<User> existing = trouverCompteExistant(event, societeCourante);
 		if (existing.isPresent()) {
 			synchroniserRoles(existing.get(), event);
 			if (!estMajRoles(event)) {
@@ -80,6 +83,7 @@ public class UserProvisioningService {
 		// D-I09 : mot de passe généré ici pour un import, transmis au seul courriel de bienvenue (jamais journalisé)
 		String motDePasse = event.genereLeMotDePasse() ? generateurMotDePasse.generer() : event.motDePasseInitial();
 		User user = User.builder()
+				.societeId(societeCourante.orElse(null))
 				.username(matricule)
 				.email(event.courriel().trim())
 				.password(passwordEncoder.encode(motDePasse))
@@ -96,7 +100,7 @@ public class UserProvisioningService {
 				motDePasse);
 	}
 
-	private Optional<User> trouverCompteExistant(CollaborateurCompteDemandeEvent event) {
+	private Optional<User> trouverCompteExistant(CollaborateurCompteDemandeEvent event, Optional<UUID> societeCourante) {
 		if (event.compteUtilisateurId() != null) {
 			Optional<User> byId = userRepository.findById(event.compteUtilisateurId());
 			if (byId.isPresent()) {
@@ -109,6 +113,9 @@ public class UserProvisioningService {
 		String matricule = event.matricule().trim();
 		if (matricule.length() > 100) {
 			return Optional.empty();
+		}
+		if (societeCourante.isPresent()) {
+			return userRepository.findBySocieteIdAndUsernameIgnoreCase(societeCourante.get(), matricule);
 		}
 		return userRepository.findByUsername(matricule);
 	}

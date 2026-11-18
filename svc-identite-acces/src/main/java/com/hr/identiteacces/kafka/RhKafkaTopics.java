@@ -7,4 +7,5 @@ public final class RhKafkaTopics {
 
 	public static final String COLLABORATEUR_COMPTE_DEMANDE = "rh.identite.collaborateur-compte.demande";
 	public static final String COLLABORATEUR_COMPTE_CREE = "rh.referentiel.collaborateur-compte.cree";
+	public static final String SOCIETES = "rh.societes";
 }

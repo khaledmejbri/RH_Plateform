@@ -11,11 +11,19 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class SigninRequest {
 
-    @NotBlank(message = "Le nom d'utilisateur est obligatoire")
-    @JsonProperty("nom_utilisateur")
-    private String username;
+	@NotBlank(message = "Le nom d'utilisateur est obligatoire")
+	@JsonProperty("nom_utilisateur")
+	private String username;
 
-    @NotBlank(message = "Le mot de passe est obligatoire")
-    @JsonProperty("mot_de_passe")
-    private String password;
+	@NotBlank(message = "Le mot de passe est obligatoire")
+	@JsonProperty("mot_de_passe")
+	private String password;
+
+	@JsonProperty("societe_code")
+	private String societeCode;
+
+	public SigninRequest(String username, String password) {
+		this.username = username;
+		this.password = password;
+	}
 }
