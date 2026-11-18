@@ -35,6 +35,7 @@
 	</dependencyManagement>
 
 	<modules>
+		<module>sirh-commun</module>
 		<module>eureka-server</module>
 		<module>gateway</module>
 		<module>svc-identite-acces</module>
