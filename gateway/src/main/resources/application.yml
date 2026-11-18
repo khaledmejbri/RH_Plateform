@@ -43,6 +43,10 @@ spring:
               uri: lb://svc-notification
               predicates:
                 - Path=/api/rh/v1/notifications/**
+            - id: svc-identite-acces-plateforme
+              uri: lb://svc-identite-acces
+              predicates:
+                - Path=/api/plateforme/**
             - id: svc-referentiel-rh-v1
               uri: lb://svc-referentiel-rh
               predicates:
