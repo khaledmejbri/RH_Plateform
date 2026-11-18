@@ -1,5 +1,6 @@
 package com.hr.commun.planif;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
@@ -8,6 +9,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -18,16 +20,59 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class VerrouPlanificateurTest {
 
 	@Test
-	@DisplayName("Deux appels concurrents sur la même tâche : un seul est exécuté, puis le verrou est relâché")
-	void deuxAppelsConcurrents_unSeulExecute() throws Exception {
-		DataSource ds = creerDataSourceSiPostgresDisponible();
+	@DisplayName("PostgreSQL (authentication_db_test) : deux appels concurrents sur la même tâche, un seul exécuté")
+	void deuxAppelsConcurrents_unSeulExecute_postgres() throws Exception {
+		DataSource ds = creerDataSourcePostgresDepuisEnvironnement();
+		verifierExclusionConcurrente(ds);
+	}
+
+	@Test
+	@DisplayName("Simulacre JDBC : deux appels concurrents sur la même tâche, un seul exécuté")
+	void deuxAppelsConcurrents_unSeulExecute_simulacreJdbc() throws Exception {
+		DataSource ds = creerDataSourceSimule();
+		verifierExclusionConcurrente(ds);
+	}
+
+	@Test
+	@DisplayName("Amélioration 8 : en cas d'échec de pg_advisory_unlock, la connexion physique est avortée (conn.abort)")
+	void echecDeverrouillage_avorteConnexionPhysique() throws Exception {
+		DataSource ds = mock(DataSource.class);
+		Connection conn = mock(Connection.class);
+		when(ds.getConnection()).thenReturn(conn);
+
+		when(conn.prepareStatement(anyString())).thenAnswer(inv -> {
+			String sql = inv.getArgument(0);
+			PreparedStatement ps = mock(PreparedStatement.class);
+			if (sql.contains("pg_try_advisory_lock")) {
+				ResultSet rs = mock(ResultSet.class);
+				when(rs.next()).thenReturn(true);
+				when(rs.getBoolean(1)).thenReturn(true);
+				when(ps.executeQuery()).thenReturn(rs);
+			} else {
+				when(ps.executeQuery()).thenThrow(new SQLException("Panne réseau déverrouillage"));
+			}
+			return ps;
+		});
+
+		VerrouPlanificateur verrou = new VerrouPlanificateur(ds);
+		AtomicBoolean execute = new AtomicBoolean(false);
+		boolean ok = verrou.executerSiLibre("tache-abort", () -> execute.set(true));
+
+		assertThat(ok).isTrue();
+		assertThat(execute.get()).isTrue();
+		verify(conn).abort(any());
+	}
+
+	private static void verifierExclusionConcurrente(DataSource ds) throws Exception {
 		VerrouPlanificateur verrou = new VerrouPlanificateur(ds);
 		String nomTache = "test-concurrence-" + UUID.randomUUID();
 
@@ -57,7 +102,6 @@ class VerrouPlanificateurTest {
 			assertThat(f1.get(5, TimeUnit.SECONDS)).isTrue();
 			assertThat(executions.get()).isEqualTo(1);
 
-			// Une fois le premier terminé, le verrou est libre à nouveau
 			boolean reexecution = verrou.executerSiLibre(nomTache, executions::incrementAndGet);
 			assertThat(reexecution).isTrue();
 			assertThat(executions.get()).isEqualTo(2);
@@ -66,18 +110,27 @@ class VerrouPlanificateurTest {
 		}
 	}
 
-	private static DataSource creerDataSourceSiPostgresDisponible() throws Exception {
-		PGSimpleDataSource pg = new PGSimpleDataSource();
-		String url = System.getenv().getOrDefault("TEST_DB_URL", "jdbc:postgresql://localhost:5444/authentication_db");
+	private static DataSource creerDataSourcePostgresDepuisEnvironnement() {
+		String url = System.getenv().getOrDefault("TEST_DB_URL",
+				"jdbc:postgresql://localhost:5444/authentication_db_test");
 		String user = System.getenv().getOrDefault("TEST_DB_USER", "postgres");
-		String pass = System.getenv().getOrDefault("TEST_DB_PASSWORD", "password");
+		String pass = System.getenv("TEST_DB_PASSWORD");
+		if (pass == null || pass.isBlank()) {
+			pass = System.getenv("PGPASSWORD");
+		}
+		Assumptions.assumeTrue(pass != null && !pass.isBlank(),
+				"Variable d'environnement TEST_DB_PASSWORD (ou PGPASSWORD) absente : test PostgreSQL ignoré");
+
+		PGSimpleDataSource pg = new PGSimpleDataSource();
 		pg.setURL(url);
 		pg.setUser(user);
 		pg.setPassword(pass);
 		try (Connection c = pg.getConnection()) {
 			return pg;
-		} catch (Exception e) {
-			return creerDataSourceSimule();
+		} catch (SQLException e) {
+			Assumptions.assumeTrue(false,
+					"Base PostgreSQL authentication_db_test injoignable (" + e.getMessage() + ") : test ignoré");
+			return pg;
 		}
 	}
 

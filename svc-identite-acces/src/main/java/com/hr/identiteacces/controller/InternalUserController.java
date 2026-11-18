@@ -4,6 +4,7 @@ import com.hr.identiteacces.dto.UserResponse;
 import com.hr.identiteacces.service.UserService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,6 +26,7 @@ import java.util.regex.Pattern;
  */
 @RestController
 @RequestMapping("/internal/users")
+@PreAuthorize("permitAll()")
 public class InternalUserController {
 
     /** Rôle attendu : majuscules et tiret bas (RH, ADMIN, DIRECTION…). */

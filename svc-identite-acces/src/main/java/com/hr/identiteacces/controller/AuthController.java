@@ -6,10 +6,12 @@ import com.hr.identiteacces.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
+@PreAuthorize("permitAll()")
 @RequiredArgsConstructor
 public class AuthController {
 

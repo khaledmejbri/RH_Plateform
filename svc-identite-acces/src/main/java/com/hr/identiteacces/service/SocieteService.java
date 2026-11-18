@@ -1,5 +1,6 @@
 package com.hr.identiteacces.service;
 
+import com.hr.identiteacces.config.SocieteProprietes;
 import com.hr.identiteacces.domain.StatutSociete;
 import com.hr.identiteacces.dto.SocieteDtos.AdminInitialRequest;
 import com.hr.identiteacces.dto.SocieteDtos.CreerSocieteRequest;
@@ -22,6 +23,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.DateTimeException;
 import java.time.Instant;
@@ -39,7 +42,6 @@ public class SocieteService {
 
 	private static final Pattern CODE_SOCIETE_PATTERN = Pattern.compile("^[A-Za-z0-9-]{2,12}$");
 	private static final Pattern COURRIEL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
-	private static final String FUSEAU_DEFAUT = "Africa/Tunis";
 
 	private final SocieteRepository societeRepository;
 	private final UserRepository userRepository;
@@ -170,7 +172,9 @@ public class SocieteService {
 					"Matricule, prénom, nom et courriel valide sont obligatoires.");
 		}
 
-		Societe societe = societeRepository.findById(societeId)
+		// Verrou pessimiste sur la ligne societe (amélioration 1) contre deux appels simultanés
+		Societe societe = societeRepository.findByIdPourMiseAJour(societeId)
+				.or(() -> societeRepository.findById(societeId))
 				.orElseThrow(() -> IdentiteMetierException.notFound("SOCIETE_INTROUVABLE", "Société introuvable."));
 
 		if (userRepository.existsBySocieteIdAndRole(societe.getId(), "ADMIN")) {
@@ -192,7 +196,7 @@ public class SocieteService {
 				.build();
 		admin = userRepository.saveAndFlush(admin);
 
-		collaborateurWelcomeMailService.scheduleWelcomeEmail(courriel, prenom, nom, matricule, motDePasse);
+		planifierCourrielBienvenueApresCommit(courriel, prenom, nom, matricule, motDePasse);
 
 		return UserResponse.builder()
 				.id(admin.getId())
@@ -201,6 +205,20 @@ public class SocieteService {
 				.roles(admin.getRoles())
 				.createdAt(admin.getCreatedAt())
 				.build();
+	}
+
+	private void planifierCourrielBienvenueApresCommit(
+			String courriel, String prenom, String nom, String matricule, String motDePasse) {
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					collaborateurWelcomeMailService.scheduleWelcomeEmail(courriel, prenom, nom, matricule, motDePasse);
+				}
+			});
+			return;
+		}
+		collaborateurWelcomeMailService.scheduleWelcomeEmail(courriel, prenom, nom, matricule, motDePasse);
 	}
 
 	@Transactional(readOnly = true)
@@ -249,7 +267,7 @@ public class SocieteService {
 
 	private static String validerFuseau(String fuseau) {
 		if (fuseau == null || fuseau.isBlank()) {
-			return FUSEAU_DEFAUT;
+			return SocieteProprietes.FUSEAU_DEFAUT;
 		}
 		String f = fuseau.trim();
 		if (f.length() > 40) {

@@ -4,6 +4,7 @@ import com.hr.identiteacces.dto.SocieteDtos.SocieteResponse;
 import com.hr.identiteacces.service.SocieteService;
 import com.hr.identiteacces.web.IdentiteMetierException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -18,10 +19,12 @@ import java.util.UUID;
 
 /**
  * Endpoints internes de lecture du registre des sociétés (§ 9.7.1).
- * Protégés par {@code X-Internal-Token}, dispensés de {@code X-Societe-Id}.
+ * Ouvert au niveau méthode ({@code permitAll}) : l'authentification service-à-service est assurée par
+ * {@code SocieteFiltreInterne} et la vérification à temps constant de {@code X-Internal-Token} (non routé par la gateway).
  */
 @RestController
 @RequestMapping("/internal/identite/v1/societes")
+@PreAuthorize("permitAll()")
 public class InternalSocieteController {
 
 	private final SocieteService societeService;

@@ -18,10 +18,19 @@ public record ErrorResponse(
 		@JsonProperty("http_status") int httpStatus
 ) {
 	public static ErrorResponse of(String code, String message, int httpStatus) {
-		return new ErrorResponse(code, message, message, message, Instant.now(), null, List.of(), httpStatus);
+		return of(code, message, httpStatus, null);
+	}
+
+	public static ErrorResponse of(String code, String message, int httpStatus, String path) {
+		return new ErrorResponse(code, message, message, message, Instant.now(), path, List.of(), httpStatus);
 	}
 
 	public static ErrorResponse of(String code, String message, String details, List<String> suggestions, int httpStatus) {
-		return new ErrorResponse(code, message, message, details, Instant.now(), null, suggestions, httpStatus);
+		return of(code, message, details, suggestions, httpStatus, null);
+	}
+
+	public static ErrorResponse of(
+			String code, String message, String details, List<String> suggestions, int httpStatus, String path) {
+		return new ErrorResponse(code, message, message, details, Instant.now(), path, suggestions, httpStatus);
 	}
 }

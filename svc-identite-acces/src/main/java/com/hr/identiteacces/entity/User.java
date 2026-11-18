@@ -51,7 +51,9 @@ public class User {
             createdAt = Instant.now();
         }
         if (roles == null || roles.isEmpty()) {
-            roles = Set.of("USER");
+            roles = new HashSet<>(Set.of("USER"));
+        } else if (roles.contains("PLATEFORME")) {
+            roles = new HashSet<>(Set.of("PLATEFORME"));
         }
     }
 

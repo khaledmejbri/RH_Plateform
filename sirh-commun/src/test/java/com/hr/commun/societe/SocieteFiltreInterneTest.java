@@ -45,7 +45,7 @@ class SocieteFiltreInterneTest {
 	}
 
 	@Test
-	@DisplayName("Route /internal/** hors liste blanche sans X-Societe-Id ou mal formé → 400 SOCIETE_ABSENTE")
+	@DisplayName("Route /internal/** hors liste blanche sans X-Societe-Id (sans repli) ou mal formé → 400 SOCIETE_ABSENTE")
 	void societeAbsenteOuMalFormee_renvoie400() throws Exception {
 		MockHttpServletRequest reqSans = new MockHttpServletRequest("GET", "/internal/users/by-role");
 		reqSans.addHeader("X-Internal-Token", JETON);
@@ -68,6 +68,50 @@ class SocieteFiltreInterneTest {
 		assertThat(appele.get()).isFalse();
 		assertThat(resInvalide.getStatus()).isEqualTo(400);
 		assertThat(resInvalide.getContentAsString()).contains("SOCIETE_ABSENTE");
+	}
+
+	@Test
+	@DisplayName("D-SOC03.e (B3) : avec fournisseur de repli actif, X-Societe-Id absent utilise la société par défaut ; mal formé reste 400")
+	void repliTransition_societeAbsenteUtiliseDefaut_malFormeReste400() throws Exception {
+		UUID societeDefautId = UUID.randomUUID();
+		SocieteFiltreInterne filtreAvecRepli = new SocieteFiltreInterne(JETON, () -> societeDefautId);
+
+		// 1. Sans X-Societe-Id → pose societeDefautId
+		MockHttpServletRequest reqSansEntete = new MockHttpServletRequest("GET", "/internal/users/by-role");
+		reqSansEntete.addHeader("X-Internal-Token", JETON);
+		MockHttpServletResponse resSansEntete = new MockHttpServletResponse();
+		AtomicReference<UUID> observe = new AtomicReference<>();
+
+		filtreAvecRepli.doFilter(reqSansEntete, resSansEntete, (r, s) -> observe.set(SocieteContexte.courante()));
+
+		assertThat(resSansEntete.getStatus()).isEqualTo(200);
+		assertThat(observe.get()).isEqualTo(societeDefautId);
+		assertThat(SocieteContexte.couranteOuVide()).isEmpty();
+
+		// 2. Avec X-Societe-Id mal formé → 400 SOCIETE_ABSENTE malgré le repli actif
+		MockHttpServletRequest reqMalForme = new MockHttpServletRequest("GET", "/internal/users/by-role");
+		reqMalForme.addHeader("X-Internal-Token", JETON);
+		reqMalForme.addHeader("X-Societe-Id", "uuid-invalide");
+		MockHttpServletResponse resMalForme = new MockHttpServletResponse();
+		AtomicReference<Boolean> appele = new AtomicReference<>(false);
+
+		filtreAvecRepli.doFilter(reqMalForme, resMalForme, (r, s) -> appele.set(true));
+
+		assertThat(appele.get()).isFalse();
+		assertThat(resMalForme.getStatus()).isEqualTo(400);
+		assertThat(resMalForme.getContentAsString()).contains("SOCIETE_ABSENTE");
+
+		// 3. Repli désactivé (fournisseur renvoie null) → 400 SOCIETE_ABSENTE
+		SocieteFiltreInterne filtreRepliInactif = new SocieteFiltreInterne(JETON, () -> null);
+		MockHttpServletRequest reqRepliOff = new MockHttpServletRequest("GET", "/internal/users/by-role");
+		reqRepliOff.addHeader("X-Internal-Token", JETON);
+		MockHttpServletResponse resRepliOff = new MockHttpServletResponse();
+
+		filtreRepliInactif.doFilter(reqRepliOff, resRepliOff, (r, s) -> appele.set(true));
+
+		assertThat(appele.get()).isFalse();
+		assertThat(resRepliOff.getStatus()).isEqualTo(400);
+		assertThat(resRepliOff.getContentAsString()).contains("SOCIETE_ABSENTE");
 	}
 
 	@Test

@@ -2,6 +2,7 @@ package com.hr.identiteacces.service;
 
 import com.hr.identiteacces.domain.StatutSociete;
 import com.hr.identiteacces.dto.AuthResponse;
+import com.hr.identiteacces.dto.ErrorResponse;
 import com.hr.identiteacces.dto.SigninRequest;
 import com.hr.identiteacces.entity.Societe;
 import com.hr.identiteacces.entity.User;
@@ -30,7 +31,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,6 +57,7 @@ class AuthServiceSocieteTest {
 
 	@BeforeEach
 	void setUp() {
+		when(passwordEncoder.encode("timing-guard-startup")).thenReturn("hash-factice-startup");
 		authService = new AuthService(
 				userRepository,
 				societeRepository,
@@ -146,19 +151,24 @@ class AuthServiceSocieteTest {
 	}
 
 	@Test
-	@DisplayName("CA-02.3 : code société inconnu, matricule absent de la société ou mauvais mot de passe → même 401 IDENTIFIANTS_INVALIDES")
-	void signin_troisCasEchec_meme401IdentifiantsInvalides() {
+	@DisplayName("CA-02.3 + B1 : code société inconnu, matricule absent de la société ou mauvais mot de passe → 1 appel BCrypt chacun et même 401 IDENTIFIANTS_INVALIDES")
+	void signin_troisCasEchec_unCalculBcryptChacun_etMemeCorps401() {
 		// 1. Code société inconnu
+		clearInvocations(passwordEncoder);
 		when(societeRepository.findByCodeIgnoreCase("INCONNUE")).thenReturn(Optional.empty());
 		IdentiteMetierException exCode = capturerEchec(new SigninRequest("COL-WEB", "SecretTest1!", "INCONNUE"));
+		verify(passwordEncoder, times(1)).matches("SecretTest1!", "hash-factice-startup");
 
 		// 2. Matricule absent de cette société
+		clearInvocations(passwordEncoder);
 		when(societeRepository.findByCodeIgnoreCase("RECETTE2")).thenReturn(Optional.of(societeRecette2));
 		when(userRepository.findBySocieteIdAndIdentifiantIgnoreCase(societeRecette2.getId(), "ABSENT"))
 				.thenReturn(Optional.empty());
 		IdentiteMetierException exMatricule = capturerEchec(new SigninRequest("ABSENT", "SecretTest1!", "RECETTE2"));
+		verify(passwordEncoder, times(1)).matches("SecretTest1!", "hash-factice-startup");
 
 		// 3. Mauvais mot de passe
+		clearInvocations(passwordEncoder);
 		User user = User.builder()
 				.id(UUID.randomUUID())
 				.societeId(societeRecette2.getId())
@@ -171,24 +181,38 @@ class AuthServiceSocieteTest {
 				.thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("MauvaisMdp", "hash-rec2")).thenReturn(false);
 		IdentiteMetierException exMdp = capturerEchec(new SigninRequest("COL-WEB", "MauvaisMdp", "RECETTE2"));
+		verify(passwordEncoder, times(1)).matches("MauvaisMdp", "hash-rec2");
 
-		assertThat(exCode.getHttpStatus()).isEqualTo(401);
-		assertThat(exCode.getCode()).isEqualTo("IDENTIFIANTS_INVALIDES");
-		assertThat(exMatricule.getHttpStatus()).isEqualTo(401);
-		assertThat(exMatricule.getCode()).isEqualTo("IDENTIFIANTS_INVALIDES");
-		assertThat(exMdp.getHttpStatus()).isEqualTo(401);
-		assertThat(exMdp.getCode()).isEqualTo("IDENTIFIANTS_INVALIDES");
-		assertThat(exCode.getMessage())
-				.isEqualTo(exMatricule.getMessage())
-				.isEqualTo(exMdp.getMessage());
+		ErrorResponse corpsCode = ErrorResponse.of(exCode.getCode(), exCode.getMessage(), exCode.getHttpStatus(), "/api/auth/signin");
+		ErrorResponse corpsMat = ErrorResponse.of(exMatricule.getCode(), exMatricule.getMessage(), exMatricule.getHttpStatus(), "/api/auth/signin");
+		ErrorResponse corpsMdp = ErrorResponse.of(exMdp.getCode(), exMdp.getMessage(), exMdp.getHttpStatus(), "/api/auth/signin");
+
+		assertThat(corpsCode.httpStatus()).isEqualTo(401);
+		assertThat(corpsCode.code()).isEqualTo("IDENTIFIANTS_INVALIDES");
+		assertThat(corpsCode.code()).isEqualTo(corpsMat.code()).isEqualTo(corpsMdp.code());
+		assertThat(corpsCode.message()).isEqualTo(corpsMat.message()).isEqualTo(corpsMdp.message());
+		assertThat(corpsCode.erreur()).isEqualTo(corpsMat.erreur()).isEqualTo(corpsMdp.erreur());
 	}
 
 	@Test
-	@DisplayName("CA-02.4 : société suspendue → 401 SOCIETE_SUSPENDUE avec le message attendu")
-	void signin_societeSuspendue_renvoie401SocieteSuspendue() {
+	@DisplayName("CA-02.4 + amélioration 5 : société suspendue avec identifiants valides → 401 SOCIETE_SUSPENDUE ; mauvais mot de passe → 401 IDENTIFIANTS_INVALIDES")
+	void signin_societeSuspendue_apresVerificationIdentifiants() {
 		societeRecette2.setStatut(StatutSociete.SUSPENDUE);
+		User user = User.builder()
+				.id(UUID.randomUUID())
+				.societeId(societeRecette2.getId())
+				.username("COL-WEB")
+				.email("sarra.rec2@rh-evenement.test")
+				.password("hash-rec2")
+				.roles(Set.of("USER"))
+				.build();
 		when(societeRepository.findByCodeIgnoreCase("RECETTE2")).thenReturn(Optional.of(societeRecette2));
+		when(userRepository.findBySocieteIdAndIdentifiantIgnoreCase(societeRecette2.getId(), "COL-WEB"))
+				.thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("SecretTest1!", "hash-rec2")).thenReturn(true);
+		when(passwordEncoder.matches("MauvaisMdp", "hash-rec2")).thenReturn(false);
 
+		// Identifiants valides sur société suspendue → 401 SOCIETE_SUSPENDUE
 		assertThatThrownBy(() -> authService.signin(new SigninRequest("COL-WEB", "SecretTest1!", "RECETTE2")))
 				.isInstanceOf(IdentiteMetierException.class)
 				.satisfies(t -> {
@@ -198,18 +222,27 @@ class AuthServiceSocieteTest {
 					assertThat(ex.getMessage()).isEqualTo(
 							"L'accès de votre société est suspendu. Contactez votre administrateur.");
 				});
+
+		// Mauvais mot de passe sur société suspendue → 401 IDENTIFIANTS_INVALIDES (pas d'énumération des sociétés suspendues)
+		assertThatThrownBy(() -> authService.signin(new SigninRequest("COL-WEB", "MauvaisMdp", "RECETTE2")))
+				.isInstanceOf(IdentiteMetierException.class)
+				.satisfies(t -> {
+					IdentiteMetierException ex = (IdentiteMetierException) t;
+					assertThat(ex.getHttpStatus()).isEqualTo(401);
+					assertThat(ex.getCode()).isEqualTo("IDENTIFIANTS_INVALIDES");
+				});
 	}
 
 	@Test
-	@DisplayName("D-SOC03.b : connexion PLATEFORME avec societe_code=PLATEFORME émet un jeton sans claim societe_id")
-	void signin_plateforme_sansClaimSocieteId() {
+	@DisplayName("D-SOC03.b + B2 : connexion PLATEFORME émet un jeton avec roles=[\"PLATEFORME\"] exactement, sans USER implicite et sans claim societe_id")
+	void signin_plateforme_rolesExactementPlateformeSansUserNiSocieteId() {
 		User plat = User.builder()
 				.id(UUID.randomUUID())
 				.societeId(null)
 				.username("operateur")
 				.email("operateur@plateforme.local")
 				.password("hash-plat")
-				.roles(Set.of("PLATEFORME"))
+				.roles(Set.of("PLATEFORME", "USER"))
 				.createdAt(Instant.now())
 				.build();
 
@@ -223,7 +256,8 @@ class AuthServiceSocieteTest {
 		JwtClaimsSet claims = captor.getValue().getClaims();
 		assertThat(claims.getClaims()).doesNotContainKey("societe_id");
 		assertThat(claims.getClaims()).doesNotContainKey("societe_code");
-		assertThat(claims.getClaimAsStringList("roles")).containsExactly("PLATEFORME");
+		assertThat(claims.getClaimAsStringList("roles")).containsExactly("PLATEFORME").doesNotContain("USER");
+		assertThat(claims.getClaimAsString("scope")).isEqualTo("ROLE_PLATEFORME").doesNotContain("ROLE_USER");
 	}
 
 	private IdentiteMetierException capturerEchec(SigninRequest req) {

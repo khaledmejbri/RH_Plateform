@@ -56,6 +56,9 @@ public final class ApplicationRoleMatrix {
 		if (out.isEmpty()) {
 			return Set.of("USER");
 		}
+		if (out.contains("PLATEFORME")) {
+			return Set.of("PLATEFORME");
+		}
 		boolean needsUser = out.stream().anyMatch(ROLES_IMPLYING_USER::contains);
 		if (needsUser) {
 			out.add("USER");

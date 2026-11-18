@@ -14,6 +14,9 @@ import java.util.Objects;
  * Verrou consultatif PostgreSQL pour les tâches planifiées multi-instances :
  * {@code pg_try_advisory_lock(hashtext('planif:' || nom))} sur une connexion dédiée,
  * libéré par {@code pg_advisory_unlock} dans un bloc {@code finally}.
+ * <p>
+ * Si le déverrouillage SQL échoue, la connexion physique est avortée ({@link Connection#abort})
+ * afin qu'un pool (HikariCP) ne conserve pas une session PostgreSQL porteuse d'un verrou de session.
  */
 public class VerrouPlanificateur {
 
@@ -65,14 +68,30 @@ public class VerrouPlanificateur {
 	}
 
 	private static void relacherVerrou(Connection conn, String nomTache) {
+		boolean deverrouille = false;
 		try (PreparedStatement ps = conn.prepareStatement(SQL_UNLOCK)) {
 			ps.setString(1, nomTache);
 			try (ResultSet rs = ps.executeQuery()) {
-				rs.next();
+				deverrouille = rs.next() && rs.getBoolean(1);
 			}
 		} catch (SQLException e) {
-			log.warn("Impossible de relâcher le verrou consultatif pour '{}' (la fermeture de la connexion le libérera)",
+			log.warn("Échec SQL de pg_advisory_unlock pour '{}' : éviction de la connexion physique du pool",
 					nomTache, e);
+			avorterConnexion(conn, nomTache);
+			return;
+		}
+		if (!deverrouille) {
+			log.warn("pg_advisory_unlock a renvoyé false pour '{}' : éviction de la connexion physique du pool",
+					nomTache);
+			avorterConnexion(conn, nomTache);
+		}
+	}
+
+	private static void avorterConnexion(Connection conn, String nomTache) {
+		try {
+			conn.abort(Runnable::run);
+		} catch (SQLException ex) {
+			log.error("Impossible d'avorter la connexion après échec de déverrouillage pour '{}'", nomTache, ex);
 		}
 	}
 }

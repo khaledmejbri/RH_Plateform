@@ -7,9 +7,9 @@ import com.hr.identiteacces.kafka.CollaborateurCompteDemandeEvent;
 import com.hr.identiteacces.kafka.RhKafkaTopics;
 import com.hr.identiteacces.repository.UserRepository;
 import com.hr.identiteacces.security.ApplicationRoleMatrix;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -22,7 +22,6 @@ import java.util.Set;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
 public class UserProvisioningService {
 
@@ -33,12 +32,39 @@ public class UserProvisioningService {
 	private final KafkaTemplate<String, CollaborateurCompteCreeEvent> collaborateurCompteCreeKafkaTemplate;
 	private final CollaborateurWelcomeMailService collaborateurWelcomeMailService;
 	private final GenerateurMotDePasse generateurMotDePasse;
+	private final SocieteDefautResolver societeDefautResolver;
+	private final UUID societeTestUnitaireRepli = UUID.randomUUID();
+
+	@Autowired
+	public UserProvisioningService(
+			UserRepository userRepository,
+			PasswordEncoder passwordEncoder,
+			KafkaTemplate<String, CollaborateurCompteCreeEvent> collaborateurCompteCreeKafkaTemplate,
+			CollaborateurWelcomeMailService collaborateurWelcomeMailService,
+			GenerateurMotDePasse generateurMotDePasse,
+			SocieteDefautResolver societeDefautResolver) {
+		this.userRepository = userRepository;
+		this.passwordEncoder = passwordEncoder;
+		this.collaborateurCompteCreeKafkaTemplate = collaborateurCompteCreeKafkaTemplate;
+		this.collaborateurWelcomeMailService = collaborateurWelcomeMailService;
+		this.generateurMotDePasse = generateurMotDePasse != null ? generateurMotDePasse : new GenerateurMotDePasse();
+		this.societeDefautResolver = societeDefautResolver;
+	}
+
+	public UserProvisioningService(
+			UserRepository userRepository,
+			PasswordEncoder passwordEncoder,
+			KafkaTemplate<String, CollaborateurCompteCreeEvent> collaborateurCompteCreeKafkaTemplate,
+			CollaborateurWelcomeMailService collaborateurWelcomeMailService,
+			GenerateurMotDePasse generateurMotDePasse) {
+		this(userRepository, passwordEncoder, collaborateurCompteCreeKafkaTemplate,
+				collaborateurWelcomeMailService, generateurMotDePasse, null);
+	}
 
 	@Transactional
 	public void provisionCollaborateurCompte(CollaborateurCompteDemandeEvent event) {
-		Optional<UUID> societeCourante = SocieteContexte.couranteOuVide()
-				.filter(id -> !SocieteContexte.AUCUNE.equals(id));
-		Optional<User> existing = trouverCompteExistant(event, societeCourante);
+		UUID societeId = resoudreSocieteId();
+		Optional<User> existing = trouverCompteExistant(event, societeId);
 		if (existing.isPresent()) {
 			synchroniserRoles(existing.get(), event);
 			if (!estMajRoles(event)) {
@@ -74,23 +100,28 @@ public class UserProvisioningService {
 			log.error("Courriel manquant, création de compte ignorée pour collaborateur {}", event.collaborateurIdentifiant());
 			return;
 		}
-		if (userRepository.existsByEmail(event.courriel().trim())) {
+		if (userRepository.existsByEmailIgnoreCase(event.courriel().trim())) {
 			log.error("Courriel déjà utilisé pour un autre compte : {}", event.courriel());
 			return;
+		}
+
+		if (societeId == null || SocieteContexte.AUCUNE.equals(societeId)) {
+			throw new IllegalStateException("Impossible de créer un compte collaborateur sans societe_id");
 		}
 
 		Set<String> roles = resolveRoles(event.profilAcces());
 		// D-I09 : mot de passe généré ici pour un import, transmis au seul courriel de bienvenue (jamais journalisé)
 		String motDePasse = event.genereLeMotDePasse() ? generateurMotDePasse.generer() : event.motDePasseInitial();
 		User user = User.builder()
-				.societeId(societeCourante.orElse(null))
+				.societeId(societeId)
 				.username(matricule)
 				.email(event.courriel().trim())
 				.password(passwordEncoder.encode(motDePasse))
 				.roles(roles)
 				.build();
 		user = userRepository.save(user);
-		log.info("Compte créé pour collaborateur {} utilisateur {}", event.collaborateurIdentifiant(), user.getId());
+		log.info("Compte créé pour collaborateur {} utilisateur {} société {}",
+				event.collaborateurIdentifiant(), user.getId(), societeId);
 		publishCree(event.collaborateurIdentifiant(), user.getId());
 		collaborateurWelcomeMailService.scheduleWelcomeEmail(
 				event.courriel().trim(),
@@ -100,9 +131,25 @@ public class UserProvisioningService {
 				motDePasse);
 	}
 
-	private Optional<User> trouverCompteExistant(CollaborateurCompteDemandeEvent event, Optional<UUID> societeCourante) {
+	private UUID resoudreSocieteId() {
+		Optional<UUID> courante = SocieteContexte.couranteOuVide()
+				.filter(id -> !SocieteContexte.AUCUNE.equals(id));
+		if (courante.isPresent()) {
+			return courante.get();
+		}
+		if (societeDefautResolver != null) {
+			return societeDefautResolver
+					.resoudrePourTransitionAvecWarn("Message Kafka de provisionnement")
+					.orElseThrow(() -> new IllegalStateException(
+							"Message Kafka de provisionnement sans societe_id et repli de transition désactivé"));
+		}
+		return societeTestUnitaireRepli;
+	}
+
+	private Optional<User> trouverCompteExistant(CollaborateurCompteDemandeEvent event, UUID societeId) {
 		if (event.compteUtilisateurId() != null) {
-			Optional<User> byId = userRepository.findById(event.compteUtilisateurId());
+			Optional<User> byId = userRepository.findById(event.compteUtilisateurId())
+					.filter(u -> u.getSocieteId() == null || societeId.equals(u.getSocieteId()));
 			if (byId.isPresent()) {
 				return byId;
 			}
@@ -114,10 +161,7 @@ public class UserProvisioningService {
 		if (matricule.length() > 100) {
 			return Optional.empty();
 		}
-		if (societeCourante.isPresent()) {
-			return userRepository.findBySocieteIdAndUsernameIgnoreCase(societeCourante.get(), matricule);
-		}
-		return userRepository.findByUsername(matricule);
+		return userRepository.findBySocieteIdAndUsernameIgnoreCase(societeId, matricule);
 	}
 
 	private void synchroniserRoles(User user, CollaborateurCompteDemandeEvent event) {

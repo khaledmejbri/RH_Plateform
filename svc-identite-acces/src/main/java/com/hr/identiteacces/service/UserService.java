@@ -4,7 +4,8 @@ import com.hr.commun.societe.SocieteContexte;
 import com.hr.identiteacces.dto.UserResponse;
 import com.hr.identiteacces.entity.User;
 import com.hr.identiteacces.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
+import com.hr.identiteacces.web.IdentiteMetierException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,19 +15,25 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 public class UserService {
 
 	private final UserRepository userRepository;
+	private final SocieteDefautResolver societeDefautResolver;
+
+	@Autowired
+	public UserService(UserRepository userRepository, SocieteDefautResolver societeDefautResolver) {
+		this.userRepository = userRepository;
+		this.societeDefautResolver = societeDefautResolver;
+	}
+
+	public UserService(UserRepository userRepository) {
+		this(userRepository, null);
+	}
 
 	@Transactional(readOnly = true)
 	public List<UserResponse> getUsersByRole(String role) {
-		Optional<UUID> societeId = SocieteContexte.couranteOuVide()
-				.filter(id -> !SocieteContexte.AUCUNE.equals(id));
-		List<User> users = societeId.isPresent()
-				? userRepository.findBySocieteIdAndRolesContaining(societeId.get(), role)
-				: userRepository.findByRolesContaining(role);
-		return users.stream()
+		UUID societeId = resoudreSocieteId("GET /internal/users/by-role");
+		return userRepository.findBySocieteIdAndRolesContaining(societeId, role).stream()
 				.map(this::toUserResponse)
 				.collect(Collectors.toList());
 	}
@@ -38,20 +45,30 @@ public class UserService {
 				.collect(Collectors.toList());
 	}
 
-	/**
-	 * Identifiants (minuscules) qui ont déjà un compte, parmi une liste en
-	 * minuscules (import des collaborateurs).
-	 */
+	/** Identifiants (minuscules) qui ont déjà un compte dans la société, parmi une liste en minuscules (import des collaborateurs). */
 	@Transactional(readOnly = true)
 	public List<String> identifiantsExistants(List<String> identifiantsMinuscules) {
 		if (identifiantsMinuscules.isEmpty()) {
 			return List.of();
 		}
-		Optional<UUID> societeId = SocieteContexte.couranteOuVide()
+		UUID societeId = resoudreSocieteId("POST /internal/users/identifiants-existants");
+		return userRepository.findUsernamesParMinusculesEtSociete(societeId, identifiantsMinuscules);
+	}
+
+	private UUID resoudreSocieteId(String origine) {
+		Optional<UUID> courante = SocieteContexte.couranteOuVide()
 				.filter(id -> !SocieteContexte.AUCUNE.equals(id));
-		return societeId.isPresent()
-				? userRepository.findUsernamesParMinusculesEtSociete(societeId.get(), identifiantsMinuscules)
-				: userRepository.findUsernamesParMinuscules(identifiantsMinuscules);
+		if (courante.isPresent()) {
+			return courante.get();
+		}
+		if (societeDefautResolver != null) {
+			Optional<UUID> repli = societeDefautResolver.resoudrePourTransitionAvecWarn(origine);
+			if (repli.isPresent()) {
+				return repli.get();
+			}
+		}
+		throw IdentiteMetierException.badRequest("SOCIETE_ABSENTE",
+				"L'en-tête X-Societe-Id est obligatoire.");
 	}
 
 	private UserResponse toUserResponse(User user) {

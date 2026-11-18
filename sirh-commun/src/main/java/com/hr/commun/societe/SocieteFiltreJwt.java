@@ -107,9 +107,11 @@ public class SocieteFiltreJwt extends OncePerRequestFilter {
 		response.setStatus(status);
 		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+		String msgEchappe = echapperJson(message);
 		String json = "{\"code\":\"" + echapperJson(code)
-				+ "\",\"message\":\"" + echapperJson(message)
-				+ "\",\"details\":\"" + echapperJson(message)
+				+ "\",\"message\":\"" + msgEchappe
+				+ "\",\"erreur\":\"" + msgEchappe
+				+ "\",\"details\":\"" + msgEchappe
 				+ "\",\"timestamp\":\"" + Instant.now()
 				+ "\",\"path\":\"" + echapperJson(path != null ? path : "")
 				+ "\",\"http_status\":" + status + "}";

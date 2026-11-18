@@ -2,30 +2,35 @@ package com.hr.identiteacces.controller;
 
 import com.hr.identiteacces.config.SecurityConfig;
 import com.hr.identiteacces.domain.StatutSociete;
-import com.hr.identiteacces.dto.SocieteDtos.AdminInitialRequest;
-import com.hr.identiteacces.dto.SocieteDtos.CreerSocieteRequest;
-import com.hr.identiteacces.dto.SocieteDtos.SocieteResponse;
-import com.hr.identiteacces.dto.UserResponse;
+import com.hr.identiteacces.dto.AuthResponse;
+import com.hr.identiteacces.dto.SigninRequest;
 import com.hr.identiteacces.entity.Societe;
 import com.hr.identiteacces.entity.User;
 import com.hr.identiteacces.kafka.SocieteEvenementPublisher;
 import com.hr.identiteacces.repository.SocieteRepository;
 import com.hr.identiteacces.repository.UserRepository;
+import com.hr.identiteacces.service.AuthService;
 import com.hr.identiteacces.service.CollaborateurWelcomeMailService;
 import com.hr.identiteacces.service.GenerateurMotDePasse;
+import com.hr.identiteacces.service.SocieteDefautResolver;
 import com.hr.identiteacces.service.SocieteService;
+import com.hr.identiteacces.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.List;
@@ -40,16 +45,41 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = {PlateformeSocieteController.class, InternalSocieteController.class})
-@Import({SecurityConfig.class, GlobalExceptionHandler.class, SocieteService.class, GenerateurMotDePasse.class})
+@WebMvcTest(controllers = {
+		PlateformeSocieteController.class,
+		InternalSocieteController.class,
+		InternalUserController.class,
+		AuthController.class
+})
+@Import({
+		SecurityConfig.class,
+		GlobalExceptionHandler.class,
+		SocieteService.class,
+		UserService.class,
+		GenerateurMotDePasse.class,
+		PlateformeControllerTest.RouteUserDeTestConfig.class
+})
 @TestPropertySource(properties = {
 		"app.internal-api.token=jeton-interne-test",
 		"spring.security.oauth2.authorizationserver.issuer=http://localhost:8080"
 })
 class PlateformeControllerTest {
+
+	@TestConfiguration
+	static class RouteUserDeTestConfig {
+		@RestController
+		static class RouteUserDeTestController {
+			@GetMapping("/api/rh/v1/test-user")
+			@PreAuthorize("hasRole('USER')")
+			public String routeUser() {
+				return "ok";
+			}
+		}
+	}
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -68,6 +98,12 @@ class PlateformeControllerTest {
 
 	@MockitoBean
 	private SocieteEvenementPublisher societeEvenementPublisher;
+
+	@MockitoBean
+	private SocieteDefautResolver societeDefautResolver;
+
+	@MockitoBean
+	private AuthService authService;
 
 	@BeforeEach
 	void setUp() {
@@ -108,7 +144,8 @@ class PlateformeControllerTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"code\":\"recette2\",\"raison_sociale\":\"Doublon\"}"))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.code").value("SOCIETE_CODE_EXISTANT"));
+				.andExpect(jsonPath("$.code").value("SOCIETE_CODE_EXISTANT"))
+				.andExpect(jsonPath("$.path").value("/api/plateforme/v1/societes"));
 
 		// 3. Code réservé PLATEFORME → 409 SOCIETE_CODE_EXISTANT
 		mockMvc.perform(post("/api/plateforme/v1/societes")
@@ -141,7 +178,7 @@ class PlateformeControllerTest {
 				.fuseau("Africa/Tunis")
 				.build();
 
-		when(societeRepository.findById(societeId)).thenReturn(Optional.of(societe));
+		when(societeRepository.findByIdPourMiseAJour(societeId)).thenReturn(Optional.of(societe));
 		when(userRepository.existsBySocieteIdAndRole(societeId, "ADMIN")).thenReturn(false).thenReturn(true);
 		when(userRepository.existsByEmailIgnoreCase("admin.rec2@rh-evenement.test")).thenReturn(false);
 		when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> {
@@ -176,14 +213,17 @@ class PlateformeControllerTest {
 	}
 
 	@Test
-	@DisplayName("CA-03.4 : PLATEFORME appelle une route RH → 403 SOCIETE_ABSENTE ; un ADMIN de société appelle /api/plateforme/** → 403")
+	@DisplayName("CA-03.4 + B2 : PLATEFORME refusé (403 SOCIETE_ABSENTE) sur route hasRole('USER') ; ADMIN de société refusé (403) sur /api/plateforme/**")
 	void controleCroisePlateformeEtAdminSociete() throws Exception {
-		// 1. PLATEFORME appelle une route RH → 403 SOCIETE_ABSENTE
-		mockMvc.perform(get("/api/rh/v1/collaborateurs")
-						.with(jwt().jwt(j -> j.claim("roles", List.of("PLATEFORME")))
+		// 1. PLATEFORME appelle une route hasRole('USER') → 403 SOCIETE_ABSENTE
+		mockMvc.perform(get("/api/rh/v1/test-user")
+						.with(jwt().jwt(j -> j.claim("roles", List.of("PLATEFORME"))
+										.claim("scope", "ROLE_PLATEFORME"))
 								.authorities(new SimpleGrantedAuthority("ROLE_PLATEFORME"))))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.code").value("SOCIETE_ABSENTE"));
+				.andExpect(jsonPath("$.code").value("SOCIETE_ABSENTE"))
+				.andExpect(jsonPath("$.erreur").isNotEmpty())
+				.andExpect(jsonPath("$.path").value("/api/rh/v1/test-user"));
 
 		// 2. ADMIN de société appelle /api/plateforme/** → 403
 		UUID societeId = UUID.randomUUID();
@@ -194,6 +234,77 @@ class PlateformeControllerTest {
 										new SimpleGrantedAuthority("ROLE_USER"),
 										new SimpleGrantedAuthority("ROLE_ADMIN"))))
 				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	@DisplayName("B3 (D-SOC03.e) : /internal/users/by-role et /internal/users/identifiants-existants sans X-Societe-Id passent sur la société par défaut si repli=true, et 400 SOCIETE_ABSENTE si repli=false")
+	void appelsInternesSansSociete_repliActifPuisInactif() throws Exception {
+		UUID societeDefautId = UUID.randomUUID();
+		User rh = User.builder()
+				.id(UUID.randomUUID())
+				.societeId(societeDefautId)
+				.username("DRH01")
+				.email("drh@rh-evenement.test")
+				.roles(Set.of("USER", "RH"))
+				.createdAt(Instant.now())
+				.build();
+
+		// 1. Repli de transition actif (true) → 200 dans la société par défaut
+		when(societeDefautResolver.resoudreIdSiTransitionActive()).thenReturn(societeDefautId);
+		when(userRepository.findBySocieteIdAndRolesContaining(societeDefautId, "RH")).thenReturn(List.of(rh));
+		when(userRepository.findUsernamesParMinusculesEtSociete(societeDefautId, List.of("drh01")))
+				.thenReturn(List.of("drh01"));
+
+		mockMvc.perform(get("/internal/users/by-role")
+						.param("role", "RH")
+						.header("X-Internal-Token", "jeton-interne-test"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].nom_utilisateur").value("DRH01"));
+
+		mockMvc.perform(post("/internal/users/identifiants-existants")
+						.header("X-Internal-Token", "jeton-interne-test")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"identifiants\":[\"DRH01\"]}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.existants[0]").value("drh01"));
+
+		// 2. X-Societe-Id mal formé malgré le repli actif → 400 SOCIETE_ABSENTE
+		mockMvc.perform(get("/internal/users/by-role")
+						.param("role", "RH")
+						.header("X-Internal-Token", "jeton-interne-test")
+						.header("X-Societe-Id", "pas-un-uuid"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("SOCIETE_ABSENTE"));
+
+		// 3. Repli de transition désactivé (false) → 400 SOCIETE_ABSENTE sur les deux routes
+		when(societeDefautResolver.resoudreIdSiTransitionActive()).thenReturn(null);
+
+		mockMvc.perform(get("/internal/users/by-role")
+						.param("role", "RH")
+						.header("X-Internal-Token", "jeton-interne-test"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("SOCIETE_ABSENTE"));
+
+		mockMvc.perform(post("/internal/users/identifiants-existants")
+						.header("X-Internal-Token", "jeton-interne-test")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"identifiants\":[\"DRH01\"]}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("SOCIETE_ABSENTE"));
+	}
+
+	@Test
+	@DisplayName("Amélioration 6 : POST /api/auth/signin avec un ancien jeton invalide dans Authorization: Bearer → 200")
+	void signin_avecAncienJetonDansEnteteAuthorization_ignoreLeJetonEtRenvoie200() throws Exception {
+		when(authService.signin(any(SigninRequest.class))).thenReturn(
+				AuthResponse.builder().accessToken("nouveau-jeton").tokenType("Bearer").expiresIn(3600L).build());
+
+		mockMvc.perform(post("/api/auth/signin")
+						.header("Authorization", "Bearer ancien-jeton-invalide-sans-societe")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"nom_utilisateur\":\"COL-WEB\",\"mot_de_passe\":\"Secret1!\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.jeton_acces").value("nouveau-jeton"));
 	}
 
 	@Test
@@ -216,7 +327,7 @@ class PlateformeControllerTest {
 		when(societeRepository.saveAndFlush(any(Societe.class))).thenAnswer(inv -> inv.getArgument(0));
 
 		// PUT avec mauvaise version → 409 MODIFIE_ENTRE_TEMPS
-		mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/plateforme/v1/societes/" + societeId)
+		mockMvc.perform(put("/api/plateforme/v1/societes/" + societeId)
 						.with(jwt().jwt(j -> j.claim("roles", List.of("PLATEFORME")))
 								.authorities(new SimpleGrantedAuthority("ROLE_PLATEFORME")))
 						.contentType(MediaType.APPLICATION_JSON)

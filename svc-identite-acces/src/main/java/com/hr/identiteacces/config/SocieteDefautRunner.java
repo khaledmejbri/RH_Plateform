@@ -36,15 +36,15 @@ public class SocieteDefautRunner implements ApplicationRunner {
 	public SocieteDefautRunner(
 			SocieteRepository societeRepository,
 			UserRepository userRepository,
-			@Value("${app.societe.defaut.code:${SOCIETE_DEFAUT_CODE:PRINCIPALE}}") String codeDefaut,
-			@Value("${app.societe.defaut.raison-sociale:${SOCIETE_DEFAUT_RAISON_SOCIALE:Société principale}}") String raisonSocialeDefaut) {
+			@Value("${app.societe.defaut.code:${SOCIETE_DEFAUT_CODE:" + SocieteProprietes.CODE_DEFAUT_INITIAL + "}}") String codeDefaut,
+			@Value("${app.societe.defaut.raison-sociale:${SOCIETE_DEFAUT_RAISON_SOCIALE:" + SocieteProprietes.RAISON_SOCIALE_DEFAUT_INITIALE + "}}") String raisonSocialeDefaut) {
 		this.societeRepository = societeRepository;
 		this.userRepository = userRepository;
 		this.codeDefaut = (codeDefaut == null || codeDefaut.isBlank())
-				? "PRINCIPALE"
+				? SocieteProprietes.CODE_DEFAUT_INITIAL
 				: codeDefaut.trim().toUpperCase(Locale.ROOT);
 		this.raisonSocialeDefaut = (raisonSocialeDefaut == null || raisonSocialeDefaut.isBlank())
-				? "Société principale"
+				? SocieteProprietes.RAISON_SOCIALE_DEFAUT_INITIALE
 				: raisonSocialeDefaut.trim();
 	}
 
@@ -63,7 +63,7 @@ public class SocieteDefautRunner implements ApplicationRunner {
 							.code(codeDefaut)
 							.raisonSociale(raisonSocialeDefaut)
 							.statut(StatutSociete.ACTIVE)
-							.fuseau("Africa/Tunis")
+							.fuseau(SocieteProprietes.FUSEAU_DEFAUT)
 							.creeLe(now)
 							.modifieLe(now)
 							.build();

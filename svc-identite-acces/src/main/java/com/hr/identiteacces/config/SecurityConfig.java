@@ -2,12 +2,15 @@ package com.hr.identiteacces.config;
 
 import com.hr.commun.societe.SocieteFiltreInterne;
 import com.hr.commun.societe.SocieteFiltreJwt;
+import com.hr.identiteacces.service.SocieteDefautResolver;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -39,6 +42,8 @@ import org.springframework.security.oauth2.server.authorization.client.Registere
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
@@ -58,6 +63,7 @@ import java.util.UUID;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
+@EnableConfigurationProperties(SocieteProprietes.class)
 public class SecurityConfig {
 
 	@Value("${spring.security.oauth2.authorizationserver.issuer:http://localhost:8080}")
@@ -90,7 +96,16 @@ public class SecurityConfig {
 
 	@Bean
 	@Order(2)
-	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+	public SecurityFilterChain defaultSecurityFilterChain(
+			HttpSecurity http,
+			ObjectProvider<SocieteDefautResolver> societeDefautResolverProvider) throws Exception {
+		SocieteFiltreInterne filtreInterne = new SocieteFiltreInterne(
+				internalApiToken,
+				() -> {
+					SocieteDefautResolver resolver = societeDefautResolverProvider.getIfAvailable();
+					return resolver != null ? resolver.resoudreIdSiTransitionActive() : null;
+				});
+
 		http
 				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth
@@ -105,11 +120,33 @@ public class SecurityConfig {
 				.formLogin(form -> form.disable())
 				.httpBasic(basic -> basic.disable())
 				.oauth2ResourceServer(oauth2 -> oauth2
+						.bearerTokenResolver(bearerTokenResolver())
 						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
-				.addFilterBefore(new SocieteFiltreInterne(internalApiToken), BearerTokenAuthenticationFilter.class)
+				.addFilterBefore(filtreInterne, BearerTokenAuthenticationFilter.class)
 				.addFilterAfter(new SocieteFiltreJwt(), BearerTokenAuthenticationFilter.class);
 
 		return http.build();
+	}
+
+	/**
+	 * Ignore l'en-tête {@code Authorization: Bearer} sur les routes publiques ou internes ({@code /api/auth/**},
+	 * {@code /internal/**}, {@code /.well-known/**}, {@code /oauth2/jwks}) afin qu'un ancien jeton expiré ou sans
+	 * {@code societe_id} n'empêche pas la reconnexion (amélioration 6).
+	 */
+	@Bean
+	public BearerTokenResolver bearerTokenResolver() {
+		DefaultBearerTokenResolver delegate = new DefaultBearerTokenResolver();
+		return request -> {
+			String uri = request.getRequestURI();
+			String path = (uri != null && !uri.isEmpty()) ? uri : request.getServletPath();
+			if (path != null && (path.equals("/api/auth") || path.startsWith("/api/auth/")
+					|| path.equals("/internal") || path.startsWith("/internal/")
+					|| path.equals("/.well-known") || path.startsWith("/.well-known/")
+					|| path.equals("/oauth2/jwks"))) {
+				return null;
+			}
+			return delegate.resolve(request);
+		};
 	}
 
 	@Bean

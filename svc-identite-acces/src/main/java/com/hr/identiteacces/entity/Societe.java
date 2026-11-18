@@ -1,5 +1,6 @@
 package com.hr.identiteacces.entity;
 
+import com.hr.identiteacces.config.SocieteProprietes;
 import com.hr.identiteacces.domain.StatutSociete;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -47,7 +48,7 @@ public class Societe {
 
 	@Column(name = "fuseau", nullable = false, length = 40)
 	@Builder.Default
-	private String fuseau = "Africa/Tunis";
+	private String fuseau = SocieteProprietes.FUSEAU_DEFAUT;
 
 	@Column(name = "cree_le", nullable = false, updatable = false)
 	private Instant creeLe;
@@ -73,7 +74,7 @@ public class Societe {
 			statut = StatutSociete.ACTIVE;
 		}
 		if (fuseau == null || fuseau.isBlank()) {
-			fuseau = "Africa/Tunis";
+			fuseau = SocieteProprietes.FUSEAU_DEFAUT;
 		}
 		if (version == null) {
 			version = 0L;
