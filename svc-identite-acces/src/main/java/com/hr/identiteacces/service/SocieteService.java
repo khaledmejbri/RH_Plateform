@@ -174,7 +174,6 @@ public class SocieteService {
 
 		// Verrou pessimiste sur la ligne societe (amélioration 1) contre deux appels simultanés
 		Societe societe = societeRepository.findByIdPourMiseAJour(societeId)
-				.or(() -> societeRepository.findById(societeId))
 				.orElseThrow(() -> IdentiteMetierException.notFound("SOCIETE_INTROUVABLE", "Société introuvable."));
 
 		if (userRepository.existsBySocieteIdAndRole(societe.getId(), "ADMIN")) {
