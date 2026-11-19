@@ -13,6 +13,7 @@ import com.hr.referentiel.repository.DemandeAdministrativeRhRepository;
 import com.hr.referentiel.repository.FonctionAffectationRepository;
 import com.hr.referentiel.repository.FonctionRepository;
 import com.hr.referentiel.repository.UniteOrganisationRepository;
+import com.hr.referentiel.service.FonctionService;
 import com.hr.referentiel.service.IdentiteSocieteClient;
 import com.hr.referentiel.service.IdentiteSocieteClient.SocieteResume;
 import com.hr.referentiel.service.JourFerieService;
@@ -94,6 +95,8 @@ class ResolutionIntervenantsControllerTest {
 	private JourFerieService jourFerieService;
 	@MockitoBean
 	private IdentiteSocieteClient identiteSocieteClient;
+	@MockitoBean
+	private FonctionService fonctionService;
 	@MockitoBean
 	private JwtDecoder jwtDecoder;
 	@MockitoBean

@@ -20,7 +20,7 @@ import java.util.UUID;
  * Endpoints REST de gestion des fonctions transverses par société (§ 4.3, US-05).
  */
 @RestController
-@RequestMapping({"/api/rh/v1/admin/fonctions", "/api/rh/v1/fonctions"})
+@RequestMapping("/api/rh/v1/admin/fonctions")
 public class FonctionController {
 
 	private final FonctionService fonctionService;

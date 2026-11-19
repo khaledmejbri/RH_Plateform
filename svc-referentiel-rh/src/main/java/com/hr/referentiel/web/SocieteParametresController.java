@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Paramètres de fonctionnement d'une société (§ 4.2, US-04).
  */
 @RestController
-@RequestMapping({"/api/rh/v1/admin/societe/parametres", "/api/rh/v1/parametres/societe"})
+@RequestMapping("/api/rh/v1/admin/societe/parametres")
 public class SocieteParametresController {
 
 	private final SocieteParametresService service;

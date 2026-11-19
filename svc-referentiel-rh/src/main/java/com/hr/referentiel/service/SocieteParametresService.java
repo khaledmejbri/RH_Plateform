@@ -94,11 +94,12 @@ public class SocieteParametresService {
 	@Transactional
 	public SocieteParametresResponse modifier(SocieteParametresUpdateRequest req, AuteurParametre auteur) {
 		SocieteParametres entity = obtenirOuCreerDefaut();
-		if (req.version() != null && !Objects.equals(req.version(), entity.getVersion())) {
+		if (req.version() == null || !Objects.equals(req.version(), entity.getVersion())) {
 			throw ReferentielMetierException.conflict("PARAMETRE_MODIFIE_ENTRE_TEMPS",
 					"Les paramètres société ont été modifiés entre-temps par un autre utilisateur.");
 		}
 
+		validerBornes(req.dureeHebdoMinutes(), req.dureeMaxSortieMinutes());
 		List<String> joursNormalises = normaliserJours(req.joursTravailles());
 		Map<String, Integer> dureesJour = validerDurees(joursNormalises, req.dureeHebdoMinutes(), req.dureeJourMinutes());
 		LocalTime debut = parseHeure(req.heureDebutJournee(), "heure_debut_journee");
@@ -203,9 +204,9 @@ public class SocieteParametresService {
 						"Jour de semaine inconnu dans duree_jour_minutes : " + entry.getKey());
 			}
 			Integer minutes = entry.getValue();
-			if (minutes == null || minutes < 0 || minutes > 1440) {
-				throw ReferentielMetierException.badRequest("REPARTITION_INCOHERENTE",
-						"Durée journalière invalide pour " + jour + ".");
+			if (minutes == null || minutes < 0 || minutes > 720) {
+				throw ReferentielMetierException.badRequest("REGLAGE_HORS_BORNES",
+						"Durée journalière hors bornes (0 à 720 min) pour " + jour + ".");
 			}
 			if (!joursTravailles.contains(jour) && minutes > 0) {
 				throw ReferentielMetierException.badRequest("REPARTITION_INCOHERENTE",
@@ -230,6 +231,19 @@ public class SocieteParametresService {
 							+ dureeHebdoMinutes + " min).");
 		}
 		return normalise;
+	}
+
+	private static void validerBornes(Integer dureeHebdoMinutes, Integer dureeMaxSortieMinutes) {
+		if (dureeHebdoMinutes == null || dureeHebdoMinutes < 60 || dureeHebdoMinutes > 3600
+				|| dureeHebdoMinutes % 30 != 0) {
+			throw ReferentielMetierException.badRequest("REGLAGE_HORS_BORNES",
+					"La durée hebdomadaire doit être comprise entre 60 et 3600 minutes par pas de 30.");
+		}
+		if (dureeMaxSortieMinutes == null || dureeMaxSortieMinutes < 30 || dureeMaxSortieMinutes > 480
+				|| dureeMaxSortieMinutes % 15 != 0) {
+			throw ReferentielMetierException.badRequest("REGLAGE_HORS_BORNES",
+					"La durée maximale de sortie doit être comprise entre 30 et 480 minutes par pas de 15.");
+		}
 	}
 
 	private static LocalTime parseHeure(String valeur, String champ) {

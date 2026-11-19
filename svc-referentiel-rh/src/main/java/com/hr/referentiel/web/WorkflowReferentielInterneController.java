@@ -5,10 +5,13 @@ import com.hr.referentiel.dto.WorkflowInterneDtos.CalendrierSocieteInterneRespon
 import com.hr.referentiel.dto.WorkflowInterneDtos.CollaborateurResumeInterne;
 import com.hr.referentiel.dto.WorkflowInterneDtos.ResolutionLotRequest;
 import com.hr.referentiel.dto.WorkflowInterneDtos.ResolutionLotResponse;
+import com.hr.referentiel.service.FonctionService;
 import com.hr.referentiel.service.WorkflowResolutionService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,9 +34,13 @@ import java.util.UUID;
 public class WorkflowReferentielInterneController {
 
 	private final WorkflowResolutionService resolutionService;
+	private final FonctionService fonctionService;
 
-	public WorkflowReferentielInterneController(WorkflowResolutionService resolutionService) {
+	public WorkflowReferentielInterneController(
+			WorkflowResolutionService resolutionService,
+			FonctionService fonctionService) {
 		this.resolutionService = resolutionService;
+		this.fonctionService = fonctionService;
 	}
 
 	@PostMapping("/workflow/resolutions")
@@ -62,5 +69,11 @@ public class WorkflowReferentielInterneController {
 	@GetMapping("/collaborateurs/par-compte/{compteId}")
 	public CollaborateurResumeInterne resumeCollaborateurParCompte(@PathVariable("compteId") UUID compteId) {
 		return resolutionService.resumeParCompte(compteId);
+	}
+
+	@PostMapping("/fonctions/{code}/utiliser")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void marquerFonctionUtilisee(@PathVariable("code") String code) {
+		fonctionService.marquerUtiliseeParCode(code);
 	}
 }

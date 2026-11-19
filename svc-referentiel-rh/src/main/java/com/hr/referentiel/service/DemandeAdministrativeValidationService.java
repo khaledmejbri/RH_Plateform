@@ -97,7 +97,7 @@ public class DemandeAdministrativeValidationService {
 						? societeParametresService.dureeMaxSortieMinutes()
 						: DUREE_MAX_SORTIE_MINUTES;
 				if (dureeMinutes > maxMinutes) {
-					String libelleMax = maxMinutes == 120 ? "2 heures (120 minutes)" : (maxMinutes + " minutes");
+					String libelleMax = maxMinutes == 120 ? "2 heures" : (maxMinutes + " minutes");
 					throw new IllegalArgumentException(
 							"La durée d'une autorisation de sortie ne peut pas dépasser " + libelleMax + "."
 							+ " Durée demandée : " + dureeMinutes + " minutes.");

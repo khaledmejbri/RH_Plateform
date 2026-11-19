@@ -207,7 +207,52 @@ class ParametresSocieteServiceTest {
 				"heure_fin", "11:30",
 				"motif", "Rendez-vous médical")))
 				.isInstanceOf(IllegalArgumentException.class)
-				.hasMessageContaining("60 minutes");
+				.hasMessage("La durée d'une autorisation de sortie ne peut pas dépasser 60 minutes. Durée demandée : 90 minutes.");
+
+		// Par défaut (120 min) : message exact sans "(120 minutes)"
+		DemandeAdministrativeValidationService validationDefaut =
+				new DemandeAdministrativeValidationService(mock(ParametreService.class));
+		assertThatThrownBy(() -> validationDefaut.validerContenu(TypeDemandeAdministrativeRh.AUTORISATION_SORTIE, Map.of(
+				"date_jour", "2026-11-20",
+				"heure_debut", "10:00",
+				"heure_fin", "12:30",
+				"motif", "Rendez-vous médical")))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessage("La durée d'une autorisation de sortie ne peut pas dépasser 2 heures. Durée demandée : 150 minutes.");
+	}
+
+	@Test
+	@DisplayName("Bornes § 4.2 (REGLAGE_HORS_BORNES) et version obligatoire (409 PARAMETRE_MODIFIE_ENTRE_TEMPS)")
+	void bornesEtVersionObligatoire() {
+		SocieteParametresResponse initial = service.obtenir();
+		// version nulle -> 409 PARAMETRE_MODIFIE_ENTRE_TEMPS
+		assertThatThrownBy(() -> service.modifier(new SocieteParametresUpdateRequest(
+				List.of("LUN"), 480, Map.of("LUN", 480), "08:00", "17:00",
+				BaseDecompteConge.JOURS_TRAVAILLES, null, 120, false, false, null), AuteurParametre.systeme()))
+				.isInstanceOf(ReferentielMetierException.class)
+				.satisfies(e -> assertThat(((ReferentielMetierException) e).getCode()).isEqualTo("PARAMETRE_MODIFIE_ENTRE_TEMPS"));
+
+		// duree_hebdo_minutes hors bornes ou pas != 30 -> 400 REGLAGE_HORS_BORNES
+		assertThatThrownBy(() -> service.modifier(new SocieteParametresUpdateRequest(
+				List.of("LUN"), 45, Map.of("LUN", 45), "08:00", "17:00",
+				BaseDecompteConge.JOURS_TRAVAILLES, null, 120, false, false, initial.version()), AuteurParametre.systeme()))
+				.isInstanceOf(ReferentielMetierException.class)
+				.satisfies(e -> assertThat(((ReferentielMetierException) e).getCode()).isEqualTo("REGLAGE_HORS_BORNES"));
+
+		// duree_max_sortie_minutes pas != 15 -> 400 REGLAGE_HORS_BORNES
+		assertThatThrownBy(() -> service.modifier(new SocieteParametresUpdateRequest(
+				List.of("LUN"), 480, Map.of("LUN", 480), "08:00", "17:00",
+				BaseDecompteConge.JOURS_TRAVAILLES, null, 50, false, false, initial.version()), AuteurParametre.systeme()))
+				.isInstanceOf(ReferentielMetierException.class)
+				.satisfies(e -> assertThat(((ReferentielMetierException) e).getCode()).isEqualTo("REGLAGE_HORS_BORNES"));
+
+		// duree_jour_minutes > 720 -> 400 REGLAGE_HORS_BORNES
+		assertThatThrownBy(() -> service.modifier(new SocieteParametresUpdateRequest(
+				List.of("LUN", "MAR", "MER", "JEU", "VEN"), 2400,
+				Map.of("LUN", 750, "MAR", 450, "MER", 400, "JEU", 400, "VEN", 400), "08:00", "17:00",
+				BaseDecompteConge.JOURS_TRAVAILLES, null, 120, false, false, initial.version()), AuteurParametre.systeme()))
+				.isInstanceOf(ReferentielMetierException.class)
+				.satisfies(e -> assertThat(((ReferentielMetierException) e).getCode()).isEqualTo("REGLAGE_HORS_BORNES"));
 	}
 
 	@Test

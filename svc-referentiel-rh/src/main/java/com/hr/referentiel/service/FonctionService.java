@@ -78,7 +78,7 @@ public class FonctionService {
 	@Transactional
 	public FonctionResponse modifier(UUID id, FonctionRequest req) {
 		Fonction fonction = chargerFonction(id);
-		if (req.version() != null && !Objects.equals(req.version(), fonction.getVersion())) {
+		if (req.version() == null || !Objects.equals(req.version(), fonction.getVersion())) {
 			throw ReferentielMetierException.conflict("PARAMETRE_MODIFIE_ENTRE_TEMPS",
 					"Cette fonction a été modifiée entre-temps.");
 		}
@@ -111,6 +111,20 @@ public class FonctionService {
 					"Impossible de supprimer cette fonction car elle est déjà utilisée ou affectée.");
 		}
 		fonctionRepository.delete(fonction);
+	}
+
+	@Transactional
+	public void marquerUtiliseeParCode(String code) {
+		if (code == null || code.isBlank()) {
+			return;
+		}
+		fonctionRepository.findByCode(code.trim().toUpperCase(Locale.ROOT)).ifPresent(fonction -> {
+			if (!fonction.isUtilisee()) {
+				fonction.setUtilisee(true);
+				fonction.setModifieLe(Instant.now(clock));
+				fonctionRepository.save(fonction);
+			}
+		});
 	}
 
 	private Fonction chargerFonction(UUID id) {

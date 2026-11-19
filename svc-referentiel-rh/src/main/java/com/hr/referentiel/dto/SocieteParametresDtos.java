@@ -2,8 +2,6 @@ package com.hr.referentiel.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hr.referentiel.domain.BaseDecompteConge;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
@@ -39,16 +37,16 @@ public final class SocieteParametresDtos {
 
 	public record SocieteParametresUpdateRequest(
 			@NotEmpty @JsonProperty("jours_travailles") List<String> joursTravailles,
-			@NotNull @Min(1) @Max(10080) @JsonProperty("duree_hebdo_minutes") Integer dureeHebdoMinutes,
+			@NotNull @JsonProperty("duree_hebdo_minutes") Integer dureeHebdoMinutes,
 			@NotNull @JsonProperty("duree_jour_minutes") Map<String, Integer> dureeJourMinutes,
 			@NotNull @JsonProperty("heure_debut_journee") String heureDebutJournee,
 			@NotNull @JsonProperty("heure_fin_journee") String heureFinJournee,
 			@NotNull @JsonProperty("base_decompte_conge") BaseDecompteConge baseDecompteConge,
 			@JsonProperty("jours_acquis_par_mois") BigDecimal joursAcquisParMois,
-			@NotNull @Min(1) @Max(1440) @JsonProperty("duree_max_sortie_minutes") Integer dureeMaxSortieMinutes,
+			@NotNull @JsonProperty("duree_max_sortie_minutes") Integer dureeMaxSortieMinutes,
 			@NotNull @JsonProperty("delegation_auto_conges") Boolean delegationAutoConges,
 			@NotNull @JsonProperty("publication_quatre_yeux") Boolean publicationQuatreYeux,
-			@JsonProperty("version") Long version
+			@NotNull @JsonProperty("version") Long version
 	) {
 	}
 

@@ -143,6 +143,17 @@ class FonctionServiceTest {
 		AffectationResponse aff = affectationService.affecter(f.id(), new AffectationRequest(
 				c.getId(), u.getId(), LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31)));
 		assertThat(aff.unitePerimetreId()).isEqualTo(u.getId());
+		// Affectation ne bascule pas utilisee à true (#7)
+		assertThat(fonctionService.obtenir(f.id()).utilisee()).isFalse();
+
+		// Marquage utilisé par le moteur via code -> utilisee = true
+		fonctionService.marquerUtiliseeParCode(f.code());
+		assertThat(fonctionService.obtenir(f.id()).utilisee()).isTrue();
+
+		// Modification sans version -> 409 PARAMETRE_MODIFIE_ENTRE_TEMPS
+		assertThatThrownBy(() -> fonctionService.modifier(f.id(), new FonctionRequest("Autre", null, null)))
+				.isInstanceOf(ReferentielMetierException.class)
+				.satisfies(e -> assertThat(((ReferentielMetierException) e).getCode()).isEqualTo("PARAMETRE_MODIFIE_ENTRE_TEMPS"));
 
 		// Chevauchement sur même collaborateur + même unité -> 409 AFFECTATION_CHEVAUCHEMENT
 		UUID collabId = c.getId();

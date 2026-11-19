@@ -85,11 +85,6 @@ public class FonctionAffectationService {
 			throw ReferentielMetierException.conflict("AFFECTATION_CHEVAUCHEMENT", "Affectation déjà active sur cette période.");
 		}
 		Instant maintenant = Instant.now(clock);
-		if (!fonction.isUtilisee()) {
-			fonction.setUtilisee(true);
-			fonction.setModifieLe(maintenant);
-			fonctionRepo.save(fonction);
-		}
 		FonctionAffectation creee = affectationRepo.saveAndFlush(
 				new FonctionAffectation(fonction, collaborateur, perimetre, req.du(), req.au(), maintenant));
 		return new AffectationResponse(
