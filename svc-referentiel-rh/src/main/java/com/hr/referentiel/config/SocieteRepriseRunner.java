@@ -95,6 +95,7 @@ public class SocieteRepriseRunner implements ApplicationRunner {
 						log.info("Reprise table {} : absente, ignorée", table);
 						continue;
 					}
+					jdbc.execute("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS societe_id UUID");
 					int maj = jdbc.update("UPDATE " + table + " SET societe_id = ? WHERE societe_id IS NULL", societeDefautId);
 					jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN societe_id SET NOT NULL");
 					log.info("Reprise table {} : {} ligne(s) rattachée(s) à {}", table, maj, societeDefautId);
