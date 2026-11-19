@@ -1,23 +1,31 @@
 package com.hr.referentiel.importation.parametrage;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.TenantId;
 
 import java.util.UUID;
 
 /** Réglage d'un champ d'import : en-tête du modèle, présence dans le modèle, exigence, ordre (D-I14 à D-I20). */
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_import_champ", uniqueConstraints = @UniqueConstraint(name = "uk_rh_import_champ_type_code",
-		columnNames = {"type_import", "champ_code"}))
+		columnNames = {"societe_id", "type_import", "champ_code"}))
 public class ImportChampRegle {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", nullable = false, updatable = false)
+	private UUID societeId;
 
 	@Column(name = "type_import", nullable = false, length = 20, updatable = false)
 	private String typeImport;

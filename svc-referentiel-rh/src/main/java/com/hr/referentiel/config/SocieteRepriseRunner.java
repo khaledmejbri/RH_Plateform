@@ -31,7 +31,7 @@ public class SocieteRepriseRunner implements ApplicationRunner {
 
 	private static final Logger log = LoggerFactory.getLogger(SocieteRepriseRunner.class);
 
-	/** Liste ordonnée des 19 tables métier existantes du référentiel à reprendre. */
+	/** Liste ordonnée des 29 tables métier existantes du référentiel à reprendre (19 initiales + 10 de 33efdd9). */
 	static final List<String> TABLES_METIER = List.of(
 			"rh_unite_organisation",
 			"rh_collaborateur",
@@ -51,7 +51,17 @@ public class SocieteRepriseRunner implements ApplicationRunner {
 			"rh_parametre_journal",
 			"rh_import",
 			"rh_import_contenu",
-			"rh_import_ligne"
+			"rh_import_ligne",
+			"rh_champ_perso",
+			"rh_champ_perso_valeur_liste",
+			"rh_valeur_perso_fiche",
+			"rh_valeur_perso_fiche_etat",
+			"rh_valeur_perso_journal",
+			"rh_valeur_perso_mouvement",
+			"rh_import_parametrage",
+			"rh_import_champ",
+			"rh_import_champ_journal",
+			"rh_import_synonyme"
 	);
 
 	private final JdbcTemplate jdbc;
@@ -125,10 +135,17 @@ public class SocieteRepriseRunner implements ApplicationRunner {
 		supprimerUnicitesSansSociete("rh_mouvement_solde_conge", List.of("demande_id", "type"));
 		supprimerUnicitesSansSociete("rh_parametre_valeur", List.of("referentiel", "code"));
 		supprimerUnicitesSansSociete("rh_parametre_valeur", List.of("referentiel", "libelle_normalise"));
+		supprimerUnicitesSansSociete("rh_champ_perso", List.of("type_import", "code"));
+		supprimerUnicitesSansSociete("rh_champ_perso_valeur_liste", List.of("champ_perso_id", "code"));
+		supprimerUnicitesSansSociete("rh_valeur_perso_fiche", List.of("collaborateur_id", "champ_code"));
+		supprimerUnicitesSansSociete("rh_valeur_perso_mouvement", List.of("mouvement_id", "champ_code"));
+		supprimerUnicitesSansSociete("rh_import_champ", List.of("type_import", "champ_code"));
+		supprimerUnicitesSansSociete("rh_import_synonyme", List.of("type_import", "champ_code", "forme_normalisee"));
 
-		// Clés primaires de séquences / mois d'acquisition passées à (societe_id, ...)
+		// Clés primaires de séquences / mois d'acquisition / paramétrage import passées à (societe_id, ...)
 		assurerClePrimaireComposee("rh_numero_sequence", "cle");
 		assurerClePrimaireComposee("rh_acquisition_mois", "mois");
+		assurerClePrimaireComposee("rh_import_parametrage", "type_import");
 
 		// Nouveaux index uniques préfixés par societe_id
 		creerIndexUniqueSiTableExiste("rh_collaborateur", "idx_collab_societe_matricule", "societe_id, matricule");
@@ -144,6 +161,13 @@ public class SocieteRepriseRunner implements ApplicationRunner {
 		creerIndexUniqueSiTableExiste("rh_mouvement_solde_conge", "uk_mvt_solde_societe_demande", "societe_id, demande_id, type");
 		creerIndexUniqueSiTableExiste("rh_parametre_valeur", "uk_rh_parametre_societe_ref_code", "societe_id, referentiel, code");
 		creerIndexUniqueSiTableExiste("rh_parametre_valeur", "uk_rh_parametre_societe_ref_libelle", "societe_id, referentiel, libelle_normalise");
+		creerIndexUniqueSiTableExiste("rh_champ_perso", "uk_rh_champ_perso_code", "societe_id, type_import, code");
+		creerIndexUniqueSiTableExiste("rh_champ_perso_valeur_liste", "uk_rh_champ_perso_valeur", "societe_id, champ_perso_id, code");
+		creerIndexUniqueSiTableExiste("rh_valeur_perso_fiche", "uk_rh_valeur_perso_fiche", "societe_id, collaborateur_id, champ_code");
+		creerIndexUniqueSiTableExiste("rh_valeur_perso_mouvement", "uk_rh_vpm", "societe_id, mouvement_id, champ_code");
+		creerIndexUniqueSiTableExiste("rh_import_champ", "uk_rh_import_champ_type_code", "societe_id, type_import, champ_code");
+		creerIndexUniqueSiTableExiste("rh_import_synonyme", "uk_rh_import_synonyme_forme", "societe_id, type_import, champ_code, forme_normalisee");
+		creerIndexUniqueSiTableExiste("rh_import_parametrage", "uk_rh_import_parametrage_societe_type", "societe_id, type_import");
 	}
 
 	private void creerIndexUniqueSiTableExiste(String table, String nomIndex, String colonnes) {

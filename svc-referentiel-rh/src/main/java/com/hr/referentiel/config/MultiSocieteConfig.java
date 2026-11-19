@@ -40,22 +40,28 @@ public class MultiSocieteConfig {
 	}
 
 	private static void preparerColonnesNullables(DataSource dataSource) {
+		JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+		String produit;
 		try {
-			JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-			String produit = jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName());
-			if (produit == null || !produit.toLowerCase(Locale.ROOT).contains("postgres")) {
-				return;
-			}
-			for (String table : SocieteRepriseRunner.TABLES_METIER) {
+			produit = jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName());
+		} catch (RuntimeException e) {
+			return;
+		}
+		if (produit == null || !produit.toLowerCase(Locale.ROOT).contains("postgres")) {
+			return;
+		}
+		for (String table : SocieteRepriseRunner.TABLES_METIER) {
+			try {
 				Boolean exists = jdbc.queryForObject(
 						"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?)",
 						Boolean.class, table);
 				if (Boolean.TRUE.equals(exists)) {
 					jdbc.execute("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS societe_id UUID");
 				}
+			} catch (RuntimeException e) {
+				org.slf4j.LoggerFactory.getLogger(MultiSocieteConfig.class)
+						.warn("Échec ajout préalable de societe_id sur {} : {}", table, e.getMessage());
 			}
-		} catch (RuntimeException ignore) {
-			// Ignoré si la source de données est factice dans un test unitaire
 		}
 	}
 }

@@ -1,11 +1,14 @@
 package com.hr.referentiel.importation.parametrage;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -16,13 +19,18 @@ import java.util.UUID;
  */
 @Entity
 @Immutable
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_import_champ_journal", indexes = @Index(name = "idx_rh_import_champ_journal_type",
-		columnList = "type_import, horodatage"))
+		columnList = "societe_id, type_import, horodatage"))
 public class ImportChampJournal {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", nullable = false, updatable = false)
+	private UUID societeId;
 
 	@Column(name = "type_import", nullable = false, length = 20, updatable = false)
 	private String typeImport;

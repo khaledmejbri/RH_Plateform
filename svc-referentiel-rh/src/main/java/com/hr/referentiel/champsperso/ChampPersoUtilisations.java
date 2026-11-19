@@ -1,5 +1,6 @@
 package com.hr.referentiel.champsperso;
 
+import com.hr.commun.societe.SocieteContexte;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -7,6 +8,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Utilisations des champs personnalisés et de leurs valeurs de liste : requêtes groupées (une par table), jamais une par
@@ -38,13 +40,20 @@ public class ChampPersoUtilisations {
 		if (codes.isEmpty()) {
 			return r;
 		}
+		UUID societeId = SocieteContexte.courante();
 		boolean fiches = COLLABORATEURS.equals(typeImport);
 		String table = fiches ? "rh_valeur_perso_fiche" : "rh_valeur_perso_mouvement";
-		jdbc.query("select champ_code, count(*) from " + table + " where champ_code in (" + marques(codes)
+		Object[] params = new Object[codes.size() + 1];
+		params[0] = societeId;
+		int idx = 1;
+		for (String code : codes) {
+			params[idx++] = code;
+		}
+		jdbc.query("select champ_code, count(*) from " + table + " where societe_id = ? and champ_code in (" + marques(codes)
 				+ ") group by champ_code", rs -> {
 					int n = rs.getInt(2);
 					r.put(rs.getString(1), fiches ? new Compte(n, 0) : new Compte(0, n));
-				}, codes.toArray());
+				}, params);
 		return r;
 	}
 
@@ -54,11 +63,18 @@ public class ChampPersoUtilisations {
 		if (codesChamps.isEmpty()) {
 			return r;
 		}
+		UUID societeId = SocieteContexte.courante();
 		String table = COLLABORATEURS.equals(typeImport) ? "rh_valeur_perso_fiche" : "rh_valeur_perso_mouvement";
-		jdbc.query("select champ_code, valeur_liste_code, count(*) from " + table + " where valeur_liste_code is not null "
+		Object[] params = new Object[codesChamps.size() + 1];
+		params[0] = societeId;
+		int idx = 1;
+		for (String code : codesChamps) {
+			params[idx++] = code;
+		}
+		jdbc.query("select champ_code, valeur_liste_code, count(*) from " + table + " where societe_id = ? and valeur_liste_code is not null "
 				+ "and champ_code in (" + marques(codesChamps) + ") group by champ_code, valeur_liste_code", rs -> {
 					r.put(rs.getString(1) + "|" + rs.getString(2), rs.getInt(3));
-				}, codesChamps.toArray());
+				}, params);
 		return r;
 	}
 

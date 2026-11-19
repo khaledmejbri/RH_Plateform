@@ -24,8 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ChampPersoDefinitionServiceTest extends ChampsPersoH2Base {
 
 	private void donnerValeurFiche(String code) {
-		jdbc.update("insert into rh_valeur_perso_fiche (id, collaborateur_id, champ_code, valeur_texte, modifie_le) values (?, ?, ?, 'x', current_timestamp)",
-				UUID.randomUUID(), UUID.randomUUID(), code);
+		jdbc.update("insert into rh_valeur_perso_fiche (id, societe_id, collaborateur_id, champ_code, valeur_texte, modifie_le) values (?, ?, ?, ?, 'x', current_timestamp)",
+				UUID.randomUUID(), com.hr.commun.societe.SocieteContexte.courante(), UUID.randomUUID(), code);
 	}
 
 	private List<LigneJournal> journalDuType(String type) {
@@ -270,8 +270,9 @@ class ChampPersoDefinitionServiceTest extends ChampsPersoH2Base {
 		erreur(echec(() -> listes.basculer(COL, code, "M", version(COL), false, DRH01)), 422, "LISTE_SANS_VALEUR_ACTIVE");
 		erreur(echec(() -> listes.supprimer(COL, code, "M", version(COL), DRH01)), 422, "LISTE_SANS_VALEUR_ACTIVE");
 
-		jdbc.update("insert into rh_valeur_perso_fiche (id, collaborateur_id, champ_code, valeur_liste_code, modifie_le) "
-				+ "values (?, ?, ?, 'S', current_timestamp)", UUID.randomUUID(), UUID.randomUUID(), code);
+		jdbc.update("insert into rh_valeur_perso_fiche (id, societe_id, collaborateur_id, champ_code, valeur_liste_code, modifie_le) "
+				+ "values (?, ?, ?, ?, 'S', current_timestamp)",
+				UUID.randomUUID(), com.hr.commun.societe.SocieteContexte.courante(), UUID.randomUUID(), code);
 		erreur(echec(() -> listes.supprimer(COL, code, "S", version(COL), DRH01)), 409, "PARAMETRE_UTILISE");
 		listes.supprimer(COL, code, "XL", version(COL), DRH01);
 		assertThat(champ(parametrage.lire(COL), code).valeursListe()).extracting(v -> v.code()).containsExactly("S", "M");

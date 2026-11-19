@@ -1,12 +1,15 @@
 package com.hr.referentiel.champsperso;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.TenantId;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -18,14 +21,19 @@ import java.util.UUID;
  */
 @Entity
 @Immutable
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_valeur_perso_mouvement",
-		uniqueConstraints = @UniqueConstraint(name = "uk_rh_vpm", columnNames = {"mouvement_id", "champ_code"}),
-		indexes = @Index(name = "idx_rh_vpm_champ", columnList = "champ_code"))
+		uniqueConstraints = @UniqueConstraint(name = "uk_rh_vpm", columnNames = {"societe_id", "mouvement_id", "champ_code"}),
+		indexes = @Index(name = "idx_rh_vpm_champ", columnList = "societe_id, champ_code"))
 public class ValeurPersoMouvement {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", nullable = false, updatable = false)
+	private UUID societeId;
 
 	@Column(name = "mouvement_id", nullable = false, updatable = false)
 	private UUID mouvementId;

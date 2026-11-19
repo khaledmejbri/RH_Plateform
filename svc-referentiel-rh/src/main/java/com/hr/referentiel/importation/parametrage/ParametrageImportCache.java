@@ -56,7 +56,7 @@ public class ParametrageImportCache {
 		if (cache == null) {
 			return charger(type);
 		}
-		ParametrageImport p = cache.get(type, () -> charger(type));
+		ParametrageImport p = cache.get(CacheConfig.cle(type), () -> charger(type));
 		return p != null ? p : charger(type);
 	}
 
@@ -67,22 +67,27 @@ public class ParametrageImportCache {
 
 	/** Invalidation après commit si une transaction est active (sinon, immédiate). */
 	public void invaliderApresCommit(TypeImportParametrable type) {
+		CacheConfig.CleSociete cleSociete = CacheConfig.cle(type);
 		if (TransactionSynchronizationManager.isSynchronizationActive()) {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override
 				public void afterCommit() {
-					invalider(type);
+					invalider(cleSociete);
 				}
 			});
 		} else {
-			invalider(type);
+			invalider(cleSociete);
 		}
 	}
 
 	public void invalider(TypeImportParametrable type) {
+		invalider(CacheConfig.cle(type));
+	}
+
+	private void invalider(CacheConfig.CleSociete cleSociete) {
 		Cache cache = cacheManager.getCache(CacheConfig.CACHE_IMPORT_PARAMETRAGE);
 		if (cache != null) {
-			cache.evict(type);
+			cache.evict(cleSociete);
 		}
 	}
 

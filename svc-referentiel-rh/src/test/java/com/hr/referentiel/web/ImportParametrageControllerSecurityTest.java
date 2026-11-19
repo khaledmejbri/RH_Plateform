@@ -55,7 +55,8 @@ class ImportParametrageControllerSecurityTest {
 	private org.springframework.cache.CacheManager cacheManager;
 
 	private static RequestPostProcessor roles(String... roles) {
-		return jwt().jwt(j -> j.claim("identifiant_utilisateur", UUID.randomUUID().toString()))
+		return jwt().jwt(j -> j.claim("identifiant_utilisateur", UUID.randomUUID().toString())
+						.claim("societe_id", com.hr.referentiel.test.AvecSocieteContexteExtension.SOCIETE_TEST.toString()))
 				.authorities(java.util.Arrays.stream(roles).map(r -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + r))
 						.toArray(GrantedAuthority[]::new));
 	}

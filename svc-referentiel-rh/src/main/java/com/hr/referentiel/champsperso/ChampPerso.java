@@ -1,11 +1,14 @@
 package com.hr.referentiel.champsperso;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.TenantId;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -14,13 +17,18 @@ import java.util.UUID;
 
 /** Définition d'un champ personnalisé (ADR partie 2, P2-2). Le code est généré, immuable et jamais réattribué. */
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_champ_perso", uniqueConstraints = @UniqueConstraint(name = "uk_rh_champ_perso_code",
-		columnNames = {"type_import", "code"}))
+		columnNames = {"societe_id", "type_import", "code"}))
 public class ChampPerso {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", nullable = false, updatable = false)
+	private UUID societeId;
 
 	@Column(name = "type_import", nullable = false, length = 20, updatable = false)
 	private String typeImport;

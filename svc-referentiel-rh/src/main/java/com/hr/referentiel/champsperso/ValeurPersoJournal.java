@@ -1,12 +1,15 @@
 package com.hr.referentiel.champsperso;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -17,12 +20,17 @@ import java.util.UUID;
  */
 @Entity
 @Immutable
-@Table(name = "rh_valeur_perso_journal", indexes = @Index(name = "idx_rh_vpj_collab", columnList = "collaborateur_id, horodatage"))
+@EntityListeners(SocieteGardeEcriture.class)
+@Table(name = "rh_valeur_perso_journal", indexes = @Index(name = "idx_rh_vpj_collab", columnList = "societe_id, collaborateur_id, horodatage"))
 public class ValeurPersoJournal {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", nullable = false, updatable = false)
+	private UUID societeId;
 
 	@Column(name = "collaborateur_id", nullable = false, updatable = false)
 	private UUID collaborateurId;

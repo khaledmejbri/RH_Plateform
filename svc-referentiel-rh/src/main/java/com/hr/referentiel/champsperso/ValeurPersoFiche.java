@@ -1,11 +1,14 @@
 package com.hr.referentiel.champsperso;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.TenantId;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -18,17 +21,22 @@ import java.util.UUID;
  * (critères {@code EXISTS}).
  */
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_valeur_perso_fiche",
-		uniqueConstraints = @UniqueConstraint(name = "uk_rh_valeur_perso_fiche", columnNames = {"collaborateur_id", "champ_code"}),
+		uniqueConstraints = @UniqueConstraint(name = "uk_rh_valeur_perso_fiche", columnNames = {"societe_id", "collaborateur_id", "champ_code"}),
 		indexes = {
-				@Index(name = "idx_rh_vpf_liste", columnList = "champ_code, valeur_liste_code"),
-				@Index(name = "idx_rh_vpf_nombre", columnList = "champ_code, valeur_nombre"),
-				@Index(name = "idx_rh_vpf_date", columnList = "champ_code, valeur_date")})
+				@Index(name = "idx_rh_vpf_liste", columnList = "societe_id, champ_code, valeur_liste_code"),
+				@Index(name = "idx_rh_vpf_nombre", columnList = "societe_id, champ_code, valeur_nombre"),
+				@Index(name = "idx_rh_vpf_date", columnList = "societe_id, champ_code, valeur_date")})
 public class ValeurPersoFiche {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", nullable = false, updatable = false)
+	private UUID societeId;
 
 	@Column(name = "collaborateur_id", nullable = false, updatable = false)
 	private UUID collaborateurId;

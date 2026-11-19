@@ -14,9 +14,14 @@ import com.hr.referentiel.importation.parametrage.ImportParametrageService;
 import com.hr.referentiel.importation.parametrage.ImportSynonymeRepository;
 import com.hr.referentiel.importation.parametrage.ParametrageEcriture;
 import com.hr.referentiel.importation.parametrage.ParametrageImportCache;
+import com.hr.commun.societe.SocieteContexte;
 import com.hr.referentiel.service.AuteurParametre;
+import com.hr.referentiel.test.AvecSocieteContexteExtension;
+import com.hr.referentiel.test.SocieteContexteTestExecutionListener;
 import com.hr.referentiel.web.ReferentielMetierException;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -46,6 +51,8 @@ import static org.mockito.Mockito.mock;
 		"spring.jpa.hibernate.ddl-auto=create-drop"})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(ChampsPersoH2Config.class)
+@ExtendWith(AvecSocieteContexteExtension.class)
+@TestExecutionListeners(listeners = SocieteContexteTestExecutionListener.class, mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 public abstract class ChampsPersoH2Base {
 
 	protected static final AuteurParametre DRH01 = new AuteurParametre(UUID.randomUUID(), "Amel Trabelsi");
@@ -84,7 +91,7 @@ public abstract class ChampsPersoH2Base {
 	@BeforeEach
 	void initBase() {
 		ParametrageImportCache factice = mock(ParametrageImportCache.class);
-		new ImportChampsAmorceRunner(jdbc, tm, factice).amorcer();
+		new ImportChampsAmorceRunner(jdbc, tm, factice, () -> List.of(SocieteContexte.courante())).amorcer();
 		cache = new ParametrageImportCache(new ConcurrentMapCacheManager(), champRepository, synonymeRepository,
 				parametrageRepository, persoRepository, valeurRepository);
 		utilisations = new ChampPersoUtilisations(jdbc);

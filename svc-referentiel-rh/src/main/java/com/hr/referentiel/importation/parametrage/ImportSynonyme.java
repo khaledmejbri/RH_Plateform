@@ -1,27 +1,35 @@
 package com.hr.referentiel.importation.parametrage;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.util.UUID;
 
 /** Synonyme d'en-tête d'un champ (D-I21). La forme normalisée vient de {@code ReconnaissanceEnTetes.normaliser}. */
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_import_synonyme",
 		uniqueConstraints = @UniqueConstraint(name = "uk_rh_import_synonyme_forme",
-				columnNames = {"type_import", "champ_code", "forme_normalisee"}),
-		indexes = @Index(name = "idx_rh_import_synonyme_forme", columnList = "type_import, forme_normalisee"))
+				columnNames = {"societe_id", "type_import", "champ_code", "forme_normalisee"}),
+		indexes = @Index(name = "idx_rh_import_synonyme_forme", columnList = "societe_id, type_import, forme_normalisee"))
 public class ImportSynonyme {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", nullable = false, updatable = false)
+	private UUID societeId;
 
 	@Column(name = "type_import", nullable = false, length = 20, updatable = false)
 	private String typeImport;

@@ -1,5 +1,6 @@
 package com.hr.referentiel.config;
 
+import com.hr.commun.societe.SocieteContexte;
 import com.hr.referentiel.importation.ChampImport;
 import com.hr.referentiel.importation.ReconnaissanceEnTetes;
 import com.hr.referentiel.importation.parametrage.ImportChampJournal;
@@ -9,9 +10,11 @@ import com.hr.referentiel.importation.parametrage.ImportParametrageRepository;
 import com.hr.referentiel.importation.parametrage.ImportSynonyme;
 import com.hr.referentiel.importation.parametrage.ParametrageImportCache;
 import com.hr.referentiel.importation.parametrage.TypeImportParametrable;
+import com.hr.referentiel.test.AvecSocieteContexteExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -42,6 +45,7 @@ import static org.mockito.Mockito.verify;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import(ImportChampsAmorceRunnerTest.Config.class)
+@ExtendWith(AvecSocieteContexteExtension.class)
 class ImportChampsAmorceRunnerTest {
 
 	@Configuration
@@ -69,7 +73,7 @@ class ImportChampsAmorceRunnerTest {
 	private final ParametrageImportCache cache = mock(ParametrageImportCache.class);
 
 	private ImportChampsAmorceRunner runner() {
-		return new ImportChampsAmorceRunner(jdbc, tm, cache);
+		return new ImportChampsAmorceRunner(jdbc, tm, cache, () -> List.of(SocieteContexte.courante()));
 	}
 
 	@BeforeEach
@@ -200,8 +204,9 @@ class ImportChampsAmorceRunnerTest {
 		champPersoRepository.save(new com.hr.referentiel.champsperso.ChampPerso("COLLABORATEURS", "PERSO_PRIME", "Prime",
 				"Prime annuelle", com.hr.referentiel.champsperso.TypeValeurPerso.TEXTE, false, java.time.Instant.now(), "Test"));
 		for (String code : List.of("PERSO_PRIME", "ORPHELIN")) {
-			jdbc.update("insert into rh_import_champ (id, type_import, champ_code, en_tete, dans_modele, exigence, ordre) "
-					+ "values (?, 'COLLABORATEURS', ?, ?, true, 'FACULTATIF', 90)", java.util.UUID.randomUUID(), code, code);
+			jdbc.update("insert into rh_import_champ (id, societe_id, type_import, champ_code, en_tete, dans_modele, exigence, ordre) "
+					+ "values (?, ?, 'COLLABORATEURS', ?, ?, true, 'FACULTATIF', 90)",
+					java.util.UUID.randomUUID(), SocieteContexte.courante(), code, code);
 		}
 
 		assertThat(runner().codesDisparus(TypeImportParametrable.COLLABORATEURS)).containsExactly("ORPHELIN");

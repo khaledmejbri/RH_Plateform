@@ -1,22 +1,30 @@
 package com.hr.referentiel.champsperso;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.TenantId;
 
 import java.util.UUID;
 
 /** Valeur d'un champ de type liste : code généré immuable, ordre dense 0..n-1. */
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_champ_perso_valeur_liste", uniqueConstraints = @UniqueConstraint(name = "uk_rh_champ_perso_valeur",
-		columnNames = {"champ_perso_id", "code"}))
+		columnNames = {"societe_id", "champ_perso_id", "code"}))
 public class ChampPersoValeurListe {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", nullable = false, updatable = false)
+	private UUID societeId;
 
 	@Column(name = "champ_perso_id", nullable = false, updatable = false)
 	private UUID champPersoId;

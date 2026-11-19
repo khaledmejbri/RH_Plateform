@@ -8,11 +8,16 @@ import com.hr.referentiel.importation.parametrage.ImportParametrageDtos.LigneJou
 import com.hr.referentiel.importation.parametrage.ImportParametrageDtos.Parametrage;
 import com.hr.referentiel.importation.parametrage.ImportParametrageDtos.SynonymeRequest;
 import com.hr.referentiel.importation.parametrage.ImportParametrageDtos.SynonymeVue;
+import com.hr.commun.societe.SocieteContexte;
 import com.hr.referentiel.service.AuteurParametre;
+import com.hr.referentiel.test.AvecSocieteContexteExtension;
+import com.hr.referentiel.test.SocieteContexteTestExecutionListener;
 import com.hr.referentiel.web.ReferentielMetierException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -47,6 +52,8 @@ import static org.mockito.Mockito.mock;
 		"spring.jpa.hibernate.ddl-auto=create-drop"})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(ImportParametrageServiceTest.Config.class)
+@ExtendWith(AvecSocieteContexteExtension.class)
+@TestExecutionListeners(listeners = SocieteContexteTestExecutionListener.class, mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class ImportParametrageServiceTest {
 
 	@Configuration
@@ -90,7 +97,7 @@ class ImportParametrageServiceTest {
 	@BeforeEach
 	void init() {
 		cache = mock(ParametrageImportCache.class);
-		new ImportChampsAmorceRunner(jdbc, tm, cache).amorcer();
+		new ImportChampsAmorceRunner(jdbc, tm, cache, () -> List.of(SocieteContexte.courante())).amorcer();
 		ImportChampsJournal journal = new ImportChampsJournal(journalRepository);
 		service = new ImportParametrageService(new ParametrageEcriture(parametrageRepository, champRepository,
 				synonymeRepository, champPersoRepository, valeurListeRepository, journal, cache,

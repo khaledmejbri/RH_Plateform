@@ -1,5 +1,6 @@
 package com.hr.referentiel.kafka;
 
+import com.hr.referentiel.config.ImportChampsAmorceRunner;
 import com.hr.referentiel.config.ParametresAmorceRunner;
 import com.hr.referentiel.config.SoldesCongeAmorceRunner;
 import com.hr.referentiel.domain.RhEvenementTraite;
@@ -35,6 +36,7 @@ public class SocietesKafkaListener {
 	private final RhEvenementTraiteRepository evenementTraiteRepository;
 	private final ParametresAmorceRunner parametresAmorceRunner;
 	private final SoldesCongeAmorceRunner soldesCongeAmorceRunner;
+	private final ImportChampsAmorceRunner importChampsAmorceRunner;
 	private final IdentiteSocieteClient identiteSocieteClient;
 	private final TransactionTemplate transactionTemplate;
 
@@ -43,12 +45,14 @@ public class SocietesKafkaListener {
 			RhEvenementTraiteRepository evenementTraiteRepository,
 			ParametresAmorceRunner parametresAmorceRunner,
 			SoldesCongeAmorceRunner soldesCongeAmorceRunner,
+			ImportChampsAmorceRunner importChampsAmorceRunner,
 			IdentiteSocieteClient identiteSocieteClient,
 			TransactionTemplate transactionTemplate) {
 		this.jsonMapper = jsonMapper;
 		this.evenementTraiteRepository = evenementTraiteRepository;
 		this.parametresAmorceRunner = parametresAmorceRunner;
 		this.soldesCongeAmorceRunner = soldesCongeAmorceRunner;
+		this.importChampsAmorceRunner = importChampsAmorceRunner;
 		this.identiteSocieteClient = identiteSocieteClient;
 		this.transactionTemplate = transactionTemplate;
 	}
@@ -79,6 +83,7 @@ public class SocietesKafkaListener {
 		if ("SOCIETE_CREEE".equals(type)) {
 			parametresAmorceRunner.amorcerPourSociete(societeId);
 			soldesCongeAmorceRunner.amorcerPourSociete(societeId);
+			importChampsAmorceRunner.amorcerPourSociete(societeId);
 			log.info("Nouvelle société {} ({}) amorcée dans svc-referentiel-rh", societeId, texte(node, "code"));
 		}
 

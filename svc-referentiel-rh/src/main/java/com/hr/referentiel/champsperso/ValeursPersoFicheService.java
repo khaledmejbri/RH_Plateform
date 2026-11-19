@@ -252,14 +252,17 @@ public class ValeursPersoFicheService {
 		if (taille < 1 || taille > 100 || page < 0) {
 			throw ReferentielMetierException.badRequest("CORPS_INVALIDE", "La taille de page doit être comprise entre 1 et 100.");
 		}
-		Long total = sql.queryForObject("select count(*) from rh_valeur_perso_journal where collaborateur_id = ?", Long.class, id);
+		java.util.UUID societeId = com.hr.commun.societe.SocieteContexte.courante();
+		Long total = sql.queryForObject(
+				"select count(*) from rh_valeur_perso_journal where societe_id = ? and collaborateur_id = ?",
+				Long.class, societeId, id);
 		List<LigneJournalValeur> lignes = sql.query("select id, horodatage, auteur_nom, champ_code, champ_libelle, avant, apres, origine "
-				+ "from rh_valeur_perso_journal where collaborateur_id = ? order by horodatage desc, id limit ? offset ?", (rs, i) -> {
+				+ "from rh_valeur_perso_journal where societe_id = ? and collaborateur_id = ? order by horodatage desc, id limit ? offset ?", (rs, i) -> {
 					Instant h = rs.getTimestamp(2).toInstant();
 					OrigineValeurPerso o = OrigineValeurPerso.lire(rs.getString(8));
 					return new LigneJournalValeur(rs.getObject(1, UUID.class), h, rs.getString(3), rs.getString(4), rs.getString(5),
 							rs.getString(6), rs.getString(7), o.name(), o.libelle(h));
-				}, id, taille, (long) page * taille);
+				}, societeId, id, taille, (long) page * taille);
 		return new PageJournalValeurs(lignes, page, taille, total == null ? 0 : total);
 	}
 
