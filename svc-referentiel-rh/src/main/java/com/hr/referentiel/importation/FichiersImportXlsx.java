@@ -28,8 +28,12 @@ public final class FichiersImportXlsx {
 	private FichiersImportXlsx() {
 	}
 
-	public static byte[] modele(List<? extends ChampImport> champs) {
-		return ecrire("Modèle", List.of(champs.stream().map(ChampImport::libelle).toList()), false);
+	/**
+	 * Modèle : une seule ligne d'en-têtes (ceux réglés dans Paramètres, dans l'ordre réglé). Les en-têtes passent par la
+	 * protection des formules (défense en profondeur : D-I20 refuse déjà ces caractères en tête).
+	 */
+	public static byte[] modele(List<String> enTetes) {
+		return ecrire("Modèle", List.of(enTetes), true);
 	}
 
 	/** {@code lignes} : première ligne = en-têtes d'origine ; chaque ligne suivante = cellules d'origine + message d'erreurs. */

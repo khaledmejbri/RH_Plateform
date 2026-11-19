@@ -1,5 +1,6 @@
 package com.hr.referentiel.importation;
 
+import com.hr.referentiel.champsperso.ValeursPersoLot;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.importation.ImportModeles.Colonne;
 import com.hr.referentiel.importation.ImportModeles.Evaluation;
@@ -29,6 +30,10 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+import com.hr.referentiel.importation.parametrage.ExigenceChamp;
+import com.hr.referentiel.importation.parametrage.ParametrageImport;
+import com.hr.referentiel.importation.parametrage.TypeImportParametrable;
+
 import static com.hr.referentiel.importation.ChampImport.Solde.MATRICULE;
 import static com.hr.referentiel.importation.ChampImport.Solde.MOTIF;
 import static com.hr.referentiel.importation.ChampImport.Solde.SOLDE;
@@ -51,9 +56,11 @@ public class ImportSoldesService {
 	private final RhNotificationPublisher notificationPublisher;
 	private final SoldeLotService lotService;
 	private final Clock clock;
+	private final ValeursPersoLot valeursLot;
 
 	public ImportSoldesService(CollaborateurRepository collaborateurRepository, SoldeCongeService soldeService,
-			RhNotificationPublisher notificationPublisher, SoldeLotService lotService, Clock clock) {
+			RhNotificationPublisher notificationPublisher, SoldeLotService lotService, Clock clock, ValeursPersoLot valeursLot) {
+		this.valeursLot = valeursLot;
 		this.lotService = lotService;
 		this.collaborateurRepository = collaborateurRepository;
 		this.soldeService = soldeService;
@@ -93,40 +100,54 @@ public class ImportSoldesService {
 		return List.of();
 	}
 
+	/** Évaluation avec le paramétrage par défaut (valeurs du code). */
 	public Evaluation evaluer(List<LigneBrute> donnees, List<Colonne> colonnes, String motifGlobal, UUID auteurFicheId,
 			Contexte ctx) {
+		return evaluer(donnees, colonnes, motifGlobal, auteurFicheId, ctx, ParametrageImport.parDefaut(TypeImportParametrable.SOLDES));
+	}
+
+	/** Le motif « toujours obligatoire » (D-I18) vient de l'instantané figé par l'analyse. */
+	public Evaluation evaluer(List<LigneBrute> donnees, List<Colonne> colonnes, String motifGlobal, UUID auteurFicheId,
+			Contexte ctx, ParametrageImport parametrage) {
 		Map<ChampImport.Solde, String> enTetes = new EnumMap<>(ChampImport.Solde.class);
 		for (Colonne c : colonnes) {
-			if (c.champ() != null) {
-				enTetes.putIfAbsent(ChampImport.Solde.valueOf(c.champ()), c.enTete());
+			if (ChampImport.Solde.parCode(c.champ()) != null) {
+				enTetes.putIfAbsent(ChampImport.Solde.parCode(c.champ()), c.enTete());
 			}
 		}
+		for (ChampImport.Solde champ : ChampImport.Solde.values()) {
+			enTetes.putIfAbsent(champ, parametrage.enTete(champ.name())); // repli : en-tête réglé quand la colonne est absente
+		}
 		List<Map<ChampImport.Solde, String>> valeurs = new ArrayList<>();
+		List<Map<String, String>> persos = new ArrayList<>();
 		Map<String, Integer> matricules = new HashMap<>();
 		for (LigneBrute l : donnees) {
 			Map<ChampImport.Solde, String> v = new EnumMap<>(ChampImport.Solde.class);
 			for (Colonne c : colonnes) {
-				if (c.champ() != null && c.index() < l.cellules().size()) {
+				if (ChampImport.Solde.parCode(c.champ()) != null && c.index() < l.cellules().size()) {
 					String t = l.cellules().get(c.index()) == null ? "" : l.cellules().get(c.index()).strip();
 					if (!t.isEmpty()) {
-						v.putIfAbsent(ChampImport.Solde.valueOf(c.champ()), t);
+						v.putIfAbsent(ChampImport.Solde.parCode(c.champ()), t);
 					}
 				}
 			}
 			valeurs.add(v);
+			persos.add(ChampsPersoLigne.cellules(l, colonnes));
 			if (v.get(MATRICULE) != null) {
 				matricules.merge(v.get(MATRICULE).toLowerCase(Locale.ROOT), 1, Integer::sum);
 			}
 		}
 		List<LigneResultat> resultats = new ArrayList<>();
 		for (int i = 0; i < donnees.size(); i++) {
-			resultats.add(evaluerLigne(donnees.get(i).numero(), valeurs.get(i), enTetes, motifGlobal, auteurFicheId, ctx, matricules));
+			resultats.add(evaluerLigne(donnees.get(i).numero(), valeurs.get(i), enTetes, motifGlobal, auteurFicheId, ctx, matricules,
+					parametrage, persos.get(i)));
 		}
 		return new Evaluation(resultats, List.of(), avertissementsFichier(), totaliser(resultats));
 	}
 
 	private LigneResultat evaluerLigne(int numero, Map<ChampImport.Solde, String> v, Map<ChampImport.Solde, String> enTetes,
-			String motifGlobal, UUID auteurFicheId, Contexte ctx, Map<String, Integer> matricules) {
+			String motifGlobal, UUID auteurFicheId, Contexte ctx, Map<String, Integer> matricules, ParametrageImport parametrage,
+			Map<String, String> persoBrutes) {
 		List<Probleme> erreurs = new ArrayList<>();
 		List<Probleme> avertissements = new ArrayList<>();
 		String matricule = v.get(MATRICULE);
@@ -159,10 +180,16 @@ public class ImportSoldesService {
 			}
 		}
 		String motifLigne = v.get(MOTIF);
+		if (motifLigne == null && parametrage.exigence(MOTIF.name()) == ExigenceChamp.TOUJOURS) {
+			// pas de repli sur le motif global quand le motif de ligne est exigé (D-I18)
+			erreurs.add(new Probleme("CHAMP_OBLIGATOIRE", col(enTetes, MOTIF), null, parametrage.enTete(MOTIF.name()) + " obligatoire."));
+		}
 		if (motifLigne != null && (motifLigne.length() < MOTIF_MIN || motifLigne.length() > MOTIF_MAX)) {
 			erreurs.add(new Probleme("MOTIF_INVALIDE", col(enTetes, MOTIF), court(motifLigne),
 					"Motif invalide : " + MOTIF_MIN + " à " + MOTIF_MAX + " caractères."));
 		}
+		ChampsPersoLigne.Resultat perso = ChampsPersoLigne.evaluer(persoBrutes, parametrage, null, false, false);
+		erreurs.addAll(perso.erreurs());
 		BigDecimal actuel = c == null ? null : ctx.acquis.getOrDefault(c.getId(), new BigDecimal("0.0"));
 		BigDecimal ecart = null;
 		String action;
@@ -171,6 +198,10 @@ public class ImportSoldesService {
 		} else {
 			ecart = cible.subtract(actuel);
 			action = ecart.signum() == 0 ? "INCHANGE" : "AJUSTEMENT";
+			if (ecart.signum() == 0 && !perso.canoniques().isEmpty()) {
+				avertissements.add(new Probleme("VALEURS_PERSO_NON_ENREGISTREES", null, null,
+						"Solde inchangé : informations complémentaires non enregistrées."));
+			}
 			if ("ARCHIVE".equalsIgnoreCase(c.getStatut())) {
 				avertissements.add(new Probleme("COLLABORATEUR_ARCHIVE", null, null, "Collaborateur archivé : le solde est ajusté malgré tout."));
 			}
@@ -183,7 +214,7 @@ public class ImportSoldesService {
 		String motif = motifLigne != null ? motifLigne : motifGlobal;
 		String nom = c == null ? null : ((c.getPrenom() == null ? "" : c.getPrenom()) + " " + (c.getNom() == null ? "" : c.getNom())).trim();
 		return new LigneResultat(numero, matricule, nom, action, erreurs, avertissements, List.of(), actuel, cible, ecart,
-				motif, c == null ? null : c.getId(), null, new HashMap<>(), false);
+				motif, c == null ? null : c.getId(), null, new HashMap<>(perso.canoniques()), false);
 	}
 
 	/** Cible : 12.5 ou 12,5 (pas d'arrondi), de 0 à 365, multiple de 0,5 ; {@code null} sinon. */
@@ -229,7 +260,11 @@ public class ImportSoldesService {
 	// ─── Application ───────────────────────────────────────────────────────────
 
 	/** Bilan : ajustements écrits, lignes devenues égales, et résultat par matricule (écart réel ou null). */
-	public record Application(int ajustements, int inchanges, Map<String, BigDecimal> ecartsReels) {
+	public record Application(int ajustements, int inchanges, Map<String, BigDecimal> ecartsReels, List<String> avertissements) {
+
+		public Application(int ajustements, int inchanges, Map<String, BigDecimal> ecartsReels) {
+			this(ajustements, inchanges, ecartsReels, List.of());
+		}
 	}
 
 	/**
@@ -239,6 +274,13 @@ public class ImportSoldesService {
 	@Transactional
 	public Application appliquer(List<LigneResultat> ajustables, UUID importId, String motifGlobal, AuteurParametre auteur,
 			Contexte ctx) {
+		return appliquer(ajustables, importId, motifGlobal, auteur, ctx, null);
+	}
+
+	/** Avec valeurs personnalisées : insérées sur les mouvements créés, dans la même transaction (P2-9). */
+	@Transactional
+	public Application appliquer(List<LigneResultat> ajustables, UUID importId, String motifGlobal, AuteurParametre auteur,
+			Contexte ctx, ParametrageImport parametrage) {
 		List<SoldeLotService.Ajustement> demandes = new ArrayList<>();
 		Map<UUID, LigneResultat> parFiche = new HashMap<>();
 		for (LigneResultat l : ajustables) {
@@ -262,6 +304,22 @@ public class ImportSoldesService {
 			notifications.add(() -> notificationPublisher.notifierSoldeAjuste(cible, r.ecart(), r.soldeApres(), r.motif()));
 		}
 		ApresCommit.executer(() -> notifications.forEach(Runnable::run));
-		return new Application(ajustements, inchanges, reels);
+		List<String> avertissements = new ArrayList<>();
+		if (valeursLot != null && parametrage != null) {
+			List<ValeursPersoLot.Demande> persoDemandes = new ArrayList<>();
+			for (SoldeLotService.Resultat r : resultats) {
+				LigneResultat l = parFiche.get(r.collaborateurId());
+				if (l.valeurs().isEmpty()) {
+					continue;
+				}
+				if (r.mouvementId() == null) {
+					avertissements.add("Ligne " + l.numero() + " : solde inchangé : informations complémentaires non enregistrées.");
+				} else {
+					persoDemandes.add(new ValeursPersoLot.Demande(r.mouvementId(), l.numero(), l.valeurs()));
+				}
+			}
+			avertissements.addAll(valeursLot.ecrireMouvements(persoDemandes, parametrage));
+		}
+		return new Application(ajustements, inchanges, reels, avertissements);
 	}
 }

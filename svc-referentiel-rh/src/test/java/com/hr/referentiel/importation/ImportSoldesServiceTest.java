@@ -1,5 +1,8 @@
 package com.hr.referentiel.importation;
 
+import com.hr.referentiel.importation.parametrage.TypeImportParametrable;
+import com.hr.referentiel.importation.parametrage.ParametrageImport;
+import com.hr.referentiel.importation.parametrage.ExigenceChamp;
 import com.hr.referentiel.domain.OrigineMouvementSolde;
 import com.hr.referentiel.domain.TypeMouvementSolde;
 import com.hr.referentiel.entity.Collaborateur;
@@ -54,7 +57,7 @@ class ImportSoldesServiceTest {
 		soldeService = mock(SoldeCongeService.class);
 		lotService = mock(SoldeLotService.class);
 		publisher = mock(RhNotificationPublisher.class);
-		service = new ImportSoldesService(mock(CollaborateurRepository.class), soldeService, publisher, lotService, horloge);
+		service = new ImportSoldesService(mock(CollaborateurRepository.class), soldeService, publisher, lotService, horloge, null);
 		ctx = new ImportSoldesService.Contexte();
 		colWeb = fiche("COL-WEB", "ACTIF");
 		colMob = fiche("COL-MOB", "ACTIF");
@@ -182,16 +185,16 @@ class ImportSoldesServiceTest {
 	@DisplayName("C3-12 : analyse le 05/12 à Tunis -> avertissement global ACQUISITION_RECENTE ; le 06/12 -> aucun ; 30/11 23:30 UTC = 01/12 Tunis -> avertissement")
 	void avertissementDebutDeMois() {
 		horloge = Clock.fixed(Instant.parse("2026-12-05T10:00:00Z"), ZoneOffset.UTC);
-		service = new ImportSoldesService(mock(CollaborateurRepository.class), soldeService, publisher, lotService, horloge);
+		service = new ImportSoldesService(mock(CollaborateurRepository.class), soldeService, publisher, lotService, horloge, null);
 		assertThat(service.avertissementsFichier()).extracting(p -> p.code()).containsExactly("ACQUISITION_RECENTE");
 		service = new ImportSoldesService(mock(CollaborateurRepository.class), soldeService, publisher, lotService,
-				Clock.fixed(Instant.parse("2026-12-06T10:00:00Z"), ZoneOffset.UTC));
+				Clock.fixed(Instant.parse("2026-12-06T10:00:00Z"), ZoneOffset.UTC), null);
 		assertThat(service.avertissementsFichier()).isEmpty();
 		service = new ImportSoldesService(mock(CollaborateurRepository.class), soldeService, publisher, lotService,
-				Clock.fixed(Instant.parse("2026-11-30T23:30:00Z"), ZoneOffset.UTC));
+				Clock.fixed(Instant.parse("2026-11-30T23:30:00Z"), ZoneOffset.UTC), null);
 		assertThat(service.avertissementsFichier()).hasSize(1);
 		service = new ImportSoldesService(mock(CollaborateurRepository.class), soldeService, publisher, lotService,
-				Clock.fixed(Instant.parse("2026-12-05T23:30:00Z"), ZoneOffset.UTC));
+				Clock.fixed(Instant.parse("2026-12-05T23:30:00Z"), ZoneOffset.UTC), null);
 		assertThat(service.avertissementsFichier()).isEmpty(); // 06/12 00:30 à Tunis
 	}
 
@@ -205,7 +208,7 @@ class ImportSoldesServiceTest {
 				boolean webModifie = d.collaborateurId().equals(colWeb.getId());
 				// COL-WEB : un congé pris (11 -> cible 12,5 = +1,5) entre l'analyse et la confirmation ; COL-MOB : devenu égal
 				r.add(new SoldeLotService.Resultat(d.collaborateurId(), webModifie ? new BigDecimal("1.5") : null,
-						d.cible(), d.motif()));
+						d.cible(), d.motif(), null));
 			}
 			return r;
 		});
@@ -226,5 +229,36 @@ class ImportSoldesServiceTest {
 		assertThat(app.ecartsReels().get("col-mob")).isNull();
 		verify(publisher).notifierSoldeAjuste(eq(colWeb), eq(new BigDecimal("1.5")), eq(new BigDecimal("12.5")), eq("Reprise des soldes"));
 		verify(publisher, never()).notifierSoldeAjuste(eq(colMob), any(), any(), any());
+	}
+
+	// ─── Exigences paramétrées (ADR-IMPORT-CHAMPS § 6, T2-9) ────────────────────
+
+	private static ParametrageImport param(ExigenceChamp motif, String enTeteMotif) {
+		return CacheParametrageDeTest.regler(ParametrageImport.parDefaut(TypeImportParametrable.SOLDES), "MOTIF", enTeteMotif, null, motif,
+				null);
+	}
+
+	@Test
+	@DisplayName("T2-9 : Motif « toujours obligatoire » -> ligne à motif vide = CHAMP_OBLIGATOIRE « Justificatif obligatoire. », sans repli sur le motif global ; ligne renseignée importable")
+	void motifToujoursObligatoire() {
+		ParametrageImport p = param(ExigenceChamp.TOUJOURS, "Justificatif");
+		List<Colonne> c = colonnes("Matricule", "Solde", "Commentaire");
+		Evaluation e = service.evaluer(lignes(l("COL-WEB", "5", ""), l("COL-MOB", "6", "Report 2025")), c, "Reprise globale",
+				drh.getId(), ctx, p);
+		assertThat(aErreur(e.lignes().get(0), "CHAMP_OBLIGATOIRE")).isTrue();
+		assertThat(e.lignes().get(0).erreurs().get(0).message()).isEqualTo("Justificatif obligatoire.");
+		assertThat(e.lignes().get(0).action()).isEqualTo("ERREUR");
+		assertThat(e.lignes().get(1).enErreur()).isFalse();
+		assertThat(e.lignes().get(1).motif()).isEqualTo("Report 2025");
+	}
+
+	@Test
+	@DisplayName("T2-9 / D-S09.g : Motif facultatif -> le motif global remplace le motif de ligne vide, comportement inchangé")
+	void motifFacultatifInchange() {
+		ParametrageImport p = param(null, null);
+		Evaluation e = service.evaluer(lignes(l("COL-WEB", "5", "")), colonnes("Matricule", "Solde", "Commentaire"), "Reprise globale",
+				drh.getId(), ctx, p);
+		assertThat(e.lignes().get(0).enErreur()).isFalse();
+		assertThat(e.lignes().get(0).motif()).isEqualTo("Reprise globale");
 	}
 }

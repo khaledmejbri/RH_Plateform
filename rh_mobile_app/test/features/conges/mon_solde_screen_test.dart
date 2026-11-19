@@ -83,6 +83,36 @@ void main() {
     expect(find.text('Report 2025 — Amel Trabelsi'), findsOneWidget);
   });
 
+  testWidgets('ajustement : valeurs des champs personnalisés sous le mouvement', (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final repo = _FauxRepo(
+      solde: const SoldeConge(acquis: 2, reserve: 0, disponible: 2),
+      pages: [
+        PageMouvements(
+          contenu: [
+            MouvementSolde.fromJson({
+              'type': 'AJUSTEMENT',
+              'type_libelle': 'Ajustement',
+              'nombre': 2,
+              'solde_apres': 2,
+              'champs_personnalises': [
+                {'libelle': 'Référence décision', 'valeur_affichee': 'DG-2026-15'},
+              ],
+            }),
+          ],
+          page: 0,
+          totalPages: 1,
+          totalElements: 1,
+        ),
+      ],
+    );
+    await tester.pumpWidget(_app(repo, const MonSoldeScreen()));
+    await tester.pumpAndSettle();
+    expect(find.text('Référence décision : DG-2026-15'), findsOneWidget);
+  });
+
   testWidgets('aucun mouvement : état vide', (tester) async {
     final repo = _FauxRepo(solde: const SoldeConge(acquis: 0, reserve: 0, disponible: 0));
     await tester.pumpWidget(_app(repo, const MonSoldeScreen()));

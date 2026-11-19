@@ -57,7 +57,10 @@ class AjustementSoldeServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new AjustementSoldeService(collaborateurRepository, connecte, auteurResolver, soldeService, lecture, publisher);
+		service = new AjustementSoldeService(collaborateurRepository, connecte, auteurResolver, soldeService, lecture, publisher,
+				org.mockito.Mockito.mock(com.hr.referentiel.champsperso.DefinitionsPerso.class),
+				org.mockito.Mockito.mock(com.hr.referentiel.champsperso.ValeursPersoFicheService.class),
+				org.mockito.Mockito.mock(com.hr.referentiel.champsperso.ValeursPersoJdbc.class));
 		cible = fiche("COL-WEB");
 		drh = fiche("DRH01");
 		solde = new SoldeConge();
@@ -218,5 +221,53 @@ class AjustementSoldeServiceTest {
 	void ordre422Avant409() {
 		assertThatThrownBy(() -> service.ajuster(cible.getId(), ecart(0, "Motif ok", 1L), jwt))
 				.satisfies(e -> assertThat(code(e)).isEqualTo("AJUSTEMENT_NUL"));
+	}
+
+	// ─── T8 : champs personnalisés sur l'ajustement manuel ──────────────────────
+
+	private AjustementSoldeService serviceAvecPerso(com.hr.referentiel.champsperso.ValeursPersoFicheService valeurs,
+			com.hr.referentiel.champsperso.ValeursPersoJdbc jdbcValeurs) {
+		return new AjustementSoldeService(collaborateurRepository, connecte, auteurResolver, soldeService, lecture, publisher,
+				org.mockito.Mockito.mock(com.hr.referentiel.champsperso.DefinitionsPerso.class), valeurs, jdbcValeurs);
+	}
+
+	@Test
+	@DisplayName("T8-5 : les valeurs personnalisées valides sont insérées sur le mouvement créé, dans la même transaction")
+	void valeursPersonnaliseesInserees() {
+		com.hr.referentiel.champsperso.ValeursPersoFicheService valeurs = org.mockito.Mockito.mock(com.hr.referentiel.champsperso.ValeursPersoFicheService.class);
+		com.hr.referentiel.champsperso.ValeursPersoJdbc jdbcValeurs = org.mockito.Mockito.mock(com.hr.referentiel.champsperso.ValeursPersoJdbc.class);
+		when(valeurs.controler(any(), any())).thenReturn(java.util.Map.of("PERSO_REFERENCE_DECISION",
+				com.hr.referentiel.champsperso.ValeurTypee.texte("DG-2026-15")));
+		serviceAvecPerso(valeurs, jdbcValeurs).ajuster(cible.getId(),
+				new AjustementRequest(2, null, "Report 2025", 3L, java.util.Map.of("PERSO_REFERENCE_DECISION", "DG-2026-15")), jwt);
+		@SuppressWarnings("unchecked")
+		org.mockito.ArgumentCaptor<java.util.List<com.hr.referentiel.champsperso.ValeursPersoJdbc.Ecriture>> ecritures =
+				org.mockito.ArgumentCaptor.forClass(java.util.List.class);
+		verify(jdbcValeurs).insererMouvements(ecritures.capture());
+		assertThat(ecritures.getValue()).singleElement().satisfies(e -> {
+			assertThat(e.code()).isEqualTo("PERSO_REFERENCE_DECISION");
+			assertThat(e.valeur().texte()).isEqualTo("DG-2026-15");
+		});
+	}
+
+	@Test
+	@DisplayName("T8-5 : une valeur personnalisée invalide (400) est contrôlée après le corps et AVANT les 422 : aucun mouvement n'est créé")
+	void valeurPersonnaliseeInvalideAvantLes422() {
+		com.hr.referentiel.champsperso.ValeursPersoFicheService valeurs = org.mockito.Mockito.mock(com.hr.referentiel.champsperso.ValeursPersoFicheService.class);
+		when(valeurs.controler(any(), any())).thenThrow(ReferentielMetierException.badRequest("VALEUR_INVALIDE", "Référence : invalide."));
+		AjustementSoldeService s = serviceAvecPerso(valeurs, org.mockito.Mockito.mock(com.hr.referentiel.champsperso.ValeursPersoJdbc.class));
+		// ajustement nul (422 AJUSTEMENT_NUL) avec une valeur invalide : c'est la valeur qui est signalée
+		AjustementRequest nulAvecPerso = new AjustementRequest(0, null, "Correction", 3L, java.util.Map.of("PERSO_X", "?"));
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> s.ajuster(cible.getId(), nulAvecPerso, jwt))
+				.isInstanceOf(ReferentielMetierException.class).extracting(this::codeDe).isEqualTo("VALEUR_INVALIDE");
+		// corps invalide (motif absent) : l'erreur de corps passe avant la valeur personnalisée
+		AjustementRequest sansMotif = new AjustementRequest(2, null, "", 3L, java.util.Map.of("PERSO_X", "?"));
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> s.ajuster(cible.getId(), sansMotif, jwt))
+				.isInstanceOf(ReferentielMetierException.class).extracting(this::codeDe).isEqualTo("MOTIF_OBLIGATOIRE");
+		verify(soldeService, org.mockito.Mockito.never()).enregistrer(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+	}
+
+	private String codeDe(Object t) {
+		return ((ReferentielMetierException) t).getCode();
 	}
 }

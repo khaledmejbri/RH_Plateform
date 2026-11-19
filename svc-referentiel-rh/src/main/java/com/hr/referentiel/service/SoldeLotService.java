@@ -36,8 +36,8 @@ public class SoldeLotService {
 	public record Ajustement(UUID collaborateurId, BigDecimal cible, String motif) {
 	}
 
-	/** Résultat par fiche : écart réellement appliqué ({@code null} = déjà égal à la cible, aucun mouvement). */
-	public record Resultat(UUID collaborateurId, BigDecimal ecart, BigDecimal soldeApres, String motif) {
+	/** Résultat par fiche : écart réellement appliqué ({@code null} = déjà égal à la cible, aucun mouvement) et identifiant du mouvement créé (null si aucun). */
+	public record Resultat(UUID collaborateurId, BigDecimal ecart, BigDecimal soldeApres, String motif, UUID mouvementId) {
 	}
 
 	private final JdbcTemplate jdbc;
@@ -72,7 +72,7 @@ public class SoldeLotService {
 			BigDecimal actuel = etat.get(a.collaborateurId());
 			BigDecimal ecart = a.cible().subtract(actuel).setScale(1);
 			if (ecart.signum() == 0) {
-				resultats.add(new Resultat(a.collaborateurId(), null, actuel, a.motif()));
+				resultats.add(new Resultat(a.collaborateurId(), null, actuel, a.motif(), null));
 				continue;
 			}
 			BigDecimal apres = actuel.add(ecart).setScale(1);
@@ -84,7 +84,7 @@ public class SoldeLotService {
 			mouvements.add(new Object[] {mouvementId, societeId, a.collaborateurId(), TypeMouvementSolde.AJUSTEMENT.name(), ecart, apres,
 					OrigineMouvementSolde.IMPORT.name(), a.motif(), importId, auteur.compteId(), auteur.nom(), maintenant});
 			majSoldes.add(new Object[] {apres, mouvementId, maintenant, societeId, a.collaborateurId()});
-			resultats.add(new Resultat(a.collaborateurId(), ecart, apres, a.motif()));
+			resultats.add(new Resultat(a.collaborateurId(), ecart, apres, a.motif(), mouvementId));
 		}
 		jdbc.batchUpdate("insert into rh_mouvement_solde_conge (id, societe_id, collaborateur_id, type, nombre, solde_apres, origine, motif, "
 				+ "import_id, auteur_compte_id, auteur_nom, cree_le) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", mouvements);

@@ -12,9 +12,17 @@ import {
   type Analyse,
   type CompteRendu,
   type LigneAnalyse,
+  type ChampDisponible,
   type TypeImport,
 } from '../../api/importsApi';
+import {
+  ajouterSynonyme,
+  getParametrageImport,
+  messageParametrageImport,
+  type TypeParametrable,
+} from '../../api/importParametrageApi';
 import { ApiMetierError, type PageContrat } from '../../api/metierApi';
+import { useLectureSeule } from '../../auth/useLectureSeule';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { Chip, Icon, LoadingState, type Tone } from '../../components/ui';
 import { formatDateHeure, formatJoursNombre, formatJoursSigne, TIRET } from '../../utils/format';
@@ -40,6 +48,20 @@ function toneAction(action: string): Tone {
   return 'neutral';
 }
 
+/** Libellé d'un champ dans la liste de correspondance : en-tête réglé + exigence. */
+function libelleChamp(d: ChampDisponible): string {
+  if (d.personnalise) {
+    const type = d.type_valeur_libelle ? `, ${d.type_valeur_libelle.toLowerCase()}` : '';
+    const exig = d.exigence === 'TOUJOURS' ? ', toujours obligatoire' : d.exigence === 'CREATION' ? ', obligatoire à la création' : '';
+    return `${d.libelle} (personnalisé${type}${exig})`;
+  }
+  if (d.exigence === 'CREATION') return `${d.libelle} (obligatoire à la création)`;
+  if (d.exigence === 'TOUJOURS') return `${d.libelle} (toujours obligatoire)`;
+  return d.libelle;
+}
+
+type Avis = { genre: 'succes' | 'attention'; message: string };
+
 type Props = {
   type: TypeImport;
   /** Libellé du bouton de sortie du compte rendu et destination (la liste d'origine est rechargée à l'arrivée). */
@@ -50,7 +72,9 @@ type Props = {
 /** Assistant d'import générique : dépôt, correspondance des colonnes, aperçu ligne par ligne, confirmation, compte rendu. */
 export default function AssistantImport({ type, libelleSortie, onTermine }: Props) {
   const confirm = useConfirm();
+  const lectureSeule = useLectureSeule();
   const soldes = type === 'SOLDES';
+  const typeParametrable = type.toLowerCase() as TypeParametrable;
   const [etape, setEtape] = useState<Etape>('depot');
   const [fichier, setFichier] = useState<File | null>(null);
   const [erreurFichier, setErreurFichier] = useState<string | null>(null);
@@ -63,6 +87,10 @@ export default function AssistantImport({ type, libelleSortie, onTermine }: Prop
   const [compteRendu, setCompteRendu] = useState<CompteRendu | null>(null);
   const [telechargement, setTelechargement] = useState(false);
   const titreRef = useRef<HTMLHeadingElement>(null);
+  /** Choix manuels en attente pour une colonne non reconnue (index → champ), avant l'enregistrement de la correspondance. */
+  const [enAttente, setEnAttente] = useState<Record<number, string>>({});
+  const [retenir, setRetenir] = useState<Record<number, boolean>>({});
+  const [avis, setAvis] = useState<Avis | null>(null);
 
   // Focus sur le titre de chaque étape (clavier et lecteurs d'écran).
   useEffect(() => { titreRef.current?.focus(); }, [etape]);
@@ -70,6 +98,9 @@ export default function AssistantImport({ type, libelleSortie, onTermine }: Prop
   function retourAuDepot(message: string | null) {
     setAnalyse(null);
     setCompteRendu(null);
+    setEnAttente({});
+    setRetenir({});
+    setAvis(null);
     setEtape('depot');
     setErreur(message);
   }
@@ -127,8 +158,47 @@ export default function AssistantImport({ type, libelleSortie, onTermine }: Prop
     }
   }
 
+  function annulerAttente(index: number) {
+    setEnAttente((m) => { const { [index]: _a, ...reste } = m; return reste; });
+    setRetenir((m) => { const { [index]: _r, ...reste } = m; return reste; });
+  }
+
+  /** Enregistre la correspondance d'une colonne ; case cochée : P1 (version) puis P3, et I5 dans tous les cas. */
+  async function appliquerAttente(index: number) {
+    if (!analyse || occupe) return;
+    const champ = enAttente[index];
+    const colonne = analyse.colonnes.find((c) => c.index === index);
+    if (!champ || !colonne) return;
+    const cible = analyse.champs_disponibles.find((d) => d.champ === champ);
+    let nouvelAvis: Avis | null = null;
+    if (retenir[index]) {
+      try {
+        const p = await getParametrageImport(typeParametrable);
+        await ajouterSynonyme(typeParametrable, champ, colonne.en_tete, p.version);
+        nouvelAvis = { genre: 'succes', message: `« ${colonne.en_tete} » est retenu comme synonyme de « ${cible?.libelle ?? 'ce champ'} » pour les prochains imports.` };
+      } catch (e) {
+        nouvelAvis = {
+          genre: 'attention',
+          message: `Le synonyme n’a pas été retenu : ${messageParametrageImport(e)} La correspondance est enregistrée quand même.`,
+        };
+      }
+    }
+    const colonnes = analyse.colonnes.map((c) => ({ index: c.index, champ: c.index === index ? champ : c.champ }));
+    annulerAttente(index);
+    await recalculer(colonnes, creerComptes);
+    setAvis(nouvelAvis);
+  }
+
   function changerColonne(index: number, champ: string) {
     if (!analyse) return;
+    const colonne = analyse.colonnes.find((c) => c.index === index);
+    // Colonne non reconnue attribuée à la main : on attend l'enregistrement pour proposer « Retenir comme synonyme ».
+    if (champ && colonne && colonne.champ === null && colonne.etat === 'IGNOREE' && !lectureSeule) {
+      setAvis(null);
+      setEnAttente((m) => ({ ...m, [index]: champ }));
+      return;
+    }
+    annulerAttente(index);
     const colonnes = analyse.colonnes.map((c) => ({ index: c.index, champ: c.index === index ? (champ || null) : c.champ }));
     void recalculer(colonnes, creerComptes);
   }
@@ -241,6 +311,14 @@ export default function AssistantImport({ type, libelleSortie, onTermine }: Prop
               <span className="muted small"> — Un courriel de bienvenue est envoyé à chaque nouvelle fiche qui a un courriel.</span>
             </label>
           ) : null}
+          {avis ? (
+            <div className={`alert ${avis.genre === 'succes' ? 'alert--success' : 'alert--warning'}`} role="status">{avis.message}</div>
+          ) : null}
+          <p className="small">
+            <a href={`/app/parametres?element=import-excel&onglet=${typeParametrable}`} target="_blank" rel="noopener noreferrer">
+              Paramétrer les colonnes (nouvel onglet)
+            </a>
+          </p>
           <div className="table-wrap" aria-busy={occupe}>
             <table className="data-table">
               <caption className="sr-only">Correspondance entre les colonnes du fichier et les champs</caption>
@@ -253,13 +331,28 @@ export default function AssistantImport({ type, libelleSortie, onTermine }: Prop
                     <td>{c.en_tete || `Colonne ${c.index + 1}`}</td>
                     <td>
                       <label className="sr-only" htmlFor={`col-${c.index}`}>Champ pour la colonne {c.en_tete || c.index + 1}</label>
-                      <select id={`col-${c.index}`} className="field-input" value={c.champ ?? ''} disabled={occupe}
+                      <select id={`col-${c.index}`} className="field-input" value={enAttente[c.index] ?? c.champ ?? ''} disabled={occupe}
                         onChange={(e) => changerColonne(c.index, e.target.value)}>
                         <option value="">Ignorer</option>
                         {analyse.champs_disponibles.map((d) => (
-                          <option key={d.champ} value={d.champ}>{d.libelle}</option>
+                          <option key={d.champ} value={d.champ}>{libelleChamp(d)}</option>
                         ))}
                       </select>
+                      {enAttente[c.index] ? (
+                        <div>
+                          <label className="import__case">
+                            <input type="checkbox" checked={!!retenir[c.index]} disabled={occupe}
+                              onChange={(e) => setRetenir((m) => ({ ...m, [c.index]: e.target.checked }))} />{' '}
+                            Retenir « {c.en_tete} » comme synonyme de {analyse.champs_disponibles.find((d) => d.champ === enAttente[c.index])?.libelle ?? 'ce champ'}
+                          </label>
+                          <button type="button" className="btn btn--primary btn--sm" disabled={occupe} onClick={() => void appliquerAttente(c.index)}>
+                            Enregistrer la correspondance
+                          </button>{' '}
+                          <button type="button" className="btn btn--ghost btn--sm" disabled={occupe} onClick={() => annulerAttente(c.index)}>
+                            Annuler
+                          </button>
+                        </div>
+                      ) : null}
                     </td>
                     <td>
                       {c.etat === 'RECONNUE' ? <Chip tone="success" icon="check">Reconnue</Chip>

@@ -1,5 +1,11 @@
 package com.hr.referentiel.service;
 
+import com.hr.referentiel.champsperso.DefinitionsPerso.Def;
+import com.hr.referentiel.champsperso.FormatValeurPerso;
+import com.hr.referentiel.champsperso.ValeurTypee;
+import com.hr.referentiel.champsperso.ValeursPersoMouvementLecture;
+import com.hr.referentiel.champsperso.ValeursPersoMouvementLecture.Extras;
+import com.hr.referentiel.champsperso.ValeursPersoMouvementLecture.Vue;
 import com.hr.referentiel.domain.TypeMouvementSolde;
 import com.hr.referentiel.dto.PageReferentielResponse;
 import com.hr.referentiel.dto.SoldeDtos.DernierMouvement;
@@ -49,10 +55,13 @@ public class SoldeCongeLectureService {
 	private final CollaborateurRepository collaborateurRepository;
 	private final MouvementSoldeCongeRepository mouvementRepository;
 	private final ParametreService parametreService;
+	private final ValeursPersoMouvementLecture valeursPerso;
 
 	public SoldeCongeLectureService(SoldeCongeService soldeService, CongeDecompteService decompteService,
 			CollaborateurConnecteService collaborateurConnecteService, CollaborateurRepository collaborateurRepository,
-			MouvementSoldeCongeRepository mouvementRepository, ParametreService parametreService) {
+			MouvementSoldeCongeRepository mouvementRepository, ParametreService parametreService,
+			ValeursPersoMouvementLecture valeursPerso) {
+		this.valeursPerso = valeursPerso;
 		this.soldeService = soldeService;
 		this.decompteService = decompteService;
 		this.collaborateurConnecteService = collaborateurConnecteService;
@@ -73,7 +82,7 @@ public class SoldeCongeLectureService {
 
 	@Transactional(readOnly = true)
 	public PageReferentielResponse<Mouvement> mesMouvements(Jwt jwt, String type, int page, int taille) {
-		return mouvements(ficheDe(jwt).getId(), type, page, taille);
+		return mouvements(ficheDe(jwt).getId(), type, page, taille, Vue.COLLABORATEUR);
 	}
 
 	@Transactional(readOnly = true)
@@ -134,20 +143,31 @@ public class SoldeCongeLectureService {
 	@Transactional(readOnly = true)
 	public PageReferentielResponse<Mouvement> mouvementsDe(UUID collaborateurId, String type, int page, int taille) {
 		exiger(collaborateurId);
-		return mouvements(collaborateurId, type, page, taille);
+		return mouvements(collaborateurId, type, page, taille, Vue.BACKOFFICE);
 	}
 
 	@Transactional(readOnly = true)
 	public byte[] exporterMouvements(UUID collaborateurId) {
 		exiger(collaborateurId);
-		CsvFrancais csv = new CsvFrancais().ligne(List.of("Date", "Type", "Nombre", "Solde après", "Auteur", "Origine",
+		List<Def> champs = valeursPerso.champsActifs(); // une colonne par champ « soldes » actif, ordre réglé
+		List<String> entetes = new ArrayList<>(List.of("Date", "Type", "Nombre", "Solde après", "Auteur", "Origine",
 				"Motif", "Demande"));
-		for (MouvementSoldeConge m : soldeService.mouvementsDe(collaborateurId)) {
+		champs.forEach(d -> entetes.add(d.champ().getLibelle()));
+		CsvFrancais csv = new CsvFrancais().ligne(entetes);
+		List<MouvementSoldeConge> mouvements = soldeService.mouvementsDe(collaborateurId);
+		Map<UUID, Map<String, ValeurTypee>> valeurs = valeursPerso.valeurs(mouvements.stream().map(MouvementSoldeConge::getId).toList());
+		for (MouvementSoldeConge m : mouvements) {
 			Mouvement v = vers(m);
-			csv.ligne(List.of(CsvFrancais.date(m.getCreeLe()), CsvFrancais.texte(v.typeLibelle()),
+			List<String> cellules = new ArrayList<>(List.of(CsvFrancais.date(m.getCreeLe()), CsvFrancais.texte(v.typeLibelle()),
 					CsvFrancais.nombre(m.getNombre()), CsvFrancais.nombre(m.getSoldeApres()),
 					CsvFrancais.texte(m.getAuteurNom()), CsvFrancais.texte(v.origineLibelle()),
 					CsvFrancais.texte(m.getMotif()), CsvFrancais.texte(m.getDemandeNumero())));
+			Map<String, ValeurTypee> mv = valeurs.getOrDefault(m.getId(), Map.of());
+			for (Def d : champs) {
+				ValeurTypee val = mv.get(d.champ().getCode());
+				cellules.add(val == null ? "" : CsvFrancais.texte(FormatValeurPerso.affichage(val, d.definition())));
+			}
+			csv.ligne(cellules);
 		}
 		return csv.octets();
 	}
@@ -159,7 +179,7 @@ public class SoldeCongeLectureService {
 				() -> ReferentielMetierException.notFound("COLLABORATEUR_INTROUVABLE", "Collaborateur introuvable."));
 	}
 
-	private PageReferentielResponse<Mouvement> mouvements(UUID collaborateurId, String type, int page, int taille) {
+	private PageReferentielResponse<Mouvement> mouvements(UUID collaborateurId, String type, int page, int taille, Vue vue) {
 		validerTaille(taille);
 		String code = null;
 		if (type != null && !type.isBlank()) {
@@ -173,8 +193,23 @@ public class SoldeCongeLectureService {
 		Page<MouvementSoldeConge> r = code == null
 				? mouvementRepository.findByCollaborateurIdOrderByCreeLeDescIdDesc(collaborateurId, pr)
 				: mouvementRepository.findByCollaborateurIdAndTypeOrderByCreeLeDescIdDesc(collaborateurId, code, pr);
-		return new PageReferentielResponse<>(r.getContent().stream().map(this::vers).toList(), r.getTotalElements(),
-				r.getTotalPages(), r.getNumber(), taille);
+		Map<UUID, Extras> extras = valeursPerso.pour(r.getContent().stream().map(MouvementSoldeConge::getId).toList(), vue);
+		return new PageReferentielResponse<>(r.getContent().stream().map(m -> avec(vers(m), extras.get(m.getId()))).toList(),
+				r.getTotalElements(), r.getTotalPages(), r.getNumber(), taille);
+	}
+
+	/** Mouvement d'ajustement créé à l'instant : valeurs personnalisées en vue back-office. */
+	public Mouvement versBackoffice(MouvementSoldeConge m) {
+		return avec(vers(m), valeursPerso.pour(List.of(m.getId()), Vue.BACKOFFICE).get(m.getId()));
+	}
+
+	private static Mouvement avec(Mouvement m, Extras e) {
+		if (e == null) {
+			return m;
+		}
+		return new Mouvement(m.type(), m.typeLibelle(), m.nombre(), m.soldeApres(), m.creeLe(), m.auteurNom(), m.origine(),
+				m.origineLibelle(), m.motif(), m.demandeId(), m.demandeNumero(), m.moisAcquisition(), m.moisAcquisitionLibelle(),
+				e.champs(), e.desactives());
 	}
 
 	/** Mouvement tel que servi à l'écran : libellés issus des Paramètres, aucun code ni identifiant technique. */

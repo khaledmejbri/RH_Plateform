@@ -13,7 +13,8 @@ import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface CollaborateurRepository extends JpaRepository<Collaborateur, UUID> {
+public interface CollaborateurRepository extends JpaRepository<Collaborateur, UUID>,
+		org.springframework.data.jpa.repository.JpaSpecificationExecutor<Collaborateur> {
 
 	/** D-F06 : verrou d'écriture sur la fiche pour sérialiser deux demandes simultanées du même collaborateur. */
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -33,19 +34,10 @@ public interface CollaborateurRepository extends JpaRepository<Collaborateur, UU
 	@EntityGraph(attributePaths = {"unite", "superieur"})
 	Page<Collaborateur> findAll(Pageable pageable);
 
-	@EntityGraph(attributePaths = {"unite", "superieur"})
-	Page<Collaborateur> findByStatutIgnoreCase(String statut, Pageable pageable);
-
-	@EntityGraph(attributePaths = {"unite", "superieur"})
-	Page<Collaborateur> findByUniteId(UUID uniteId, Pageable pageable);
-
 	/** Tous les collaborateurs d'une unité sans pagination (pour le workflow RO). */
 	@EntityGraph(attributePaths = {"unite", "superieur"})
 	@Query("select c from Collaborateur c where c.unite.id = :uniteId")
 	java.util.List<Collaborateur> findByUniteId(@Param("uniteId") UUID uniteId);
-
-	@EntityGraph(attributePaths = {"unite", "superieur"})
-	Page<Collaborateur> findByStatutIgnoreCaseAndUniteId(String statut, UUID uniteId, Pageable pageable);
 
 
 	/**

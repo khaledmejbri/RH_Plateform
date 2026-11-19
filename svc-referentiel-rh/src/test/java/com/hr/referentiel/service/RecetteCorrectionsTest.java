@@ -78,7 +78,8 @@ class RecetteCorrectionsTest {
 		CollaborateurConnecteService connecte = mock(CollaborateurConnecteService.class);
 		when(connecte.resoudre(any())).thenReturn(Optional.empty());
 		return new SoldeCongeLectureService(soldes, mock(CongeDecompteService.class), connecte, repo,
-				mock(MouvementSoldeCongeRepository.class), parametres);
+				mock(MouvementSoldeCongeRepository.class), parametres,
+				mock(com.hr.referentiel.champsperso.ValeursPersoMouvementLecture.class));
 	}
 
 	private static Collaborateur fiche(String matricule, String prenom, String nom) {

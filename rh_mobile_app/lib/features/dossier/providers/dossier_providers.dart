@@ -6,11 +6,17 @@ import 'package:go_router/go_router.dart';
 import '../../../core/widgets/rh_ui.dart';
 import '../../pointage/data/journee_models.dart';
 import '../../pointage/data/presence_repository.dart';
+import '../data/champs_perso_models.dart';
 import '../data/dossier_models.dart';
 import '../data/dossier_repository.dart';
 
 final monDossierProvider = FutureProvider.autoDispose<Hierarchie>((ref) {
   return ref.watch(dossierRepositoryProvider).maHierarchie();
+});
+
+/// Informations complémentaires de l'appelant (V4) : rien n'est gardé au-delà de l'écran.
+final mesChampsPersoProvider = FutureProvider.autoDispose<List<ChampPersoAffiche>>((ref) {
+  return ref.watch(dossierRepositoryProvider).mesChampsPerso();
 });
 
 /// Collaborateurs dont l'appelant est le valideur (A9).

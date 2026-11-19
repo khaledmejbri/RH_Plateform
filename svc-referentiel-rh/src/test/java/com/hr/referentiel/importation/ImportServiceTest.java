@@ -1,5 +1,8 @@
 package com.hr.referentiel.importation;
 
+import com.hr.referentiel.importation.parametrage.TypeImportParametrable;
+import com.hr.referentiel.importation.parametrage.ParametrageImport;
+import com.hr.referentiel.importation.parametrage.ExigenceChamp;
 import com.hr.referentiel.domain.NatureParametre;
 import com.hr.referentiel.dto.PageReferentielResponse;
 import com.hr.referentiel.entity.Collaborateur;
@@ -141,6 +144,7 @@ class ImportServiceTest {
 	private CollaborateurConnecteService connecte;
 	private SoldeCongeService soldeService;
 	private com.hr.referentiel.service.SoldeLotService lotService;
+	private final CacheParametrageDeTest cacheParametrage = new CacheParametrageDeTest();
 	private ImportService service;
 	private ImportCollaborateursService collaborateursService;
 	private ImportSoldesService soldesService;
@@ -206,16 +210,16 @@ class ImportServiceTest {
 		ObjectProvider<CollaborateurCompteDemandePublisher> provider = mock(ObjectProvider.class);
 		when(provider.getIfAvailable()).thenReturn(publisher);
 		collaborateursService = new ImportCollaborateursService(collaborateurRepository, uniteRepository,
-				cache, mock(ParametreService.class), provider, horloge);
+				cache, mock(ParametreService.class), provider, horloge, null, null);
 		soldesService = new ImportSoldesService(collaborateurRepository, soldeService,
-				mock(RhNotificationPublisher.class), lotService, horloge);
+				mock(RhNotificationPublisher.class), lotService, horloge, null);
 		jwtDrh = Jwt.withTokenValue("drh").header("alg", "none").subject("DRH01").claim("k", "drh").build();
 		jwtRh02 = Jwt.withTokenValue("rh02").header("alg", "none").subject("RH02").claim("k", "rh02").build();
 		when(auteurResolver.depuis(jwtDrh)).thenReturn(new AuteurParametre(compteDrh, "Amel Trabelsi"));
 		when(auteurResolver.depuis(jwtRh02)).thenReturn(new AuteurParametre(compteRh02, "Rima Aloui"));
 		when(connecte.resoudre(any())).thenReturn(Optional.empty());
 		service = new ImportService(analyseRepository, contenuRepository, ligneRepository, collaborateursService,
-				soldesService, identite, new ImportVerrou(jdbc), auteurResolver, connecte, JsonMapper.builder().build(), horloge, tm, 30);
+				soldesService, identite, new ImportVerrou(jdbc), auteurResolver, connecte, cacheParametrage, JsonMapper.builder().build(), horloge, tm, 30);
 	}
 
 	private static byte[] csv(String... lignes) {
@@ -392,7 +396,7 @@ class ImportServiceTest {
 	@DisplayName("critère 15 / C2-18 : 1 min 59 s après la dernière action -> accepté, 2 min 01 s avec délai réglé à 2 min -> 409 IMPORT_EXPIRE ; confirmée puis rejouée après expiration -> 409 IMPORT_DEJA_CONFIRME")
 	void expiration() {
 		ImportService court = new ImportService(analyseRepository, contenuRepository, ligneRepository, collaborateursService,
-				soldesService, identite, new ImportVerrou(jdbc), auteurResolver, connecte, JsonMapper.builder().build(), horloge, tm, 2);
+				soldesService, identite, new ImportVerrou(jdbc), auteurResolver, connecte, cacheParametrage, JsonMapper.builder().build(), horloge, tm, 2);
 		Analyse a = analyser(csv(ENTETE, BONNE_LIGNE_1), false);
 		Instant debut = horloge.maintenant;
 		horloge.maintenant = debut.plusSeconds(31 * 60);
@@ -558,7 +562,7 @@ class ImportServiceTest {
 		when(lotService.ajuster(any(), any(), any())).thenAnswer(i -> {
 			List<com.hr.referentiel.service.SoldeLotService.Ajustement> demandes = i.getArgument(0);
 			return demandes.stream().map(d -> new com.hr.referentiel.service.SoldeLotService.Resultat(d.collaborateurId(),
-					new BigDecimal("2.5"), d.cible(), d.motif())).toList();
+					new BigDecimal("2.5"), d.cible(), d.motif(), java.util.UUID.randomUUID())).toList();
 		});
 		Analyse a = service.analyserSoldes(new MockMultipartFile("fichier", "soldes.csv", "text/csv",
 				csv("N° matricule;Solde au 30/11;Observation", "COL-WEB;12,5;", "INCONNU;3;").clone()), null, jwtDrh);
@@ -657,5 +661,250 @@ class ImportServiceTest {
 		assertThatThrownBy(() -> service.obtenir(a.analyseId(), jwtDrh)).satisfies(e -> code(e, "ANALYSE_INTROUVABLE", 404));
 		assertThatThrownBy(() -> confirmer(a.analyseId(), jwtDrh)).satisfies(e -> code(e, "ANALYSE_INTROUVABLE", 404));
 		assertThatThrownBy(() -> service.fichierErreurs(a.analyseId(), jwtDrh)).satisfies(e -> code(e, "ANALYSE_INTROUVABLE", 404));
+	}
+
+	// ─── Paramétrage des champs (ADR-IMPORT-CHAMPS, T2) ─────────────────────────
+
+	private static ParametrageImport pc() {
+		return ParametrageImport.parDefaut(TypeImportParametrable.COLLABORATEURS);
+	}
+
+	private ImportService.ResultatStocke stocke(UUID analyseId) {
+		ImportContenu c = contenuRepository.findById(analyseId).orElseThrow();
+		try (java.util.zip.GZIPInputStream gz = new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(c.getResultat()))) {
+			return JsonMapper.builder().build().readValue(new String(gz.readAllBytes(), StandardCharsets.UTF_8),
+					ImportService.ResultatStocke.class);
+		} catch (java.io.IOException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	private void remplacerStocke(UUID analyseId, ImportService.ResultatStocke r) {
+		java.io.ByteArrayOutputStream sortie = new java.io.ByteArrayOutputStream();
+		try (java.util.zip.GZIPOutputStream gz = new java.util.zip.GZIPOutputStream(sortie)) {
+			gz.write(JsonMapper.builder().build().writeValueAsString(r).getBytes(StandardCharsets.UTF_8));
+		} catch (java.io.IOException e) {
+			throw new IllegalStateException(e);
+		}
+		ImportContenu c = contenuRepository.findById(analyseId).orElseThrow();
+		c.setResultat(sortie.toByteArray());
+		contenuRepository.save(c);
+	}
+
+	@Test
+	@DisplayName("T2-1 / D-I19 : le modèle suit le paramétrage (E-mail, Poste retiré, Unité en 2e), une seule ligne, archive zip standard ; le modèle des soldes est inchangé ; réimporté, toutes ses colonnes sont reconnues")
+	void modeleSuitLeParametrage() throws Exception {
+		ParametrageImport p = CacheParametrageDeTest.regler(pc(), "COURRIEL", "E-mail", null, null, null);
+		p = CacheParametrageDeTest.regler(p, "POSTE", null, false, null, null);
+		cacheParametrage.definir(CacheParametrageDeTest.deplacer(p, "UNITE", 1));
+
+		byte[] xlsx = service.modeleCollaborateurs();
+		Fichier modele = LectureFichier.lire("m.xlsx", xlsx);
+		assertThat(modele.lignes()).hasSize(1);
+		List<String> cellules = modele.lignes().get(0).cellules();
+		assertThat(cellules).hasSize(13).doesNotContain("Poste");
+		assertThat(cellules.subList(0, 6)).containsExactly("Matricule", "Unité", "Prénom", "Nom", "E-mail", "Fonction");
+		int entrees = 0;
+		try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(xlsx))) {
+			while (zip.getNextEntry() != null) {
+				zip.readAllBytes();
+				entrees++;
+			}
+		}
+		assertThat(entrees).isGreaterThanOrEqualTo(8);
+		assertThat(LectureFichier.lire("s.xlsx", service.modeleSoldes()).lignes().get(0).cellules())
+				.containsExactly("Matricule", "Solde", "Motif");
+		Analyse a = service.analyserCollaborateurs(new MockMultipartFile("fichier", "modele.xlsx", "application/octet-stream", xlsx),
+				false, jwtDrh);
+		assertThat(a.colonnes()).hasSize(13).allMatch(c -> "RECONNUE".equals(c.etat()));
+	}
+
+	@Test
+	@DisplayName("T2-1 : un en-tête réglé qui commencerait par = serait écrit protégé par une apostrophe dans le modèle (défense en profondeur)")
+	void modeleProtegeLesEnTetes() {
+		cacheParametrage.definir(CacheParametrageDeTest.regler(pc(), "COURRIEL", "=cmd|x", null, null, null));
+		assertThat(LectureFichier.lire("m.xlsx", service.modeleCollaborateurs()).lignes().get(0).cellules()).contains("'=cmd|x");
+	}
+
+	@Test
+	@DisplayName("T2-2 : synonyme « Mle » de Matricule -> colonne attribuée à Matricule, aucune colonne ignorée")
+	void synonymeRhReconnuALAnalyse() {
+		cacheParametrage.definir(CacheParametrageDeTest.regler(pc(), "MATRICULE", null, null, null, List.of("mle")));
+		Analyse a = analyser(csv("Mle;Prénom;NOM;Code unité", "NEW-1;Ada;Lovelace;DTECH-SW"), false);
+		assertThat(a.colonnes().get(0).champ()).isEqualTo("MATRICULE");
+		assertThat(a.colonnesIgnorees()).isEmpty();
+		assertThat(a.confirmable()).isTrue();
+	}
+
+	@Test
+	@DisplayName("T2-3 : synonyme par défaut « service » désactivé sur Unité -> « Service » signalée colonne ignorée ; actif, attribuée à Unité")
+	void synonymeDesactiveIgnore() {
+		String fichier = "Matricule;Nom;Prénom;Service";
+		cacheParametrage.definir(CacheParametrageDeTest.sansForme(pc(), "UNITE", "service"));
+		assertThat(analyser(csv(fichier, "NEW-1;Lovelace;Ada;DTECH-SW"), false).colonnesIgnorees()).containsExactly("Service");
+		cacheParametrage.definir(pc());
+		Analyse active = analyser(csv(fichier, "NEW-1;Lovelace;Ada;DTECH-SW"), false);
+		assertThat(active.colonnesIgnorees()).isEmpty();
+		assertThat(active.colonnes().get(3).champ()).isEqualTo("UNITE");
+	}
+
+	@Test
+	@DisplayName("T2-4 / D-I19 : Poste retiré du modèle mais présent dans le fichier -> colonne attribuée à Poste, mise à jour proposée avant -> après")
+	void champHorsModeleToujoursImporte() {
+		cacheParametrage.definir(CacheParametrageDeTest.regler(pc(), "POSTE", null, false, null, null));
+		Analyse a = analyser(csv("Matricule;Poste", "COL-WEB;Architecte"), false);
+		assertThat(a.colonnes().get(1).champ()).isEqualTo("POSTE");
+		LigneAnalyse l = a.lignes().getContenu().get(0);
+		assertThat(l.action()).isEqualTo("MISE_A_JOUR");
+		assertThat(l.modifications()).hasSize(1);
+		assertThat(l.modifications().get(0).avant()).isEqualTo("Développeur");
+		assertThat(l.modifications().get(0).apres()).isEqualTo("Architecte");
+	}
+
+	@Test
+	@DisplayName("T2-7 : Statut « toujours obligatoire » et fichier sans colonne Statut -> COLONNE_OBLIGATOIRE_ABSENTE (non confirmable, 422 ERREUR_DE_FICHIER) ; après correction de la correspondance, l'erreur est levée")
+	void colonneObligatoireAbsente() {
+		cacheParametrage.definir(CacheParametrageDeTest.regler(pc(), "STATUT", null, null, ExigenceChamp.TOUJOURS, null));
+		Analyse a = analyser(csv(ENTETE + ";Situation", BONNE_LIGNE_1 + ";Actif"), false);
+		assertThat(a.erreursFichier()).extracting(ImportDtos.ProblemeVue::code).containsExactly("COLONNE_OBLIGATOIRE_ABSENTE");
+		assertThat(a.erreursFichier().get(0).message()).isEqualTo("Aucune colonne ne désigne le champ « Statut ».");
+		assertThat(a.confirmable()).isFalse();
+		assertThatThrownBy(() -> confirmer(a.analyseId(), jwtDrh)).satisfies(e -> code(e, "ERREUR_DE_FICHIER", 422));
+
+		Analyse corrigee = service.corriger(a.analyseId(), new CorrespondanceRequest(null, List.of(new ColonneChoix(0, "MATRICULE"),
+				new ColonneChoix(1, "PRENOM"), new ColonneChoix(2, "NOM"), new ColonneChoix(3, "COURRIEL"), new ColonneChoix(4, "UNITE"),
+				new ColonneChoix(5, "STATUT")), null, null), jwtDrh);
+		assertThat(corrigee.erreursFichier()).isEmpty();
+		assertThat(corrigee.confirmable()).isTrue();
+	}
+
+	@Test
+	@DisplayName("T2-10 / D-I25 : le paramétrage reste figé à travers I5, I6 et I7 (le synonyme « Mle » supprimé et le Poste devenu obligatoire entre-temps sont sans effet) ; une nouvelle analyse prend le paramétrage courant")
+	void parametrageFigeAvecLaCorrectionEtLaConfirmation() {
+		cacheParametrage.definir(CacheParametrageDeTest.version(
+				CacheParametrageDeTest.regler(pc(), "MATRICULE", null, null, null, List.of("mle")), 7));
+		Analyse a = analyser(csv("Mle;Prénom;NOM;Code unité", "NEW-1;Ada;Lovelace;DTECH-SW"), false);
+		UUID id = a.analyseId();
+		assertThat(a.erreursFichier()).isEmpty();
+		assertThat(stocke(id).parametrage().version()).isEqualTo(7);
+		assertThat(analyseRepository.findById(id).orElseThrow().getParametrageVersion()).isEqualTo(7);
+
+		// quelqu'un d'autre règle le paramétrage : « Mle » disparaît, Poste devient obligatoire
+		cacheParametrage.definir(CacheParametrageDeTest.version(
+				CacheParametrageDeTest.regler(pc(), "POSTE", null, null, ExigenceChamp.TOUJOURS, null), 8));
+
+		Analyse corrigee = service.corriger(id, new CorrespondanceRequest(null, List.of(new ColonneChoix(0, "MATRICULE"),
+				new ColonneChoix(1, "PRENOM"), new ColonneChoix(2, "NOM"), new ColonneChoix(3, "UNITE")), null, null), jwtDrh);
+		assertThat(corrigee.erreursFichier()).isEmpty();
+		assertThat(corrigee.colonnes().get(0).champ()).isEqualTo("MATRICULE");
+		assertThat(stocke(id).parametrage().version()).as("recopié par la correction").isEqualTo(7);
+		assertThat(service.fichierErreurs(id, jwtDrh)).isNotEmpty();
+
+		CompteRendu cr = confirmer(id, jwtDrh);
+		assertThat(cr.creees()).isEqualTo(1);
+		assertThat(stocke(id).parametrage().version()).as("recopié par la confirmation").isEqualTo(7);
+
+		Analyse nouvelle = analyser(csv("Mle;Prénom;NOM;Code unité", "NEW-9;Alan;Turing;DTECH-SW"), false);
+		assertThat(nouvelle.erreursFichier()).extracting(ImportDtos.ProblemeVue::code)
+				.contains("COLONNE_MATRICULE_ABSENTE", "COLONNE_OBLIGATOIRE_ABSENTE");
+		assertThat(stocke(nouvelle.analyseId()).parametrage().version()).isEqualTo(8);
+	}
+
+	@Test
+	@DisplayName("T2-10 : l'instantané figé est recopié dans les quatre constructions du résultat stocké (analyse, correction, réévaluation, résultat final)")
+	void instantaneRecopieAPartout() {
+		ParametrageImport p = CacheParametrageDeTest.version(CacheParametrageDeTest.regler(pc(), "COURRIEL", "E-mail", null, null, null), 5);
+		cacheParametrage.definir(p);
+		Analyse a = analyser(csv("Mat.;Prénom;NOM;E-mail;Code unité", BONNE_LIGNE_1), false);
+		UUID id = a.analyseId();
+		assertThat(stocke(id).parametrage()).isEqualTo(p);
+		service.corriger(id, new CorrespondanceRequest(null, List.of(new ColonneChoix(0, "MATRICULE"), new ColonneChoix(1, "PRENOM"),
+				new ColonneChoix(2, "NOM"), new ColonneChoix(3, "COURRIEL"), new ColonneChoix(4, "UNITE")), null, null), jwtDrh);
+		assertThat(stocke(id).parametrage()).isEqualTo(p);
+		cacheParametrage.definir(pc());
+		confirmer(id, jwtDrh);
+		assertThat(stocke(id).parametrage()).isEqualTo(p);
+	}
+
+	@Test
+	@DisplayName("T2-10 : un résultat stocké sans instantané (avant le déploiement) retombe sur les valeurs par défaut du code, sans tenir compte du paramétrage courant")
+	void resultatStockeSansInstantane() {
+		Analyse a = analyser(csv(ENTETE, BONNE_LIGNE_1), false);
+		UUID id = a.analyseId();
+		ImportService.ResultatStocke r = stocke(id);
+		remplacerStocke(id, new ImportService.ResultatStocke(r.ligneEnTete(), r.colonnes(), r.colonnesIgnorees(), r.evaluation(),
+				r.comptesExistants(), r.avertissementsEnPlus(), null));
+		assertThat(stocke(id).parametrage()).isNull();
+		cacheParametrage.definir(CacheParametrageDeTest.regler(pc(), "POSTE", null, null, ExigenceChamp.TOUJOURS, null));
+
+		Analyse relue = service.obtenir(id, jwtDrh);
+		assertThat(relue.champsDisponibles()).hasSize(14);
+		assertThat(relue.champsDisponibles().get(0).champ()).isEqualTo("MATRICULE");
+		assertThat(relue.champsDisponibles().get(5).exigence()).isEqualTo("FACULTATIF");
+		assertThat(relue.erreursFichier()).isEmpty();
+		assertThat(confirmer(id, jwtDrh).creees()).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("T2-11 : champs_disponibles = ordre et en-têtes réglés, exigence et libellé d'exigence, présence au modèle ; aucun code technique dans les libellés ; colonne reconnue nommée par l'en-tête réglé")
+	void champsDisponiblesSuiventLeParametrage() {
+		ParametrageImport p = CacheParametrageDeTest.regler(pc(), "COURRIEL", "E-mail", null, ExigenceChamp.CREATION, null);
+		p = CacheParametrageDeTest.regler(p, "POSTE", null, false, null, null);
+		cacheParametrage.definir(CacheParametrageDeTest.deplacer(p, "UNITE", 1));
+		Analyse a = analyser(csv(ENTETE, BONNE_LIGNE_1), false);
+		assertThat(a.champsDisponibles()).extracting(ImportDtos.ChampDisponible::champ).startsWith("MATRICULE", "UNITE", "PRENOM", "NOM", "COURRIEL");
+		ImportDtos.ChampDisponible courriel = a.champsDisponibles().stream().filter(c -> "COURRIEL".equals(c.champ())).findFirst().orElseThrow();
+		assertThat(courriel.libelle()).isEqualTo("E-mail");
+		assertThat(courriel.exigence()).isEqualTo("CREATION");
+		assertThat(courriel.exigenceLibelle()).isEqualTo("Obligatoire à la création");
+		assertThat(courriel.obligatoireCreation()).isTrue();
+		assertThat(courriel.dansModele()).isTrue();
+		assertThat(a.champsDisponibles().stream().filter(c -> "POSTE".equals(c.champ())).findFirst().orElseThrow().dansModele()).isFalse();
+		assertThat(a.champsDisponibles()).allSatisfy(c -> assertThat(c.libelle() + c.exigenceLibelle()).doesNotContain("CREATION", "TOUJOURS"));
+		assertThat(a.colonnes().get(3).champLibelle()).isEqualTo("E-mail");
+	}
+
+	@Test
+	@DisplayName("T2-12 / D-I26 : fichier des lignes en erreur = en-têtes d'origine dans l'ordre d'origine + « Erreurs » ; message du courriel exigé nommé par l'en-tête réglé figé")
+	void lignesEnErreurAvecEnTeteRegle() {
+		cacheParametrage.definir(CacheParametrageDeTest.regler(pc(), "COURRIEL", "E-mail", null, ExigenceChamp.CREATION, null));
+		Analyse a = analyser(csv("Matricule;NOM;Prénom;Unité;E-mail", "NEW-1;Lovelace;Ada;DTECH-SW;"), false);
+		cacheParametrage.definir(CacheParametrageDeTest.regler(pc(), "COURRIEL", "Courriel pro", null, null, null));
+		Fichier f = LectureFichier.lire("e.xlsx", service.fichierErreurs(a.analyseId(), jwtDrh));
+		assertThat(f.lignes().get(0).cellules()).containsExactly("Matricule", "NOM", "Prénom", "Unité", "E-mail", "Erreurs");
+		assertThat(f.lignes().get(1).cellules().get(5)).isEqualTo("E-mail obligatoire.");
+	}
+
+	@Test
+	@DisplayName("T2-13 / D-I26 : l'historique des imports nomme le champ modifié par le nom de la fiche (« Poste »), pas par l'en-tête réglé")
+	void historiqueNommeLeChampDeLaFiche() {
+		cacheParametrage.definir(CacheParametrageDeTest.regler(pc(), "POSTE", "Intitulé réglé", null, null, null));
+		Analyse a = analyser(csv("Matricule;Intitulé réglé", "COL-WEB;Architecte"), false);
+		assertThat(a.colonnes().get(1).champLibelle()).isEqualTo("Intitulé réglé");
+		CompteRendu cr = confirmer(a.analyseId(), jwtDrh);
+		PageReferentielResponse<ImportDtos.LigneHistorique> h = service.lignesHistorique(cr.importId(), 0, 20);
+		assertThat(h.getContenu().get(0).changements().get(0).champLibelle()).isEqualTo("Poste");
+	}
+
+	@Test
+	@DisplayName("T7-10 : un champ personnalisé actif figure au modèle, aux champs disponibles (personnalisé, type en libellé), est reconnu et recopié dans l'instantané figé")
+	void champPersonnaliseDansLeModeleEtLAnalyse() throws Exception {
+		ParametrageImport defaut = pc();
+		java.util.List<ParametrageImport.ChampRegle> champs = new java.util.ArrayList<>(defaut.champs());
+		champs.add(new ParametrageImport.ChampRegle("PERSO_POINTURE", "Pointure", true, ExigenceChamp.FACULTATIF, champs.size(),
+				List.of(), true));
+		ParametrageImport p = new ParametrageImport("COLLABORATEURS", 9, champs, List.of(new ParametrageImport.DefinitionPerso(
+				"PERSO_POINTURE", "Pointure", com.hr.referentiel.champsperso.TypeValeurPerso.NOMBRE,
+				new com.hr.referentiel.champsperso.ReglesPerso(null, 0, null, null, null, null), List.of())));
+		cacheParametrage.definir(p);
+		assertThat(LectureFichier.lire("m.xlsx", service.modeleCollaborateurs()).lignes().get(0).cellules()).contains("Pointure");
+		Analyse a = analyser(csv("Mat.;Prénom;NOM;E-mail;Code unité;Pointure", BONNE_LIGNE_1 + ";42"), false);
+		assertThat(a.champsDisponibles()).hasSize(15);
+		assertThat(a.champsDisponibles().get(14).personnalise()).isTrue();
+		assertThat(a.champsDisponibles().get(14).typeValeurLibelle()).isEqualTo("Nombre");
+		assertThat(a.champsDisponibles().get(0).personnalise()).isFalse();
+		assertThat(a.colonnes()).extracting(c -> c.champ()).contains("PERSO_POINTURE");
+		assertThat(stocke(a.analyseId()).parametrage()).isEqualTo(p);
+		assertThat(stocke(a.analyseId()).evaluation().lignes().get(0).valeurs()).containsEntry("PERSO_POINTURE", "42");
 	}
 }

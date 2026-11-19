@@ -18,7 +18,20 @@ export type ColonneAnalyse = {
   etat: 'RECONNUE' | 'IGNOREE' | 'EN_DOUBLE';
 };
 
-export type ChampDisponible = { champ: string; libelle: string; obligatoire_creation?: boolean };
+export type ChampDisponible = {
+  champ: string;
+  /** En-tête réglé (paramétrage figé de l'analyse). */
+  libelle: string;
+  exigence?: 'FACULTATIF' | 'CREATION' | 'TOUJOURS';
+  exigence_libelle?: string;
+  dans_modele?: boolean;
+  /** Déprécié (= exigence différente de FACULTATIF). */
+  obligatoire_creation?: boolean;
+  /** Champ personnalisé (partie 2). */
+  personnalise?: boolean;
+  type_valeur?: string;
+  type_valeur_libelle?: string;
+};
 
 export type MessageCode = { code: string; message: string };
 

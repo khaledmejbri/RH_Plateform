@@ -33,6 +33,9 @@ public class CacheConfig {
 		return new CleSociete(SocieteContexte.couranteOuVide().orElse(SocieteContexte.AUCUNE), cle);
 	}
 
+	/** Paramétrage des champs d'import par type (ADR-IMPORT-CHAMPS § 6) : même durée de vie courte. */
+	public static final String CACHE_IMPORT_PARAMETRAGE = "import-parametrage";
+
 	@Bean
 	public CacheManager cacheManager(
 			@Value("${app.parametres.cache-ttl-secondes:30}") long ttlParametresSecondes) {
@@ -44,6 +47,10 @@ public class CacheConfig {
 				.recordStats());
 		// Hors de la spec commune (5 min) : un paramètre modifié doit être vu partout en moins d'une minute.
 		manager.registerCustomCache(CACHE_PARAMETRES, Caffeine.newBuilder()
+				.expireAfterWrite(ttlParametresSecondes, TimeUnit.SECONDS)
+				.maximumSize(500)
+				.build());
+		manager.registerCustomCache(CACHE_IMPORT_PARAMETRAGE, Caffeine.newBuilder()
 				.expireAfterWrite(ttlParametresSecondes, TimeUnit.SECONDS)
 				.maximumSize(500)
 				.build());

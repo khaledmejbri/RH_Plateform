@@ -1,6 +1,9 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { ajusterSolde, messageConges, type ReponseAjustement, type SoldeLigne } from '../../api/congesApi';
 import { ApiMetierError } from '../../api/metierApi';
+import { getParametrageImport, type ChampParametre } from '../../api/importParametrageApi';
+import { erreursParChamp } from '../../api/valeursPersoApi';
+import SaisieValeurPerso from '../../components/SaisieValeurPerso';
 import { DialogPanel } from '../../components/useDialogA11y';
 import { Icon } from '../../components/ui';
 import { formatJours, formatNombre } from '../../utils/format';
@@ -31,6 +34,22 @@ export default function AjusterSoldeDialog({ solde, onClose, onAjuste, onConflit
   const [motif, setMotif] = useState('');
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [champsPerso, setChampsPerso] = useState<ChampParametre[]>([]);
+  const [persoIndispo, setPersoIndispo] = useState(false);
+  const [perso, setPerso] = useState<Record<string, string>>({});
+  const [erreursPerso, setErreursPerso] = useState<Record<string, string>>({});
+
+  // Champs personnalisés actifs des soldes (annexe A bis, AJ) : facultatifs, saisis avec l'ajustement.
+  useEffect(() => {
+    let annule = false;
+    getParametrageImport('soldes').then(
+      (p) => {
+        if (!annule) setChampsPerso(p.champs.filter((c) => c.personnalise && c.actif !== false).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0)));
+      },
+      () => { if (!annule) setPersoIndispo(true); },
+    );
+    return () => { annule = true; };
+  }, []);
 
   const nombre = lireNombre(valeur);
   const saisieVide = valeur.trim() === '';
@@ -48,16 +67,27 @@ export default function AjusterSoldeDialog({ solde, onClose, onAjuste, onConflit
     setEnvoi(true);
     setErreur(null);
     try {
+      const valeursPerso: Record<string, string> = {};
+      for (const c of champsPerso) {
+        const v = (perso[c.code] ?? '').trim();
+        if (v) valeursPerso[c.code] = v;
+      }
+      const extra = Object.keys(valeursPerso).length > 0 ? { champs_personnalises: valeursPerso } : {};
       const corps = mode === 'ecart'
-        ? { ecart: nombre, motif: motif.trim(), version: solde.version }
-        : { nouveau_solde: nombre, motif: motif.trim(), version: solde.version };
+        ? { ecart: nombre, motif: motif.trim(), version: solde.version, ...extra }
+        : { nouveau_solde: nombre, motif: motif.trim(), version: solde.version, ...extra };
       onAjuste(await ajusterSolde(solde.collaborateur_id, corps));
     } catch (e) {
       if (e instanceof ApiMetierError && e.code === 'SOLDE_MODIFIE_ENTRE_TEMPS') {
         onConflit();
         return;
       }
-      setErreur(messageConges(e));
+      const parChamp = erreursParChamp(e);
+      const visees = Object.keys(parChamp).filter((k) => champsPerso.some((c) => c.code === k));
+      setErreursPerso(parChamp);
+      setErreur(visees.length > 0 && !parChamp['']
+        ? 'L’ajustement n’a pas été enregistré : corrigez les informations complémentaires signalées.'
+        : (parChamp[''] ?? messageConges(e)));
       setEnvoi(false);
     }
   }
@@ -110,6 +140,30 @@ export default function AjusterSoldeDialog({ solde, onClose, onAjuste, onConflit
             <p className={`muted small${longueur > 0 && longueur < 5 ? ' field-error' : ''}`} aria-live="polite">
               {longueur} / 500 caractères{longueur < 5 ? ' (au moins 5)' : ''}
             </p>
+            {champsPerso.length > 0 ? (
+              <fieldset style={{ border: 0, padding: 0, margin: '16px 0 0' }}>
+                <legend className="field-label">Informations complémentaires (facultatives)</legend>
+                {champsPerso.map((c) => (
+                  <div key={c.code} style={{ marginBottom: 8 }}>
+                    <label className="field-label" htmlFor={`ajust-perso-${c.code}`}>{c.libelle}</label>
+                    <SaisieValeurPerso id={`ajust-perso-${c.code}`} disabled={envoi}
+                      champ={{
+                        code: c.code,
+                        libelle: c.libelle,
+                        type_valeur: c.type_valeur ?? 'TEXTE',
+                        regles: c.regles ?? null,
+                        valeurs_liste: (c.valeurs_liste ?? []).filter((v) => v.actif),
+                      }}
+                      valeur={perso[c.code] ?? ''} erreur={erreursPerso[c.code]}
+                      onChange={(v) => {
+                        setPerso((m) => ({ ...m, [c.code]: v }));
+                        setErreursPerso((m) => { const { [c.code]: _r, ...reste } = m; return reste; });
+                      }} />
+                  </div>
+                ))}
+              </fieldset>
+            ) : null}
+            {persoIndispo ? <p className="muted small" role="status">Les informations complémentaires ne sont pas disponibles pour le moment.</p> : null}
             {erreur ? <p className="alert alert--error" role="alert">{erreur}</p> : null}
           </div>
           <div className="modal__actions">

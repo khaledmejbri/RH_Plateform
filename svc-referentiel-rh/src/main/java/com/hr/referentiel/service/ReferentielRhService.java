@@ -14,10 +14,6 @@ import com.hr.referentiel.web.ReferentielMetierException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -121,31 +117,6 @@ public class ReferentielRhService {
 			}
 			return toUniteResponse(uniteRepository.save(u));
 		});
-	}
-
-	@Transactional(readOnly = true)
-	public PageReferentielResponse<CollaborateurResponse> listerCollaborateurs(
-			int page, int taille, String statut, UUID uniteId) {
-		Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(200, Math.max(1, taille)),
-				Sort.by("nom").ascending().and(Sort.by("prenom").ascending()));
-		Page<Collaborateur> p;
-		boolean hasStatut = statut != null && !statut.isBlank();
-		boolean hasUnite = uniteId != null;
-		if (hasStatut && hasUnite) {
-			p = collaborateurRepository.findByStatutIgnoreCaseAndUniteId(statut.trim(), uniteId, pageable);
-		} else if (hasStatut) {
-			p = collaborateurRepository.findByStatutIgnoreCase(statut.trim(), pageable);
-		} else if (hasUnite) {
-			p = collaborateurRepository.findByUniteId(uniteId, pageable);
-		} else {
-			p = collaborateurRepository.findAll(pageable);
-		}
-		List<CollaborateurResponse> contenu = p.getContent().stream()
-				.map(this::toCollaborateurResponse)
-				.map(this::avecLibelles)
-				.collect(Collectors.toList());
-		return new PageReferentielResponse<>(contenu, p.getTotalElements(), p.getTotalPages(),
-				p.getNumber(), p.getSize());
 	}
 
 	// Spring Cache déballe l'Optional : #result est le CollaborateurResponse (ou null si absent),
@@ -254,6 +225,11 @@ public class ReferentielRhService {
 	public CollaborateurResponse avecLibelles(CollaborateurResponse r) {
 		return r.avecLibelles(familleMetierService.libelleOuNull(r.getFamilleMetierCode()),
 				familleMetierService.libelleNiveauOuNull(r.getNiveauSeniorite()));
+	}
+
+	/** Réponse complète (libellés famille et niveau) d'une fiche : liste filtrée et export (ADR partie 2, V5 et V6). */
+	public CollaborateurResponse versReponse(Collaborateur c) {
+		return avecLibelles(toCollaborateurResponse(c));
 	}
 
 	private void registerKafkaCompteDemandeAfterCommit(String key, CollaborateurCompteDemandeEvent event) {

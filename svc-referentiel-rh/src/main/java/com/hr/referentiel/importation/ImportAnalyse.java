@@ -75,6 +75,10 @@ public class ImportAnalyse {
 	@Column(name = "totaux", columnDefinition = "text")
 	private String totaux;
 
+	/** Version du paramétrage des champs figée par l'analyse (traçabilité, D-I25) ; null avant le paramétrage. */
+	@Column(name = "parametrage_version")
+	private Long parametrageVersion;
+
 	@Column(name = "cree_le", nullable = false)
 	private Instant creeLe;
 
@@ -149,6 +153,14 @@ public class ImportAnalyse {
 
 	public void setLigneEnTete(Integer ligneEnTete) {
 		this.ligneEnTete = ligneEnTete;
+	}
+
+	public Long getParametrageVersion() {
+		return parametrageVersion;
+	}
+
+	public void setParametrageVersion(Long parametrageVersion) {
+		this.parametrageVersion = parametrageVersion;
 	}
 
 	public String getCorrespondance() {

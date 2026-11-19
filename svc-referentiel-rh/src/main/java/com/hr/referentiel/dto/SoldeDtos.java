@@ -2,6 +2,7 @@ package com.hr.referentiel.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.hr.referentiel.champsperso.ValeursPersoDtos.ValeurAffichee;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -34,7 +35,16 @@ public final class SoldeDtos {
 			@JsonProperty("demande_id") UUID demandeId,
 			@JsonProperty("demande_numero") String demandeNumero,
 			@JsonProperty("mois_acquisition") String moisAcquisition,
-			@JsonProperty("mois_acquisition_libelle") String moisAcquisitionLibelle) {
+			@JsonProperty("mois_acquisition_libelle") String moisAcquisitionLibelle,
+			@JsonProperty("champs_personnalises") @JsonInclude(JsonInclude.Include.NON_NULL) List<ValeurAffichee> champsPersonnalises,
+			@JsonProperty("champs_desactives") @JsonInclude(JsonInclude.Include.NON_NULL) List<ValeurAffichee> champsDesactives) {
+
+		public Mouvement(String type, String typeLibelle, BigDecimal nombre, BigDecimal soldeApres, Instant creeLe,
+				String auteurNom, String origine, String origineLibelle, String motif, UUID demandeId, String demandeNumero,
+				String moisAcquisition, String moisAcquisitionLibelle) {
+			this(type, typeLibelle, nombre, soldeApres, creeLe, auteurNom, origine, origineLibelle, motif, demandeId,
+					demandeNumero, moisAcquisition, moisAcquisitionLibelle, null, null);
+		}
 	}
 
 	public record JourFerieSimule(
@@ -81,7 +91,12 @@ public final class SoldeDtos {
 			@JsonProperty("ecart") Object ecart,
 			@JsonProperty("nouveau_solde") Object nouveauSolde,
 			@JsonProperty("motif") String motif,
-			@JsonProperty("version") Long version) {
+			@JsonProperty("version") Long version,
+			@JsonProperty("champs_personnalises") java.util.Map<String, Object> champsPersonnalises) {
+
+		public AjustementRequest(Object ecart, Object nouveauSolde, String motif, Long version) {
+			this(ecart, nouveauSolde, motif, version, null);
+		}
 	}
 
 	@JsonInclude(JsonInclude.Include.ALWAYS)
