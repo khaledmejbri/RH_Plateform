@@ -1,15 +1,18 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import com.hr.referentiel.domain.ActionWorkflowAdministratif;
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_demande_admin_workflow_history", indexes = {
-		@Index(name = "idx_admin_history_demande", columnList = "demande_administrative_id"),
-		@Index(name = "idx_admin_history_action", columnList = "action")
+		@Index(name = "idx_admin_history_societe_demande", columnList = "societe_id, demande_administrative_id"),
+		@Index(name = "idx_admin_history_societe_action", columnList = "societe_id, action")
 })
 public class DemandeAdminWorkflowHistory {
 
@@ -17,6 +20,10 @@ public class DemandeAdminWorkflowHistory {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	@Column(name = "identifiant", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "demande_administrative_id", nullable = false)

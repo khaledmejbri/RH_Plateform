@@ -23,10 +23,12 @@ import com.hr.referentiel.service.ParametreService;
 import com.hr.referentiel.service.ParametresCache;
 import com.hr.referentiel.service.ParametresCache.ParametreVue;
 import com.hr.referentiel.service.SoldeCongeService;
+import com.hr.referentiel.test.AvecSocieteContexteExtension;
 import com.hr.referentiel.web.ReferentielMetierException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -87,6 +89,7 @@ import static org.mockito.Mockito.when;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import(ImportServiceTest.Config.class)
+@ExtendWith(AvecSocieteContexteExtension.class)
 class ImportServiceTest {
 
 	/** Horloge réglable. */
@@ -453,17 +456,19 @@ class ImportServiceTest {
 		CountDownLatch relache = new CountDownLatch(1);
 		var pool = Executors.newSingleThreadExecutor();
 		try {
-			Future<?> autre = pool.submit(() -> new TransactionTemplate(tm).executeWithoutResult(s -> {
-				if (!new ImportVerrou(jdbc).essayer()) {
-					throw new IllegalStateException("verrou non obtenu");
-				}
-				pris.countDown();
-				try {
-					relache.await(20, TimeUnit.SECONDS);
-				} catch (InterruptedException e) {
-					Thread.currentThread().interrupt();
-				}
-			}));
+			Future<?> autre = pool.submit(() -> com.hr.commun.societe.SocieteContexte.executer(
+					AvecSocieteContexteExtension.SOCIETE_TEST,
+					() -> new TransactionTemplate(tm).executeWithoutResult(s -> {
+						if (!new ImportVerrou(jdbc).essayer()) {
+							throw new IllegalStateException("verrou non obtenu");
+						}
+						pris.countDown();
+						try {
+							relache.await(20, TimeUnit.SECONDS);
+						} catch (InterruptedException e) {
+							Thread.currentThread().interrupt();
+						}
+					})));
 			assertThat(pris.await(10, TimeUnit.SECONDS)).isTrue();
 			assertThatThrownBy(() -> confirmer(a.analyseId(), jwtDrh)).satisfies(e -> code(e, "IMPORT_EN_COURS", 409));
 			relache.countDown();

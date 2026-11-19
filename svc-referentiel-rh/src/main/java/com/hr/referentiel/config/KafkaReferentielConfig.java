@@ -78,4 +78,22 @@ public class KafkaReferentielConfig {
 		factory.setConsumerFactory(collaborateurCreeConsumerFactory(appName));
 		return factory;
 	}
+
+	@Bean
+	public ConsumerFactory<String, String> societesConsumerFactory(
+			@Value("${spring.application.name:svc-referentiel-rh}") String appName) {
+		Map<String, Object> config = new HashMap<>();
+		config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+		config.put(ConsumerConfig.GROUP_ID_CONFIG, appName + "-societes");
+		return new DefaultKafkaConsumerFactory<>(config, new StringDeserializer(), new StringDeserializer());
+	}
+
+	@Bean
+	public ConcurrentKafkaListenerContainerFactory<String, String> societesKafkaListenerContainerFactory(
+			@Value("${spring.application.name:svc-referentiel-rh}") String appName) {
+		ConcurrentKafkaListenerContainerFactory<String, String> factory =
+				new ConcurrentKafkaListenerContainerFactory<>();
+		factory.setConsumerFactory(societesConsumerFactory(appName));
+		return factory;
+	}
 }

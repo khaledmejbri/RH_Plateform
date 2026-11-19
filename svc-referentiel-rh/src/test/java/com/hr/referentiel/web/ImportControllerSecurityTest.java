@@ -46,7 +46,8 @@ class ImportControllerSecurityTest {
 	private org.springframework.cache.CacheManager cacheManager;
 
 	private static RequestPostProcessor roles(String... roles) {
-		return jwt().jwt(j -> j.claim("identifiant_utilisateur", UUID.randomUUID().toString()))
+		return jwt().jwt(j -> j.claim("identifiant_utilisateur", UUID.randomUUID().toString())
+						.claim("societe_id", "00000000-0000-0000-0000-000000000001"))
 				.authorities(java.util.Arrays.stream(roles).map(r -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + r))
 						.toArray(GrantedAuthority[]::new));
 	}

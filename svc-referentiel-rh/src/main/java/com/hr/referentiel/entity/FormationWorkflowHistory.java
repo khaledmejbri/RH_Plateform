@@ -1,8 +1,10 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import com.hr.referentiel.domain.ActionWorkflowFormation;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -14,14 +16,16 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_formation_workflow_history", indexes = {
-		@Index(name = "idx_formation_history_demande", columnList = "demande_formation_id"),
-		@Index(name = "idx_formation_history_action", columnList = "action")
+		@Index(name = "idx_formation_history_societe_demande", columnList = "societe_id, demande_formation_id"),
+		@Index(name = "idx_formation_history_societe_action", columnList = "societe_id, action")
 })
 public class FormationWorkflowHistory {
 
@@ -29,6 +33,10 @@ public class FormationWorkflowHistory {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	@Column(name = "identifiant", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "demande_formation_id", nullable = false)

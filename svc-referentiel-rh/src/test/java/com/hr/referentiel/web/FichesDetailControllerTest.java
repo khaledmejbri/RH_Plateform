@@ -67,8 +67,9 @@ class FichesDetailControllerTest {
 	private org.springframework.cache.CacheManager cacheManager;
 
 	private static RequestPostProcessor role(String... roles) {
-		return jwt().authorities(java.util.Arrays.stream(roles)
-				.map(r -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + r)).toList());
+		return jwt().jwt(j -> j.claim("societe_id", "00000000-0000-0000-0000-000000000001"))
+				.authorities(java.util.Arrays.stream(roles)
+						.map(r -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + r)).toList());
 	}
 
 	// --- Hiérarchie et fiche d'unité : lecture back-office ---

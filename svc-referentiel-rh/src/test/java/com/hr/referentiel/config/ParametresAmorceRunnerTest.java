@@ -5,9 +5,11 @@ import com.hr.referentiel.entity.ParametreJournal;
 import com.hr.referentiel.entity.ParametreValeur;
 import com.hr.referentiel.repository.ParametreJournalRepository;
 import com.hr.referentiel.repository.ParametreValeurRepository;
+import com.hr.referentiel.test.AvecSocieteContexteExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -40,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import(ParametresAmorceRunnerTest.Config.class)
+@ExtendWith(AvecSocieteContexteExtension.class)
 class ParametresAmorceRunnerTest {
 
 	@Configuration
@@ -74,9 +77,9 @@ class ParametresAmorceRunnerTest {
 				"rh_famille_metier")) {
 			jdbc.execute("drop table if exists " + t);
 		}
-		jdbc.execute("create table rh_collaborateur (id int, niveau_seniorite varchar(32), famille_metier_code varchar(64))");
-		jdbc.execute("create table rh_demande_document_administratif (id int, type_document varchar(40))");
-		jdbc.execute("create table rh_demande_administrative (id int, type_demande varchar(40), contenu varchar(2000))");
+		jdbc.execute("create table rh_collaborateur (id int, societe_id uuid, niveau_seniorite varchar(32), famille_metier_code varchar(64))");
+		jdbc.execute("create table rh_demande_document_administratif (id int, societe_id uuid, type_document varchar(40))");
+		jdbc.execute("create table rh_demande_administrative (id int, societe_id uuid, type_demande varchar(40), contenu varchar(2000))");
 		jdbc.execute("create table rh_famille_metier (code varchar(64), libelle varchar(255), actif boolean, systeme boolean)");
 	}
 
@@ -164,9 +167,12 @@ class ParametresAmorceRunnerTest {
 	@Test
 	@DisplayName("orphelins : un code stocké absent de la table est recréé INACTIF, marqué utilisé et journalisé")
 	void orphelinRecreeInactif() {
-		jdbc.update("insert into rh_demande_document_administratif values (1, 'ATTESTATION_STAGE')");
-		jdbc.update("insert into rh_collaborateur values (1, 'EXPERT', 'FAMILLE_DISPARUE')");
-		jdbc.update("insert into rh_demande_administrative values (1, 'CONGE', '{\"type_conge\": \"mariage\"}')");
+		jdbc.update("insert into rh_demande_document_administratif values (1, ?, 'ATTESTATION_STAGE')",
+				AvecSocieteContexteExtension.SOCIETE_TEST);
+		jdbc.update("insert into rh_collaborateur values (1, ?, 'EXPERT', 'FAMILLE_DISPARUE')",
+				AvecSocieteContexteExtension.SOCIETE_TEST);
+		jdbc.update("insert into rh_demande_administrative values (1, ?, 'CONGE', '{\"type_conge\": \"mariage\"}')",
+				AvecSocieteContexteExtension.SOCIETE_TEST);
 
 		runner().amorcer();
 

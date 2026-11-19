@@ -2,6 +2,7 @@ package com.hr.referentiel.service;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.hr.referentiel.config.CacheConfig;
 import com.hr.referentiel.domain.ActionJournalParametre;
 import com.hr.referentiel.dto.JourFerieDtos.JourFerieActif;
 import com.hr.referentiel.dto.JourFerieDtos.JourFerieRequest;
@@ -41,20 +42,20 @@ public class JourFerieService {
 	private final JourFerieRepository repository;
 	private final JournalParametres journal;
 	private final Clock clock;
-	private final Cache<String, Set<LocalDate>> cache;
+	private final Cache<CacheConfig.CleSociete, Set<LocalDate>> cache;
 
 	public JourFerieService(JourFerieRepository repository, JournalParametres journal, Clock clock,
 			@Value("${app.parametres.cache-ttl-secondes:30}") long ttlSecondes) {
 		this.repository = repository;
 		this.journal = journal;
 		this.clock = clock;
-		this.cache = Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(ttlSecondes)).maximumSize(2).build();
+		this.cache = Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(ttlSecondes)).maximumSize(500).build();
 	}
 
 	/** Dates des jours fériés actifs (instantané en cache, au plus {@code ttl} de retard sur une autre instance). */
 	@Transactional(readOnly = true)
 	public Set<LocalDate> datesActives() {
-		return cache.get(CLE, k -> Set.copyOf(repository.datesActives()));
+		return cache.get(CacheConfig.cle(CLE), k -> Set.copyOf(repository.datesActives()));
 	}
 
 	@Transactional(readOnly = true)

@@ -1,14 +1,17 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import com.hr.referentiel.domain.NatureParametre;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -18,15 +21,20 @@ import java.util.UUID;
  * libellé (D-R02.b) porte sur {@code libelle_normalise}, valeurs actives et inactives.
  */
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_parametre_valeur", uniqueConstraints = {
-		@UniqueConstraint(name = "uk_rh_parametre_ref_code", columnNames = {"referentiel", "code"}),
-		@UniqueConstraint(name = "uk_rh_parametre_ref_libelle", columnNames = {"referentiel", "libelle_normalise"})
+		@UniqueConstraint(name = "uk_rh_parametre_societe_ref_code", columnNames = {"societe_id", "referentiel", "code"}),
+		@UniqueConstraint(name = "uk_rh_parametre_societe_ref_libelle", columnNames = {"societe_id", "referentiel", "libelle_normalise"})
 })
 public class ParametreValeur {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	@Column(name = "referentiel", nullable = false, length = 40, updatable = false)
 	private String referentiel;

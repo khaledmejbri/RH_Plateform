@@ -53,7 +53,7 @@ public class ReferentielRhService {
 
 	private final HierarchieTypeRules hierarchieTypeRules;
 
-	@Cacheable(value = CacheConfig.CACHE_UNITES, key = "'liste_actives'")
+	@Cacheable(value = CacheConfig.CACHE_UNITES, key = "T(com.hr.referentiel.config.CacheConfig).cle('liste_actives')")
 	@Transactional(readOnly = true)
 	public List<UniteResponse> listerUnitesActives() {
 		return uniteRepository.findByActifTrueOrderByCodeAsc().stream()
@@ -61,7 +61,7 @@ public class ReferentielRhService {
 				.collect(Collectors.toList());
 	}
 
-	@Cacheable(value = CacheConfig.CACHE_UNITES, key = "#id")
+	@Cacheable(value = CacheConfig.CACHE_UNITES, key = "T(com.hr.referentiel.config.CacheConfig).cle(#id)")
 	@Transactional(readOnly = true)
 	public Optional<UniteResponse> obtenirUnite(UUID id) {
 		return uniteRepository.findById(id).map(this::toUniteResponse);
@@ -150,7 +150,7 @@ public class ReferentielRhService {
 
 	// Spring Cache déballe l'Optional : #result est le CollaborateurResponse (ou null si absent),
 	// donc « #result.isEmpty() » levait une SpelEvaluationException (403 vide) dès que la fiche existait.
-	@Cacheable(value = CacheConfig.CACHE_COLLABORATEUR_ID, key = "#id", unless = "#result == null")
+	@Cacheable(value = CacheConfig.CACHE_COLLABORATEUR_ID, key = "T(com.hr.referentiel.config.CacheConfig).cle(#id)", unless = "#result == null")
 	@Transactional(readOnly = true)
 	public Optional<CollaborateurResponse> obtenirCollaborateur(UUID id) {
 		return collaborateurRepository.findDetailById(id).map(this::toCollaborateurResponse);
@@ -177,7 +177,7 @@ public class ReferentielRhService {
 				valideur != null ? nomComplet(valideur) : null);
 	}
 
-	@Cacheable(value = CacheConfig.CACHE_COLLABORATEUR_MATRICULE, key = "#matricule.toLowerCase()", unless = "#result == null")
+	@Cacheable(value = CacheConfig.CACHE_COLLABORATEUR_MATRICULE, key = "T(com.hr.referentiel.config.CacheConfig).cle(#matricule.toLowerCase())", unless = "#result == null")
 	@Transactional(readOnly = true)
 	public Optional<CollaborateurResponse> obtenirCollaborateurParMatricule(String matricule) {
 		return collaborateurRepository.findDetailByMatricule(matricule.trim())

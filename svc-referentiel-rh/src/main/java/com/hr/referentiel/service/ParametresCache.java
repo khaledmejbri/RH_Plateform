@@ -124,28 +124,33 @@ public class ParametresCache {
 		if (cache == null) {
 			return charger();
 		}
-		Instantane i = cache.get(CLE, this::charger);
+		Instantane i = cache.get(CacheConfig.cle(CLE), this::charger);
 		return i != null ? i : charger();
 	}
 
 	/** Invalidation après commit si une transaction est active (sinon, immédiate). */
 	public void invaliderApresCommit() {
+		CacheConfig.CleSociete cleSociete = CacheConfig.cle(CLE);
 		if (TransactionSynchronizationManager.isSynchronizationActive()) {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override
 				public void afterCommit() {
-					invalider();
+					invalider(cleSociete);
 				}
 			});
 		} else {
-			invalider();
+			invalider(cleSociete);
 		}
 	}
 
 	public void invalider() {
+		invalider(CacheConfig.cle(CLE));
+	}
+
+	private void invalider(CacheConfig.CleSociete cleSociete) {
 		Cache cache = cacheManager.getCache(CacheConfig.CACHE_PARAMETRES);
 		if (cache != null) {
-			cache.evict(CLE);
+			cache.evict(cleSociete);
 		}
 	}
 

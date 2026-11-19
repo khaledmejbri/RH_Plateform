@@ -1,9 +1,13 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.TenantId;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -15,12 +19,19 @@ import java.util.UUID;
  * est donc gérée à la main, sous verrou pessimiste, et non par {@code @Version}.
  */
 @Entity
-@Table(name = "rh_solde_conge")
+@EntityListeners(SocieteGardeEcriture.class)
+@Table(name = "rh_solde_conge", indexes = {
+		@Index(name = "idx_solde_conge_societe_collab", columnList = "societe_id, collaborateur_id", unique = true)
+})
 public class SoldeConge {
 
 	@Id
 	@Column(name = "collaborateur_id", nullable = false, updatable = false)
 	private UUID collaborateurId;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	@Column(name = "acquis", nullable = false, precision = 6, scale = 1)
 	private BigDecimal acquis = BigDecimal.ZERO.setScale(1);

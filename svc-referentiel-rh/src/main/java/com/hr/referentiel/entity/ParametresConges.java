@@ -1,19 +1,26 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.TenantId;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
-/** Réglages des congés (ligne unique {@code id = 1}) : jours acquis par mois et date de début des acquisitions. */
+/** Réglages des congés (une ligne par société) : jours acquis par mois et date de début des acquisitions. */
 @Entity
-@Table(name = "rh_parametres")
+@EntityListeners(SocieteGardeEcriture.class)
+@Table(name = "rh_parametres", uniqueConstraints = {
+		@UniqueConstraint(name = "uk_parametres_conges_societe", columnNames = "societe_id")
+})
 public class ParametresConges {
 
 	public static final short ID_UNIQUE = 1;
@@ -21,6 +28,10 @@ public class ParametresConges {
 	@Id
 	@Column(name = "id", nullable = false)
 	private short id = ID_UNIQUE;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	@Column(name = "jours_acquis_par_mois", nullable = false, precision = 3, scale = 1)
 	private BigDecimal joursAcquisParMois;

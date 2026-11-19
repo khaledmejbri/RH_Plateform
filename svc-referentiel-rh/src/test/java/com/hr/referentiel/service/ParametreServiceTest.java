@@ -11,10 +11,12 @@ import com.hr.referentiel.entity.ParametreJournal;
 import com.hr.referentiel.entity.ParametreValeur;
 import com.hr.referentiel.repository.ParametreJournalRepository;
 import com.hr.referentiel.repository.ParametreValeurRepository;
+import com.hr.referentiel.test.AvecSocieteContexteExtension;
 import com.hr.referentiel.web.ReferentielMetierException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -57,6 +59,7 @@ import static org.mockito.Mockito.when;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import({ParametreServiceTest.Config.class, ParametreService.class, ParametresCache.class})
+@ExtendWith(AvecSocieteContexteExtension.class)
 class ParametreServiceTest {
 
 	@Configuration

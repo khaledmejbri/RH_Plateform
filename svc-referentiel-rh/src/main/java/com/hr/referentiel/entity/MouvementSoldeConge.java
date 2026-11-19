@@ -1,12 +1,15 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.TenantId;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -18,16 +21,21 @@ import java.util.UUID;
  */
 @Entity
 @Immutable
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_mouvement_solde_conge",
 		uniqueConstraints = {
-				@UniqueConstraint(name = "uk_mvt_solde_acquisition", columnNames = {"collaborateur_id", "mois_acquisition"}),
-				@UniqueConstraint(name = "uk_mvt_solde_demande", columnNames = {"demande_id", "type"})},
-		indexes = @Index(name = "idx_mvt_solde_collab", columnList = "collaborateur_id, cree_le"))
+				@UniqueConstraint(name = "uk_mvt_solde_societe_acquisition", columnNames = {"societe_id", "collaborateur_id", "mois_acquisition"}),
+				@UniqueConstraint(name = "uk_mvt_solde_societe_demande", columnNames = {"societe_id", "demande_id", "type"})},
+		indexes = @Index(name = "idx_mvt_solde_societe_collab", columnList = "societe_id, collaborateur_id, cree_le"))
 public class MouvementSoldeConge {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	@Column(name = "collaborateur_id", nullable = false, updatable = false)
 	private UUID collaborateurId;

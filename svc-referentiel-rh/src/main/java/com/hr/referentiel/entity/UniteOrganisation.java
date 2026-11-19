@@ -1,14 +1,17 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_unite_organisation", indexes = {
-		@Index(name = "idx_unite_code", columnList = "code", unique = true),
-		@Index(name = "idx_unite_actif", columnList = "actif")
+		@Index(name = "idx_unite_societe_code", columnList = "societe_id, code", unique = true),
+		@Index(name = "idx_unite_societe_actif", columnList = "societe_id, actif")
 })
 public class UniteOrganisation {
 
@@ -17,7 +20,11 @@ public class UniteOrganisation {
 	@Column(name = "identifiant", nullable = false, updatable = false)
 	private UUID id;
 
-	@Column(name = "code", nullable = false, unique = true, length = 32)
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
+
+	@Column(name = "code", nullable = false, length = 32)
 	private String code;
 
 	@Column(name = "libelle", nullable = false, length = 255)
@@ -49,6 +56,14 @@ public class UniteOrganisation {
 	private Instant modifieLe;
 
 	public UniteOrganisation() {
+	}
+
+	public UUID getSocieteId() {
+		return societeId;
+	}
+
+	public void setSocieteId(UUID societeId) {
+		this.societeId = societeId;
 	}
 
 	@PrePersist

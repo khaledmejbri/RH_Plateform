@@ -1,5 +1,7 @@
 package com.hr.referentiel.config;
 
+import com.hr.commun.societe.SocieteContexte;
+import com.hr.commun.societe.SocietesActives;
 import com.hr.referentiel.domain.ReferentielParametre;
 import com.hr.referentiel.domain.ValeursInitialesReferentiel;
 import com.hr.referentiel.domain.ValeursInitialesReferentiel.Valeur;
@@ -7,7 +9,10 @@ import com.hr.referentiel.service.AuteurParametre;
 import com.hr.referentiel.service.NormalisationLibelle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.SmartInitializingSingleton;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -44,7 +49,8 @@ import java.util.regex.Pattern;
  * deux instances qui démarrent ensemble ne s'amorcent pas deux fois.
  */
 @Component
-public class ParametresAmorceRunner implements SmartInitializingSingleton {
+@Order(1)
+public class ParametresAmorceRunner implements ApplicationRunner {
 
 	private static final Logger log = LoggerFactory.getLogger(ParametresAmorceRunner.class);
 
@@ -66,41 +72,58 @@ public class ParametresAmorceRunner implements SmartInitializingSingleton {
 	private final PlatformTransactionManager transactionManager;
 	private final ReferentielEvenementsProperties evenementsProperties;
 	private final JsonMapper jsonMapper;
+	private final SocietesActives societesActives;
 
 	public ParametresAmorceRunner(JdbcTemplate jdbc, PlatformTransactionManager transactionManager,
 			ReferentielEvenementsProperties evenementsProperties, JsonMapper jsonMapper) {
+		this(jdbc, transactionManager, evenementsProperties, jsonMapper, List::of);
+	}
+
+	@Autowired
+	public ParametresAmorceRunner(JdbcTemplate jdbc, PlatformTransactionManager transactionManager,
+			ReferentielEvenementsProperties evenementsProperties, JsonMapper jsonMapper,
+			SocietesActives societesActives) {
 		this.jdbc = jdbc;
 		this.transactionManager = transactionManager;
 		this.evenementsProperties = evenementsProperties;
 		this.jsonMapper = jsonMapper;
+		this.societesActives = societesActives;
 	}
 
 	@Override
-	public void afterSingletonsInstantiated() {
-		amorcer();
+	public void run(ApplicationArguments args) {
+		for (UUID societeId : societesActives.lister()) {
+			amorcerPourSociete(societeId);
+		}
 	}
 
-	/** Point d'entrée rejouable (aussi appelé par les tests). */
+	public void amorcerPourSociete(UUID societeId) {
+		SocieteContexte.executer(societeId, this::amorcer);
+	}
+
+	/** Point d'entrée rejouable (aussi appelé par les tests, sous {@link SocieteContexte}). */
 	public void amorcer() {
+		UUID societeId = SocieteContexte.courante();
 		new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-			verrouiller();
+			verrouiller(societeId);
 			elargirColonnes();
 			supprimerContraintes();
-			int familles = reprendreFamilles();
-			int initiales = insererValeursInitiales();
-			int orphelins = rapprocherOrphelins();
+			int familles = reprendreFamilles(societeId);
+			int initiales = insererValeursInitiales(societeId);
+			int orphelins = rapprocherOrphelins(societeId);
 			if (familles + initiales + orphelins > 0) {
-				log.info("Paramètres amorcés : {} famille(s) reprise(s), {} valeur(s) initiale(s), {} code(s) orphelin(s)"
-						+ " recréé(s) inactif(s)", familles, initiales, orphelins);
+				log.info("Paramètres amorcés pour {} : {} famille(s) reprise(s), {} valeur(s) initiale(s), {} code(s) orphelin(s)"
+						+ " recréé(s) inactif(s)", societeId, familles, initiales, orphelins);
 			}
 		});
 	}
 
 	// ─── 1. Schéma ────────────────────────────────────────────────────────────
 
-	private void verrouiller() {
+	private void verrouiller(UUID societeId) {
 		if (estPostgres()) {
-			jdbc.execute("select pg_advisory_xact_lock(" + VERROU_AMORCAGE + ")");
+			jdbc.queryForObject("select pg_advisory_xact_lock(hashtext(?))", Object.class,
+					"amorce-parametres:" + societeId);
 		}
 	}
 
@@ -148,7 +171,7 @@ public class ParametresAmorceRunner implements SmartInitializingSingleton {
 	 * n'est pas conservé, il interdirait de désactiver les familles « assainissement » que le client doit pouvoir
 	 * remplacer. Elles restent non supprimables (marquées utilisées d'office).
 	 */
-	private int reprendreFamilles() {
+	private int reprendreFamilles(UUID societeId) {
 		if (!tableExiste("rh_famille_metier")) {
 			return 0;
 		}
@@ -164,7 +187,7 @@ public class ParametresAmorceRunner implements SmartInitializingSingleton {
 			}
 			boolean actif = Boolean.TRUE.equals(f.get("actif"));
 			String libelle = tronquer(String.valueOf(f.get("libelle")).trim(), ParametreLimites.LIBELLE_MAX);
-			if (inserer("FAMILLE_METIER", code, libelle, null, "NEUTRE", rang++, actif, false, true, null, null, null)) {
+			if (inserer(societeId, "FAMILLE_METIER", code, libelle, null, "NEUTRE", rang++, actif, false, true, null, null, null)) {
 				inserees++;
 			}
 		}
@@ -173,21 +196,21 @@ public class ParametresAmorceRunner implements SmartInitializingSingleton {
 
 	// ─── 3. Valeurs initiales et codes de comportement ──────────────────────────────
 
-	private int insererValeursInitiales() {
+	private int insererValeursInitiales(UUID societeId) {
 		List<Valeur> valeurs = ValeursInitialesReferentiel.toutes(evenementsProperties::delaiSlaHeuresPourDocument);
 		int inserees = 0;
 		for (Valeur v : valeurs) {
-			if (inserer(v.referentiel(), v.code(), v.libelle(), null, v.couleur(), v.ordre(), true, v.systeme(),
+			if (inserer(societeId, v.referentiel(), v.code(), v.libelle(), null, v.couleur(), v.ordre(), true, v.systeme(),
 					v.utilisee(), v.slaHeures(), v.pieceJointeObligatoire(), v.pieceJointeVerrouillee())) {
 				inserees++;
-			} else if (!codeExiste(v.referentiel(), v.code())) {
+			} else if (!codeExiste(societeId, v.referentiel(), v.code())) {
 				// Le code est libre mais son libellé par défaut est déjà pris (valeur saisie ou reprise) : on ne
 				// l'ignore pas en silence, on lève l'ambiguïté avec le code, comme pour les orphelins.
 				String avecCode = tronquer(v.libelle(), ParametreLimites.LIBELLE_MAX - v.code().length() - 3)
 						+ " (" + v.code() + ")";
 				log.warn("Valeur initiale {}.{} : libellé « {} » déjà pris, créée sous « {} »", v.referentiel(),
 						v.code(), v.libelle(), avecCode);
-				if (inserer(v.referentiel(), v.code(), avecCode, null, v.couleur(), v.ordre(), true, v.systeme(),
+				if (inserer(societeId, v.referentiel(), v.code(), avecCode, null, v.couleur(), v.ordre(), true, v.systeme(),
 						v.utilisee(), v.slaHeures(), v.pieceJointeObligatoire(), v.pieceJointeVerrouillee())) {
 					inserees++;
 				} else {
@@ -196,19 +219,20 @@ public class ParametresAmorceRunner implements SmartInitializingSingleton {
 				}
 			}
 		}
-		signalerCodesDisparus(valeurs);
+		signalerCodesDisparus(societeId, valeurs);
 		return inserees;
 	}
 
 	/** Un code de comportement présent en base mais plus dans le code est laissé en place (jamais supprimé). */
-	private void signalerCodesDisparus(List<Valeur> valeurs) {
+	private void signalerCodesDisparus(UUID societeId, List<Valeur> valeurs) {
 		Map<String, List<String>> attendus = ValeursInitialesReferentiel.codesParReferentiel(valeurs);
 		for (ReferentielParametre r : ReferentielParametre.values()) {
 			if (!r.estComportement()) {
 				continue;
 			}
 			List<String> presents = jdbc.queryForList(
-					"select code from rh_parametre_valeur where referentiel = ?", String.class, r.name());
+					"select code from rh_parametre_valeur where societe_id = ? and referentiel = ?",
+					String.class, societeId, r.name());
 			for (String code : presents) {
 				if (!attendus.getOrDefault(r.name(), List.of()).contains(code)) {
 					log.warn("Code de comportement {}.{} absent du code applicatif : laissé en place", r.name(), code);
@@ -219,28 +243,30 @@ public class ParametresAmorceRunner implements SmartInitializingSingleton {
 
 	// ─── 4. Orphelins ─────────────────────────────────────────────────────────
 
-	private int rapprocherOrphelins() {
+	private int rapprocherOrphelins(UUID societeId) {
 		int total = 0;
 		for (String[] s : SOURCES_ORPHELINS) {
 			if (!tableExiste(s[1])) {
 				continue;
 			}
 			List<String> codes = jdbc.queryForList(
-					"select distinct " + s[2] + " from " + s[1] + " where " + s[2] + " is not null and " + s[2] + " <> ''",
-					String.class);
-			total += creerOrphelins(s[0], codes);
+					"select distinct " + s[2] + " from " + s[1]
+							+ " where societe_id = ? and " + s[2] + " is not null and " + s[2] + " <> ''",
+					String.class, societeId);
+			total += creerOrphelins(societeId, s[0], codes);
 		}
 		if (tableExiste("rh_demande_administrative")) {
-			total += creerOrphelins("TYPE_CONGE", typesCongeStockes());
+			total += creerOrphelins(societeId, "TYPE_CONGE", typesCongeStockes(societeId));
 		}
 		return total;
 	}
 
 	/** Codes {@code type_conge} stockés dans le jsonb {@code contenu} (lecture indépendante du moteur SQL). */
-	private List<String> typesCongeStockes() {
+	private List<String> typesCongeStockes(UUID societeId) {
 		Set<String> codes = new HashSet<>();
 		for (String contenu : jdbc.queryForList(
-				"select contenu from rh_demande_administrative where type_demande = 'CONGE'", String.class)) {
+				"select contenu from rh_demande_administrative where societe_id = ? and type_demande = 'CONGE'",
+				String.class, societeId)) {
 			if (contenu == null || contenu.isBlank()) {
 				continue;
 			}
@@ -257,9 +283,10 @@ public class ParametresAmorceRunner implements SmartInitializingSingleton {
 		return new ArrayList<>(codes);
 	}
 
-	private int creerOrphelins(String referentiel, List<String> codesStockes) {
+	private int creerOrphelins(UUID societeId, String referentiel, List<String> codesStockes) {
 		Set<String> connus = new HashSet<>(jdbc.queryForList(
-				"select code from rh_parametre_valeur where referentiel = ?", String.class, referentiel));
+				"select code from rh_parametre_valeur where societe_id = ? and referentiel = ?",
+				String.class, societeId, referentiel));
 		Set<String> orphelins = new HashSet<>();
 		for (String brut : codesStockes) {
 			String code = brut.trim().toUpperCase(Locale.ROOT);
@@ -277,37 +304,38 @@ public class ParametresAmorceRunner implements SmartInitializingSingleton {
 			boolean sla = "TYPE_DOCUMENT".equals(referentiel);
 			Integer slaHeures = sla ? evenementsProperties.delaiSlaHeuresPourDocument(code, 24) : null;
 			Boolean pj = "TYPE_CONGE".equals(referentiel) ? Boolean.FALSE : null;
-			boolean cree = inserer(referentiel, code, libelle, null, "NEUTRE", prochainOrdre(referentiel), false, false,
-					true, slaHeures, pj, pj);
+			boolean cree = inserer(societeId, referentiel, code, libelle, null, "NEUTRE",
+					prochainOrdre(societeId, referentiel), false, false, true, slaHeures, pj, pj);
 			if (!cree) {
 				// libellé déjà pris par une autre valeur : on lève l'ambiguïté avec le code
 				String avecCode = tronquer(libelle, ParametreLimites.LIBELLE_MAX - code.length() - 3) + " (" + code + ")";
-				cree = inserer(referentiel, code, avecCode, null, "NEUTRE", prochainOrdre(referentiel), false, false,
-						true, slaHeures, pj, pj);
+				cree = inserer(societeId, referentiel, code, avecCode, null, "NEUTRE",
+						prochainOrdre(societeId, referentiel), false, false, true, slaHeures, pj, pj);
 			}
 			if (cree) {
 				crees++;
-				journaliserOrphelin(referentiel, code, libelle);
+				journaliserOrphelin(societeId, referentiel, code, libelle);
 				log.warn("Code orphelin {}.{} recréé inactif (utilisé par des données existantes)", referentiel, code);
 			}
 		}
 		return crees;
 	}
 
-	private void journaliserOrphelin(String referentiel, String code, String libelle) {
+	private void journaliserOrphelin(UUID societeId, String referentiel, String code, String libelle) {
 		String apres = jsonMapper.writeValueAsString(Map.of("libelle", libelle, "actif", false,
 				"origine", "rapprochement automatique d'un code déjà stocké"));
-		jdbc.update("insert into rh_parametre_journal (id, referentiel, code, action, avant_json, apres_json, "
-						+ "auteur_compte_id, auteur_nom, horodatage) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-				UUID.randomUUID(), referentiel, code, "CREATION", null, apres, null,
+		jdbc.update("insert into rh_parametre_journal (id, societe_id, referentiel, code, action, avant_json, apres_json, "
+						+ "auteur_compte_id, auteur_nom, horodatage) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				UUID.randomUUID(), societeId, referentiel, code, "CREATION", null, apres, null,
 				AuteurParametre.NOM_SYSTEME, Timestamp.from(Instant.now()));
 	}
 
 	// ─── Utilitaires ──────────────────────────────────────────────────────────
 
-	private int prochainOrdre(String referentiel) {
+	private int prochainOrdre(UUID societeId, String referentiel) {
 		Integer max = jdbc.queryForObject(
-				"select max(ordre) from rh_parametre_valeur where referentiel = ?", Integer.class, referentiel);
+				"select max(ordre) from rh_parametre_valeur where societe_id = ? and referentiel = ?",
+				Integer.class, societeId, referentiel);
 		return (max == null ? 0 : max) + 1;
 	}
 
@@ -315,32 +343,33 @@ public class ParametresAmorceRunner implements SmartInitializingSingleton {
 	 * Insère une ligne si ni son code ni son libellé normalisé n'existent dans le référentiel. Renvoie vrai si elle a
 	 * été insérée. Une ligne existante n'est jamais modifiée.
 	 */
-	private boolean inserer(String referentiel, String code, String libelle, String description, String couleur,
-			int ordre, boolean actif, boolean systeme, boolean utilisee, Integer slaHeures, Boolean pjObligatoire,
-			Boolean pjVerrouillee) {
+	private boolean inserer(UUID societeId, String referentiel, String code, String libelle, String description,
+			String couleur, int ordre, boolean actif, boolean systeme, boolean utilisee, Integer slaHeures,
+			Boolean pjObligatoire, Boolean pjVerrouillee) {
 		String normalise = NormalisationLibelle.normaliser(libelle);
 		Integer deja = jdbc.queryForObject(
-				"select count(*) from rh_parametre_valeur where referentiel = ? and (code = ? or libelle_normalise = ?)",
-				Integer.class, referentiel, code, normalise);
+				"select count(*) from rh_parametre_valeur where societe_id = ? and referentiel = ? "
+						+ "and (code = ? or libelle_normalise = ?)",
+				Integer.class, societeId, referentiel, code, normalise);
 		if (deja != null && deja > 0) {
 			return false;
 		}
 		Instant maintenant = Instant.now();
 		ReferentielParametre ref = ReferentielParametre.parse(referentiel).orElseThrow();
-		jdbc.update("insert into rh_parametre_valeur (id, referentiel, code, nature, libelle, libelle_normalise, "
+		jdbc.update("insert into rh_parametre_valeur (id, societe_id, referentiel, code, nature, libelle, libelle_normalise, "
 						+ "description, couleur, ordre, actif, systeme, premiere_utilisation_le, version, cree_le, "
 						+ "modifie_le, sla_heures, piece_jointe_obligatoire, piece_jointe_verrouillee) "
-						+ "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)",
-				UUID.randomUUID(), referentiel, code, ref.getNature().name(), libelle, normalise, description,
+						+ "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)",
+				UUID.randomUUID(), societeId, referentiel, code, ref.getNature().name(), libelle, normalise, description,
 				couleur, ordre, actif, systeme, utilisee ? Timestamp.from(maintenant) : null,
 				Timestamp.from(maintenant), Timestamp.from(maintenant), slaHeures, pjObligatoire, pjVerrouillee);
 		return true;
 	}
 
-	private boolean codeExiste(String referentiel, String code) {
+	private boolean codeExiste(UUID societeId, String referentiel, String code) {
 		Integer n = jdbc.queryForObject(
-				"select count(*) from rh_parametre_valeur where referentiel = ? and code = ?", Integer.class,
-				referentiel, code);
+				"select count(*) from rh_parametre_valeur where societe_id = ? and referentiel = ? and code = ?",
+				Integer.class, societeId, referentiel, code);
 		return n != null && n > 0;
 	}
 

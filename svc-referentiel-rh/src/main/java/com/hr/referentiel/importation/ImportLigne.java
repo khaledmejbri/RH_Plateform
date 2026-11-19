@@ -1,11 +1,14 @@
 package com.hr.referentiel.importation;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.TenantId;
 
 import java.util.UUID;
 
@@ -15,14 +18,19 @@ import java.util.UUID;
  */
 @Entity
 @Immutable
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_import_ligne", indexes = {
-		@Index(name = "idx_rh_import_ligne_import", columnList = "import_id, numero_ligne"),
-		@Index(name = "idx_rh_import_ligne_collab", columnList = "collaborateur_id")})
+		@Index(name = "idx_rh_import_ligne_societe_import", columnList = "societe_id, import_id, numero_ligne"),
+		@Index(name = "idx_rh_import_ligne_societe_collab", columnList = "societe_id, collaborateur_id")})
 public class ImportLigne implements org.springframework.data.domain.Persistable<UUID> {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	@Column(name = "import_id", nullable = false, updatable = false)
 	private UUID importId;

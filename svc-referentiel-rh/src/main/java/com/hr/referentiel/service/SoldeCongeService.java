@@ -50,7 +50,7 @@ public class SoldeCongeService {
 
 	/** Verrouille (et crée au besoin) la ligne du solde. À appeler dans une transaction, après le verrou de la demande. */
 	public SoldeConge verrouiller(UUID collaborateurId) {
-		soldeRepository.creerSiAbsent(collaborateurId);
+		soldeRepository.creerSiAbsent(com.hr.commun.societe.SocieteContexte.courante(), collaborateurId);
 		SoldeConge solde = soldeRepository.verrouiller(collaborateurId).orElseThrow(
 				() -> new IllegalStateException("Ligne de solde introuvable après création."));
 		// Une instance déjà gérée (ex. chargée par l'import) ne serait pas relue par le simple SELECT ... FOR UPDATE :

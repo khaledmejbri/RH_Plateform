@@ -52,19 +52,19 @@ public class ReglagesCongeService {
 
 	@Transactional(readOnly = true)
 	public List<Reglage> reglages() {
-		return List.of(vue(repository.findById(ParametresConges.ID_UNIQUE).orElse(null)));
+		return List.of(vue(repository.findFirstByOrderByIdAsc().orElse(null)));
 	}
 
 	/** Jours par mois courants (repli sur le défaut tant que la ligne n'existe pas). */
 	@Transactional(readOnly = true)
 	public BigDecimal joursParMois() {
-		return repository.findById(ParametresConges.ID_UNIQUE)
+		return repository.findFirstByOrderByIdAsc()
 				.map(ParametresConges::getJoursAcquisParMois).orElse(DEFAUT);
 	}
 
 	@Transactional(readOnly = true)
 	public LocalDate debutAcquisitions() {
-		return repository.findById(ParametresConges.ID_UNIQUE).map(ParametresConges::getDebutAcquisitionsLe).orElse(null);
+		return repository.findFirstByOrderByIdAsc().map(ParametresConges::getDebutAcquisitionsLe).orElse(null);
 	}
 
 	@Transactional
@@ -81,8 +81,11 @@ public class ReglagesCongeService {
 		if (version == null) {
 			throw ReferentielMetierException.badRequest("CORPS_INVALIDE", "La version du réglage est obligatoire.");
 		}
-		repository.creerSiAbsente(DEFAUT, debutParDefaut(LocalDate.now(clock.withZone(FormatJours.TUNIS))));
-		ParametresConges p = repository.findById(ParametresConges.ID_UNIQUE).orElseThrow();
+		repository.creerSiAbsente(
+				com.hr.commun.societe.SocieteContexte.courante(),
+				DEFAUT,
+				debutParDefaut(LocalDate.now(clock.withZone(FormatJours.TUNIS))));
+		ParametresConges p = repository.findFirstByOrderByIdAsc().orElseThrow();
 		if (p.getVersion() != version) {
 			throw ReferentielMetierException.conflict("PARAMETRE_MODIFIE_ENTRE_TEMPS",
 					"Ce paramètre a été modifié entre-temps. Rechargez la page puis recommencez.");

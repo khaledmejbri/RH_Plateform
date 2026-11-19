@@ -1,10 +1,13 @@
 package com.hr.referentiel.importation;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -14,9 +17,10 @@ import java.util.UUID;
  * CHECK). Les champs JSON sont stockés en texte. Le fichier brut n'est jamais écrit (C-L-03).
  */
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_import", indexes = {
-		@Index(name = "idx_rh_import_statut", columnList = "statut, derniere_action_le"),
-		@Index(name = "idx_rh_import_type", columnList = "type_import, confirme_le")})
+		@Index(name = "idx_rh_import_societe_statut", columnList = "societe_id, statut, derniere_action_le"),
+		@Index(name = "idx_rh_import_societe_type", columnList = "societe_id, type_import, confirme_le")})
 public class ImportAnalyse {
 
 	public static final String STATUT_ANALYSEE = "ANALYSEE";
@@ -27,6 +31,10 @@ public class ImportAnalyse {
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	@Column(name = "type_import", nullable = false, length = 20)
 	private String typeImport;

@@ -35,7 +35,7 @@ public class AcquisitionFicheService {
 	/** Fige N au premier passage du mois (D-S07.c) puis le relit : la valeur figée vaut pour tout le mois. */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public BigDecimal figerJoursDuMois(String mois) {
-		acquisitionMoisRepository.figerSiAbsent(mois, reglages.joursParMois());
+		acquisitionMoisRepository.figerSiAbsent(com.hr.commun.societe.SocieteContexte.courante(), mois, reglages.joursParMois());
 		return acquisitionMoisRepository.findById(mois).orElseThrow().getJoursParMois();
 	}
 

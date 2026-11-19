@@ -1,5 +1,6 @@
 package com.hr.referentiel.service;
 
+import com.hr.commun.societe.SocieteContexte;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,9 +49,10 @@ public class ParametreUtilisationCompteur {
 			return resultat;
 		}
 		String sql = "select " + s.expression() + " as code, count(*) as n from " + s.table()
-				+ " where " + (s.filtre() != null ? s.filtre() + " and " : "") + s.expression() + " is not null"
+				+ " where societe_id = ? and " + (s.filtre() != null ? s.filtre() + " and " : "") + s.expression() + " is not null"
 				+ " group by " + s.expression();
-		jdbcTemplate.query(sql, rs -> {
+		java.util.UUID societeId = SocieteContexte.courante();
+		jdbcTemplate.query(sql, ps -> ps.setObject(1, societeId), rs -> {
 			resultat.merge(rs.getString("code"), rs.getLong("n"), Long::sum);
 		});
 		return resultat;

@@ -1,14 +1,17 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import com.hr.referentiel.domain.ActionJournalParametre;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -19,14 +22,19 @@ import java.util.UUID;
  */
 @Entity
 @Immutable
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_parametre_journal", indexes = {
-		@Index(name = "idx_rh_parametre_journal_ref", columnList = "referentiel, horodatage")
+		@Index(name = "idx_rh_parametre_journal_societe_ref", columnList = "societe_id, referentiel, horodatage")
 })
 public class ParametreJournal {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	@Column(name = "referentiel", nullable = false, length = 40, updatable = false)
 	private String referentiel;

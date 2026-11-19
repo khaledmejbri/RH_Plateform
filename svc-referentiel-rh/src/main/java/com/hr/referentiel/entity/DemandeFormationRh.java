@@ -1,5 +1,6 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import com.hr.referentiel.domain.CibleDemandeFormationRh;
 import com.hr.referentiel.domain.OrigineDemandeFormationRh;
 import com.hr.referentiel.domain.StatutDemandeFormationRh;
@@ -7,6 +8,7 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -19,6 +21,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.TenantId;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -28,11 +31,12 @@ import java.util.Set;
 import java.util.UUID;
 
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_demande_formation", indexes = {
-		@Index(name = "idx_demande_formation_demandeur", columnList = "demandeur_identifiant"),
-		@Index(name = "idx_demande_formation_statut", columnList = "statut"),
-		@Index(name = "idx_demande_formation_origine", columnList = "origine"),
-		@Index(name = "idx_demande_formation_numero", columnList = "numero", unique = true)
+		@Index(name = "idx_demande_formation_societe_demandeur", columnList = "societe_id, demandeur_identifiant"),
+		@Index(name = "idx_demande_formation_societe_statut", columnList = "societe_id, statut"),
+		@Index(name = "idx_demande_formation_societe_origine", columnList = "societe_id, origine"),
+		@Index(name = "idx_demande_formation_societe_numero", columnList = "societe_id, numero", unique = true)
 })
 public class DemandeFormationRh {
 
@@ -40,6 +44,10 @@ public class DemandeFormationRh {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	@Column(name = "identifiant", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	/** D-L02 : numéro lisible attribué à la création, unique et immuable. Null le temps de la reprise des anciennes lignes. */
 	@Column(name = "numero", updatable = false, length = 24)

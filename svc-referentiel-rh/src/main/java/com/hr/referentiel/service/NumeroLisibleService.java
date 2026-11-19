@@ -1,5 +1,6 @@
 package com.hr.referentiel.service;
 
+import com.hr.commun.societe.SocieteContexte;
 import com.hr.referentiel.repository.NumeroSequenceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -40,7 +41,7 @@ public class NumeroLisibleService {
 	/** Partagé avec la reprise des anciennes lignes, qui gère elle-même sa transaction. */
 	public static String attribuerAvec(NumeroSequenceRepository repository, PrefixeNumero prefixe, Instant creation) {
 		String mois = MOIS.format(creation.atZone(FUSEAU_TUNIS));
-		int rang = repository.incrementer(prefixe.name() + "-" + mois);
+		int rang = repository.incrementer(SocieteContexte.courante(), prefixe.name() + "-" + mois);
 		return formater(prefixe, mois, rang);
 	}
 

@@ -8,9 +8,11 @@ import com.hr.referentiel.repository.CollaborateurRepository;
 import com.hr.referentiel.repository.MouvementSoldeCongeRepository;
 import com.hr.referentiel.repository.ReglagesCongesRepository;
 import com.hr.referentiel.entity.ParametresConges;
+import com.hr.referentiel.test.AvecSocieteContexteExtension;
 import com.hr.referentiel.web.ReferentielMetierException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
@@ -35,6 +37,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /** Corrections de la recette sur 8090 : Eureka, tri en collation française, statut inconnu, accord D-S14, réglage non numérique. */
+@ExtendWith(AvecSocieteContexteExtension.class)
 class RecetteCorrectionsTest {
 
 	@Test
@@ -144,7 +147,7 @@ class RecetteCorrectionsTest {
 		ReglagesCongesRepository repo = mock(ReglagesCongesRepository.class);
 		ParametresConges ligne = new ParametresConges();
 		ligne.setJoursAcquisParMois(new BigDecimal("1.5"));
-		when(repo.findById(ParametresConges.ID_UNIQUE)).thenReturn(Optional.of(ligne));
+		when(repo.findFirstByOrderByIdAsc()).thenReturn(Optional.of(ligne));
 		when(repo.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
 		ReglagesCongeService service = new ReglagesCongeService(repo, mock(AcquisitionMoisRepository.class),
 				mock(JournalParametres.class), Clock.fixed(Instant.parse("2026-11-12T10:00:00Z"), ZoneOffset.UTC));

@@ -1,6 +1,8 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -12,10 +14,12 @@ import java.util.UUID;
  * affectation, département, qualité métier, date de recrutement, rattachement organisationnel.
  */
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_collaborateur", indexes = {
-		@Index(name = "idx_collab_matricule", columnList = "matricule", unique = true),
-		@Index(name = "idx_collab_unite", columnList = "unite_identifiant"),
-		@Index(name = "idx_collab_statut", columnList = "statut")
+		@Index(name = "idx_collab_societe_matricule", columnList = "societe_id, matricule", unique = true),
+		@Index(name = "idx_collab_societe_compte", columnList = "societe_id, compte_utilisateur_id", unique = true),
+		@Index(name = "idx_collab_societe_unite", columnList = "societe_id, unite_identifiant"),
+		@Index(name = "idx_collab_societe_statut", columnList = "societe_id, statut")
 })
 public class Collaborateur {
 
@@ -24,7 +28,11 @@ public class Collaborateur {
 	@Column(name = "identifiant", nullable = false, updatable = false)
 	private UUID id;
 
-	@Column(name = "matricule", nullable = false, unique = true, length = 64)
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
+
+	@Column(name = "matricule", nullable = false, length = 64)
 	private String matricule;
 
 	@Column(name = "prenom", nullable = false, length = 120)
@@ -64,7 +72,7 @@ public class Collaborateur {
 	private LocalDate dateRecrutement;
 
 	/** Identifiant utilisateur (JWT claim identifiant_utilisateur) — liaison compte ↔ collaborateur. */
-	@Column(name = "compte_utilisateur_id", unique = true)
+	@Column(name = "compte_utilisateur_id")
 	private UUID compteUtilisateurId;
 
 	@Column(name = "statut", nullable = false, length = 32)
@@ -113,6 +121,14 @@ public class Collaborateur {
 
 	public UUID getId() {
 		return id;
+	}
+
+	public UUID getSocieteId() {
+		return societeId;
+	}
+
+	public void setSocieteId(UUID societeId) {
+		this.societeId = societeId;
 	}
 
 	public void setId(UUID id) {

@@ -1,7 +1,9 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import com.hr.referentiel.domain.StatutDocumentAdministratifDemandeRh;
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -11,10 +13,11 @@ import java.util.UUID;
  * (premier arrivé, premier servi — priorité FIFO, sans saut de file).
  */
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_demande_document_administratif", indexes = {
-		@Index(name = "idx_doc_dem_collab", columnList = "demandeur_identifiant"),
-		@Index(name = "idx_doc_dem_statut_cree", columnList = "statut,cree_le"),
-		@Index(name = "idx_doc_dem_numero", columnList = "numero", unique = true)
+		@Index(name = "idx_doc_dem_societe_collab", columnList = "societe_id, demandeur_identifiant"),
+		@Index(name = "idx_doc_dem_societe_statut_cree", columnList = "societe_id, statut,cree_le"),
+		@Index(name = "idx_doc_dem_societe_numero", columnList = "societe_id, numero", unique = true)
 })
 public class DemandeDocumentAdministratifRh {
 
@@ -22,6 +25,10 @@ public class DemandeDocumentAdministratifRh {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	@Column(name = "identifiant", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	/** D-L02 : numéro lisible attribué à la création, unique et immuable. Null le temps de la reprise des anciennes lignes. */
 	@Column(name = "numero", updatable = false, length = 24)

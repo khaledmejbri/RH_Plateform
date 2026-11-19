@@ -1,27 +1,35 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
-/** Jour férié (D-S02) : date unique (actifs et inactifs), libellé non unique. */
+/** Jour férié (D-S02, D-SOC10) : date unique par société (actifs et inactifs), libellé non unique. */
 @Entity
-@Table(name = "rh_jour_ferie", uniqueConstraints = @UniqueConstraint(name = "uk_jour_ferie_date", columnNames = "date_jour"))
+@EntityListeners(SocieteGardeEcriture.class)
+@Table(name = "rh_jour_ferie", uniqueConstraints = @UniqueConstraint(name = "uk_jour_ferie_societe_date", columnNames = {"societe_id", "date_jour"}))
 public class JourFerie {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.UUID)
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	@Column(name = "date_jour", nullable = false)
 	private LocalDate dateJour;

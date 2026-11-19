@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.entity.UniteOrganisation;
 import com.hr.referentiel.repository.CollaborateurRepository;
+import com.hr.referentiel.test.AvecSocieteContexteExtension;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,7 +25,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, AvecSocieteContexteExtension.class})
 class RhNotificationPublisherTest {
 
 	@Mock
@@ -67,7 +69,10 @@ class RhNotificationPublisherTest {
 	void demandeRecueAuValideur() {
 		publisher.notifierDemandeRecue(demandeur, "CONGE", ID, "DEM-202611-0001", chefService);
 
-		verify(kafkaTemplate).send(eq("rh.notifications"), eq(chefService.getCompteUtilisateurId().toString()), anyString());
+		ArgumentCaptor<ProducerRecord<String, String>> rec = ArgumentCaptor.forClass(ProducerRecord.class);
+		verify(kafkaTemplate).send(rec.capture());
+		assertThat(rec.getValue().topic()).isEqualTo("rh.notifications");
+		assertThat(rec.getValue().key()).isEqualTo(chefService.getCompteUtilisateurId().toString());
 	}
 
 	@Test
@@ -77,32 +82,35 @@ class RhNotificationPublisherTest {
 
 		publisher.notifierValidationRo(rh, "CONGE", chefService, ID, "DEM-202611-0001");
 
-		ArgumentCaptor<String> cles = ArgumentCaptor.forClass(String.class);
-		verify(kafkaTemplate).send(eq("rh.notifications"), cles.capture(), anyString());
-		assertThat(cles.getAllValues()).containsExactly(admin.getCompteUtilisateurId().toString());
+		ArgumentCaptor<ProducerRecord<String, String>> rec = ArgumentCaptor.forClass(ProducerRecord.class);
+		verify(kafkaTemplate).send(rec.capture());
+		assertThat(rec.getAllValues().stream().map(ProducerRecord::key)).containsExactly(admin.getCompteUtilisateurId().toString());
 	}
 
 	@Test
 	@DisplayName("SCRUM-28 : l'annulation prévient le valideur retenu, rien si aucun valideur")
 	void annulationAuValideur() {
 		publisher.notifierAnnulationDemandeur(demandeur, "CONGE", null, ID, "DEM-202611-0001");
-		verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+		verify(kafkaTemplate, never()).send(org.mockito.ArgumentMatchers.<ProducerRecord<String, String>>any());
 
 		publisher.notifierAnnulationDemandeur(demandeur, "CONGE", chefService, ID, "DEM-202611-0001");
-		verify(kafkaTemplate).send(eq("rh.notifications"), eq(chefService.getCompteUtilisateurId().toString()), anyString());
+		ArgumentCaptor<ProducerRecord<String, String>> rec = ArgumentCaptor.forClass(ProducerRecord.class);
+		verify(kafkaTemplate).send(rec.capture());
+		assertThat(rec.getValue().topic()).isEqualTo("rh.notifications");
+		assertThat(rec.getValue().key()).isEqualTo(chefService.getCompteUtilisateurId().toString());
 	}
 
 	@Test
 	@DisplayName("D-L02 : le numéro est un champ JSON, sans suffixe entre crochets dans le texte ; absent s'il n'y en a pas")
 	void numeroDansLeMessage() {
 		publisher.notifierApprobationRrh(demandeur, "CONGE", ID, "DEM-202611-0003");
-		ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
-		verify(kafkaTemplate).send(eq("rh.notifications"), anyString(), json.capture());
-		assertThat(json.getValue()).contains("\"numero\":\"DEM-202611-0003\"").doesNotContain("[");
+		ArgumentCaptor<ProducerRecord<String, String>> rec = ArgumentCaptor.forClass(ProducerRecord.class);
+		verify(kafkaTemplate).send(rec.capture());
+		assertThat(rec.getValue().value()).contains("\"numero\":\"DEM-202611-0003\"").doesNotContain("[");
 
 		publisher.notifierApprobationRrh(demandeur, "CONGE", ID, null);
-		verify(kafkaTemplate, org.mockito.Mockito.times(2)).send(eq("rh.notifications"), anyString(), json.capture());
-		assertThat(json.getValue()).doesNotContain("numero");
+		verify(kafkaTemplate, org.mockito.Mockito.times(2)).send(rec.capture());
+		assertThat(rec.getValue().value()).doesNotContain("numero");
 	}
 
 	@Test
@@ -133,9 +141,10 @@ class RhNotificationPublisherTest {
 		publisher.notifierCollaborateurInviteFormation(demandeur, "Excel", "Org",
 				java.time.LocalDate.of(2026, 11, 25), java.time.LocalDate.of(2026, 11, 27), ID, "FOR-202611-0001");
 
-		ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
-		verify(kafkaTemplate, org.mockito.Mockito.atLeast(15)).send(eq("rh.notifications"), anyString(), json.capture());
-		assertThat(textes(json.getAllValues())).isNotEmpty().allSatisfy(m -> {
+		ArgumentCaptor<ProducerRecord<String, String>> rec = ArgumentCaptor.forClass(ProducerRecord.class);
+		verify(kafkaTemplate, org.mockito.Mockito.atLeast(15)).send(rec.capture());
+		List<String> payloads = rec.getAllValues().stream().map(ProducerRecord::value).toList();
+		assertThat(textes(payloads)).isNotEmpty().allSatisfy(m -> {
 			assertThat(m).doesNotContainPattern("\\b(RO|RRH|FIFO)\\b");
 			assertThat(m).doesNotContainPattern("(?i)\\b(integree|integration|refusee|annulee|validee|precise|ete|superieur|trouve)\\b");
 			assertThat(m).doesNotContainPattern("\\d{4}-\\d{2}-\\d{2}");
@@ -143,7 +152,7 @@ class RhNotificationPublisherTest {
 			assertThat(m).doesNotContain("[").doesNotContain("]");
 			assertThat(m).doesNotContainPattern("(?s)(DEM|DOC|FOR|PLT)-\\d{6}-\\d{4}.*\\1-\\d{6}-\\d{4}");
 		});
-		assertThat(String.join(" ", textes(json.getAllValues())))
+		assertThat(String.join(" ", textes(payloads)))
 				.contains("Formation intégrée au plan").contains("Non précisé").contains("ordre d'arrivée")
 				.contains("25/11/2026");
 	}
@@ -152,9 +161,9 @@ class RhNotificationPublisherTest {
 	@DisplayName("Type de demande inconnu : phrase propre, ni code ni espace avant le point")
 	void typeInconnuPhraseePropre() {
 		publisher.notifierAnnulationDemandeur(demandeur, "TYPE_INCONNU", chefService, ID, "DEM-202611-0001");
-		ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
-		verify(kafkaTemplate).send(eq("rh.notifications"), anyString(), json.capture());
-		assertThat(json.getValue()).contains("a annulé sa demande.")
+		ArgumentCaptor<ProducerRecord<String, String>> rec = ArgumentCaptor.forClass(ProducerRecord.class);
+		verify(kafkaTemplate).send(rec.capture());
+		assertThat(rec.getValue().value()).contains("a annulé sa demande.")
 				.doesNotContain("TYPE_INCONNU").doesNotContain(" .");
 	}
 
@@ -164,9 +173,10 @@ class RhNotificationPublisherTest {
 		when(collaborateurRepository.findAllBackofficeEcritureActifs()).thenReturn(List.of(rh));
 		publisher.notifierDemandeFormationSoumise(demandeur, "TECHNIQUE", ID, "FOR-202611-0001");
 		publisher.notifierDocumentDisponible(demandeur, "ATTESTATION_TRAVAIL", "x", ID, "DOC-202611-0001");
-		ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
-		verify(kafkaTemplate, org.mockito.Mockito.times(2)).send(eq("rh.notifications"), anyString(), json.capture());
-		String tout = String.join(" ", textes(json.getAllValues()));
+		ArgumentCaptor<ProducerRecord<String, String>> rec = ArgumentCaptor.forClass(ProducerRecord.class);
+		verify(kafkaTemplate, org.mockito.Mockito.times(2)).send(rec.capture());
+		List<String> payloads = rec.getAllValues().stream().map(ProducerRecord::value).toList();
+		String tout = String.join(" ", textes(payloads));
 		assertThat(tout).contains("demande de formation technique. Intégration").doesNotContain("TECHNIQUE")
 				.contains("est disponible au téléchargement").doesNotContain("prêt à être");
 	}
@@ -194,15 +204,15 @@ class RhNotificationPublisherTest {
 		publisher.notifierDocumentDisponible(demandeur, "ATTESTATION_TRAVAIL", "x", ID, "DOC-202611-0001");
 		publisher.notifierDemandeFormationIntegree(demandeur, "Excel", ID, "FOR-202611-0001");
 		publisher.notifierChangementStatutPlainte(demandeur, ID, "PLT-202611-0001", "NOUVEAU", "EN_ANALYSE", null);
-		ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
-		verify(kafkaTemplate, org.mockito.Mockito.times(4)).send(eq("rh.notifications"), anyString(), json.capture());
+		ArgumentCaptor<ProducerRecord<String, String>> rec = ArgumentCaptor.forClass(ProducerRecord.class);
+		verify(kafkaTemplate, org.mockito.Mockito.times(4)).send(rec.capture());
 		String[][] attendu = {
 				{"DEMANDE", "DEMANDE_APPROUVEE", "DEM-202611-0003"},
 				{"DOCUMENT", "DOCUMENT_DISPONIBLE", "DOC-202611-0001"},
 				{"FORMATION", "FORMATION_INTEGREE", "FOR-202611-0001"},
 				{"PLAINTE", "PLAINTE_STATUT_CHANGE", "PLT-202611-0001"}};
 		for (int i = 0; i < 4; i++) {
-			com.fasterxml.jackson.databind.JsonNode n = json(json.getAllValues().get(i));
+			com.fasterxml.jackson.databind.JsonNode n = json(rec.getAllValues().get(i).value());
 			assertThat(n.get("objet_type").asText()).isEqualTo(attendu[i][0]);
 			assertThat(n.get("evenement").asText()).isEqualTo(attendu[i][1]);
 			assertThat(n.get("objet_numero").asText()).isEqualTo(attendu[i][2]);
@@ -219,9 +229,9 @@ class RhNotificationPublisherTest {
 		when(collaborateurRepository.findAllBackofficeEcritureActifs()).thenReturn(List.of(rh, admin));
 		publisher.notifierValidationRo(demandeur, "CONGE", chefService, ID, "DEM-202611-0001");
 		publisher.notifierValidationRo(demandeur, "CONGE", chefService, ID, "DEM-202611-0001");
-		ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
-		verify(kafkaTemplate, org.mockito.Mockito.times(4)).send(eq("rh.notifications"), anyString(), json.capture());
-		List<String> ids = json.getAllValues().stream().map(j -> json(j).get("notification_id").asText()).toList();
+		ArgumentCaptor<ProducerRecord<String, String>> rec = ArgumentCaptor.forClass(ProducerRecord.class);
+		verify(kafkaTemplate, org.mockito.Mockito.times(4)).send(rec.capture());
+		List<String> ids = rec.getAllValues().stream().map(r -> json(r.value()).get("notification_id").asText()).toList();
 		assertThat(ids.get(0)).isEqualTo(ids.get(1));
 		assertThat(ids.get(2)).isEqualTo(ids.get(3));
 		assertThat(ids.get(0)).isNotEqualTo(ids.get(2));
@@ -231,10 +241,10 @@ class RhNotificationPublisherTest {
 	@DisplayName("2F : sans numéro, objet_numero est absent mais objet_type et objet_id restent")
 	void sansNumero() {
 		publisher.notifierApprobationRrh(demandeur, "CONGE", ID, null);
-		ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
-		verify(kafkaTemplate).send(eq("rh.notifications"), anyString(), json.capture());
-		assertThat(json(json.getValue()).has("objet_numero")).isFalse();
-		assertThat(json(json.getValue()).get("objet_type").asText()).isEqualTo("DEMANDE");
+		ArgumentCaptor<ProducerRecord<String, String>> rec = ArgumentCaptor.forClass(ProducerRecord.class);
+		verify(kafkaTemplate).send(rec.capture());
+		assertThat(json(rec.getValue().value()).has("objet_numero")).isFalse();
+		assertThat(json(rec.getValue().value()).get("objet_type").asText()).isEqualTo("DEMANDE");
 	}
 
 	private static Collaborateur collab(String prenom, boolean avecCompte) {

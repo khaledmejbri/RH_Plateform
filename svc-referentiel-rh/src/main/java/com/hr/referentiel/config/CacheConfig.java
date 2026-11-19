@@ -1,12 +1,14 @@
 package com.hr.referentiel.config;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.hr.commun.societe.SocieteContexte;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -23,6 +25,14 @@ public class CacheConfig {
 	/** Instantané des paramètres (ADR-UAT-lot3 § 4) : cache dédié, durée de vie courte et propre (D-R02.j). */
 	public static final String CACHE_PARAMETRES = "parametres";
 
+	/** Clé de cache multi-société (§ 9.2.2) : isole systématiquement chaque entrée par {@code societeId}. */
+	public record CleSociete(UUID societeId, Object cle) {
+	}
+
+	public static CleSociete cle(Object cle) {
+		return new CleSociete(SocieteContexte.couranteOuVide().orElse(SocieteContexte.AUCUNE), cle);
+	}
+
 	@Bean
 	public CacheManager cacheManager(
 			@Value("${app.parametres.cache-ttl-secondes:30}") long ttlParametresSecondes) {
@@ -35,7 +45,7 @@ public class CacheConfig {
 		// Hors de la spec commune (5 min) : un paramètre modifié doit être vu partout en moins d'une minute.
 		manager.registerCustomCache(CACHE_PARAMETRES, Caffeine.newBuilder()
 				.expireAfterWrite(ttlParametresSecondes, TimeUnit.SECONDS)
-				.maximumSize(10)
+				.maximumSize(500)
 				.build());
 		return manager;
 	}

@@ -15,6 +15,11 @@
 	<description>Référentiel RH (organisations, collaborateurs) — lecture scalable, écriture sécurisée</description>
 
 	<dependencies>
+		<dependency>
+			<groupId>com.hr</groupId>
+			<artifactId>sirh-commun</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
 		<!-- Import Excel / CSV (ADR soldes-conge-import § 6) : lecture en flux, DTD désactivée par fastexcel-reader -->
 		<dependency>
 			<groupId>org.dhatim</groupId>

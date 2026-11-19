@@ -9,10 +9,12 @@ import com.hr.referentiel.entity.ParametresConges;
 import com.hr.referentiel.repository.AcquisitionMoisRepository;
 import com.hr.referentiel.repository.JourFerieRepository;
 import com.hr.referentiel.repository.ReglagesCongesRepository;
+import com.hr.referentiel.test.AvecSocieteContexteExtension;
 import com.hr.referentiel.web.ReferentielMetierException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -35,6 +37,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /** T8 (C8-02 à C8-05) : jours fériés (date unique, libellé, année, version, journal) et réglage « Jours acquis par mois ». */
+@ExtendWith(AvecSocieteContexteExtension.class)
 class JourFerieEtReglagesServiceTest {
 
 	private static final Clock HORLOGE = Clock.fixed(Instant.parse("2026-11-12T10:00:00Z"), ZoneOffset.UTC);
@@ -165,7 +168,7 @@ class JourFerieEtReglagesServiceTest {
 		reglagesRepository = mock(ReglagesCongesRepository.class);
 		ligne = new ParametresConges();
 		ligne.setJoursAcquisParMois(new BigDecimal("1.5"));
-		when(reglagesRepository.findById(ParametresConges.ID_UNIQUE)).thenReturn(Optional.of(ligne));
+		when(reglagesRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(ligne));
 		when(reglagesRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
 		reglages = new ReglagesCongeService(reglagesRepository, mock(AcquisitionMoisRepository.class), journal, HORLOGE);
 	}
@@ -199,7 +202,7 @@ class JourFerieEtReglagesServiceTest {
 		assertThatThrownBy(() -> reglages.modifier(ReglagesCongeService.CLE_JOURS_PAR_MOIS, BigDecimal.ONE, 3L, DRH))
 				.satisfies(e -> assertThat(code(e)).isEqualTo("PARAMETRE_MODIFIE_ENTRE_TEMPS"));
 		assertThat(reglages.reglages().get(0).valeur()).isEqualByComparingTo("1.5");
-		when(reglagesRepository.findById(ParametresConges.ID_UNIQUE)).thenReturn(Optional.empty());
+		when(reglagesRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.empty());
 		assertThat(reglages.reglages().get(0).valeur()).isEqualByComparingTo("1.5");
 		assertThat(reglages.joursParMois()).isEqualByComparingTo("1.5");
 		assertThat(ReglagesCongeService.debutParDefaut(LocalDate.of(2026, 11, 12))).isEqualTo(LocalDate.of(2026, 12, 1));

@@ -17,10 +17,12 @@ import com.hr.referentiel.service.AcquisitionFicheService;
 import com.hr.referentiel.service.AuteurParametre;
 import com.hr.referentiel.service.ReglagesCongeService;
 import com.hr.referentiel.service.SoldeCongeService;
+import com.hr.referentiel.test.AvecSocieteContexteExtension;
 import com.hr.referentiel.web.ReferentielMetierException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -70,6 +72,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import(SoldesCongeH2Test.Config.class)
+@ExtendWith(AvecSocieteContexteExtension.class)
 class SoldesCongeH2Test {
 
 	@Configuration
@@ -242,7 +245,7 @@ class SoldesCongeH2Test {
 				AtomicInteger insuffisant = new AtomicInteger();
 				List<Callable<Void>> taches = new ArrayList<>();
 				for (int k = 0; k < 2; k++) {
-					taches.add(() -> {
+					taches.add(() -> com.hr.commun.societe.SocieteContexte.executer(AvecSocieteContexteExtension.SOCIETE_TEST, () -> {
 						try {
 							new TransactionTemplate(tm).executeWithoutResult(s -> {
 								SoldeConge solde = service.verrouiller(id);
@@ -257,7 +260,7 @@ class SoldesCongeH2Test {
 							insuffisant.incrementAndGet();
 						}
 						return null;
-					});
+					}));
 				}
 				for (Future<Void> f : pool.invokeAll(taches)) {
 					f.get();

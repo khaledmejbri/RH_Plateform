@@ -1,9 +1,11 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import com.hr.referentiel.domain.StatutPlainteRh;
 import com.hr.referentiel.domain.TypePlainteRh;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.TenantId;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
@@ -20,11 +22,12 @@ import java.util.UUID;
  * - Log d'actions horodaté (qui a changé quoi et quand).
  */
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_plainte", indexes = {
-		@Index(name = "idx_plainte_auteur", columnList = "auteur_collaborateur_identifiant"),
-		@Index(name = "idx_plainte_statut", columnList = "statut"),
-		@Index(name = "idx_plainte_type", columnList = "type_plainte"),
-		@Index(name = "idx_plainte_numero", columnList = "numero_ticket", unique = true)
+		@Index(name = "idx_plainte_societe_auteur", columnList = "societe_id, auteur_collaborateur_identifiant"),
+		@Index(name = "idx_plainte_societe_statut", columnList = "societe_id, statut"),
+		@Index(name = "idx_plainte_societe_type", columnList = "societe_id, type_plainte"),
+		@Index(name = "idx_plainte_societe_numero", columnList = "societe_id, numero_ticket", unique = true)
 })
 public class PlainteRh {
 
@@ -32,6 +35,10 @@ public class PlainteRh {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	@Column(name = "identifiant", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	/** Numéro lisible : PLT-YYYYMM-XXXX, généré à la création. */
 	@Column(name = "numero_ticket", nullable = true, updatable = false, length = 32)

@@ -1,5 +1,10 @@
 package com.hr.referentiel.config;
 
+import com.hr.commun.societe.SocieteFiltreInterne;
+import com.hr.commun.societe.SocieteFiltreJwt;
+import com.hr.referentiel.service.SocieteDefautResolver;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -11,6 +16,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 
 import java.util.ArrayList;
@@ -18,25 +24,37 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
+	@Value("${app.internal-api.token:change-me-internal-token}")
+	private String internalApiToken;
+
 	@Bean
-	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+	public SecurityFilterChain securityFilterChain(
+			HttpSecurity http,
+			ObjectProvider<SocieteDefautResolver> societeDefautResolverProvider) throws Exception {
+		SocieteDefautResolver resolver = societeDefautResolverProvider.getIfAvailable();
+		java.util.function.Supplier<UUID> fournisseurRepli = resolver != null
+				? resolver::resoudreIdSiTransitionActive
+				: () -> null;
 		http
 				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.csrf(csrf -> csrf.disable())
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
-						// Service à service : jeton partagé vérifié dans InterneReferentielController (non routé par la gateway)
+						// Service à service : jeton partagé vérifié dans SocieteFiltreInterne et InterneReferentielController
 						.requestMatchers("/internal/referentiel/**").permitAll()
 						.requestMatchers("/api/referentiel/v1/**", "/api/rh/v1/**").authenticated()
 						.anyRequest().denyAll())
 				.oauth2ResourceServer(oauth2 -> oauth2
-						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
+						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
+				.addFilterAfter(new SocieteFiltreJwt(), BearerTokenAuthenticationFilter.class)
+				.addFilterAfter(new SocieteFiltreInterne(internalApiToken, fournisseurRepli), SocieteFiltreJwt.class);
 		return http.build();
 	}
 

@@ -13,4 +13,7 @@ public final class RhKafkaTopics {
 
 	/** Référentiel → Notification : notifications RH (push FCM). Recipient = UUID collaborateur ou GROUP:xxx. */
 	public static final String RH_NOTIFICATIONS = "rh.notifications";
+
+	/** Identité → Services : cycle de vie des sociétés (§ 9.8). */
+	public static final String SOCIETES = "rh.societes";
 }

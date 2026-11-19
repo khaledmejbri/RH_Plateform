@@ -398,13 +398,17 @@ public class RhNotificationPublisher {
      * et {@code emis_le} sont des champs structurés (plus de préfixe dans le texte).
      */
     private void envoyer(String recipientId, String sujet, String corps, Objet objet) {
+        UUID societeId = com.hr.commun.societe.SocieteContexte.courante();
         try {
             String numero = objet.numero();
-                        NotificationMessage msg = new NotificationMessage("WEBSOCKET", recipientId, sujet, corps, numero,
+            NotificationMessage msg = new NotificationMessage("WEBSOCKET", recipientId, sujet, corps, numero,
                     objet.notificationId().toString(), objet.evenement(), objet.type(),
                     objet.id() != null ? objet.id().toString() : null, numero, clock.instant().toString());
-            kafkaTemplate.send(TOPIC, recipientId, objectMapper.writeValueAsString(msg));
-            log.debug("Notification envoyée → {} : {}", recipientId, sujet);
+            org.apache.kafka.clients.producer.ProducerRecord<String, String> record =
+                    new org.apache.kafka.clients.producer.ProducerRecord<>(TOPIC, recipientId, objectMapper.writeValueAsString(msg));
+            com.hr.commun.societe.SocieteKafka.ajouterEntete(record, societeId);
+            kafkaTemplate.send(record);
+            log.debug("Notification envoyée → {} (société={}) : {}", recipientId, societeId, sujet);
         } catch (Exception e) {
             log.error("Erreur envoi notification Kafka → {} : {}", recipientId, e.getMessage());
         }

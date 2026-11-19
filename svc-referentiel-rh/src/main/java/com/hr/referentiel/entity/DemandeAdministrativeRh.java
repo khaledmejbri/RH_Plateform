@@ -1,9 +1,11 @@
 package com.hr.referentiel.entity;
 
+import com.hr.commun.societe.SocieteGardeEcriture;
 import com.hr.referentiel.domain.StatutDemandeAdministrativeRh;
 import com.hr.referentiel.domain.TypeDemandeAdministrativeRh;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.TenantId;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
@@ -17,13 +19,14 @@ import java.util.UUID;
  * Workflow : employé → manager ACTIF du nœud d'unité (si défini, snapshot) → RRH.
  */
 @Entity
+@EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_demande_administrative", indexes = {
-		@Index(name = "idx_demande_collab", columnList = "demandeur_identifiant"),
-		@Index(name = "idx_demande_statut", columnList = "statut"),
-		@Index(name = "idx_demande_type", columnList = "type_demande"),
-		@Index(name = "idx_demande_periode", columnList = "periode_debut,periode_fin"),
-		@Index(name = "idx_demande_valideur_attendu", columnList = "valideur_attendu_identifiant"),
-		@Index(name = "idx_demande_numero", columnList = "numero", unique = true)
+		@Index(name = "idx_demande_societe_collab", columnList = "societe_id, demandeur_identifiant"),
+		@Index(name = "idx_demande_societe_statut", columnList = "societe_id, statut"),
+		@Index(name = "idx_demande_societe_type", columnList = "societe_id, type_demande"),
+		@Index(name = "idx_demande_societe_periode", columnList = "societe_id, periode_debut,periode_fin"),
+		@Index(name = "idx_demande_societe_valideur", columnList = "societe_id, valideur_attendu_identifiant"),
+		@Index(name = "idx_demande_societe_numero", columnList = "societe_id, numero", unique = true)
 })
 public class DemandeAdministrativeRh {
 
@@ -31,6 +34,10 @@ public class DemandeAdministrativeRh {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	@Column(name = "identifiant", nullable = false, updatable = false)
 	private UUID id;
+
+	@TenantId
+	@Column(name = "societe_id", updatable = false)
+	private UUID societeId;
 
 	/** D-L02 : numéro lisible attribué à la création, unique et immuable. Null le temps de la reprise des anciennes lignes. */
 	@Column(name = "numero", updatable = false, length = 24)

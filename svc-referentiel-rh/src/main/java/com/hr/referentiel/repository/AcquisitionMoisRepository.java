@@ -7,12 +7,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public interface AcquisitionMoisRepository extends JpaRepository<AcquisitionMois, String> {
 
-	/** Fige N au premier passage du mois (D-S07.c) : un second appel ne change rien. */
+	/** Fige N au premier passage du mois (D-S07.c) pour une société : un second appel ne change rien. */
 	@Modifying
-	@Query(value = "insert into rh_acquisition_mois (mois, jours_par_mois, premier_passage_le) "
-			+ "values (:mois, :jours, current_timestamp) on conflict do nothing", nativeQuery = true)
-	void figerSiAbsent(@Param("mois") String mois, @Param("jours") BigDecimal jours);
+	@Query(value = "insert into rh_acquisition_mois (societe_id, mois, jours_par_mois, premier_passage_le) "
+			+ "values (:societeId, :mois, :jours, current_timestamp) on conflict do nothing", nativeQuery = true)
+	void figerSiAbsent(@Param("societeId") UUID societeId, @Param("mois") String mois, @Param("jours") BigDecimal jours);
 }

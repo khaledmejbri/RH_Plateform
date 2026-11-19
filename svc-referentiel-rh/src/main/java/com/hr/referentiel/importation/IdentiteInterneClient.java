@@ -1,11 +1,11 @@
 package com.hr.referentiel.importation;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.hr.commun.societe.SocieteRestClientIntercepteur;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -50,7 +50,11 @@ public class IdentiteInterneClient {
 		HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(delaiSecondes)).build();
 		JdkClientHttpRequestFactory usine = new JdkClientHttpRequestFactory(http);
 		usine.setReadTimeout(Duration.ofSeconds(delaiSecondes));
-		this.client = RestClient.builder().baseUrl(baseUrl).requestFactory(usine).build();
+		this.client = RestClient.builder()
+				.baseUrl(baseUrl)
+				.requestFactory(usine)
+				.requestInterceptor(new SocieteRestClientIntercepteur())
+				.build();
 		this.jeton = jeton;
 	}
 

@@ -17,8 +17,10 @@ import com.hr.referentiel.service.ParametreService;
 import com.hr.referentiel.service.ParametresCache;
 import com.hr.referentiel.service.SoldeCongeService;
 import com.hr.referentiel.service.SoldeLotService;
+import com.hr.referentiel.test.AvecSocieteContexteExtension;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -74,6 +76,7 @@ import static org.mockito.Mockito.when;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import(ImportPerformanceTest.Config.class)
+@ExtendWith(AvecSocieteContexteExtension.class)
 class ImportPerformanceTest {
 
 	static final int LIGNES = 5_000;
@@ -162,8 +165,8 @@ class ImportPerformanceTest {
 		// ── 5 000 ajustements de soldes (la moitié des soldes existe déjà) ──
 		List<UUID> ids = collaborateurRepository.findAll().stream().map(Collaborateur::getId).toList();
 		for (int i = 0; i < ids.size(); i += 2) {
-			jdbc.update("insert into rh_solde_conge (collaborateur_id, acquis, version, modifie_le) values (?, 4, 3, current_timestamp)",
-					ids.get(i));
+			jdbc.update("insert into rh_solde_conge (societe_id, collaborateur_id, acquis, version, modifie_le) values (?, ?, 4, 3, current_timestamp)",
+					AvecSocieteContexteExtension.SOCIETE_TEST, ids.get(i));
 		}
 		StringBuilder soldes = new StringBuilder("N° matricule;Solde au 30/11;Observation\n");
 		for (int i = 0; i < LIGNES; i++) {

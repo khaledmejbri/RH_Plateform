@@ -42,7 +42,8 @@ class DemandeDocumentRestrictionControllerTest {
 	private org.springframework.cache.CacheManager cacheManager;
 
 	private static RequestPostProcessor role(String r) {
-		return jwt().authorities((GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + r));
+		return jwt().jwt(j -> j.claim("societe_id", "00000000-0000-0000-0000-000000000001"))
+				.authorities((GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + r));
 	}
 
 	@Test
