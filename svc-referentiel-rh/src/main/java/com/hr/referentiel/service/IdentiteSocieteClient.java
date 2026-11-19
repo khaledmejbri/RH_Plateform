@@ -31,6 +31,7 @@ public class IdentiteSocieteClient implements SocietesActives {
 	public record SocieteResume(
 			@JsonProperty("id") UUID id,
 			@JsonProperty("code") String code,
+			@JsonProperty("raison_sociale") String raisonSociale,
 			@JsonProperty("statut") String statut,
 			@JsonProperty("fuseau") String fuseau
 	) {
@@ -40,6 +41,7 @@ public class IdentiteSocieteClient implements SocietesActives {
 	private final String jetonInterne;
 	private final Cache<String, List<UUID>> cacheActives;
 	private final Cache<String, UUID> cacheParCode;
+	private final Cache<UUID, SocieteResume> cacheParId;
 
 	public IdentiteSocieteClient(
 			@Value("${referentiel.identite.base-url:http://localhost:8081}") String baseUrl,
@@ -52,6 +54,7 @@ public class IdentiteSocieteClient implements SocietesActives {
 		this.jetonInterne = jetonInterne;
 		this.cacheActives = Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(60)).maximumSize(1).build();
 		this.cacheParCode = Caffeine.newBuilder().expireAfterWrite(Duration.ofMinutes(5)).maximumSize(100).build();
+		this.cacheParId = Caffeine.newBuilder().expireAfterWrite(Duration.ofMinutes(5)).maximumSize(100).build();
 	}
 
 	@Override
@@ -72,6 +75,31 @@ public class IdentiteSocieteClient implements SocietesActives {
 
 	public void invaliderCacheActives() {
 		cacheActives.invalidateAll();
+		cacheParId.invalidateAll();
+	}
+
+	public Optional<SocieteResume> trouverParId(UUID id) {
+		if (id == null) {
+			return Optional.empty();
+		}
+		SocieteResume cache = cacheParId.getIfPresent(id);
+		if (cache != null) {
+			return Optional.of(cache);
+		}
+		try {
+			SocieteResume s = client.get()
+					.uri("/internal/identite/v1/societes/{id}", id)
+					.header("X-Internal-Token", jetonInterne)
+					.retrieve()
+					.body(SocieteResume.class);
+			if (s != null) {
+				cacheParId.put(id, s);
+				return Optional.of(s);
+			}
+		} catch (RuntimeException e) {
+			log.debug("Échec lecture société {} : {}", id, e.getMessage());
+		}
+		return Optional.empty();
 	}
 
 	public Optional<UUID> trouverIdParCode(String code) {
