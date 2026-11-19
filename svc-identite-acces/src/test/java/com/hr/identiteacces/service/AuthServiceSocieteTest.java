@@ -183,15 +183,24 @@ class AuthServiceSocieteTest {
 		IdentiteMetierException exMdp = capturerEchec(new SigninRequest("COL-WEB", "MauvaisMdp", "RECETTE2"));
 		verify(passwordEncoder, times(1)).matches("MauvaisMdp", "hash-rec2");
 
+		// 4. PLATEFORME avec identifiant inconnu (D-SOC20 #4)
+		clearInvocations(passwordEncoder);
+		when(userRepository.findPlateformeByIdentifiantIgnoreCase("OPERATEUR_INCONNU"))
+				.thenReturn(Optional.empty());
+		IdentiteMetierException exPlateforme = capturerEchec(
+				new SigninRequest("OPERATEUR_INCONNU", "SecretTest1!", "PLATEFORME"));
+		verify(passwordEncoder, times(1)).matches("SecretTest1!", "hash-factice-startup");
+
 		ErrorResponse corpsCode = ErrorResponse.of(exCode.getCode(), exCode.getMessage(), exCode.getHttpStatus(), "/api/auth/signin");
 		ErrorResponse corpsMat = ErrorResponse.of(exMatricule.getCode(), exMatricule.getMessage(), exMatricule.getHttpStatus(), "/api/auth/signin");
 		ErrorResponse corpsMdp = ErrorResponse.of(exMdp.getCode(), exMdp.getMessage(), exMdp.getHttpStatus(), "/api/auth/signin");
+		ErrorResponse corpsPlat = ErrorResponse.of(exPlateforme.getCode(), exPlateforme.getMessage(), exPlateforme.getHttpStatus(), "/api/auth/signin");
 
 		assertThat(corpsCode.httpStatus()).isEqualTo(401);
 		assertThat(corpsCode.code()).isEqualTo("IDENTIFIANTS_INVALIDES");
-		assertThat(corpsCode.code()).isEqualTo(corpsMat.code()).isEqualTo(corpsMdp.code());
-		assertThat(corpsCode.message()).isEqualTo(corpsMat.message()).isEqualTo(corpsMdp.message());
-		assertThat(corpsCode.erreur()).isEqualTo(corpsMat.erreur()).isEqualTo(corpsMdp.erreur());
+		assertThat(corpsCode.code()).isEqualTo(corpsMat.code()).isEqualTo(corpsMdp.code()).isEqualTo(corpsPlat.code());
+		assertThat(corpsCode.message()).isEqualTo(corpsMat.message()).isEqualTo(corpsMdp.message()).isEqualTo(corpsPlat.message());
+		assertThat(corpsCode.erreur()).isEqualTo(corpsMat.erreur()).isEqualTo(corpsMdp.erreur()).isEqualTo(corpsPlat.erreur());
 	}
 
 	@Test
