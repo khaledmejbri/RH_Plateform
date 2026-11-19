@@ -33,7 +33,6 @@ public class UserProvisioningService {
 	private final CollaborateurWelcomeMailService collaborateurWelcomeMailService;
 	private final GenerateurMotDePasse generateurMotDePasse;
 	private final SocieteDefautResolver societeDefautResolver;
-	private final UUID societeTestUnitaireRepli = UUID.randomUUID();
 
 	@Autowired
 	public UserProvisioningService(
@@ -49,16 +48,6 @@ public class UserProvisioningService {
 		this.collaborateurWelcomeMailService = collaborateurWelcomeMailService;
 		this.generateurMotDePasse = generateurMotDePasse != null ? generateurMotDePasse : new GenerateurMotDePasse();
 		this.societeDefautResolver = societeDefautResolver;
-	}
-
-	public UserProvisioningService(
-			UserRepository userRepository,
-			PasswordEncoder passwordEncoder,
-			KafkaTemplate<String, CollaborateurCompteCreeEvent> collaborateurCompteCreeKafkaTemplate,
-			CollaborateurWelcomeMailService collaborateurWelcomeMailService,
-			GenerateurMotDePasse generateurMotDePasse) {
-		this(userRepository, passwordEncoder, collaborateurCompteCreeKafkaTemplate,
-				collaborateurWelcomeMailService, generateurMotDePasse, null);
 	}
 
 	@Transactional
@@ -137,13 +126,10 @@ public class UserProvisioningService {
 		if (courante.isPresent()) {
 			return courante.get();
 		}
-		if (societeDefautResolver != null) {
-			return societeDefautResolver
-					.resoudrePourTransitionAvecWarn("Message Kafka de provisionnement")
-					.orElseThrow(() -> new IllegalStateException(
-							"Message Kafka de provisionnement sans societe_id et repli de transition désactivé"));
-		}
-		return societeTestUnitaireRepli;
+		return societeDefautResolver
+				.resoudrePourTransitionAvecWarn("Message Kafka de provisionnement")
+				.orElseThrow(() -> new IllegalStateException(
+						"Message Kafka de provisionnement sans societe_id et repli de transition désactivé"));
 	}
 
 	private Optional<User> trouverCompteExistant(CollaborateurCompteDemandeEvent event, UUID societeId) {

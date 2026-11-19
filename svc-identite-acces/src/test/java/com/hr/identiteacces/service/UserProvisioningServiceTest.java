@@ -44,8 +44,17 @@ class UserProvisioningServiceTest {
 	@Mock
 	private CollaborateurWelcomeMailService collaborateurWelcomeMailService;
 
+	@Mock
+	private SocieteDefautResolver societeDefautResolver;
+
 	@InjectMocks
 	private UserProvisioningService service;
+
+	@org.junit.jupiter.api.BeforeEach
+	void setupSocieteDefaut() {
+		org.mockito.Mockito.lenient().when(societeDefautResolver.resoudrePourTransitionAvecWarn(any()))
+				.thenReturn(Optional.of(UUID.randomUUID()));
+	}
 
 	@Test
 	@DisplayName("MAJ rôles RO → COLLABORATEUR remplace les rôles (retire RO, garde USER)")

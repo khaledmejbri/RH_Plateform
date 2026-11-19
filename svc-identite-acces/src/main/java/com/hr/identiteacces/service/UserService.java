@@ -26,10 +26,6 @@ public class UserService {
 		this.societeDefautResolver = societeDefautResolver;
 	}
 
-	public UserService(UserRepository userRepository) {
-		this(userRepository, null);
-	}
-
 	@Transactional(readOnly = true)
 	public List<UserResponse> getUsersByRole(String role) {
 		UUID societeId = resoudreSocieteId("GET /internal/users/by-role");
@@ -61,11 +57,9 @@ public class UserService {
 		if (courante.isPresent()) {
 			return courante.get();
 		}
-		if (societeDefautResolver != null) {
-			Optional<UUID> repli = societeDefautResolver.resoudrePourTransitionAvecWarn(origine);
-			if (repli.isPresent()) {
-				return repli.get();
-			}
+		Optional<UUID> repli = societeDefautResolver.resoudrePourTransitionAvecWarn(origine);
+		if (repli.isPresent()) {
+			return repli.get();
 		}
 		throw IdentiteMetierException.badRequest("SOCIETE_ABSENTE",
 				"L'en-tête X-Societe-Id est obligatoire.");

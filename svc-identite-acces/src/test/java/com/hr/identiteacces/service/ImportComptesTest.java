@@ -42,7 +42,15 @@ class ImportComptesTest {
 	private KafkaTemplate<String, CollaborateurCompteCreeEvent> kafkaTemplate;
 	@Mock
 	private CollaborateurWelcomeMailService mailService;
+	@Mock
+	private SocieteDefautResolver societeDefautResolver;
 	private final GenerateurMotDePasse generateur = new GenerateurMotDePasse();
+
+	@org.junit.jupiter.api.BeforeEach
+	void setupSocieteDefaut() {
+		org.mockito.Mockito.lenient().when(societeDefautResolver.resoudrePourTransitionAvecWarn(any()))
+				.thenReturn(Optional.of(UUID.randomUUID()));
+	}
 
 	@InjectMocks
 	private UserProvisioningService service;
@@ -55,7 +63,7 @@ class ImportComptesTest {
 	@Test
 	@DisplayName("D-I09 : mot de passe généré (>= 12 caractères) transmis au seul courriel de bienvenue, encodé en base")
 	void motDePasseGenere() {
-		var s = new UserProvisioningService(userRepository, passwordEncoder, kafkaTemplate, mailService, generateur);
+		var s = new UserProvisioningService(userRepository, passwordEncoder, kafkaTemplate, mailService, generateur, societeDefautResolver);
 		when(userRepository.findBySocieteIdAndUsernameIgnoreCase(any(UUID.class), eq("COL-IMP"))).thenReturn(Optional.empty());
 		when(passwordEncoder.encode(any())).thenAnswer(i -> "encode:" + i.getArgument(0));
 		when(userRepository.save(any(User.class))).thenAnswer(i -> {
@@ -79,7 +87,7 @@ class ImportComptesTest {
 	@Test
 	@DisplayName("compte déjà existant de même identifiant : lié comme aujourd'hui, aucun courriel, aucun mot de passe généré")
 	void compteExistantLieSansCourriel() {
-		var s = new UserProvisioningService(userRepository, passwordEncoder, kafkaTemplate, mailService, generateur);
+		var s = new UserProvisioningService(userRepository, passwordEncoder, kafkaTemplate, mailService, generateur, societeDefautResolver);
 		User existant = User.builder().id(UUID.randomUUID()).username("COL-IMP").email("x@x.test")
 				.roles(new java.util.HashSet<>(java.util.Set.of("USER"))).build();
 		when(userRepository.findBySocieteIdAndUsernameIgnoreCase(any(UUID.class), eq("COL-IMP"))).thenReturn(Optional.of(existant));
@@ -94,7 +102,7 @@ class ImportComptesTest {
 	@Test
 	@DisplayName("D-I13.g : courriel déjà pris -> pas de compte, pas de courriel, pas d'exception (fiche sans compte)")
 	void courrielDejaPris() {
-		var s = new UserProvisioningService(userRepository, passwordEncoder, kafkaTemplate, mailService, generateur);
+		var s = new UserProvisioningService(userRepository, passwordEncoder, kafkaTemplate, mailService, generateur, societeDefautResolver);
 		when(userRepository.findBySocieteIdAndUsernameIgnoreCase(any(UUID.class), eq("COL-IMP"))).thenReturn(Optional.empty());
 		when(userRepository.existsByEmailIgnoreCase("ada@rh-evenement.test")).thenReturn(true);
 
@@ -107,7 +115,7 @@ class ImportComptesTest {
 	@Test
 	@DisplayName("sans mot_de_passe_genere ni mot de passe initial : création ignorée (comportement existant)")
 	void sansMotDePasse() {
-		var s = new UserProvisioningService(userRepository, passwordEncoder, kafkaTemplate, mailService, generateur);
+		var s = new UserProvisioningService(userRepository, passwordEncoder, kafkaTemplate, mailService, generateur, societeDefautResolver);
 		when(userRepository.findBySocieteIdAndUsernameIgnoreCase(any(UUID.class), eq("COL-IMP"))).thenReturn(Optional.empty());
 		s.provisionCollaborateurCompte(evenement("ada@rh-evenement.test", null));
 		verify(userRepository, never()).save(any());
