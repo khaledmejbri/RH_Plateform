@@ -7,7 +7,9 @@ import com.hr.referentiel.dto.SocieteParametresDtos.SocieteParametresResponse;
 import com.hr.referentiel.dto.WorkflowInterneDtos.AbsenceCollaborateurInterne;
 import com.hr.referentiel.dto.WorkflowInterneDtos.CalendrierSocieteInterneResponse;
 import com.hr.referentiel.dto.WorkflowInterneDtos.CollaborateurResumeInterne;
+import com.hr.referentiel.dto.WorkflowInterneDtos.ContexteDemandeur;
 import com.hr.referentiel.dto.WorkflowInterneDtos.IntervenantResolu;
+import com.hr.referentiel.dto.WorkflowInterneDtos.ParamsRegleResolution;
 import com.hr.referentiel.dto.WorkflowInterneDtos.RegleResolutionRequest;
 import com.hr.referentiel.dto.WorkflowInterneDtos.ResolutionLotRequest;
 import com.hr.referentiel.dto.WorkflowInterneDtos.ResolutionLotResponse;
@@ -29,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,7 +39,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -48,6 +50,9 @@ import java.util.UUID;
 public class WorkflowResolutionService {
 
 	private static final int MAX_REGLES = 50;
+	private static final Set<String> ROLES_AUTORISES = Set.of("RH", "ADMIN");
+	private static final Set<String> TYPES_NOEUDS_RESPONSABLE = Set.of("DEPARTEMENT", "DIRECTION", "DIRECTION_GENERALE");
+	private static final Set<String> PORTEES_FONCTION = Set.of("TOUTE_SOCIETE", "UNITE_DEMANDEUR");
 
 	private final CollaborateurRepository collaborateurRepository;
 	private final UniteOrganisationRepository uniteRepository;
@@ -86,24 +91,31 @@ public class WorkflowResolutionService {
 			throw ReferentielMetierException.badRequest("CORPS_INVALIDE",
 					"Le lot de résolution doit contenir entre 1 et 50 règles.");
 		}
-		LocalDate dateRef = req.dateReference() != null ? req.dateReference() : LocalDate.now(clock);
+		LocalDate dateRef = req.date() != null ? req.date() : LocalDate.now(clock);
 
 		// Préchargement unique pour éviter tout N+1
-		uniteRepository.findAll();
+		List<UniteOrganisation> toutesUnites = uniteRepository.findAll();
 		List<Collaborateur> tousCollaborateurs = collaborateurRepository.findAllWithUnite();
 		Map<UUID, Collaborateur> parId = new HashMap<>(tousCollaborateurs.size() * 2);
 		for (Collaborateur c : tousCollaborateurs) {
 			parId.put(c.getId(), c);
 		}
 
-		Collaborateur demandeur = req.demandeurCollaborateurId() != null
-				? parId.get(req.demandeurCollaborateurId())
-				: null;
+		Collaborateur demandeur = null;
+		if (req.demandeurId() != null) {
+			demandeur = parId.get(req.demandeurId());
+			if (demandeur == null) {
+				throw ReferentielMetierException.notFound("COLLABORATEUR_INTROUVABLE",
+						"Demandeur introuvable : " + req.demandeurId());
+			}
+		}
 
 		Set<String> codesFonctions = new HashSet<>();
 		for (RegleResolutionRequest r : req.regles()) {
-			if ("FONCTION".equalsIgnoreCase(r.type()) && r.fonctionCode() != null && !r.fonctionCode().isBlank()) {
-				codesFonctions.add(r.fonctionCode().trim().toUpperCase(Locale.ROOT));
+			ParamsRegleResolution params = r.params() != null ? r.params() : ParamsRegleResolution.VIDE;
+			if ("FONCTION".equalsIgnoreCase(r.regle())
+					&& params.fonctionCode() != null && !params.fonctionCode().isBlank()) {
+				codesFonctions.add(params.fonctionCode().trim().toUpperCase(Locale.ROOT));
 			}
 		}
 		Map<String, Fonction> fonctionsParCode = new HashMap<>();
@@ -118,30 +130,38 @@ public class WorkflowResolutionService {
 			}
 		}
 
-		Set<UUID> beneficiaires = req.beneficiaireCollaborateurIds() == null
-				? Set.of()
-				: new HashSet<>(req.beneficiaireCollaborateurIds());
+		Set<UUID> beneficiaires = req.beneficiaires() == null ? Set.of() : new HashSet<>(req.beneficiaires());
+		Set<UUID> exclusionsGlobales = req.exclure() == null ? Set.of() : new HashSet<>(req.exclure());
 
-		List<ResultatResolution> resultats = new ArrayList<>(req.regles().size());
+		Map<String, ResultatResolution> resultats = new LinkedHashMap<>();
 		for (RegleResolutionRequest regle : req.regles()) {
-			resultats.add(resoudreUneRegle(
-					regle, demandeur, beneficiaires, tousCollaborateurs, parId,
-					fonctionsParCode, affectationsParCode));
+			if (resultats.containsKey(regle.cle())) {
+				throw ReferentielMetierException.badRequest("CORPS_INVALIDE",
+						"Clé de règle en double : " + regle.cle());
+			}
+			resultats.put(regle.cle(), resoudreUneRegle(
+					regle, demandeur, beneficiaires, exclusionsGlobales,
+					tousCollaborateurs, parId, fonctionsParCode, affectationsParCode));
 		}
 
-		return new ResolutionLotResponse(
-				demandeur != null ? versResume(demandeur) : null,
-				resultats);
+		ContexteDemandeur contexteDemandeur = demandeur != null
+				? construireContexteDemandeur(demandeur, dateRef, toutesUnites)
+				: null;
+
+		return new ResolutionLotResponse(resultats, contexteDemandeur);
 	}
 
-	@Transactional
+	/**
+	 * Lit le calendrier de la société. Aucun {@code @Transactional} ici afin que l'appel HTTP vers
+	 * {@code svc-identite-acces} s'exécute hors transaction base de données.
+	 */
 	public CalendrierSocieteInterneResponse calendrier(LocalDate du, LocalDate au) {
 		UUID societeId = SocieteContexte.courante();
-		SocieteParametresResponse params = societeParametresService.obtenir();
 		String fuseau = identiteSocieteClient.trouverParId(societeId)
 				.map(SocieteResume::fuseau)
 				.filter(f -> f != null && !f.isBlank())
 				.orElse("Africa/Tunis");
+		SocieteParametresResponse params = societeParametresService.obtenir();
 		Set<LocalDate> feriesActifs = jourFerieService.datesActives();
 		List<LocalDate> feriesFiltres = feriesActifs.stream()
 				.filter(d -> (du == null || !d.isBefore(du)) && (au == null || !d.isAfter(au)))
@@ -204,12 +224,14 @@ public class WorkflowResolutionService {
 			RegleResolutionRequest regle,
 			Collaborateur demandeur,
 			Set<UUID> beneficiaires,
+			Set<UUID> exclusionsGlobales,
 			List<Collaborateur> tousCollaborateurs,
 			Map<UUID, Collaborateur> parId,
 			Map<String, Fonction> fonctionsParCode,
 			Map<String, List<FonctionAffectation>> affectationsParCode) {
 
-		String type = regle.type().trim().toUpperCase(Locale.ROOT);
+		String type = regle.regle().trim().toUpperCase(Locale.ROOT);
+		ParamsRegleResolution params = regle.params() != null ? regle.params() : ParamsRegleResolution.VIDE;
 		List<Collaborateur> candidatsBruts = new ArrayList<>();
 		String raisonInitiale = null;
 
@@ -223,7 +245,11 @@ public class WorkflowResolutionService {
 				}
 			}
 			case "MANAGER_NIVEAU" -> {
-				int niveau = regle.niveau() == null || regle.niveau() < 1 ? 1 : regle.niveau();
+				Integer niveau = params.niveau();
+				if (niveau == null || niveau < 1 || niveau > 4) {
+					throw ReferentielMetierException.badRequest("DEFINITION_INVALIDE",
+							"Le paramètre niveau de MANAGER_NIVEAU doit être compris entre 1 et 4.");
+				}
 				CandidatOuRaison cr = resoudreManagerNiveau(demandeur, niveau);
 				if (cr.candidat() != null) {
 					candidatsBruts.add(cr.candidat());
@@ -232,7 +258,12 @@ public class WorkflowResolutionService {
 				}
 			}
 			case "RESPONSABLE_TYPE" -> {
-				CandidatOuRaison cr = resoudreResponsableType(demandeur, regle.typeUnite());
+				String typeNoeud = params.typeNoeud() == null ? "" : params.typeNoeud().trim().toUpperCase(Locale.ROOT);
+				if (!TYPES_NOEUDS_RESPONSABLE.contains(typeNoeud)) {
+					throw ReferentielMetierException.badRequest("DEFINITION_INVALIDE",
+							"type_noeud invalide pour RESPONSABLE_TYPE : " + params.typeNoeud());
+				}
+				CandidatOuRaison cr = resoudreResponsableType(demandeur, typeNoeud);
 				if (cr.candidat() != null) {
 					candidatsBruts.add(cr.candidat());
 				} else {
@@ -240,9 +271,10 @@ public class WorkflowResolutionService {
 				}
 			}
 			case "ROLE" -> {
-				String roleNormalise = normaliserRole(regle.role());
+				Set<String> rolesDemandes = validerEtNormaliserRoles(params.roles());
 				for (Collaborateur c : tousCollaborateurs) {
-					if (possedeProfil(c, roleNormalise)) {
+					if (c.getProfilAcces() != null
+							&& rolesDemandes.contains(c.getProfilAcces().trim().toUpperCase(Locale.ROOT))) {
 						candidatsBruts.add(c);
 					}
 				}
@@ -251,12 +283,23 @@ public class WorkflowResolutionService {
 				}
 			}
 			case "FONCTION" -> {
-				String code = regle.fonctionCode() == null ? "" : regle.fonctionCode().trim().toUpperCase(Locale.ROOT);
+				if (params.fonctionCode() == null || params.fonctionCode().isBlank()) {
+					throw ReferentielMetierException.badRequest("DEFINITION_INVALIDE",
+							"fonction_code est obligatoire pour la règle FONCTION.");
+				}
+				String portee = params.portee() == null || params.portee().isBlank()
+						? "TOUTE_SOCIETE"
+						: params.portee().trim().toUpperCase(Locale.ROOT);
+				if (!PORTEES_FONCTION.contains(portee)) {
+					throw ReferentielMetierException.badRequest("DEFINITION_INVALIDE",
+							"portee invalide pour FONCTION : " + params.portee());
+				}
+				String code = params.fonctionCode().trim().toUpperCase(Locale.ROOT);
 				Fonction f = fonctionsParCode.get(code);
 				if (f == null || !f.isActif()) {
-					return new ResultatResolution(regle.cle(), List.of(), "FONCTION_INCONNUE");
+					return new ResultatResolution(List.of(), "FONCTION_INCONNUE");
 				}
-				boolean perimetreUnite = "UNITE_DEMANDEUR".equalsIgnoreCase(regle.perimetre());
+				boolean perimetreUnite = "UNITE_DEMANDEUR".equals(portee);
 				List<FonctionAffectation> affs = affectationsParCode.getOrDefault(code, List.of());
 				for (FonctionAffectation a : affs) {
 					if (perimetreUnite && a.getUnitePerimetre() != null) {
@@ -272,7 +315,11 @@ public class WorkflowResolutionService {
 				}
 			}
 			case "COLLABORATEUR" -> {
-				Collaborateur c = regle.collaborateurId() != null ? parId.get(regle.collaborateurId()) : null;
+				if (params.collaborateurId() == null) {
+					throw ReferentielMetierException.badRequest("DEFINITION_INVALIDE",
+							"collaborateur_id est obligatoire pour la règle COLLABORATEUR.");
+				}
+				Collaborateur c = parId.get(params.collaborateurId());
 				if (c != null) {
 					candidatsBruts.add(c);
 				} else {
@@ -286,12 +333,12 @@ public class WorkflowResolutionService {
 					raisonInitiale = "AUCUN_TITULAIRE";
 				}
 			}
-			default -> throw ReferentielMetierException.badRequest("CORPS_INVALIDE",
+			default -> throw ReferentielMetierException.badRequest("DEFINITION_INVALIDE",
 					"Type de règle de résolution inconnu : " + type);
 		}
 
 		if (candidatsBruts.isEmpty()) {
-			return new ResultatResolution(regle.cle(), List.of(),
+			return new ResultatResolution(List.of(),
 					raisonInitiale != null ? raisonInitiale : "AUCUN_TITULAIRE");
 		}
 
@@ -303,33 +350,63 @@ public class WorkflowResolutionService {
 			}
 		}
 		if (actifsAvecCompte.isEmpty()) {
-			return new ResultatResolution(regle.cle(), List.of(), "INACTIF");
+			return new ResultatResolution(List.of(), "INACTIF");
 		}
 
-		// 2. Exclusions (invariant I1 : demandeur et bénéficiaires exclus sauf règle DEMANDEUR sans exclusion explicite)
-		Set<UUID> idsExclus = construireExclusions(type, regle.exclure(), demandeur, beneficiaires);
+		// 2. Exclusions (I1 : demandeur et bénéficiaires exclus sauf règle DEMANDEUR + exclusions globales)
+		Set<UUID> idsExclus = new HashSet<>(exclusionsGlobales);
+		if (!"DEMANDEUR".equals(type)) {
+			if (demandeur != null) {
+				idsExclus.add(demandeur.getId());
+			}
+			idsExclus.addAll(beneficiaires);
+		}
+
 		Map<UUID, IntervenantResolu> retenus = new LinkedHashMap<>();
 		for (Collaborateur c : actifsAvecCompte) {
 			if (!idsExclus.contains(c.getId())) {
+				String intitule = c.getPosteLibelle() != null && !c.getPosteLibelle().isBlank()
+						? c.getPosteLibelle()
+						: c.getFonction();
 				retenus.putIfAbsent(c.getId(), new IntervenantResolu(
 						c.getId(),
 						c.getCompteUtilisateurId(),
 						c.getPrenom() + " " + c.getNom(),
-						c.getMatricule()));
+						intitule));
 			}
 		}
 		if (retenus.isEmpty()) {
-			return new ResultatResolution(regle.cle(), List.of(), "TOUS_EXCLUS");
+			return new ResultatResolution(List.of(), "TOUS_EXCLUS");
 		}
-		return new ResultatResolution(regle.cle(), List.copyOf(retenus.values()), null);
+		return new ResultatResolution(List.copyOf(retenus.values()), null);
+	}
+
+	private static Set<String> validerEtNormaliserRoles(List<String> roles) {
+		if (roles == null || roles.isEmpty()) {
+			throw ReferentielMetierException.badRequest("DEFINITION_INVALIDE",
+					"La règle ROLE exige au moins un rôle parmi RH et ADMIN.");
+		}
+		Set<String> resultat = new HashSet<>();
+		for (String r : roles) {
+			if (r == null || r.isBlank()) {
+				throw ReferentielMetierException.badRequest("DEFINITION_INVALIDE",
+						"Rôle vide non autorisé dans la règle ROLE.");
+			}
+			String normalise = r.trim().toUpperCase(Locale.ROOT);
+			if (!ROLES_AUTORISES.contains(normalise)) {
+				throw ReferentielMetierException.badRequest("DEFINITION_INVALIDE",
+						"Rôle non autorisé pour la règle ROLE : " + r + " (seuls RH et ADMIN sont acceptés).");
+			}
+			resultat.add(normalise);
+		}
+		return resultat;
 	}
 
 	private static String raisonVideManagerNoeud(Collaborateur demandeur) {
 		if (demandeur == null || demandeur.getUnite() == null) {
 			return "AUCUN_MANAGER";
 		}
-		UniteOrganisation unite = demandeur.getUnite();
-		Collaborateur managerNoeud = SuperieurHierarchieRules.managerActif(unite);
+		Collaborateur managerNoeud = SuperieurHierarchieRules.managerActif(demandeur.getUnite());
 		if (managerNoeud != null && managerNoeud.getId().equals(demandeur.getId())) {
 			return "CHAINE_TERMINEE";
 		}
@@ -347,7 +424,6 @@ public class WorkflowResolutionService {
 		if (niveau == 1) {
 			return new CandidatOuRaison(niveau1, null);
 		}
-		// Trouver le nœud dont niveau1 est manager dans la chaîne du demandeur
 		UniteOrganisation curseur = trouverNoeudDeManagerDansChaine(demandeur.getUnite(), niveau1.getId());
 		Collaborateur courant = niveau1;
 		for (int k = 2; k <= niveau; k++) {
@@ -377,15 +453,14 @@ public class WorkflowResolutionService {
 		return depart;
 	}
 
-	private static CandidatOuRaison resoudreResponsableType(Collaborateur demandeur, String typeUnite) {
-		if (demandeur == null || demandeur.getUnite() == null || typeUnite == null || typeUnite.isBlank()) {
+	private static CandidatOuRaison resoudreResponsableType(Collaborateur demandeur, String typeNoeud) {
+		if (demandeur == null || demandeur.getUnite() == null) {
 			return new CandidatOuRaison(null, "AUCUN_MANAGER");
 		}
-		String cible = typeUnite.trim();
 		for (UniteOrganisation u = demandeur.getUnite(); u != null; u = u.getParent()) {
-			if (u.getTypeNoeud() != null && u.getTypeNoeud().equalsIgnoreCase(cible)) {
-				Collaborateur m = u.getManager();
-				if (m == null) {
+			if (u.getTypeNoeud() != null && u.getTypeNoeud().equalsIgnoreCase(typeNoeud)) {
+				Collaborateur m = SuperieurHierarchieRules.managerActif(u);
+				if (m == null || m.getId().equals(demandeur.getId())) {
 					return new CandidatOuRaison(null, "AUCUN_MANAGER");
 				}
 				return new CandidatOuRaison(m, null);
@@ -394,50 +469,24 @@ public class WorkflowResolutionService {
 		return new CandidatOuRaison(null, "AUCUN_MANAGER");
 	}
 
-	private static String normaliserRole(String role) {
-		if (role == null) {
-			return "";
-		}
-		String r = role.trim().toUpperCase(Locale.ROOT);
-		return r.startsWith("ROLE_") ? r.substring(5) : r;
-	}
-
-	private static boolean possedeProfil(Collaborateur c, String roleNormalise) {
-		if (c.getProfilAcces() == null || roleNormalise.isEmpty()) {
-			return false;
-		}
-		String profil = c.getProfilAcces().trim().toUpperCase(Locale.ROOT);
-		if (Objects.equals(profil, roleNormalise)) {
-			return true;
-		}
-		if ("RO".equals(roleNormalise) && "RESPONSABLE".equals(profil)) {
-			return true;
-		}
-		return "USER".equals(roleNormalise) && "COLLABORATEUR".equals(profil);
-	}
-
-	private static Set<UUID> construireExclusions(
-			String typeRegle,
-			List<String> exclure,
+	private static ContexteDemandeur construireContexteDemandeur(
 			Collaborateur demandeur,
-			Set<UUID> beneficiaires) {
-		Set<UUID> exclus = new HashSet<>();
-		Set<String> directives = new HashSet<>();
-		if (exclure != null) {
-			for (String e : exclure) {
-				if (e != null) {
-					directives.add(e.trim().toUpperCase(Locale.ROOT));
-				}
+			LocalDate dateRef,
+			List<UniteOrganisation> toutesUnites) {
+		int ancienneteMois = 0;
+		if (demandeur.getDateRecrutement() != null && !demandeur.getDateRecrutement().isAfter(dateRef)) {
+			Period p = Period.between(demandeur.getDateRecrutement(), dateRef);
+			ancienneteMois = p.getYears() * 12 + p.getMonths();
+		}
+		boolean estManager = false;
+		for (UniteOrganisation u : toutesUnites) {
+			if (u.getManager() != null && demandeur.getId().equals(u.getManager().getId())) {
+				estManager = true;
+				break;
 			}
 		}
-		boolean estRegleDemandeur = "DEMANDEUR".equals(typeRegle);
-		if ((!estRegleDemandeur || directives.contains("DEMANDEUR")) && demandeur != null) {
-			exclus.add(demandeur.getId());
-		}
-		if (!estRegleDemandeur || directives.contains("BENEFICIAIRES")) {
-			exclus.addAll(beneficiaires);
-		}
-		return exclus;
+		String typeNoeud = demandeur.getUnite() != null ? demandeur.getUnite().getTypeNoeud() : null;
+		return new ContexteDemandeur(demandeur.getProfilAcces(), typeNoeud, ancienneteMois, estManager);
 	}
 
 	private static CollaborateurResumeInterne versResume(Collaborateur c) {

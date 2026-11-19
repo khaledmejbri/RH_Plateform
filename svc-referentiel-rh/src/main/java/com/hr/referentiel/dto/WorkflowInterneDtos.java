@@ -21,23 +21,37 @@ public final class WorkflowInterneDtos {
 	}
 
 	public record ResolutionLotRequest(
-			@JsonProperty("demandeur_collaborateur_id") UUID demandeurCollaborateurId,
-			@JsonProperty("beneficiaire_collaborateur_ids") List<UUID> beneficiaireCollaborateurIds,
-			@JsonProperty("date_reference") LocalDate dateReference,
+			@JsonProperty("date") LocalDate date,
+			@JsonProperty("demandeur_id") UUID demandeurId,
+			@JsonProperty("beneficiaires") List<UUID> beneficiaires,
+			@JsonProperty("exclure") List<UUID> exclure,
 			@NotEmpty @Size(max = 50) @Valid @JsonProperty("regles") List<RegleResolutionRequest> regles
 	) {
 	}
 
 	public record RegleResolutionRequest(
 			@NotBlank @JsonProperty("cle") String cle,
-			@NotBlank @JsonProperty("type") String type,
+			@NotBlank @JsonProperty("regle") String regle,
+			@Valid @JsonProperty("params") ParamsRegleResolution params
+	) {
+	}
+
+	public record ParamsRegleResolution(
 			@JsonProperty("niveau") Integer niveau,
-			@JsonProperty("type_unite") String typeUnite,
-			@JsonProperty("role") String role,
+			@JsonProperty("type_noeud") String typeNoeud,
+			@JsonProperty("roles") List<String> roles,
 			@JsonProperty("fonction_code") String fonctionCode,
-			@JsonProperty("perimetre") String perimetre,
-			@JsonProperty("collaborateur_id") UUID collaborateurId,
-			@JsonProperty("exclure") List<String> exclure
+			@JsonProperty("portee") String portee,
+			@JsonProperty("collaborateur_id") UUID collaborateurId
+	) {
+		public static final ParamsRegleResolution VIDE = new ParamsRegleResolution(null, null, null, null, null, null);
+	}
+
+	public record ContexteDemandeur(
+			@JsonProperty("profil_acces") String profilAcces,
+			@JsonProperty("type_noeud") String typeNoeud,
+			@JsonProperty("anciennete_mois") int ancienneteMois,
+			@JsonProperty("est_manager") boolean estManager
 	) {
 	}
 
@@ -59,20 +73,19 @@ public final class WorkflowInterneDtos {
 			@JsonProperty("collaborateur_id") UUID collaborateurId,
 			@JsonProperty("compte_id") UUID compteId,
 			@JsonProperty("nom") String nom,
-			@JsonProperty("matricule") String matricule
+			@JsonProperty("intitule") String intitule
 	) {
 	}
 
 	public record ResultatResolution(
-			@JsonProperty("cle") String cle,
-			@JsonProperty("intervenants") List<IntervenantResolu> intervenants,
+			@JsonProperty("candidats") List<IntervenantResolu> candidats,
 			@JsonProperty("raison_vide") String raisonVide
 	) {
 	}
 
 	public record ResolutionLotResponse(
-			@JsonProperty("contexte_demandeur") CollaborateurResumeInterne contexteDemandeur,
-			@JsonProperty("resultats") List<ResultatResolution> resultats
+			@JsonProperty("resultats") Map<String, ResultatResolution> resultats,
+			@JsonProperty("contexte_demandeur") ContexteDemandeur contexteDemandeur
 	) {
 	}
 
