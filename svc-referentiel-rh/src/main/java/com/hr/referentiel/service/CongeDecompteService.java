@@ -47,13 +47,32 @@ public class CongeDecompteService {
 	private final SoldeCongeService soldeService;
 	private final DemandeAdministrativeRhRepository demandeRepository;
 	private final JourFerieRepository jourFerieRepository;
+	private final SocieteParametresService societeParametresService;
 
 	public CongeDecompteService(JourFerieService jourFerieService, SoldeCongeService soldeService,
 			DemandeAdministrativeRhRepository demandeRepository, JourFerieRepository jourFerieRepository) {
+		this(jourFerieService, soldeService, demandeRepository, jourFerieRepository, null);
+	}
+
+	@org.springframework.beans.factory.annotation.Autowired
+	public CongeDecompteService(JourFerieService jourFerieService, SoldeCongeService soldeService,
+			DemandeAdministrativeRhRepository demandeRepository, JourFerieRepository jourFerieRepository,
+			SocieteParametresService societeParametresService) {
 		this.jourFerieService = jourFerieService;
 		this.soldeService = soldeService;
 		this.demandeRepository = demandeRepository;
 		this.jourFerieRepository = jourFerieRepository;
+		this.societeParametresService = societeParametresService;
+	}
+
+	private com.hr.referentiel.domain.BaseDecompteConge baseDecompte() {
+		return societeParametresService != null
+				? societeParametresService.baseDecompteCongeCourante()
+				: com.hr.referentiel.domain.BaseDecompteConge.JOURS_TRAVAILLES;
+	}
+
+	private Set<java.time.DayOfWeek> joursTravailles() {
+		return societeParametresService != null ? societeParametresService.joursTravaillesCourants() : Set.of();
 	}
 
 	public static boolean estAnnuel(DemandeAdministrativeRh d) {
@@ -85,8 +104,10 @@ public class CongeDecompteService {
 		LocalDate fin = DemandeAdministrativePeriodeHelper.extraireDate(contenu, "date_fin");
 		Periodes p = DecompteJoursOuvres.normaliser(debut, fin, premier, dernier);
 		Set<LocalDate> feries = jourFerieService.datesActives();
-		DecompteJoursOuvres.verifierDemiJournees(p, feries);
-		BigDecimal jours = DecompteJoursOuvres.jours(p, feries);
+		var base = baseDecompte();
+		var travailles = joursTravailles();
+		DecompteJoursOuvres.verifierDemiJournees(p, feries, base, travailles);
+		BigDecimal jours = DecompteJoursOuvres.jours(p, feries, base, travailles);
 		if (jours.signum() == 0) {
 			throw aucunJourOuvre();
 		}
@@ -128,7 +149,7 @@ public class CongeDecompteService {
 	private SoldeConge recalculerSousVerrou(DemandeAdministrativeRh d) {
 		Periodes p = periodesDe(d);
 		Set<LocalDate> feries = jourFerieService.datesActives();
-		BigDecimal jours = DecompteJoursOuvres.jours(p, feries);
+		BigDecimal jours = DecompteJoursOuvres.jours(p, feries, baseDecompte(), joursTravailles());
 		if (jours.signum() == 0) {
 			throw aucunJourOuvre();
 		}
@@ -165,8 +186,10 @@ public class CongeDecompteService {
 				premierBrut == null || premierBrut.isBlank() ? null : DecompteJoursOuvres.lirePeriode(premierBrut),
 				dernierBrut == null || dernierBrut.isBlank() ? null : DecompteJoursOuvres.lirePeriode(dernierBrut));
 		Set<LocalDate> feries = jourFerieService.datesActives();
-		DecompteJoursOuvres.verifierDemiJournees(p, feries);
-		BigDecimal jours = DecompteJoursOuvres.jours(p, feries);
+		var base = baseDecompte();
+		var travailles = joursTravailles();
+		DecompteJoursOuvres.verifierDemiJournees(p, feries, base, travailles);
+		BigDecimal jours = DecompteJoursOuvres.jours(p, feries, base, travailles);
 		BigDecimal disponible = soldeService.acquis(collaborateurId).subtract(soldeService.reserve(collaborateurId));
 		List<JourFerieSimule> vus = libellesFeries(DecompteJoursOuvres.feriesDansPeriode(p, feries));
 		Blocage blocage = null;

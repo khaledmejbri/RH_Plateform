@@ -118,6 +118,7 @@ public class SoldesCongeAmorceRunner implements ApplicationRunner {
 			}
 			LocalDate aujourdhui = LocalDate.now(clock.withZone(FormatJours.TUNIS));
 			int reglages = amorcerReglages(societeId, aujourdhui);
+			amorcerParametresSociete(societeId);
 			contrainteAcquis();
 			int feries = amorcerJoursFeries(societeId, aujourdhui.getYear());
 			if (reglages + feries > 0) {
@@ -125,6 +126,25 @@ public class SoldesCongeAmorceRunner implements ApplicationRunner {
 						societeId, reglages, feries);
 			}
 		});
+	}
+
+	private void amorcerParametresSociete(UUID societeId) {
+		if (!tableExiste("rh_societe_parametres")) {
+			return;
+		}
+		String castJson = estPostgres() ? "cast(? as jsonb)" : "?";
+		jdbc.update("insert into rh_societe_parametres (id, societe_id, jours_travailles, duree_hebdo_minutes, "
+						+ "duree_jour_minutes, heure_debut_journee, heure_fin_journee, base_decompte_conge, "
+						+ "duree_max_sortie_minutes, delegation_auto_conges, publication_quatre_yeux, "
+						+ "version, cree_le, modifie_le) "
+						+ "select ?, ?, " + castJson + ", 2400, " + castJson
+						+ ", '08:00', '17:00', 'JOURS_TRAVAILLES', 120, true, false, 0, current_timestamp, current_timestamp "
+						+ "where not exists (select 1 from rh_societe_parametres where societe_id = ?)",
+				UUID.randomUUID(),
+				societeId,
+				"[\"LUN\",\"MAR\",\"MER\",\"JEU\",\"VEN\"]",
+				"{\"LUN\":480,\"MAR\":480,\"MER\":480,\"JEU\":480,\"VEN\":480}",
+				societeId);
 	}
 
 	private int amorcerReglages(UUID societeId, LocalDate aujourdhui) {

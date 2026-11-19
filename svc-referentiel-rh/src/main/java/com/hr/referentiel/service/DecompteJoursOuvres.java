@@ -1,11 +1,13 @@
 package com.hr.referentiel.service;
 
+import com.hr.referentiel.domain.BaseDecompteConge;
 import com.hr.referentiel.domain.PeriodeJour;
 import com.hr.referentiel.web.ReferentielMetierException;
 
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.Set;
 
 /**
@@ -16,6 +18,8 @@ import java.util.Set;
 public final class DecompteJoursOuvres {
 
 	private static final BigDecimal DEMI = new BigDecimal("0.5");
+	private static final Set<DayOfWeek> LUN_A_VEN = EnumSet.of(
+			DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY);
 
 	private DecompteJoursOuvres() {
 	}
@@ -29,8 +33,20 @@ public final class DecompteJoursOuvres {
 	}
 
 	public static boolean estOuvre(LocalDate jour, Set<LocalDate> feries) {
+		return estDecompte(jour, feries, BaseDecompteConge.JOURS_TRAVAILLES, LUN_A_VEN);
+	}
+
+	public static boolean estDecompte(
+			LocalDate jour, Set<LocalDate> feries, BaseDecompteConge base, Set<DayOfWeek> joursTravailles) {
+		if (feries.contains(jour)) {
+			return false;
+		}
 		DayOfWeek j = jour.getDayOfWeek();
-		return j != DayOfWeek.SATURDAY && j != DayOfWeek.SUNDAY && !feries.contains(jour);
+		if (base == BaseDecompteConge.JOURS_OUVRABLES) {
+			return j != DayOfWeek.SUNDAY;
+		}
+		Set<DayOfWeek> travailles = (joursTravailles == null || joursTravailles.isEmpty()) ? LUN_A_VEN : joursTravailles;
+		return travailles.contains(j);
 	}
 
 	/** Lit une période envoyée par le client ({@code null} ou vide = journée entière) ; inconnue : 400. */
@@ -71,11 +87,17 @@ public final class DecompteJoursOuvres {
 		return new Periodes(debut, fin, p, d);
 	}
 
-	/** Une demi-journée ne se pose pas un samedi, un dimanche ou un jour férié actif (400, même sans jour ouvré). */
+	/** Une demi-journée ne se pose pas un jour non décompté (400, même sans jour ouvré). */
 	public static void verifierDemiJournees(Periodes p, Set<LocalDate> feries) {
+		verifierDemiJournees(p, feries, BaseDecompteConge.JOURS_TRAVAILLES, LUN_A_VEN);
+	}
+
+	public static void verifierDemiJournees(
+			Periodes p, Set<LocalDate> feries, BaseDecompteConge base, Set<DayOfWeek> joursTravailles) {
 		boolean demiPremier = p.premier() != PeriodeJour.JOURNEE;
 		boolean demiDernier = !p.unSeulJour() && p.dernier() == PeriodeJour.MATIN;
-		if ((demiPremier && !estOuvre(p.debut(), feries)) || (demiDernier && !estOuvre(p.fin(), feries))) {
+		if ((demiPremier && !estDecompte(p.debut(), feries, base, joursTravailles))
+				|| (demiDernier && !estDecompte(p.fin(), feries, base, joursTravailles))) {
 			throw ReferentielMetierException.badRequest("DEMI_JOURNEE_JOUR_NON_OUVRE",
 					"Une demi-journée ne peut pas être posée un jour non ouvré (week-end ou jour férié).");
 		}
@@ -83,23 +105,28 @@ public final class DecompteJoursOuvres {
 
 	/** Nombre de jours décomptés (échelle 1) ; 0 si aucun jour ouvré. */
 	public static BigDecimal jours(Periodes p, Set<LocalDate> feries) {
+		return jours(p, feries, BaseDecompteConge.JOURS_TRAVAILLES, LUN_A_VEN);
+	}
+
+	public static BigDecimal jours(
+			Periodes p, Set<LocalDate> feries, BaseDecompteConge base, Set<DayOfWeek> joursTravailles) {
 		if (p.unSeulJour()) {
-			if (!estOuvre(p.debut(), feries)) {
+			if (!estDecompte(p.debut(), feries, base, joursTravailles)) {
 				return zero();
 			}
 			return p.premier() == PeriodeJour.JOURNEE ? new BigDecimal("1.0") : new BigDecimal("0.5");
 		}
 		long entiers = 0;
 		for (LocalDate j = p.debut(); !j.isAfter(p.fin()); j = j.plusDays(1)) {
-			if (estOuvre(j, feries)) {
+			if (estDecompte(j, feries, base, joursTravailles)) {
 				entiers++;
 			}
 		}
 		BigDecimal total = BigDecimal.valueOf(entiers).setScale(1);
-		if (p.premier() == PeriodeJour.APRES_MIDI && estOuvre(p.debut(), feries)) {
+		if (p.premier() == PeriodeJour.APRES_MIDI && estDecompte(p.debut(), feries, base, joursTravailles)) {
 			total = total.subtract(DEMI);
 		}
-		if (p.dernier() == PeriodeJour.MATIN && estOuvre(p.fin(), feries)) {
+		if (p.dernier() == PeriodeJour.MATIN && estDecompte(p.fin(), feries, base, joursTravailles)) {
 			total = total.subtract(DEMI);
 		}
 		return total.max(zero());

@@ -31,9 +31,18 @@ public class DemandeAdministrativeValidationService {
 			"Une pièce jointe (certificat) est obligatoire pour ce type de congé.";
 
 	private final ParametreService parametreService;
+	private final SocieteParametresService societeParametresService;
 
 	public DemandeAdministrativeValidationService(ParametreService parametreService) {
+		this(parametreService, null);
+	}
+
+	@org.springframework.beans.factory.annotation.Autowired
+	public DemandeAdministrativeValidationService(
+			ParametreService parametreService,
+			SocieteParametresService societeParametresService) {
 		this.parametreService = parametreService;
+		this.societeParametresService = societeParametresService;
 	}
 
 	/**
@@ -84,9 +93,12 @@ public class DemandeAdministrativeValidationService {
 							"L'heure de fin doit être postérieure à l'heure de début.");
 				}
 				long dureeMinutes = ChronoUnit.MINUTES.between(heureDebut, heureFin);
-				if (dureeMinutes > DUREE_MAX_SORTIE_MINUTES) {
+				long maxMinutes = societeParametresService != null
+						? societeParametresService.dureeMaxSortieMinutes()
+						: DUREE_MAX_SORTIE_MINUTES;
+				if (dureeMinutes > maxMinutes) {
 					throw new IllegalArgumentException(
-							"La durée d'une autorisation de sortie ne peut pas dépasser 2 heures."
+							"La durée d'une autorisation de sortie ne peut pas dépasser " + maxMinutes + " minutes."
 							+ " Durée demandée : " + dureeMinutes + " minutes.");
 				}
 			}
