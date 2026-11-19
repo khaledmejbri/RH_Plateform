@@ -47,7 +47,8 @@ public class SecurityConfig {
 				.csrf(csrf -> csrf.disable())
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
-						// Service à service : jeton partagé vérifié dans SocieteFiltreInterne et InterneReferentielController
+						// Service à service : jeton partagé vérifié dans SocieteFiltreInterne et
+						// InterneReferentielController
 						.requestMatchers("/internal/referentiel/**").permitAll()
 						.requestMatchers("/api/referentiel/v1/**", "/api/rh/v1/**").authenticated()
 						.anyRequest().denyAll())
@@ -66,10 +67,13 @@ public class SecurityConfig {
 	}
 
 	/**
-	 * Mappe les droits Spring Security à partir du JWT émis par svc-identite-acces :
-	 * claim {@code scope} (chaîne ou liste), {@code scp} (liste OIDC), et {@code roles} (ex. USER → ROLE_USER).
+	 * Mappe les droits Spring Security à partir du JWT émis par svc-identite-acces
+	 * :
+	 * claim {@code scope} (chaîne ou liste), {@code scp} (liste OIDC), et
+	 * {@code roles} (ex. USER → ROLE_USER).
 	 */
-	private static final class ReferentielJwtAuthoritiesConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
+	private static final class ReferentielJwtAuthoritiesConverter
+			implements Converter<Jwt, Collection<GrantedAuthority>> {
 		@Override
 		public Collection<GrantedAuthority> convert(Jwt jwt) {
 			Set<GrantedAuthority> out = new LinkedHashSet<>();

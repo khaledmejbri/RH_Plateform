@@ -16,6 +16,7 @@ import java.util.UUID;
 public interface SoldeCongeRepository extends JpaRepository<SoldeConge, UUID> {
 
 	/** Crée la ligne du solde si elle manque (sans erreur en cas de concurrence). */
+	@org.springframework.transaction.annotation.Transactional
 	@Modifying
 	@Query(value = "insert into rh_solde_conge (collaborateur_id, societe_id, acquis, version, modifie_le) "
 			+ "values (:id, :societeId, 0, 0, current_timestamp) on conflict do nothing", nativeQuery = true)

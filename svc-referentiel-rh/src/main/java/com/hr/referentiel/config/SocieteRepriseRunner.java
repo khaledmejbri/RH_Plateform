@@ -130,19 +130,25 @@ public class SocieteRepriseRunner implements ApplicationRunner {
 		assurerClePrimaireComposee("rh_acquisition_mois", "mois");
 
 		// Nouveaux index uniques préfixés par societe_id
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_collab_societe_matricule ON rh_collaborateur (societe_id, matricule)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_collab_societe_compte ON rh_collaborateur (societe_id, compte_utilisateur_id)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_unite_societe_code ON rh_unite_organisation (societe_id, code)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_demande_societe_numero ON rh_demande_administrative (societe_id, numero)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_dem_societe_numero ON rh_demande_document_administratif (societe_id, numero)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_demande_formation_societe_numero ON rh_demande_formation (societe_id, numero)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_plainte_societe_numero ON rh_plainte (societe_id, numero_ticket)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uk_jour_ferie_societe_date ON rh_jour_ferie (societe_id, date_jour)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uk_parametres_conges_societe ON rh_parametres (societe_id)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uk_mvt_solde_societe_acquisition ON rh_mouvement_solde_conge (societe_id, collaborateur_id, mois_acquisition)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uk_mvt_solde_societe_demande ON rh_mouvement_solde_conge (societe_id, demande_id, type)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uk_rh_parametre_societe_ref_code ON rh_parametre_valeur (societe_id, referentiel, code)");
-		jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uk_rh_parametre_societe_ref_libelle ON rh_parametre_valeur (societe_id, referentiel, libelle_normalise)");
+		creerIndexUniqueSiTableExiste("rh_collaborateur", "idx_collab_societe_matricule", "societe_id, matricule");
+		creerIndexUniqueSiTableExiste("rh_collaborateur", "idx_collab_societe_compte", "societe_id, compte_utilisateur_id");
+		creerIndexUniqueSiTableExiste("rh_unite_organisation", "idx_unite_societe_code", "societe_id, code");
+		creerIndexUniqueSiTableExiste("rh_demande_administrative", "idx_demande_societe_numero", "societe_id, numero");
+		creerIndexUniqueSiTableExiste("rh_demande_document_administratif", "idx_doc_dem_societe_numero", "societe_id, numero");
+		creerIndexUniqueSiTableExiste("rh_demande_formation", "idx_demande_formation_societe_numero", "societe_id, numero");
+		creerIndexUniqueSiTableExiste("rh_plainte", "idx_plainte_societe_numero", "societe_id, numero_ticket");
+		creerIndexUniqueSiTableExiste("rh_jour_ferie", "uk_jour_ferie_societe_date", "societe_id, date_jour");
+		creerIndexUniqueSiTableExiste("rh_parametres", "uk_parametres_conges_societe", "societe_id");
+		creerIndexUniqueSiTableExiste("rh_mouvement_solde_conge", "uk_mvt_solde_societe_acquisition", "societe_id, collaborateur_id, mois_acquisition");
+		creerIndexUniqueSiTableExiste("rh_mouvement_solde_conge", "uk_mvt_solde_societe_demande", "societe_id, demande_id, type");
+		creerIndexUniqueSiTableExiste("rh_parametre_valeur", "uk_rh_parametre_societe_ref_code", "societe_id, referentiel, code");
+		creerIndexUniqueSiTableExiste("rh_parametre_valeur", "uk_rh_parametre_societe_ref_libelle", "societe_id, referentiel, libelle_normalise");
+	}
+
+	private void creerIndexUniqueSiTableExiste(String table, String nomIndex, String colonnes) {
+		if (tableExiste(table)) {
+			jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + nomIndex + " ON " + table + " (" + colonnes + ")");
+		}
 	}
 
 	private boolean tableExiste(String table) {
