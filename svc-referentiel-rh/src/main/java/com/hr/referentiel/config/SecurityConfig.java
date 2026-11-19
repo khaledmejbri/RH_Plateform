@@ -37,11 +37,13 @@ public class SecurityConfig {
 	@Bean
 	public SecurityFilterChain securityFilterChain(
 			HttpSecurity http,
-			ObjectProvider<SocieteDefautResolver> societeDefautResolverProvider) throws Exception {
+			ObjectProvider<SocieteDefautResolver> societeDefautResolverProvider,
+			ObjectProvider<DemarrageOrchestrateur> demarrageOrchestrateurProvider) throws Exception {
 		SocieteDefautResolver resolver = societeDefautResolverProvider.getIfAvailable();
 		java.util.function.Supplier<UUID> fournisseurRepli = resolver != null
 				? resolver::resoudreIdSiTransitionActive
 				: () -> null;
+		DemarrageOrchestrateur orchestrateur = demarrageOrchestrateurProvider.getIfAvailable();
 		http
 				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.csrf(csrf -> csrf.disable())
@@ -56,6 +58,9 @@ public class SecurityConfig {
 						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
 				.addFilterAfter(new SocieteFiltreJwt(), BearerTokenAuthenticationFilter.class)
 				.addFilterAfter(new SocieteFiltreInterne(internalApiToken, fournisseurRepli), SocieteFiltreJwt.class);
+		if (orchestrateur != null) {
+			http.addFilterBefore(orchestrateur.filtreDisponibiliteHttp(), BearerTokenAuthenticationFilter.class);
+		}
 		return http.build();
 	}
 

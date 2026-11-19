@@ -81,10 +81,16 @@ public class ReglagesCongeService {
 		if (version == null) {
 			throw ReferentielMetierException.badRequest("CORPS_INVALIDE", "La version du réglage est obligatoire.");
 		}
-		repository.creerSiAbsente(
-				com.hr.commun.societe.SocieteContexte.courante(),
-				DEFAUT,
-				debutParDefaut(LocalDate.now(clock.withZone(FormatJours.TUNIS))));
+		if (repository.findFirstByOrderByIdAsc().isEmpty()) {
+			synchronized (ReglagesCongeService.class) {
+				if (repository.findFirstByOrderByIdAsc().isEmpty()) {
+					repository.creerSiAbsente(
+							com.hr.commun.societe.SocieteContexte.courante(),
+							DEFAUT,
+							debutParDefaut(LocalDate.now(clock.withZone(FormatJours.TUNIS))));
+				}
+			}
+		}
 		ParametresConges p = repository.findFirstByOrderByIdAsc().orElseThrow();
 		if (p.getVersion() != version) {
 			throw ReferentielMetierException.conflict("PARAMETRE_MODIFIE_ENTRE_TEMPS",

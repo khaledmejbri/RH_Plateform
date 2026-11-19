@@ -16,6 +16,8 @@ import java.util.UUID;
 @Component
 public class SocieteDefautResolver {
 
+	public static final String CODE_SOCIETE_DEFAUT = "PRINCIPALE";
+
 	private static final Logger log = LoggerFactory.getLogger(SocieteDefautResolver.class);
 
 	private final IdentiteSocieteClient identiteSocieteClient;
@@ -29,7 +31,7 @@ public class SocieteDefautResolver {
 			@Value("${app.societe.repli-defaut-transition:${SOCIETE_REPLI_DEFAUT_TRANSITION:true}}") boolean repliDefautTransition) {
 		this.identiteSocieteClient = identiteSocieteClient;
 		this.codeDefaut = (codeDefaut == null || codeDefaut.isBlank())
-				? "PRINCIPALE"
+				? CODE_SOCIETE_DEFAUT
 				: codeDefaut.trim().toUpperCase(Locale.ROOT);
 		this.repliDefautTransition = repliDefautTransition;
 	}

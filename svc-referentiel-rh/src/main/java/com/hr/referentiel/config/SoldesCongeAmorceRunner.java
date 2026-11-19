@@ -75,6 +75,7 @@ public class SoldesCongeAmorceRunner implements ApplicationRunner {
 
 	@Override
 	public void run(ApplicationArguments args) {
+		new TransactionTemplate(transactionManager).executeWithoutResult(status -> contrainteAcquis());
 		executerPourToutesSocietes();
 	}
 
@@ -119,7 +120,6 @@ public class SoldesCongeAmorceRunner implements ApplicationRunner {
 			LocalDate aujourdhui = LocalDate.now(clock.withZone(FormatJours.TUNIS));
 			int reglages = amorcerReglages(societeId, aujourdhui);
 			amorcerParametresSociete(societeId);
-			contrainteAcquis();
 			int feries = amorcerJoursFeries(societeId, aujourdhui.getYear());
 			if (reglages + feries > 0) {
 				log.info("Soldes de congé amorcés (société {}) : {} réglage(s), {} jour(s) férié(s)",
