@@ -3,10 +3,13 @@ package com.hr.referentiel.importation.parametrage;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface ImportParametrageRepository extends JpaRepository<ImportParametrage, String> {
 
@@ -22,4 +25,14 @@ public interface ImportParametrageRepository extends JpaRepository<ImportParamet
 	@Lock(LockModeType.PESSIMISTIC_READ)
 	@Query("select p from ImportParametrage p where p.typeImport = :type")
 	Optional<ImportParametrage> findByIdForShare(@Param("type") String type);
+
+	@Modifying
+	@Query(value = "update rh_import_parametrage set version = :version, modifie_le = :modifieLe, modifie_par_nom = :modifieParNom "
+			+ "where societe_id = :societeId and type_import = :typeImport", nativeQuery = true)
+	int mettreAJourModification(
+			@Param("typeImport") String typeImport,
+			@Param("societeId") UUID societeId,
+			@Param("version") long version,
+			@Param("modifieLe") Instant modifieLe,
+			@Param("modifieParNom") String modifieParNom);
 }

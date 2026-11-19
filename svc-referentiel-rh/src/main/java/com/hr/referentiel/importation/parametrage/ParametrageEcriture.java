@@ -92,7 +92,12 @@ public class ParametrageEcriture {
 	public Parametrage terminer(EtatParametrage etat, List<String[]> lignes, AuteurParametre auteur, Instant maintenant) {
 		if (!lignes.isEmpty()) {
 			etat.parametrage.marquerModifie(maintenant, auteur.nom());
-			parametrageRepository.save(etat.parametrage);
+			parametrageRepository.mettreAJourModification(
+					etat.type.name(),
+					com.hr.commun.societe.SocieteContexte.courante(),
+					etat.parametrage.getVersion(),
+					maintenant,
+					auteur.nom());
 			for (String[] l : lignes) {
 				String libelle = l.length > 4 ? l[4] : l[0] != null && etat.estPerso(l[0]) ? etat.libelle(l[0]) : null;
 				journal.ecrire(etat.type, etat.parametrage.getVersion(), l[0], l[1], l[2], l[3], auteur, maintenant, libelle);

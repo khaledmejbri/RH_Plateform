@@ -8,6 +8,7 @@ import com.hr.referentiel.importation.parametrage.ImportParametrage;
 import com.hr.referentiel.importation.parametrage.ImportParametrageRepository;
 import com.hr.referentiel.importation.parametrage.ImportSynonyme;
 import com.hr.referentiel.repository.CollaborateurRepository;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
@@ -21,7 +22,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 
 /** Configuration H2 partagée des tests de champs personnalisés : entités, dépôts utiles, horloge figée. */
-@Configuration
+@TestConfiguration
 @Import({ChampsPersoH2Config.Persos.class, ChampsPersoH2Config.Parametrage.class, ChampsPersoH2Config.Fiches.class})
 public class ChampsPersoH2Config {
 

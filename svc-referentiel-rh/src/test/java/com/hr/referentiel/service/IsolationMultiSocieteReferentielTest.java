@@ -1,217 +1,342 @@
 package com.hr.referentiel.service;
 
 import com.hr.commun.societe.SocieteContexte;
-import com.hr.referentiel.dto.FonctionDtos.FonctionRequest;
-import com.hr.referentiel.dto.FonctionDtos.FonctionResponse;
-import com.hr.referentiel.entity.Collaborateur;
-import com.hr.referentiel.entity.DemandeAdministrativeRh;
-import com.hr.referentiel.entity.DemandeDocumentAdministratifRh;
-import com.hr.referentiel.entity.DemandeFormationRh;
-import com.hr.referentiel.entity.Fonction;
-import com.hr.referentiel.entity.FonctionAffectation;
-import com.hr.referentiel.entity.JourFerie;
-import com.hr.referentiel.entity.ParametreJournal;
-import com.hr.referentiel.entity.ParametreValeur;
-import com.hr.referentiel.entity.ParametresConges;
-import com.hr.referentiel.entity.PlainteRh;
-import com.hr.referentiel.entity.SocieteParametres;
-import com.hr.referentiel.entity.SocieteParametresJournal;
+import com.hr.referentiel.config.ImportChampsAmorceRunner;
+import com.hr.referentiel.config.SocieteRepriseRunner;
+import com.hr.referentiel.config.SoldesCongeAmorceRunner;
 import com.hr.referentiel.entity.UniteOrganisation;
-import com.hr.referentiel.repository.AcquisitionMoisRepository;
-import com.hr.referentiel.repository.CollaborateurRepository;
-import com.hr.referentiel.repository.DemandeAdministrativeRhRepository;
-import com.hr.referentiel.repository.DemandeDocumentAdministratifRhRepository;
-import com.hr.referentiel.repository.DemandeFormationRhRepository;
-import com.hr.referentiel.repository.FonctionAffectationRepository;
-import com.hr.referentiel.repository.FonctionRepository;
-import com.hr.referentiel.repository.JourFerieRepository;
-import com.hr.referentiel.repository.ParametreJournalRepository;
-import com.hr.referentiel.repository.ParametreValeurRepository;
-import com.hr.referentiel.repository.PlainteRhRepository;
-import com.hr.referentiel.repository.ReglagesCongesRepository;
-import com.hr.referentiel.repository.SocieteParametresJournalRepository;
-import com.hr.referentiel.repository.SocieteParametresRepository;
+import com.hr.referentiel.importation.IdentiteInterneClient;
 import com.hr.referentiel.repository.UniteOrganisationRepository;
-import com.hr.referentiel.web.ReferentielMetierException;
+import com.hr.referentiel.service.IdentiteSocieteClient.SocieteResume;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.FilterType;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.orm.jpa.persistenceunit.PersistenceManagedTypes;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Tests d'isolation multi-société de {@code svc-referentiel-rh} (§ 9.14, § 10.3, CA-01.3) :
- * <ul>
- *   <li>même matricule, même code unité, même date de jour férié, même code fonction autorisés dans deux sociétés A et B ;</li>
- *   <li>toute liste depuis B ne retourne aucune donnée de A (liste vide ou uniquement B) ;</li>
- *   <li>tout accès par identifiant d'une ressource de A depuis B retourne vide / 404 (jamais 403).</li>
- * </ul>
+ * Tests d'isolation multi-société de bout en bout (B4, § 9.14, § 10.3) sur base PostgreSQL réelle
+ * ({@code referentiel_rh_db_test}, schéma {@code test_isolation_w1}) via {@link MockMvc}.
  */
-@DataJpaTest(properties = {
-		"spring.datasource.url=jdbc:h2:mem:isolation_w1;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
-		"spring.datasource.driver-class-name=org.h2.Driver",
-		"spring.datasource.username=sa",
-		"spring.datasource.password=",
-		"spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
-		"spring.jpa.hibernate.ddl-auto=create-drop"})
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-@Import(IsolationMultiSocieteReferentielTest.Config.class)
+@SpringBootTest
+@AutoConfigureMockMvc
+@EnabledIfEnvironmentVariable(named = "TEST_DB_PASSWORD", matches = ".+")
 class IsolationMultiSocieteReferentielTest {
 
-	@Configuration
-	@EnableJpaRepositories(
-			basePackageClasses = CollaborateurRepository.class,
-			excludeFilters = @ComponentScan.Filter(type = FilterType.REGEX,
-					pattern = "com\\.hr\\.referentiel\\.repository\\.(?!(Collaborateur|UniteOrganisation|JourFerie|Fonction|SocieteParametres|ReglagesConges|AcquisitionMois)).*"))
-	static class Config {
-		@Bean
-		PersistenceManagedTypes managedTypes() {
-			return PersistenceManagedTypes.of(
-					Collaborateur.class.getName(),
-					UniteOrganisation.class.getName(),
-					JourFerie.class.getName(),
-					Fonction.class.getName(),
-					FonctionAffectation.class.getName(),
-					SocieteParametres.class.getName(),
-					SocieteParametresJournal.class.getName(),
-					ParametresConges.class.getName(),
-					com.hr.referentiel.entity.AcquisitionMois.class.getName());
+	private static final UUID SOC_A = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
+	private static final UUID SOC_B = UUID.fromString("00000000-0000-0000-0000-0000000000b2");
+	private static final String TOKEN_INTERNE = "isolation-test-internal-token";
+
+	@DynamicPropertySource
+	static void postgresProperties(DynamicPropertyRegistry registry) throws Exception {
+		String password = System.getenv("TEST_DB_PASSWORD");
+		String baseUrl = System.getenv().getOrDefault("TEST_DB_URL", "jdbc:postgresql://localhost:5444/referentiel_rh_db_test");
+		String user = System.getenv().getOrDefault("TEST_DB_USER", "postgres");
+		try (Connection c = DriverManager.getConnection(baseUrl, user, password);
+				Statement st = c.createStatement()) {
+			st.execute("DROP SCHEMA IF EXISTS test_isolation_w1 CASCADE");
+			st.execute("CREATE SCHEMA test_isolation_w1");
 		}
+		String sep = baseUrl.contains("?") ? "&" : "?";
+		registry.add("spring.datasource.url", () -> baseUrl + sep + "currentSchema=test_isolation_w1");
+		registry.add("spring.datasource.username", () -> user);
+		registry.add("spring.datasource.password", () -> password);
+		registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
+		registry.add("spring.jpa.database-platform", () -> "org.hibernate.dialect.PostgreSQLDialect");
+		registry.add("spring.jpa.hibernate.ddl-auto", () -> "update");
+		registry.add("spring.kafka.listener.auto-startup", () -> "false");
+		registry.add("eureka.client.enabled", () -> "false");
+		registry.add("app.internal-api.token", () -> TOKEN_INTERNE);
+		registry.add("referentiel.conges.acquisition.au-demarrage", () -> "false");
 	}
 
-	private static final UUID SOC_A = UUID.fromString("00000000-0000-0000-0000-00000000000a");
-	private static final UUID SOC_B = UUID.fromString("00000000-0000-0000-0000-00000000000b");
-	private static final Clock HORLOGE = Clock.fixed(Instant.parse("2026-11-19T09:00:00Z"), ZoneOffset.UTC);
+	@Autowired
+	private MockMvc mockMvc;
+	@Autowired
+	private JdbcTemplate jdbc;
+	@Autowired
+	private JsonMapper jsonMapper;
+	@Autowired
+	private UniteOrganisationRepository uniteRepository;
+	@Autowired
+	private SocieteRepriseRunner repriseRunner;
+	@Autowired
+	private ImportChampsAmorceRunner importChampsAmorceRunner;
+	@Autowired
+	private SoldesCongeAmorceRunner soldesCongeAmorceRunner;
 
-	@Autowired
-	CollaborateurRepository collaborateurRepo;
-	@Autowired
-	UniteOrganisationRepository uniteRepo;
-	@Autowired
-	JourFerieRepository jourFerieRepo;
-	@Autowired
-	FonctionRepository fonctionRepo;
-	@Autowired
-	FonctionAffectationRepository affectationRepo;
-	@Autowired
-	SocieteParametresRepository societeParametresRepo;
-	@Autowired
-	SocieteParametresJournalRepository societeParametresJournalRepo;
-	@Autowired
-	ReglagesCongesRepository reglagesRepo;
-	@Autowired
-	AcquisitionMoisRepository acquisitionMoisRepo;
+	@MockitoBean
+	private JwtDecoder jwtDecoder;
+	@MockitoBean
+	private IdentiteSocieteClient identiteSocieteClient;
+	@MockitoBean
+	private IdentiteInterneClient identiteInterneClient;
+
+	private UUID uniteIdA;
+	private UUID uniteIdB;
+
+	@BeforeEach
+	void initialiserSocietes() {
+		when(identiteSocieteClient.lister()).thenReturn(List.of(SOC_A, SOC_B));
+		when(identiteSocieteClient.trouverIdParCode("PRINCIPALE")).thenReturn(Optional.of(SOC_A));
+		when(identiteSocieteClient.trouverParId(SOC_A)).thenReturn(Optional.of(
+				new SocieteResume(SOC_A, "SOC_A", "Société A", "ACTIVE", "Africa/Tunis")));
+		when(identiteSocieteClient.trouverParId(SOC_B)).thenReturn(Optional.of(
+				new SocieteResume(SOC_B, "SOC_B", "Société B", "ACTIVE", "Europe/Paris")));
+
+		// Reprise + amorçage pour les deux sociétés
+		repriseRunner.run(null);
+		importChampsAmorceRunner.amorcerPourSociete(SOC_A);
+		importChampsAmorceRunner.amorcerPourSociete(SOC_B);
+		soldesCongeAmorceRunner.amorcerPourSociete(SOC_A);
+		soldesCongeAmorceRunner.amorcerPourSociete(SOC_B);
+
+		uniteIdA = assurerUnite(SOC_A, "DIR");
+		uniteIdB = assurerUnite(SOC_B, "DIR");
+	}
 
 	@Test
-	@DisplayName("CA-01.3 & § 9.14 : cloisonnement complet entre Société A et Société B (listes vides, 404 inter-société, unicités par société)")
-	void cloisonnementCompletEntreDeuxSocietes() {
-		FonctionService fonctionService = new FonctionService(
-				fonctionRepo, affectationRepo, collaborateurRepo, uniteRepo, HORLOGE);
-		SocieteParametresService paramsService = new SocieteParametresService(
-				societeParametresRepo, societeParametresJournalRepo,
-				new ReglagesCongeService(reglagesRepo, acquisitionMoisRepo, mock(JournalParametres.class), HORLOGE),
-				JsonMapper.builder().build(), HORLOGE);
+	@DisplayName("PostgreSQL MockMvc : isolation totale collaborateurs (création/409/recherche/export), fonctions, paramètres, champs perso et endpoints internes")
+	void isolationCompletePostgreSqlMockMvc() throws Exception {
+		// 1. Création collaborateur matricule M-ISO-01 dans SOC_A (201) puis doublon dans SOC_A (409), puis M-ISO-01 dans SOC_B (201)
+		String bodyCollabA = """
+				{
+				  "matricule": "M-ISO-01",
+				  "prenom": "Alice",
+				  "nom": "TenantA",
+				  "courriel_professionnel": "alice.a@example.com",
+				  "unite_identifiant": "%s",
+				  "compte_utilisateur_id": "%s",
+				  "statut": "ACTIF"
+				}
+				""".formatted(uniteIdA, UUID.randomUUID());
+		MvcResult resCollabA = mockMvc.perform(post("/api/referentiel/v1/collaborateurs")
+						.with(jwtSociete(SOC_A, "RH", "ADMIN"))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(bodyCollabA))
+				.andExpect(status().isCreated())
+				.andReturn();
+		UUID collabIdA = UUID.fromString(jsonMapper.readTree(resCollabA.getResponse().getContentAsString()).get("identifiant").asText());
 
-		// 1. Créer des données dans la Société A
-		UniteOrganisation uniteA = SocieteContexte.executer(SOC_A, () -> {
-			UniteOrganisation u = new UniteOrganisation();
-			u.setCode("DIR-GEN");
-			u.setLibelle("Direction A");
-			u.setTypeNoeud("DIRECTION_GENERALE");
-			u.setCreeLe(Instant.now(HORLOGE));
-			return uniteRepo.saveAndFlush(u);
-		});
-		UUID uniteAId = uniteA.getId();
-		UUID collabAId = SocieteContexte.executer(SOC_A, () -> {
-			Collaborateur c = new Collaborateur();
-			c.setMatricule("COL-WEB");
-			c.setPrenom("Sonia");
-			c.setNom("Société A");
-			c.setStatut("ACTIF");
-			c.setUnite(uniteA);
-			c.setCreeLe(Instant.now(HORLOGE));
-			return collaborateurRepo.saveAndFlush(c).getId();
-		});
-		UUID ferieAId = SocieteContexte.executer(SOC_A, () -> {
-			JourFerie jf = new JourFerie();
-			jf.setDateJour(LocalDate.of(2026, 3, 20));
-			jf.setLibelle("Fête Indépendance A");
-			jf.setActif(true);
-			jf.setCreeLe(Instant.now(HORLOGE));
-			return jourFerieRepo.saveAndFlush(jf).getId();
-		});
-		FonctionResponse fonctionA = SocieteContexte.executer(SOC_A, () ->
-				fonctionService.creer(new FonctionRequest("Référent Qualité", "Qualité A", null)));
-		SocieteContexte.executer(SOC_A, paramsService::obtenir);
+		mockMvc.perform(post("/api/referentiel/v1/collaborateurs")
+						.with(jwtSociete(SOC_A, "RH", "ADMIN"))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(bodyCollabA))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.erreur").value("Matricule déjà utilisé : M-ISO-01"));
 
-		// 2. Depuis la Société B (encore vide) : toutes les listes sont vides et tous les ID de A sont invisibles (404 / empty)
-		SocieteContexte.executer(SOC_B, () -> {
-			assertThat(uniteRepo.findAll()).isEmpty();
-			assertThat(collaborateurRepo.findAll()).isEmpty();
-			assertThat(jourFerieRepo.findAll()).isEmpty();
-			assertThat(fonctionService.lister(false)).isEmpty();
+		String bodyCollabB = """
+				{
+				  "matricule": "M-ISO-01",
+				  "prenom": "Bob",
+				  "nom": "TenantB",
+				  "courriel_professionnel": "bob.b@example.com",
+				  "unite_identifiant": "%s",
+				  "compte_utilisateur_id": "%s",
+				  "statut": "ACTIF"
+				}
+				""".formatted(uniteIdB, UUID.randomUUID());
+		MvcResult resCollabB = mockMvc.perform(post("/api/referentiel/v1/collaborateurs")
+						.with(jwtSociete(SOC_B, "RH", "ADMIN"))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(bodyCollabB))
+				.andExpect(status().isCreated())
+				.andReturn();
+		UUID collabIdB = UUID.fromString(jsonMapper.readTree(resCollabB.getResponse().getContentAsString()).get("identifiant").asText());
+		assertThat(collabIdB).isNotEqualTo(collabIdA);
 
-			assertThat(uniteRepo.findById(uniteAId)).isEmpty();
-			assertThat(collaborateurRepo.findById(collabAId)).isEmpty();
-			assertThat(jourFerieRepo.findById(ferieAId)).isEmpty();
+		// 2. Recherche Specifications & Export CSV : SOC_B ne voit jamais TenantA
+		mockMvc.perform(get("/api/referentiel/v1/collaborateurs")
+						.param("q", "TenantA")
+						.with(jwtSociete(SOC_B, "RH")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.contenu").isEmpty());
 
-			assertThatThrownBy(() -> fonctionService.obtenir(fonctionA.id()))
-					.isInstanceOf(ReferentielMetierException.class)
-					.satisfies(e -> assertThat(((ReferentielMetierException) e).getHttpStatus()).isEqualTo(404));
-		});
+		MvcResult exportB = mockMvc.perform(get("/api/referentiel/v1/collaborateurs/export")
+						.with(jwtSociete(SOC_B, "RH")))
+				.andExpect(status().isOk())
+				.andReturn();
+		assertThat(exportB.getResponse().getContentAsString())
+				.contains("TenantB")
+				.doesNotContain("TenantA");
 
-		// 3. Créer les MÊMES codes / matricules / dates dans la Société B : aucune collision avec A
-		SocieteContexte.executer(SOC_B, () -> {
-			UniteOrganisation uB = new UniteOrganisation();
-			uB.setCode("DIR-GEN");
-			uB.setLibelle("Direction B");
-			uB.setTypeNoeud("DIRECTION_GENERALE");
-			uB.setCreeLe(Instant.now(HORLOGE));
-			uB = uniteRepo.saveAndFlush(uB);
+		// 3. Accès croisé par ID collaborateur -> 404 (corps identique à un UUID inconnu)
+		MvcResult crossCollab = mockMvc.perform(get("/api/referentiel/v1/collaborateurs/" + collabIdA)
+						.with(jwtSociete(SOC_B, "RH")))
+				.andExpect(status().isNotFound())
+				.andReturn();
+		MvcResult unknownCollab = mockMvc.perform(get("/api/referentiel/v1/collaborateurs/" + UUID.randomUUID())
+						.with(jwtSociete(SOC_B, "RH")))
+				.andExpect(status().isNotFound())
+				.andReturn();
+		assertThat(crossCollab.getResponse().getContentAsString())
+				.isEqualTo(unknownCollab.getResponse().getContentAsString());
 
-			Collaborateur cB = new Collaborateur();
-			cB.setMatricule("COL-WEB");
-			cB.setPrenom("Karim");
-			cB.setNom("Société B");
-			cB.setStatut("ACTIF");
-			cB.setUnite(uB);
-			cB.setCreeLe(Instant.now(HORLOGE));
-			collaborateurRepo.saveAndFlush(cB);
+		// 4. Fonctions : même libellé autorisé dans SOC_A et SOC_B, lecture/suppression croisée -> 404 identique
+		MvcResult fnA = mockMvc.perform(post("/api/rh/v1/admin/fonctions")
+						.with(jwtSociete(SOC_A, "ADMIN"))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"libelle\":\"Auditeur Iso\",\"description\":\"A\"}"))
+				.andExpect(status().isCreated())
+				.andReturn();
+		UUID fnIdA = UUID.fromString(jsonMapper.readTree(fnA.getResponse().getContentAsString()).get("id").asText());
 
-			JourFerie jfB = new JourFerie();
-			jfB.setDateJour(LocalDate.of(2026, 3, 20));
-			jfB.setLibelle("Fête Indépendance B");
-			jfB.setActif(true);
-			jfB.setCreeLe(Instant.now(HORLOGE));
-			jourFerieRepo.saveAndFlush(jfB);
+		mockMvc.perform(post("/api/rh/v1/admin/fonctions")
+						.with(jwtSociete(SOC_B, "ADMIN"))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"libelle\":\"Auditeur Iso\",\"description\":\"B\"}"))
+				.andExpect(status().isCreated());
 
-			FonctionResponse fonctionB = fonctionService.creer(new FonctionRequest("Référent Qualité", "Qualité B", null));
-			assertThat(fonctionB.code()).isEqualTo("REFERENT_QUALITE");
-			assertThat(fonctionB.id()).isNotEqualTo(fonctionA.id());
+		MvcResult crossFn = mockMvc.perform(get("/api/rh/v1/admin/fonctions/" + fnIdA)
+						.with(jwtSociete(SOC_B, "ADMIN")))
+				.andExpect(status().isNotFound())
+				.andReturn();
+		MvcResult unknownFn = mockMvc.perform(get("/api/rh/v1/admin/fonctions/" + UUID.randomUUID())
+						.with(jwtSociete(SOC_B, "ADMIN")))
+				.andExpect(status().isNotFound())
+				.andReturn();
+		assertThat(jsonMapper.readTree(crossFn.getResponse().getContentAsString()).get("code"))
+				.isEqualTo(jsonMapper.readTree(unknownFn.getResponse().getContentAsString()).get("code"));
 
-			assertThat(collaborateurRepo.findAll()).hasSize(1)
-					.first().extracting(Collaborateur::getNom).isEqualTo("Société B");
-		});
+		mockMvc.perform(delete("/api/rh/v1/admin/fonctions/" + fnIdA)
+						.with(jwtSociete(SOC_B, "ADMIN")))
+				.andExpect(status().isNotFound());
+
+		// 5. Paramètres société : modification dans SOC_A n'affecte pas SOC_B
+		MvcResult paramsARes = mockMvc.perform(get("/api/rh/v1/admin/societe/parametres")
+						.with(jwtSociete(SOC_A, "ADMIN")))
+				.andExpect(status().isOk())
+				.andReturn();
+		long versionA = jsonMapper.readTree(paramsARes.getResponse().getContentAsString()).get("version").asLong();
+
+		mockMvc.perform(put("/api/rh/v1/admin/societe/parametres")
+						.with(jwtSociete(SOC_A, "ADMIN"))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "jours_travailles": ["LUN","MAR","MER","JEU","VEN"],
+								  "duree_hebdo_minutes": 2100,
+								  "duree_jour_minutes": {"LUN":420,"MAR":420,"MER":420,"JEU":420,"VEN":420},
+								  "heure_debut_journee": "09:00",
+								  "heure_fin_journee": "17:00",
+								  "base_decompte_conge": "JOURS_TRAVAILLES",
+								  "duree_max_sortie_minutes": 90,
+								  "delegation_auto_conges": false,
+								  "publication_quatre_yeux": true,
+								  "version": %d
+								}
+								""".formatted(versionA)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.duree_max_sortie_minutes").value(90));
+
+		mockMvc.perform(get("/api/rh/v1/admin/societe/parametres")
+						.with(jwtSociete(SOC_B, "ADMIN")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.duree_max_sortie_minutes").value(120))
+				.andExpect(jsonPath("$.societe_id").value(SOC_B.toString()));
+
+		// 6. Champs personnalisés : créé dans SOC_A invisible dans SOC_B
+		MvcResult importParamA = mockMvc.perform(get("/api/referentiel/v1/parametres/imports/collaborateurs")
+						.with(jwtSociete(SOC_A, "ADMIN")))
+				.andExpect(status().isOk())
+				.andReturn();
+		long verImpA = jsonMapper.readTree(importParamA.getResponse().getContentAsString()).get("version").asLong();
+
+		mockMvc.perform(post("/api/referentiel/v1/parametres/imports/collaborateurs/champs-personnalises")
+						.with(jwtSociete(SOC_A, "ADMIN"))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "version": %d,
+								  "libelle": "Badge Iso A",
+								  "finalite": "Test isolation",
+								  "type_valeur": "TEXTE",
+								  "visible_collaborateur": true,
+								  "confirmation_donnees_non_sensibles": true
+								}
+								""".formatted(verImpA)))
+				.andExpect(status().isCreated());
+
+		MvcResult importParamB = mockMvc.perform(get("/api/referentiel/v1/parametres/imports/collaborateurs")
+						.with(jwtSociete(SOC_B, "ADMIN")))
+				.andExpect(status().isOk())
+				.andReturn();
+		assertThat(importParamB.getResponse().getContentAsString()).doesNotContain("Badge Iso A");
+
+		// 7. Endpoints internes : demandeur de SOC_A appelé depuis SOC_B -> 404 COLLABORATEUR_INTROUVABLE
+		mockMvc.perform(post("/internal/referentiel/v1/workflow/resolutions")
+						.header("X-Internal-Token", TOKEN_INTERNE)
+						.header("X-Societe-Id", SOC_B.toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"demandeur_id\":\"" + collabIdA + "\",\"regles\":[{\"cle\":\"e1\",\"regle\":\"DEMANDEUR\"}]}"))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("COLLABORATEUR_INTROUVABLE"));
+
+		mockMvc.perform(get("/internal/referentiel/v1/collaborateurs/" + collabIdA + "/resume")
+						.header("X-Internal-Token", TOKEN_INTERNE)
+						.header("X-Societe-Id", SOC_B.toString()))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("COLLABORATEUR_INTROUVABLE"));
+
+		mockMvc.perform(get("/internal/referentiel/v1/societe/calendrier")
+						.header("X-Internal-Token", TOKEN_INTERNE)
+						.header("X-Societe-Id", SOC_B.toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.societe_id").value(SOC_B.toString()))
+				.andExpect(jsonPath("$.fuseau").value("Europe/Paris"));
+	}
+
+	private UUID assurerUnite(UUID societeId, String code) {
+		return SocieteContexte.executer(societeId, () ->
+				uniteRepository.findByCodeIgnoreCase(code)
+						.map(UniteOrganisation::getId)
+						.orElseGet(() -> {
+							UniteOrganisation u = new UniteOrganisation();
+							u.setCode(code);
+							u.setLibelle("Unité " + code);
+							u.setTypeNoeud("DIRECTION");
+							u.setActif(true);
+							return uniteRepository.saveAndFlush(u).getId();
+						}));
+	}
+
+	private static RequestPostProcessor jwtSociete(UUID societeId, String... roles) {
+		return jwt().jwt(j -> j.claim("identifiant_utilisateur", UUID.randomUUID().toString())
+						.claim("societe_id", societeId.toString()))
+				.authorities(java.util.Arrays.stream(roles)
+						.map(r -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + r))
+						.toArray(GrantedAuthority[]::new));
 	}
 }
