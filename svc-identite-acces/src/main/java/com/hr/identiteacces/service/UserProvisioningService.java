@@ -149,7 +149,7 @@ public class UserProvisioningService {
 	private Optional<User> trouverCompteExistant(CollaborateurCompteDemandeEvent event, UUID societeId) {
 		if (event.compteUtilisateurId() != null) {
 			Optional<User> byId = userRepository.findById(event.compteUtilisateurId())
-					.filter(u -> u.getSocieteId() == null || societeId.equals(u.getSocieteId()));
+					.filter(u -> societeId.equals(u.getSocieteId()));
 			if (byId.isPresent()) {
 				return byId;
 			}

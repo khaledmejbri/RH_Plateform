@@ -50,10 +50,12 @@ class UserProvisioningServiceTest {
 	@Test
 	@DisplayName("MAJ rôles RO → COLLABORATEUR remplace les rôles (retire RO, garde USER)")
 	void majRoles_roVersCollaborateur_remplaceSansUnion() {
+		UUID societeId = UUID.randomUUID();
 		UUID userId = UUID.randomUUID();
 		UUID collaborateurId = UUID.randomUUID();
 		User user = User.builder()
 				.id(userId)
+				.societeId(societeId)
 				.username("M001")
 				.email("ada@agua.test")
 				.password("deja-encode")
@@ -73,7 +75,9 @@ class UserProvisioningServiceTest {
 				CollaborateurCompteDemandeEvent.OPERATION_MAJ_ROLES,
 				userId);
 
-		assertThatCode(() -> service.provisionCollaborateurCompte(event)).doesNotThrowAnyException();
+		assertThatCode(() -> com.hr.commun.societe.SocieteContexte.executer(
+				societeId, () -> service.provisionCollaborateurCompte(event)))
+				.doesNotThrowAnyException();
 
 		assertThat(user.getRoles()).containsExactly("USER");
 		verify(userRepository).save(user);
@@ -118,9 +122,11 @@ class UserProvisioningServiceTest {
 	@Test
 	@DisplayName("mot_de_passe_initial null sur une MAJ : pas de NPE, pas de réencodage")
 	void majRoles_motDePasseNull_pasDeNpe() {
+		UUID societeId = UUID.randomUUID();
 		UUID userId = UUID.randomUUID();
 		User user = User.builder()
 				.id(userId)
+				.societeId(societeId)
 				.username("M003")
 				.email("grace@agua.test")
 				.password("deja-encode")
@@ -140,7 +146,9 @@ class UserProvisioningServiceTest {
 				CollaborateurCompteDemandeEvent.OPERATION_MAJ_ROLES,
 				userId);
 
-		assertThatCode(() -> service.provisionCollaborateurCompte(event)).doesNotThrowAnyException();
+		assertThatCode(() -> com.hr.commun.societe.SocieteContexte.executer(
+				societeId, () -> service.provisionCollaborateurCompte(event)))
+				.doesNotThrowAnyException();
 		assertThat(user.getPassword()).isEqualTo("deja-encode");
 		verify(passwordEncoder, never()).encode(any());
 	}
@@ -273,5 +281,32 @@ class UserProvisioningServiceTest {
 
 		assertThat(userSoc1.getRoles()).containsExactlyInAnyOrder("USER", "DIRECTION");
 		assertThat(userSoc2.getRoles()).containsExactlyInAnyOrder("USER", "RH");
+	}
+
+	@Test
+	@DisplayName("D-SOC20 #1 : compte_utilisateur_id d'un compte PLATEFORME (societe_id null) ou d'une autre société est ignoré")
+	void majRoles_comptePlateformeSansSociete_estIgnore() {
+		UUID societeId = UUID.randomUUID();
+		UUID plateformeId = UUID.randomUUID();
+		User comptePlateforme = User.builder()
+				.id(plateformeId)
+				.societeId(null)
+				.username("PLATEFORME01")
+				.email("plat@agua.test")
+				.password("h")
+				.roles(new HashSet<>(Set.of("PLATEFORME")))
+				.build();
+
+		when(userRepository.findById(plateformeId)).thenReturn(Optional.of(comptePlateforme));
+		when(userRepository.findBySocieteIdAndUsernameIgnoreCase(societeId, "PLATEFORME01")).thenReturn(Optional.empty());
+
+		CollaborateurCompteDemandeEvent majRoles = new CollaborateurCompteDemandeEvent(
+				UUID.randomUUID(), "PLATEFORME01", "plat@agua.test", "Operateur", "Plat", "RH", null,
+				CollaborateurCompteDemandeEvent.OPERATION_MAJ_ROLES, plateformeId);
+
+		com.hr.commun.societe.SocieteContexte.executer(societeId, () -> service.provisionCollaborateurCompte(majRoles));
+
+		assertThat(comptePlateforme.getRoles()).containsExactly("PLATEFORME");
+		verify(userRepository, never()).save(any());
 	}
 }
