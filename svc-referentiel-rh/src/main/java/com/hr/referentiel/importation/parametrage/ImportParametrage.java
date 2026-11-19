@@ -7,7 +7,6 @@ import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-import org.hibernate.annotations.Immutable;
 import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
@@ -19,7 +18,6 @@ import java.util.UUID;
  * par écriture effective (pas de {@code @Version} : l'incrément ne doit pas dépendre d'un champ « sale »).
  */
 @Entity
-@Immutable
 @EntityListeners(SocieteGardeEcriture.class)
 @Table(name = "rh_import_parametrage", uniqueConstraints = @UniqueConstraint(
 		name = "uk_rh_import_parametrage_societe_type", columnNames = {"societe_id", "type_import"}))

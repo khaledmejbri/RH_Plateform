@@ -8,6 +8,8 @@ import com.hr.referentiel.champsperso.ChampPersoValeurListeRepository;
 import com.hr.referentiel.importation.parametrage.ImportParametrageDtos.Parametrage;
 import com.hr.referentiel.service.AuteurParametre;
 import com.hr.referentiel.web.ReferentielMetierException;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -32,6 +34,9 @@ public class ParametrageEcriture {
 	private final ImportChampsJournal journal;
 	private final ParametrageImportCache cache;
 	private final ChampPersoUtilisations utilisations;
+
+	@PersistenceContext
+	private EntityManager entityManager;
 
 	public ParametrageEcriture(ImportParametrageRepository parametrageRepository, ImportChampRegleRepository champRepository,
 			ImportSynonymeRepository synonymeRepository, ChampPersoRepository champPersoRepository,
@@ -91,6 +96,9 @@ public class ParametrageEcriture {
 	 */
 	public Parametrage terminer(EtatParametrage etat, List<String[]> lignes, AuteurParametre auteur, Instant maintenant) {
 		if (!lignes.isEmpty()) {
+			if (entityManager != null) {
+				entityManager.detach(etat.parametrage);
+			}
 			etat.parametrage.marquerModifie(maintenant, auteur.nom());
 			parametrageRepository.mettreAJourModification(
 					etat.type.name(),
