@@ -210,3 +210,12 @@
   font-weight: 600;
   vertical-align: middle;
 }
+
+/* Champs personnalisés (partie 2) */
+.valeurs-liste { list-style: none; margin: 8px 0 0; padding: 0; }
+.valeurs-liste li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border, #e5e7eb); }
+.valeurs-liste--actions li { flex-wrap: wrap; }
+.champ-perso__ligne { display: flex; gap: 8px; align-items: center; }
+.champ-perso__ligne > :first-child { flex: 1; min-width: 0; }
+.filtre-perso { border: 1px solid var(--border, #e5e7eb); border-radius: 8px; padding: 8px 12px; margin: 0; min-width: 220px; }
+.filtre-perso__paire { display: flex; gap: 8px; }

@@ -3,6 +3,9 @@ package com.hr.referentiel.importation;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.hr.referentiel.importation.parametrage.ParametrageImport;
+import com.hr.referentiel.importation.parametrage.TypeImportParametrable;
+
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -80,5 +83,62 @@ class ReconnaissanceEnTetesTest {
 		assertThat(ReconnaissanceEnTetes.normaliser("  Date_de-RECRUTEMENT (obligatoire) * ")).isEqualTo("date de recrutement");
 		assertThat(ReconnaissanceEnTetes.normaliser("Solde 2026 final")).isEqualTo("solde");
 		assertThat(ReconnaissanceEnTetes.normaliser("Été")).isEqualTo("ete");
+	}
+
+	// ─── Paramétrage figé (ADR-IMPORT-CHAMPS § 6) ──────────────────────────────
+
+	private static ParametrageImport defaut() {
+		return ParametrageImport.parDefaut(TypeImportParametrable.COLLABORATEURS);
+	}
+
+	@Test
+	@DisplayName("T2-2 : l'en-tête réglé est reconnu pour son champ, ainsi que ses synonymes actifs ajoutés par la RH (« Mle »)")
+	void enTeteReglePuisSynonymeRh() {
+		ParametrageImport p = CacheParametrageDeTest.regler(defaut(), "COURRIEL", "Adresse pro", null, null, null);
+		p = CacheParametrageDeTest.regler(p, "MATRICULE", null, null, null, List.of("mle"));
+		ReconnaissanceEnTetes r = new ReconnaissanceEnTetes(p);
+		assertThat(champ(r, "Adresse pro")).isEqualTo("COURRIEL");
+		assertThat(champ(r, "MLE")).isEqualTo("MATRICULE");
+		assertThat(champ(r, "Mle*")).isEqualTo("MATRICULE");
+		assertThat(champ(r, "Courriel")).as("synonyme par défaut toujours actif").isEqualTo("COURRIEL");
+	}
+
+	@Test
+	@DisplayName("T2-3 : un synonyme absent des formes actives (désactivé) n'est plus reconnu ; réactivé, il l'est de nouveau")
+	void synonymeInactifIgnore() {
+		ParametrageImport p = CacheParametrageDeTest.sansForme(defaut(), "UNITE", "service");
+		assertThat(champ(new ReconnaissanceEnTetes(p), "Service")).isNull();
+		assertThat(champ(new ReconnaissanceEnTetes(defaut()), "Service")).isEqualTo("UNITE");
+	}
+
+	@Test
+	@DisplayName("T2-4 / D-I19 : un champ retiré du modèle reste reconnu (« Poste »)")
+	void champHorsModeleReconnu() {
+		ParametrageImport p = CacheParametrageDeTest.regler(defaut(), "POSTE", null, false, null, null);
+		ReconnaissanceEnTetes r = new ReconnaissanceEnTetes(p);
+		assertThat(champ(r, "Poste")).isEqualTo("POSTE");
+		assertThat(r.parNom("POSTE")).isNotNull();
+		assertThat(p.champsDuModele()).extracting(ParametrageImport.ChampRegle::code).doesNotContain("POSTE");
+	}
+
+	@Test
+	@DisplayName("ADR § 6 : la normalisation qui calcule les formes enregistrées est la même que celle de la reconnaissance (« M.L.E. » -> « m l e »)")
+	void memeNormalisation() {
+		assertThat(ReconnaissanceEnTetes.normaliser("M.L.E.")).isEqualTo("m l e");
+		ParametrageImport p = CacheParametrageDeTest.regler(defaut(), "MATRICULE", null, null, null,
+				List.of(ReconnaissanceEnTetes.normaliser("M.L.E.")));
+		assertThat(champ(new ReconnaissanceEnTetes(p), "M.L.E.")).isEqualTo("MATRICULE");
+		assertThat(champ(new ReconnaissanceEnTetes(p), "m l e")).isEqualTo("MATRICULE");
+	}
+
+	@Test
+	@DisplayName("ADR § 6 : le paramétrage par défaut reconnaît exactement les mêmes en-têtes que les synonymes du code")
+	void parDefautEquivalentAuCode() {
+		ReconnaissanceEnTetes paramet = new ReconnaissanceEnTetes(defaut());
+		for (ChampImport c : ChampImport.Fiche.values()) {
+			for (String s : c.synonymes()) {
+				assertThat(champ(paramet, s)).as(s).isEqualTo(champ(fiches, s));
+			}
+		}
 	}
 }

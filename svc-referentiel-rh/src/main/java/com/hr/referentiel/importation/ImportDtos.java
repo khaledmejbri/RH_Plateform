@@ -26,7 +26,14 @@ public final class ImportDtos {
 	public record ChampDisponible(
 			@JsonProperty("champ") String champ,
 			@JsonProperty("libelle") String libelle,
-			@JsonProperty("obligatoire_creation") boolean obligatoireCreation) {
+			@JsonProperty("exigence") String exigence,
+			@JsonProperty("exigence_libelle") String exigenceLibelle,
+			@JsonProperty("dans_modele") boolean dansModele,
+			/** Déprécié : égal à « exigence différente de FACULTATIF » ; conservé pour ne pas casser le web. */
+			@JsonProperty("obligatoire_creation") boolean obligatoireCreation,
+			@JsonProperty("personnalise") boolean personnalise,
+			@JsonProperty("type_valeur") String typeValeur,
+			@JsonProperty("type_valeur_libelle") String typeValeurLibelle) {
 	}
 
 	public record ProblemeVue(

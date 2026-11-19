@@ -102,6 +102,18 @@ public class CollaborateurCreationRequest {
 	@JsonProperty("niveau_seniorite")
 	private String niveauSeniorite;
 
+	/** Valeurs initiales des champs personnalisés (facultatif) : code du champ -> valeur (annexe A bis, CR). */
+	@JsonProperty("champs_personnalises")
+	private java.util.Map<String, Object> champsPersonnalises;
+
+	public java.util.Map<String, Object> getChampsPersonnalises() {
+		return champsPersonnalises;
+	}
+
+	public void setChampsPersonnalises(java.util.Map<String, Object> champsPersonnalises) {
+		this.champsPersonnalises = champsPersonnalises;
+	}
+
 	public String getMatricule() {
 		return matricule;
 	}

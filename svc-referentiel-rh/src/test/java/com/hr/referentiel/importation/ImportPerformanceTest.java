@@ -131,11 +131,12 @@ class ImportPerformanceTest {
 		when(auteurResolver.depuis(jwt)).thenReturn(new AuteurParametre(UUID.randomUUID(), "Amel Trabelsi"));
 		CollaborateurConnecteService connecte = mock(CollaborateurConnecteService.class);
 		when(connecte.resoudre(any())).thenReturn(Optional.empty());
+		CacheParametrageDeTest cacheParametrage = new CacheParametrageDeTest();
 		ImportService service = new ImportService(analyseRepository, contenuRepository, ligneRepository,
-				new ImportCollaborateursService(collaborateurRepository, uniteRepository, cache, mock(ParametreService.class), provider, horloge),
+				new ImportCollaborateursService(collaborateurRepository, uniteRepository, cache, mock(ParametreService.class), provider, horloge, null, null),
 				new ImportSoldesService(collaborateurRepository, lectureSoldes, mock(RhNotificationPublisher.class),
-						new SoldeLotService(jdbc, horloge), horloge),
-				mock(IdentiteInterneClient.class), new ImportVerrou(jdbc), auteurResolver, connecte, JsonMapper.builder().build(),
+						new SoldeLotService(jdbc, horloge), horloge, null),
+				mock(IdentiteInterneClient.class), new ImportVerrou(jdbc), auteurResolver, connecte, cacheParametrage, JsonMapper.builder().build(),
 				horloge, tm, 30);
 
 		// ── 5 000 créations de fiches ──

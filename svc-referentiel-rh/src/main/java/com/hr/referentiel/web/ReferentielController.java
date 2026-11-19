@@ -2,6 +2,7 @@ package com.hr.referentiel.web;
 
 import com.hr.referentiel.security.PreAuthorizeExpressions;
 import com.hr.referentiel.dto.*;
+import com.hr.referentiel.service.FiltreCollaborateurs;
 import com.hr.referentiel.service.ReferentielRhService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -19,9 +20,18 @@ public class ReferentielController {
 
 	private final ReferentielRhService referentielRhService;
 	private final com.hr.referentiel.service.CollaborateurConnecteService collaborateurConnecteService;
+	private final com.hr.referentiel.service.CreationCollaborateurService creationService;
+	private final com.hr.referentiel.service.RechercheCollaborateursService rechercheService;
+	private final com.hr.referentiel.service.ExportCollaborateursService exportService;
 
 	public ReferentielController(ReferentielRhService referentielRhService,
-			com.hr.referentiel.service.CollaborateurConnecteService collaborateurConnecteService) {
+			com.hr.referentiel.service.CollaborateurConnecteService collaborateurConnecteService,
+			com.hr.referentiel.service.CreationCollaborateurService creationService,
+			com.hr.referentiel.service.RechercheCollaborateursService rechercheService,
+			com.hr.referentiel.service.ExportCollaborateursService exportService) {
+		this.creationService = creationService;
+		this.rechercheService = rechercheService;
+		this.exportService = exportService;
 		this.referentielRhService = referentielRhService;
 		this.collaborateurConnecteService = collaborateurConnecteService;
 	}
@@ -62,10 +72,21 @@ public class ReferentielController {
 	public ResponseEntity<PageReferentielResponse<CollaborateurResponse>> listerCollaborateurs(
 			@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "20") int taille,
-			@RequestParam(required = false) String statut,
-			@RequestParam(name = "unite_identifiant", required = false) UUID uniteIdentifiant) {
-		return ResponseEntity.ok(
-				referentielRhService.listerCollaborateurs(page, taille, statut, uniteIdentifiant));
+			@RequestParam Map<String, String> filtres) {
+		// V5 : tous les filtres (dont les critères personnalisés « cp.CODE.critère ») sont appliqués par le serveur
+		return ResponseEntity.ok(rechercheService.lister(FiltreCollaborateurs.lire(filtres), page, taille));
+	}
+
+	/** V6 : export CSV de la liste filtrée (mêmes filtres que V5, sans pagination). */
+	@GetMapping("/collaborateurs/export")
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
+	public ResponseEntity<byte[]> exporterCollaborateurs(@RequestParam Map<String, String> filtres,
+			org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken principal) {
+		byte[] csv = exportService.exporter(FiltreCollaborateurs.lire(filtres), principal.getName());
+		return ResponseEntity.ok()
+				.header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+						"attachment; filename=\"" + exportService.nomFichier() + "\"")
+				.contentType(org.springframework.http.MediaType.parseMediaType("text/csv; charset=UTF-8")).body(csv);
 	}
 
 	@GetMapping("/collaborateurs/moi")
@@ -106,8 +127,9 @@ public class ReferentielController {
 	@PostMapping("/collaborateurs")
 	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<CollaborateurResponse> creerCollaborateur(
-			@Valid @RequestBody CollaborateurCreationRequest requete) {
-		return ResponseEntity.status(HttpStatus.CREATED).body(referentielRhService.creerCollaborateur(requete));
+			@Valid @RequestBody CollaborateurCreationRequest requete,
+			org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken principal) {
+		return ResponseEntity.status(HttpStatus.CREATED).body(creationService.creer(requete, principal.getToken()));
 	}
 
 	@PutMapping("/collaborateurs/{identifiant}")

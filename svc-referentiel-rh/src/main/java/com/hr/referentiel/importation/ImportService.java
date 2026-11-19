@@ -24,6 +24,10 @@ import com.hr.referentiel.importation.ImportModeles.Totaux;
 import com.hr.referentiel.importation.lecture.Fichier;
 import com.hr.referentiel.importation.lecture.Fichier.LigneBrute;
 import com.hr.referentiel.importation.lecture.LectureFichier;
+import com.hr.referentiel.importation.parametrage.ExigenceChamp;
+import com.hr.referentiel.importation.parametrage.ParametrageImport;
+import com.hr.referentiel.importation.parametrage.ParametrageImportCache;
+import com.hr.referentiel.importation.parametrage.TypeImportParametrable;
 import com.hr.referentiel.service.AuteurParametre;
 import com.hr.referentiel.service.AuteurParametreResolver;
 import com.hr.referentiel.service.CollaborateurConnecteService;
@@ -80,7 +84,7 @@ public class ImportService {
 
 	/** Contenu extrait et résultat de la dernière évaluation (JSON gzip dans {@code rh_import_contenu}). */
 	record ResultatStocke(Integer ligneEnTete, List<Colonne> colonnes, List<String> colonnesIgnorees, Evaluation evaluation,
-			Set<String> comptesExistants, List<Probleme> avertissementsEnPlus) {
+			Set<String> comptesExistants, List<Probleme> avertissementsEnPlus, ParametrageImport parametrage) {
 	}
 
 	private final ImportAnalyseRepository analyseRepository;
@@ -92,6 +96,7 @@ public class ImportService {
 	private final ImportVerrou verrou;
 	private final AuteurParametreResolver auteurResolver;
 	private final CollaborateurConnecteService collaborateurConnecteService;
+	private final ParametrageImportCache parametrageCache;
 	private final JsonMapper jsonMapper;
 	private final Clock clock;
 	private final PlatformTransactionManager transactionManager;
@@ -101,7 +106,7 @@ public class ImportService {
 			ImportLigneRepository ligneRepository, ImportCollaborateursService collaborateursService,
 			ImportSoldesService soldesService, IdentiteInterneClient identiteClient, ImportVerrou verrou,
 			AuteurParametreResolver auteurResolver, CollaborateurConnecteService collaborateurConnecteService,
-			JsonMapper jsonMapper, Clock clock, PlatformTransactionManager transactionManager,
+			ParametrageImportCache parametrageCache, JsonMapper jsonMapper, Clock clock, PlatformTransactionManager transactionManager,
 			@Value("${referentiel.imports.expiration-minutes:30}") int expirationMinutes) {
 		this.analyseRepository = analyseRepository;
 		this.contenuRepository = contenuRepository;
@@ -112,6 +117,7 @@ public class ImportService {
 		this.verrou = verrou;
 		this.auteurResolver = auteurResolver;
 		this.collaborateurConnecteService = collaborateurConnecteService;
+		this.parametrageCache = parametrageCache;
 		this.jsonMapper = jsonMapper;
 		this.clock = clock;
 		this.transactionManager = transactionManager;
@@ -162,7 +168,9 @@ public class ImportService {
 		a.setCreeLe(maintenant);
 		a.setDerniereActionLe(maintenant);
 		a.setAnalyseLe(maintenant);
-		ResultatStocke resultat = evaluer(a, lu, null, null, null);
+		ParametrageImport parametrage = parametrageCache.courant(TypeImportParametrable.valueOf(type)); // figé (D-I25)
+		a.setParametrageVersion(parametrage.version());
+		ResultatStocke resultat = evaluer(a, lu, null, null, null, parametrage);
 		persister(a, lu, resultat, true);
 		log.info("Import {} analysé : {} ligne(s)", type, resultat.evaluation().totaux().lignes());
 		return versAnalyse(a, resultat, 0);
@@ -198,7 +206,9 @@ public class ImportService {
 		if (req.motifGlobal() != null) {
 			a.setMotifGlobal(req.motifGlobal().isBlank() ? null : req.motifGlobal().strip());
 		}
-		ResultatStocke resultat = evaluer(a, lu, req.ligneEnTete(), req.colonnes(), lireResultat(a).comptesExistants());
+		ResultatStocke avant = lireResultat(a);
+		ResultatStocke resultat = evaluer(a, lu, req.ligneEnTete(), req.colonnes(), avant.comptesExistants(),
+				parametrageFige(a, avant));
 		persister(a, lu, resultat, false);
 		return versAnalyse(a, resultat, 0);
 	}
@@ -233,11 +243,11 @@ public class ImportService {
 	}
 
 	public byte[] modeleCollaborateurs() {
-		return FichiersImportXlsx.modele(List.of(ChampImport.Fiche.values()));
+		return FichiersImportXlsx.modele(parametrageCache.enTetesDuModele(TypeImportParametrable.COLLABORATEURS));
 	}
 
 	public byte[] modeleSoldes() {
-		return FichiersImportXlsx.modele(List.of(ChampImport.Solde.values()));
+		return FichiersImportXlsx.modele(parametrageCache.enTetesDuModele(TypeImportParametrable.SOLDES));
 	}
 
 	// ─── Confirmation (I6) ─────────────────────────────────────────────────────
@@ -284,7 +294,7 @@ public class ImportService {
 		Instant maintenant = clock.instant();
 		CompteRendu compteRendu = soldes
 				? appliquerSoldes(a, apres, importables, motifGlobal, jwt, (ImportSoldesService.Contexte) reeval.contexte())
-				: appliquerFiches(a, apres, importables, (ImportCollaborateursService.Contexte) reeval.contexte());
+				: appliquerFiches(a, apres, importables, (ImportCollaborateursService.Contexte) reeval.contexte(), jwt);
 		a.setStatut(ImportAnalyse.STATUT_CONFIRMEE);
 		a.setConfirmeLe(maintenant);
 		a.setDerniereActionLe(maintenant);
@@ -305,10 +315,11 @@ public class ImportService {
 
 	private Reevaluation reevaluerFiches(ImportAnalyse a, Fichier lu, ResultatStocke avant) {
 		ImportCollaborateursService.Contexte ctx = collaborateursService.charger();
+		ParametrageImport parametrage = parametrageFige(a, avant);
 		List<LigneBrute> donnees = donnees(lu, avant.ligneEnTete());
 		List<Colonne> colonnes = colonnesPourEvaluation(avant.colonnes());
 		Evaluation e = collaborateursService.evaluer(donnees, colonnes, Boolean.TRUE.equals(a.getCreerComptes()),
-				avant.comptesExistants() == null ? Set.of() : avant.comptesExistants(), ctx);
+				avant.comptesExistants() == null ? Set.of() : avant.comptesExistants(), ctx, parametrage, a.getAuteurFicheId());
 		Map<Integer, LigneResultat> precedentes = new LinkedHashMap<>();
 		avant.evaluation().lignes().forEach(l -> precedentes.put(l.numero(), l));
 		List<LigneResultat> lignes = new ArrayList<>();
@@ -330,21 +341,23 @@ public class ImportService {
 		Evaluation finale = new Evaluation(lignes, avant.evaluation().erreursFichier(), avant.evaluation().avertissementsFichier(),
 				totaux(lignes, false));
 		return new Reevaluation(new ResultatStocke(avant.ligneEnTete(), avant.colonnes(), avant.colonnesIgnorees(), finale,
-				avant.comptesExistants(), avant.avertissementsEnPlus()), ctx);
+				avant.comptesExistants(), avant.avertissementsEnPlus(), parametrage), ctx);
 	}
 
 	private Reevaluation reevaluerSoldes(ImportAnalyse a, Fichier lu, ResultatStocke avant, String motifGlobal) {
 		ImportSoldesService.Contexte ctx = soldesService.charger();
+		ParametrageImport parametrage = parametrageFige(a, avant);
 		Evaluation e = soldesService.evaluer(donnees(lu, avant.ligneEnTete()), colonnesPourEvaluation(avant.colonnes()),
-				motifGlobal, a.getAuteurFicheId(), ctx);
+				motifGlobal, a.getAuteurFicheId(), ctx, parametrage);
 		return new Reevaluation(new ResultatStocke(avant.ligneEnTete(), avant.colonnes(), avant.colonnesIgnorees(),
 				new Evaluation(e.lignes(), avant.evaluation().erreursFichier(), e.avertissementsFichier(), e.totaux()),
-				avant.comptesExistants(), avant.avertissementsEnPlus()), ctx);
+				avant.comptesExistants(), avant.avertissementsEnPlus(), parametrage), ctx);
 	}
 
 	private CompteRendu appliquerFiches(ImportAnalyse a, ResultatStocke r, List<LigneResultat> importables,
-			ImportCollaborateursService.Contexte ctx) {
-		ImportCollaborateursService.Application app = collaborateursService.appliquer(importables, ctx);
+			ImportCollaborateursService.Contexte ctx, Jwt jwt) {
+		ImportCollaborateursService.Application app = collaborateursService.appliquer(importables, ctx, a.getId(), r.parametrage(),
+				auteurResolver.depuis(jwt));
 		int inchangees = (int) r.evaluation().lignes().stream().filter(l -> "INCHANGEE".equals(l.action())).count();
 		int rejetees = (int) r.evaluation().lignes().stream().filter(LigneResultat::enErreur).count();
 		for (LigneResultat l : r.evaluation().lignes()) {
@@ -359,13 +372,13 @@ public class ImportService {
 							ecrire(l.modifications()), null));
 		}
 		return new CompteRendu(a.getId(), a.getTypeImport(), app.creees(), app.misesAJour(), inchangees, rejetees,
-				app.comptesDemandes(), null, avertissementsFinaux(r, importables));
+				app.comptesDemandes(), null, avertissementsFinaux(r, importables, app.avertissements()));
 	}
 
 	private CompteRendu appliquerSoldes(ImportAnalyse a, ResultatStocke r, List<LigneResultat> importables,
 			String motifGlobal, Jwt jwt, ImportSoldesService.Contexte ctx) {
 		ImportSoldesService.Application app = soldesService.appliquer(importables, a.getId(), motifGlobal,
-				auteurResolver.depuis(jwt), ctx);
+				auteurResolver.depuis(jwt), ctx, r.parametrage());
 		int inchanges = (int) r.evaluation().lignes().stream().filter(l -> "INCHANGE".equals(l.action())).count()
 				+ app.inchanges();
 		int rejetees = (int) r.evaluation().lignes().stream().filter(LigneResultat::enErreur).count();
@@ -388,12 +401,12 @@ public class ImportService {
 							new Modification("MOTIF", "Motif", "", l.motif() == null ? motifGlobal : l.motif()))), null));
 		}
 		return new CompteRendu(a.getId(), a.getTypeImport(), null, null, inchanges, rejetees, null, app.ajustements(),
-				avertissementsFinaux(r, importables));
+				avertissementsFinaux(r, importables, app.avertissements()));
 	}
 
-	/** Avertissements du compte rendu : ceux du fichier, et le nombre de lignes IMPORTÉES qui en portent. */
-	private static List<String> avertissementsFinaux(ResultatStocke r, List<LigneResultat> importees) {
-		List<String> l = new ArrayList<>();
+	/** Avertissements du compte rendu : ceux du fichier, ceux de l'écriture des valeurs, et le nombre de lignes importées qui en portent. */
+	private static List<String> avertissementsFinaux(ResultatStocke r, List<LigneResultat> importees, List<String> ecriture) {
+		List<String> l = new ArrayList<>(ecriture);
 		r.evaluation().avertissementsFichier().forEach(p -> l.add(p.message()));
 		long avertis = importees.stream().filter(x -> !x.avertissements().isEmpty()).count();
 		if (avertis > 0) {
@@ -480,7 +493,10 @@ public class ImportService {
 			Map.entry("SOLDE_OBLIGATOIRE", "Solde obligatoire"),
 			Map.entry("SOLDE_INVALIDE", "Solde invalide"),
 			Map.entry("MOTIF_INVALIDE", "Motif invalide"),
-			Map.entry("AUTO_AJUSTEMENT_INTERDIT", "Ajustement de son propre solde interdit"));
+			Map.entry("AUTO_AJUSTEMENT_INTERDIT", "Ajustement de son propre solde interdit"),
+			Map.entry("VALEUR_INVALIDE", "Valeur invalide"),
+			Map.entry("VALEUR_HORS_BORNES", "Valeur hors des bornes"),
+			Map.entry("AUTO_MODIFICATION_INTERDITE", "Modification de ses propres informations interdite"));
 
 	private static String libelleAction(String action) {
 		return switch (action == null ? "" : action) {
@@ -499,10 +515,9 @@ public class ImportService {
 
 	/** Détecte l'en-tête, fixe la correspondance, évalue toutes les lignes. Aucune écriture. */
 	private ResultatStocke evaluer(ImportAnalyse a, Fichier lu, Integer ligneEnTeteDemandee, List<ColonneChoix> choix,
-			Set<String> comptesDejaConnus) {
+			Set<String> comptesDejaConnus, ParametrageImport parametrage) {
 		boolean soldes = ImportAnalyse.TYPE_SOLDES.equals(a.getTypeImport());
-		ReconnaissanceEnTetes reco = new ReconnaissanceEnTetes(soldes ? List.of(ChampImport.Solde.values())
-				: List.of(ChampImport.Fiche.values()));
+		ReconnaissanceEnTetes reco = new ReconnaissanceEnTetes(parametrage);
 		int idxEnTete = positionEnTete(lu, reco, ligneEnTeteDemandee);
 		LigneBrute entete = lu.lignes().get(idxEnTete);
 		List<LigneBrute> donnees = lu.lignes().subList(idxEnTete + 1, lu.lignes().size());
@@ -513,14 +528,14 @@ public class ImportService {
 		List<Colonne> colonnes = colonnes(entete, reco, choix);
 		List<String> ignorees = colonnes.stream().filter(c -> c.champ() == null && !c.enTete().isBlank())
 				.map(Colonne::enTete).toList();
-		List<Probleme> erreursFichier = erreursFichier(colonnes, soldes);
+		List<Probleme> erreursFichier = ControleColonnes.erreurs(colonnes, parametrage, soldes);
 		List<Colonne> pourEvaluation = colonnesPourEvaluation(colonnes);
 		Evaluation e;
 		Set<String> comptes = comptesDejaConnus == null ? Set.of() : comptesDejaConnus;
 		List<Probleme> avertissements = new ArrayList<>();
 		if (soldes) {
 			ImportSoldesService.Contexte ctx = soldesService.charger();
-			e = soldesService.evaluer(donnees, pourEvaluation, a.getMotifGlobal(), a.getAuteurFicheId(), ctx);
+			e = soldesService.evaluer(donnees, pourEvaluation, a.getMotifGlobal(), a.getAuteurFicheId(), ctx, parametrage);
 		} else {
 			ImportCollaborateursService.Contexte ctx = collaborateursService.charger();
 			if (Boolean.TRUE.equals(a.getCreerComptes())) {
@@ -531,13 +546,14 @@ public class ImportService {
 							"La vérification des comptes existants est indisponible : les doublons de compte seront traités à la création."));
 				}
 			}
-			e = collaborateursService.evaluer(donnees, pourEvaluation, Boolean.TRUE.equals(a.getCreerComptes()), comptes, ctx);
+			e = collaborateursService.evaluer(donnees, pourEvaluation, Boolean.TRUE.equals(a.getCreerComptes()), comptes, ctx,
+					parametrage, a.getAuteurFicheId());
 		}
 		List<Probleme> avertFichier = new ArrayList<>(e.avertissementsFichier());
 		avertFichier.addAll(avertissements);
 		a.setLigneEnTete(entete.numero());
 		Evaluation finale = new Evaluation(e.lignes(), erreursFichier, avertFichier, e.totaux());
-		return new ResultatStocke(entete.numero(), colonnes, ignorees, finale, comptes, List.of());
+		return new ResultatStocke(entete.numero(), colonnes, ignorees, finale, comptes, List.of(), parametrage);
 	}
 
 	private static int positionEnTete(Fichier lu, ReconnaissanceEnTetes reco, Integer demandee) {
@@ -591,23 +607,10 @@ public class ImportService {
 		return r;
 	}
 
-	private List<Probleme> erreursFichier(List<Colonne> colonnes, boolean soldes) {
-		List<Probleme> erreurs = new ArrayList<>();
-		Map<String, List<Colonne>> doubles = colonnes.stream().filter(c -> ImportModeles.EN_DOUBLE.equals(c.etat()))
-				.collect(Collectors.groupingBy(Colonne::champ, LinkedHashMap::new, Collectors.toList()));
-		ReconnaissanceEnTetes reco = new ReconnaissanceEnTetes(soldes ? List.of(ChampImport.Solde.values())
-				: List.of(ChampImport.Fiche.values()));
-		doubles.forEach((champ, liste) -> erreurs.add(Probleme.fichier("COLONNE_EN_DOUBLE", "Les colonnes "
-				+ liste.stream().map(c -> "« " + c.enTete() + " »").collect(Collectors.joining(" et "))
-				+ " désignent toutes deux le champ « " + reco.parNom(champ).libelle().toLowerCase(Locale.ROOT) + " ».")));
-		boolean matricule = colonnes.stream().anyMatch(c -> "MATRICULE".equals(c.champ()) && !ImportModeles.EN_DOUBLE.equals(c.etat()));
-		if (!matricule) {
-			erreurs.add(Probleme.fichier("COLONNE_MATRICULE_ABSENTE", "Aucune colonne ne désigne le matricule."));
-		}
-		if (soldes && colonnes.stream().noneMatch(c -> "SOLDE".equals(c.champ()) && !ImportModeles.EN_DOUBLE.equals(c.etat()))) {
-			erreurs.add(Probleme.fichier("COLONNE_SOLDE_ABSENTE", "Aucune colonne ne désigne le solde."));
-		}
-		return erreurs;
+	/** Paramétrage figé par l'analyse ; repli sur le code pour un résultat stocké sans instantané. */
+	private static ParametrageImport parametrageFige(ImportAnalyse a, ResultatStocke r) {
+		return r.parametrage() != null ? r.parametrage()
+				: ParametrageImport.parDefaut(TypeImportParametrable.valueOf(a.getTypeImport()));
 	}
 
 	/** Les colonnes ambiguës (en double) sont laissées de côté : les lignes restent affichées avec les colonnes sûres. */
@@ -667,12 +670,13 @@ public class ImportService {
 
 	private Analyse versAnalyse(ImportAnalyse a, ResultatStocke r, int page) {
 		boolean soldes = ImportAnalyse.TYPE_SOLDES.equals(a.getTypeImport());
-		ReconnaissanceEnTetes reco = new ReconnaissanceEnTetes(soldes ? List.of(ChampImport.Solde.values())
-				: List.of(ChampImport.Fiche.values()));
+		ParametrageImport parametrage = parametrageFige(a, r);
 		List<ColonneVue> colonnes = r.colonnes().stream().map(c -> new ColonneVue(c.index(), c.enTete(), c.champ(),
-				c.champ() == null ? null : reco.parNom(c.champ()).libelle(), c.etat())).toList();
-		List<ChampDisponible> champs = reco.champs().stream()
-				.map(c -> new ChampDisponible(c.name(), c.libelle(), c.obligatoireCreation())).toList();
+				c.champ() == null ? null : parametrage.enTete(c.champ()), c.etat())).toList();
+		List<ChampDisponible> champs = parametrage.champs().stream().map(c -> new ChampDisponible(c.code(), c.enTete(),
+				c.exigence().name(), c.exigence().libelle(), c.dansModele(), c.exigence() != ExigenceChamp.FACULTATIF, c.personnalise(),
+				c.personnalise() && parametrage.definition(c.code()) != null ? parametrage.definition(c.code()).typeValeur().name() : null,
+				c.personnalise() && parametrage.definition(c.code()) != null ? parametrage.definition(c.code()).typeValeur().libelle() : null)).toList();
 		Totaux t = r.evaluation().totaux();
 		TotauxVue totaux = soldes
 				? new TotauxVue(t.lignes(), null, null, t.inchangees(), t.ajustements(), t.erreurs(), t.avertissements())

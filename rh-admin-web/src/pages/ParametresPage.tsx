@@ -11,6 +11,7 @@ import {
 import { useLectureSeule } from '../auth/useLectureSeule';
 import { LoadingState, PageHeader } from '../components/ui';
 import ReferentielPanel from './parametres/ReferentielPanel';
+import ImportExcelPanel from './parametres/ImportExcelPanel';
 import JoursFeriesPanel from './parametres/JoursFeriesPanel';
 import ReglagesPanel from './parametres/ReglagesPanel';
 import './parametres/parametres.css';
@@ -41,7 +42,8 @@ const SERVICE_LIBELLE: Record<ServiceParametre, string> = {
 type Entree =
   | { genre: 'ref'; cle: string; domaine: string; titre: string; service: ServiceParametre; descripteur: DescripteurReferentiel }
   | { genre: 'reglages'; cle: string; domaine: string; titre: string; service: ServiceParametre }
-  | { genre: 'feries'; cle: string; domaine: string; titre: string };
+  | { genre: 'feries'; cle: string; domaine: string; titre: string }
+  | { genre: 'imports'; cle: string; domaine: string; titre: string };
 
 type Etat =
   | { statut: 'chargement' }
@@ -115,6 +117,7 @@ export default function ParametresPage() {
       }
     }
     entrees.push({ genre: 'feries', cle: 'jours-feries', domaine: 'DEMANDES', titre: 'Jours fériés' });
+    entrees.push({ genre: 'imports', cle: 'import-excel', domaine: 'ORGANISATION', titre: 'Import Excel' });
     const codes = Array.from(new Set([...DOMAINES.map((d) => d.code), ...entrees.map((e) => e.domaine)]));
     return codes
       .map((code) => ({ code, titre: titreDomaine(code), entrees: entrees.filter((e) => e.domaine === code) }))
@@ -201,6 +204,8 @@ export default function ParametresPage() {
                 />
               ) : choisie?.genre === 'feries' ? (
                 <JoursFeriesPanel key={choisie.cle} lectureSeule={lectureSeule} />
+              ) : choisie?.genre === 'imports' ? (
+                <ImportExcelPanel key={choisie.cle} lectureSeule={lectureSeule} />
               ) : choisie?.genre === 'reglages' ? (
                 <ReglagesPanel
                   key={choisie.cle}

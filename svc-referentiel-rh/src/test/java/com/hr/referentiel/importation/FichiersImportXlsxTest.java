@@ -43,7 +43,7 @@ class FichiersImportXlsxTest {
 
 	@Test
 	void leModeleEstUneArchiveStandardLisibleEntreeParEntree() throws IOException {
-		byte[] xlsx = FichiersImportXlsx.modele(List.of(ChampImport.Solde.values()));
+		byte[] xlsx = FichiersImportXlsx.modele(java.util.Arrays.stream(ChampImport.Solde.values()).map(ChampImport::libelle).toList());
 		int entrees = 0;
 		try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(xlsx))) {
 			while (zip.getNextEntry() != null) {

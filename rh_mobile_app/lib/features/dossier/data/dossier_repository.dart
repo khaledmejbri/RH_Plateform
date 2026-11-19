@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
+import 'champs_perso_models.dart';
 import 'dossier_models.dart';
 
 final dossierRepositoryProvider = Provider<DossierRepository>((ref) {
@@ -28,6 +29,12 @@ class DossierRepository {
     final data = res.data;
     if (data is! Map) throw StateError('Réponse annuaire inattendue');
     return FicheAnnuaire.fromJson(Map<String, dynamic>.from(data));
+  }
+
+  /// Informations complémentaires visibles de l'appelant (V4) : aucun identifiant envoyé, le serveur lit le jeton.
+  Future<List<ChampPersoAffiche>> mesChampsPerso() async {
+    final res = await _dio.get<dynamic>('$_collab/champs-personnalises');
+    return ChampPersoAffiche.listeDepuisReponse(res.data);
   }
 
   /// Collaborateurs dont l'appelant est le valideur (vide s'il n'en a aucun).

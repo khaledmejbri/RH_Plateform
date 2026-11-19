@@ -223,6 +223,11 @@ class LigneMouvement extends StatelessWidget {
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(m.details!, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                       ),
+                    for (final v in m.champsPersonnalises)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(v.ligne, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                      ),
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(

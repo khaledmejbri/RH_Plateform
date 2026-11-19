@@ -1,7 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
-  getTousCollaborateurs,
   getUnites,
   libelleProfilAcces,
   nomCollaborateur,
@@ -19,23 +18,32 @@ import { useLectureSeule } from '../auth/useLectureSeule';
 import { useConfirm } from '../components/ConfirmDialog';
 import { ErrorAlert, Icon, LoadingState, StatusBadge } from '../components/ui';
 import BarreFiltres, { AucunResultat, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
-import { appartientSelection, cheminUnite, correspond, indexerUnites, useFiltresUrl } from '../utils/filtres';
+import { cheminUnite, indexerUnites, useFiltresUrl } from '../utils/filtres';
 import { formatNombre, formatPersonne } from '../utils/format';
 import { libelle } from '../utils/libelles';
 import { optionsFiltre, optionsFormulaire, rafraichirParametres, useParametres } from '../utils/parametresStore';
 import { SaisieDate } from '../components/ChampsFr';
+import FiltresChampsPerso from '../components/FiltresChampsPerso';
+import SaisieValeurPerso from '../components/SaisieValeurPerso';
+import { getParametrageImport, type ChampParametre } from '../api/importParametrageApi';
+import {
+  creerCollaborateurAvecValeurs,
+  criteresDepuisUrl,
+  erreursParChamp,
+  exporterCollaborateurs,
+  getCollaborateursFiltres,
+  nbCriteres,
+  PREFIXE_CRITERE,
+  type CriteresPerso,
+  type FiltreFixe,
+} from '../api/valeursPersoApi';
+import { ApiMetierError } from '../api/metierApi';
 import MenuLigne from '../components/MenuLigne';
 import DetailLink from '../detail/DetailLink';
 
 const PROFIL_DEFAUT = 'COLLABORATEUR' as const;
 const TAILLE_PAGE = 15;
 const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', profil: '', statut: '', metier: '', famille: '', niveau: '' };
-
-/** D-E13.c : fiche active sans famille ou sans niveau. */
-function profilMetierIncomplet(r: CollaborateurRow): boolean {
-  return r.statut.toUpperCase() === 'ACTIF'
-    && (!(r.famille_metier_code || r.famille_metier_libelle) || !r.niveau_seniorite);
-}
 
 function profilDepuisLigne(row: CollaborateurRow | null): string {
   if (row?.profil_acces) return row.profil_acces.toUpperCase();
@@ -49,10 +57,25 @@ export default function CollaborateursPage() {
   const [tab, setTab] = useState<'liste' | 'form'>('liste');
   const [editing, setEditing] = useState<CollaborateurRow | null>(null);
   const [unites, setUnites] = useState<Unite[]>([]);
-  const [rows, setRows] = useState<CollaborateurRow[]>([]);
+  const [pageRows, setPageRows] = useState<CollaborateurRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [erreurListe, setErreurListe] = useState<string | null>(null);
+  const [nbMetierACompleter, setNbMetierACompleter] = useState<number | null>(null);
+  const [rev, setRev] = useState(0);
   const filtres = useFiltresUrl(FILTRES_DEFAUT);
   const f = filtres.valeurs;
+  const [urlParams, setUrlParams] = useSearchParams();
+  // Critères des champs personnalisés : gardés dans l'URL sous la forme `cp.<CODE>.<critère>`.
+  const urlParamsTexte = urlParams.toString();
+  const criteres = useMemo(() => criteresDepuisUrl(new URLSearchParams(urlParamsTexte)), [urlParamsTexte]);
+  const nbFiltresActifs = filtres.nbActifs + nbCriteres(criteres);
   const [page, setPage] = useState(0);
+  const [export_, setExport] = useState(false);
+  const [champsPerso, setChampsPerso] = useState<ChampParametre[]>([]);
+  const [valeursPerso, setValeursPerso] = useState<Record<string, string>>({});
+  const [erreursPerso, setErreursPerso] = useState<Record<string, string>>({});
+  const [persoOuvert, setPersoOuvert] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -77,48 +100,100 @@ export default function CollaborateursPage() {
     void getUnites().then(setUnites).catch(() => {});
     // Familles, niveaux, profils et statuts : listes du paramétrage, relues à l'ouverture de la page (D-R02.j).
     void rafraichirParametres();
+    // Champs personnalisés actifs : section « Informations complémentaires » du formulaire de création.
+    void getParametrageImport('collaborateurs').then(
+      (p) => setChampsPerso(p.champs.filter((c) => c.personnalise && c.actif !== false).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0))),
+      () => setChampsPerso([]),
+    );
   }, []);
 
-  async function loadList() {
-    setLoading(true);
+  const loadList = useCallback(() => setRev((n) => n + 1), []);
+
+  /** Filtres fixes envoyés au serveur (le serveur calcule sous-arbres d'unités, recherche sans accents, profil métier à compléter). */
+  const filtreFixe: FiltreFixe = useMemo(
+    () => ({ q: f.q.trim(), direction: f.direction, departement: f.departement, service: f.service, profil: f.profil,
+      statut: f.statut, famille: f.famille, niveau: f.niveau, metier: f.metier }),
+    [f],
+  );
+  const signature = JSON.stringify([filtreFixe, criteres]);
+
+  // Liste paginée et filtrée côté serveur (V5) ; la frappe est temporisée, une réponse périmée est ignorée.
+  useEffect(() => {
+    let annule = false;
+    const delai = window.setTimeout(() => {
+      setLoading(true);
+      setErreurListe(null);
+      getCollaborateursFiltres(filtreFixe, criteres, page, TAILLE_PAGE).then(
+        (p) => {
+          if (annule) return;
+          // Page demandée au-delà de la dernière (fiche sortie du filtre) : retour à la dernière page, qui relance la requête.
+          if (p.total_pages > 0 && page >= p.total_pages) {
+            setPage(p.total_pages - 1);
+            return;
+          }
+          setPageRows(p.contenu);
+          setTotal(p.total_elements);
+          setTotalPages(Math.max(1, p.total_pages));
+          setLoading(false);
+        },
+        (e: unknown) => {
+          if (annule) return;
+          setPageRows([]);
+          setErreurListe(e instanceof ApiMetierError ? e.message : 'La liste des collaborateurs est momentanément indisponible. Rien n’a été modifié.');
+          setLoading(false);
+        },
+      );
+    }, 250);
+    return () => { annule = true; window.clearTimeout(delai); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature, page, rev]);
+
+  // Compteur « profil métier à compléter » : une requête d'une ligne (le serveur compte).
+  useEffect(() => {
+    let annule = false;
+    getCollaborateursFiltres({ metier: 'A_COMPLETER' }, {}, 0, 1).then(
+      (p) => { if (!annule) setNbMetierACompleter(p.total_elements); },
+      () => { if (!annule) setNbMetierACompleter(null); },
+    );
+    return () => { annule = true; };
+  }, [rev]);
+
+  function changerCriteres(suivant: CriteresPerso) {
+    setPage(0);
+    setUrlParams((prev) => {
+      const p = new URLSearchParams(prev);
+      for (const cle of Array.from(p.keys())) if (cle.startsWith(PREFIXE_CRITERE)) p.delete(cle);
+      for (const [code, c] of Object.entries(suivant)) {
+        for (const [critere, valeur] of Object.entries(c)) if (valeur) p.set(`${PREFIXE_CRITERE}${code}.${critere}`, valeur);
+      }
+      return p;
+    }, { replace: true });
+  }
+
+  function reinitialiserTout() {
+    setPage(0);
+    setUrlParams((prev) => {
+      const p = new URLSearchParams(prev);
+      for (const cle of Array.from(p.keys())) if (cle.startsWith(PREFIXE_CRITERE)) p.delete(cle);
+      for (const k of Object.keys(FILTRES_DEFAUT)) p.delete(k);
+      return p;
+    }, { replace: true });
+  }
+
+  async function exporter() {
+    setExport(true);
     setErr(null);
     try {
-      // Filtres « intelligents » appliqués côté client : on charge toute la liste (pages de 200).
-      setRows(await getTousCollaborateurs());
+      await exporterCollaborateurs(filtreFixe, criteres);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Erreur');
+      setErr(e instanceof ApiMetierError ? e.message : 'L’export a échoué. Réessayez.');
     } finally {
-      setLoading(false);
+      setExport(false);
     }
   }
 
-  useEffect(() => {
-    void loadList();
-  }, []);
-
   const indexUnites = useMemo(() => indexerUnites(unites), [unites]);
-  const filtrees = useMemo(
-    () =>
-      rows.filter(
-        (r) =>
-          correspond(
-            [r.prenom, nomCollaborateur(r), r.matricule, r.courriel_professionnel, r.poste_libelle, r.fonction,
-              r.unite?.libelle, r.unite?.code, r.departement_libelle],
-            f.q,
-          ) &&
-          appartientSelection(indexUnites, r.unite?.identifiant, f) &&
-          (!f.profil || (r.profil_acces ?? PROFIL_DEFAUT).toUpperCase() === f.profil) &&
-          (!f.statut || r.statut.toUpperCase() === f.statut) &&
-          (!f.famille || r.famille_metier_code === f.famille) &&
-          (!f.niveau || normalizeNiveauSeniorite(r.niveau_seniorite) === f.niveau) &&
-          (f.metier !== 'A_COMPLETER' || profilMetierIncomplet(r)),
-      ),
-    [rows, f, indexUnites],
-  );
-  const nbMetierACompleter = useMemo(() => rows.filter(profilMetierIncomplet).length, [rows]);
-  const totalPages = Math.max(1, Math.ceil(filtrees.length / TAILLE_PAGE));
   const pageCourante = Math.min(page, totalPages - 1);
-  const pageRows = filtrees.slice(pageCourante * TAILLE_PAGE, (pageCourante + 1) * TAILLE_PAGE);
 
   useEffect(() => {
     if (unites.length && !uniteId) setUniteId(unites[0].identifiant);
@@ -138,6 +213,9 @@ export default function CollaborateursPage() {
     setFamilleMetierCode('');
     setNiveauSeniorite('');
     setMotDePasseInitial('');
+    setValeursPerso({});
+    setErreursPerso({});
+    setPersoOuvert(false);
     setEditing(null);
     if (unites[0]) setUniteId(unites[0].identifiant);
   }
@@ -193,7 +271,12 @@ export default function CollaborateursPage() {
         });
         setMsg('Collaborateur mis à jour.');
       } else {
-        await postCollaborateur({
+        const perso: Record<string, string> = {};
+        for (const c of champsPerso) {
+          const v = (valeursPerso[c.code] ?? '').trim();
+          if (v) perso[c.code] = v;
+        }
+        const corps = {
           matricule: matricule.trim(),
           prenom: prenom.trim(),
           nom,
@@ -209,7 +292,10 @@ export default function CollaborateursPage() {
           famille_metier_code: familleMetierCode || undefined,
           niveau_seniorite: niveauSeniorite || undefined,
           mot_de_passe_initial: motDePasseInitial,
-        });
+        };
+        // Avec des valeurs personnalisées : appel détaillé (erreurs par champ) ; sinon client habituel.
+        if (Object.keys(perso).length > 0) await creerCollaborateurAvecValeurs({ ...corps, champs_personnalises: perso });
+        else await postCollaborateur(corps);
         setMsg('Collaborateur enregistré. Le compte de connexion est créé en arrière-plan.');
       }
       resetForm();
@@ -217,7 +303,15 @@ export default function CollaborateursPage() {
       setPage(0);
       await loadList();
     } catch (x) {
-      setErr(x instanceof Error ? x.message : 'Erreur');
+      const parChamp = erreursParChamp(x);
+      const visees = Object.keys(parChamp).filter((k) => champsPerso.some((c) => c.code === k));
+      if (visees.length > 0) {
+        setErreursPerso(parChamp);
+        setPersoOuvert(true);
+        setErr(parChamp[''] ?? 'La fiche n’a pas été créée : corrigez les informations complémentaires signalées.');
+      } else {
+        setErr(x instanceof Error ? x.message : 'Erreur');
+      }
     } finally {
       setSaving(false);
     }
@@ -275,19 +369,16 @@ export default function CollaborateursPage() {
 
       {tab === 'liste' ? (
         <div className="panel">
-          {loading ? (
-            <LoadingState label="Chargement des collaborateurs…" />
-          ) : (
+          {(
             <>
               <BarreFiltres
                 id="collab"
                 recherche={f.q}
                 onRecherche={(v) => { filtres.definir({ q: v }); setPage(0); }}
                 placeholder="Nom, prénom, matricule, e-mail…"
-                nbResultats={filtrees.length}
-                nbTotal={rows.length}
-                nbActifs={filtres.nbActifs}
-                onReinitialiser={() => { filtres.reinitialiser(); setPage(0); }}
+                nbResultats={total}
+                nbActifs={nbFiltresActifs}
+                onReinitialiser={reinitialiserTout}
               >
                 <FiltresUnite
                   idPrefixe="collab"
@@ -299,40 +390,55 @@ export default function CollaborateursPage() {
                   id="collab-profil"
                   libelle="Profil d'accès"
                   valeur={f.profil}
-                  options={optionsFiltre('PROFIL_ACCES', rows.map((r) => (r.profil_acces ?? PROFIL_DEFAUT).toUpperCase()))}
+                  options={optionsFiltre('PROFIL_ACCES')}
                   onChange={(v) => { filtres.definir({ profil: v }); setPage(0); }}
                 />
                 <ChampSelect
                   id="collab-statut"
                   libelle="Statut"
                   valeur={f.statut}
-                  options={optionsFiltre('STATUT_COLLABORATEUR', rows.map((r) => r.statut.toUpperCase()))}
+                  options={optionsFiltre('STATUT_COLLABORATEUR')}
                   onChange={(v) => { filtres.definir({ statut: v }); setPage(0); }}
                 />
                 <ChampSelect
                   id="collab-famille"
                   libelle="Famille métier"
                   valeur={f.famille}
-                  options={optionsFiltre('FAMILLE_METIER', rows.flatMap((r) => (r.famille_metier_code ? [r.famille_metier_code] : [])))}
+                  options={optionsFiltre('FAMILLE_METIER')}
                   onChange={(v) => { filtres.definir({ famille: v }); setPage(0); }}
                 />
                 <ChampSelect
                   id="collab-niveau"
                   libelle="Niveau de séniorité"
                   valeur={f.niveau}
-                  options={optionsFiltre('NIVEAU_SENIORITE', rows.flatMap((r) => { const n = normalizeNiveauSeniorite(r.niveau_seniorite); return n ? [n] : []; }))}
+                  options={optionsFiltre('NIVEAU_SENIORITE')}
                   onChange={(v) => { filtres.definir({ niveau: v }); setPage(0); }}
                 />
                 <ChampSelect
                   id="collab-metier"
                   libelle="Profil métier"
                   valeur={f.metier}
-                  options={[{ valeur: 'A_COMPLETER', libelle: `Profil métier à compléter (${nbMetierACompleter})` }]}
+                  options={[{ valeur: 'A_COMPLETER', libelle: nbMetierACompleter === null ? 'Profil métier à compléter' : `Profil métier à compléter (${nbMetierACompleter})` }]}
                   onChange={(v) => { filtres.definir({ metier: v }); setPage(0); }}
                 />
+                <FiltresChampsPerso idPrefixe="collab" criteres={criteres} onChange={changerCriteres} />
               </BarreFiltres>
-              {filtrees.length === 0 ? (
-                <AucunResultat onReinitialiser={filtres.nbActifs > 0 ? () => filtres.reinitialiser() : undefined} />
+              <div className="import__actions" style={{ justifyContent: 'flex-start' }}>
+                <button type="button" className="btn btn--secondary btn--sm" disabled={export_ || total === 0} aria-busy={export_} onClick={() => void exporter()}>
+                  <Icon name="download" size={14} />
+                  {export_ ? 'Export…' : 'Exporter (CSV)'}
+                </button>
+                <span className="muted small">Exporte tous les collaborateurs correspondant aux filtres actuels.</span>
+              </div>
+              {loading ? <LoadingState label="Chargement des collaborateurs…" /> : erreurListe ? (
+                <div className="alert alert--error" role="alert">
+                  {erreurListe}{' '}
+                  <button type="button" className="btn btn--secondary btn--sm" onClick={loadList}>Réessayer</button>
+                </div>
+              ) : pageRows.length === 0 ? (
+                nbFiltresActifs > 0
+                  ? <AucunResultat onReinitialiser={reinitialiserTout} />
+                  : <p className="detail-vide">Aucun collaborateur.</p>
               ) : (
               <div className="table-wrap">
                 <table className="data-table">
@@ -413,7 +519,7 @@ export default function CollaborateursPage() {
                   Précédent
                 </button>
                 <span className="muted small">
-                  Page {pageCourante + 1} sur {totalPages} ({formatNombre(filtrees.length, 0)} collaborateurs)
+                  Page {pageCourante + 1} sur {totalPages} ({formatNombre(total, 0)} collaborateurs)
                 </span>
                 <button
                   type="button"
@@ -549,6 +655,33 @@ export default function CollaborateursPage() {
               </div>
             ) : null}
           </div>
+          {!editing && champsPerso.length > 0 ? (
+            <section className="fiche-section" style={{ marginTop: 16 }}>
+              <h3 className="fiche-section__titre" style={{ margin: 0 }}>
+                <button type="button" className="btn btn--ghost btn--sm" aria-expanded={persoOuvert} aria-controls="collab-perso"
+                  onClick={() => setPersoOuvert((o) => !o)}>
+                  Informations complémentaires (facultatives) {persoOuvert ? '▲' : '▼'}
+                </button>
+              </h3>
+              <div id="collab-perso" hidden={!persoOuvert}>
+                <div className="form-grid">
+                  {champsPerso.map((c) => (
+                    <div key={c.code}>
+                      <label className="field-label" htmlFor={`collab-perso-${c.code}`}>{c.libelle}</label>
+                      <SaisieValeurPerso id={`collab-perso-${c.code}`} disabled={saving}
+                        champ={{ code: c.code, libelle: c.libelle, type_valeur: c.type_valeur ?? 'TEXTE', regles: c.regles ?? null,
+                          valeurs_liste: (c.valeurs_liste ?? []).filter((v) => v.actif) }}
+                        valeur={valeursPerso[c.code] ?? ''} erreur={erreursPerso[c.code]}
+                        onChange={(v) => {
+                          setValeursPerso((m) => ({ ...m, [c.code]: v }));
+                          setErreursPerso((m) => { const { [c.code]: _r, ...reste } = m; return reste; });
+                        }} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ) : null}
           <div className="page__head-actions">
             <button
               type="button"

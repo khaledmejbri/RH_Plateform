@@ -23,6 +23,9 @@ public class CacheConfig {
 	/** Instantané des paramètres (ADR-UAT-lot3 § 4) : cache dédié, durée de vie courte et propre (D-R02.j). */
 	public static final String CACHE_PARAMETRES = "parametres";
 
+	/** Paramétrage des champs d'import par type (ADR-IMPORT-CHAMPS § 6) : même durée de vie courte. */
+	public static final String CACHE_IMPORT_PARAMETRAGE = "import-parametrage";
+
 	@Bean
 	public CacheManager cacheManager(
 			@Value("${app.parametres.cache-ttl-secondes:30}") long ttlParametresSecondes) {
@@ -34,6 +37,10 @@ public class CacheConfig {
 				.recordStats());
 		// Hors de la spec commune (5 min) : un paramètre modifié doit être vu partout en moins d'une minute.
 		manager.registerCustomCache(CACHE_PARAMETRES, Caffeine.newBuilder()
+				.expireAfterWrite(ttlParametresSecondes, TimeUnit.SECONDS)
+				.maximumSize(10)
+				.build());
+		manager.registerCustomCache(CACHE_IMPORT_PARAMETRAGE, Caffeine.newBuilder()
 				.expireAfterWrite(ttlParametresSecondes, TimeUnit.SECONDS)
 				.maximumSize(10)
 				.build());

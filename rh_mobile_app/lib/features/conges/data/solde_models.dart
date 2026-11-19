@@ -27,6 +27,29 @@ class TypeMouvement {
   static const List<String> tous = [acquisition, congePris, ajustement, recredit];
 }
 
+/// Valeur d'un champ personnalisé sous un mouvement : « Libellé : valeur » (valeur déjà formatée).
+class ValeurMouvement {
+  const ValeurMouvement({required this.libelle, required this.valeurAffichee});
+
+  final String libelle;
+  final String valeurAffichee;
+
+  /// Liste tolérante : une entrée sans libellé ou sans valeur est ignorée.
+  static List<ValeurMouvement> listeDepuis(Object? brut) {
+    if (brut is! List) return const [];
+    final res = <ValeurMouvement>[];
+    for (final e in brut.whereType<Map>()) {
+      final libelle = e['libelle']?.toString().trim() ?? '';
+      final valeur = e['valeur_affichee']?.toString().trim() ?? '';
+      if (libelle.isEmpty || valeur.isEmpty) continue;
+      res.add(ValeurMouvement(libelle: libelle, valeurAffichee: valeur));
+    }
+    return res;
+  }
+
+  String get ligne => '$libelle : $valeurAffichee';
+}
+
 /// Une ligne de l'historique des mouvements (A2), des plus récents aux plus anciens.
 class MouvementSolde {
   const MouvementSolde({
@@ -40,6 +63,7 @@ class MouvementSolde {
     this.demandeId,
     this.demandeNumero,
     this.moisAcquisitionLibelle,
+    this.champsPersonnalises = const [],
   });
 
   final String type;
@@ -52,6 +76,9 @@ class MouvementSolde {
   final String? demandeId;
   final String? demandeNumero;
   final String? moisAcquisitionLibelle;
+
+  /// Valeurs des champs personnalisés d'un ajustement (déjà formatées par le serveur ; vide sinon).
+  final List<ValeurMouvement> champsPersonnalises;
 
   factory MouvementSolde.fromJson(Map<String, dynamic> j) {
     String? texte(String cle) {
@@ -70,6 +97,7 @@ class MouvementSolde {
       demandeId: texte('demande_id'),
       demandeNumero: texte('demande_numero'),
       moisAcquisitionLibelle: texte('mois_acquisition_libelle'),
+      champsPersonnalises: ValeurMouvement.listeDepuis(j['champs_personnalises']),
     );
   }
 

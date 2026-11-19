@@ -20,6 +20,7 @@ import Onglets from '../Onglets';
 import DetailLink, { LienPersonne } from '../DetailLink';
 import { peutVoirPlaintes, useTitre } from '../contexte';
 import { useChargement } from '../useChargement';
+import ChampsPersoCarte from './ChampsPersoCarte';
 import CongesOnglet from './CongesOnglet';
 import { Cartes, Champ, Champs, periode31, Section, Tableau, titreOnglet } from './commun';
 import type { PersonneResume, UniteResume } from '../../api/detailApi';
@@ -92,6 +93,7 @@ export default function CollaborateurContenu({ id, onglet, onOnglet }: Props) {
                   <Champ label="Droits d’accès">{c.profil_acces ? libelleProfilAcces(c.profil_acces) : null}</Champ>
                 </Champs>
               </Section>
+              <ChampsPersoCarte id={id} />
             </div>
           )}
         </Charge>

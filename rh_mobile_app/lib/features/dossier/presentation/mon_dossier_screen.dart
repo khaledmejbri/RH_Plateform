@@ -8,6 +8,7 @@ import '../../auth/providers/collaborateur_notifier.dart';
 import '../data/dossier_models.dart';
 import '../providers/dossier_providers.dart';
 import 'dossier_widgets.dart';
+import 'informations_complementaires_section.dart';
 
 /// « Mon dossier » : mon identité, ma place dans l'organisation, mon valideur et les personnes que j'encadre
 /// (A7). Aucun compteur n'est écrit en dur : tout vient du serveur.
@@ -25,7 +26,10 @@ class MonDossierScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => RhErrorState.depuis(e, onRetry: () => ref.invalidate(monDossierProvider)),
         data: (h) => RefreshIndicator(
-          onRefresh: () async => ref.invalidate(monDossierProvider),
+          onRefresh: () async {
+            ref.invalidate(monDossierProvider);
+            ref.invalidate(mesChampsPersoProvider);
+          },
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -41,6 +45,7 @@ class MonDossierScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 12),
+              const InformationsComplementairesSection(),
               SectionDossier(
                 titre: 'Ma place dans l’organisation',
                 children: [

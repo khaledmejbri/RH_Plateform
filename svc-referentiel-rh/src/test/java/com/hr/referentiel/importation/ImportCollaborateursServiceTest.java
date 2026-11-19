@@ -1,5 +1,8 @@
 package com.hr.referentiel.importation;
 
+import com.hr.referentiel.importation.parametrage.TypeImportParametrable;
+import com.hr.referentiel.importation.parametrage.ParametrageImport;
+import com.hr.referentiel.importation.parametrage.ExigenceChamp;
 import com.hr.referentiel.domain.NatureParametre;
 import com.hr.referentiel.entity.Collaborateur;
 import com.hr.referentiel.entity.UniteOrganisation;
@@ -64,7 +67,7 @@ class ImportCollaborateursServiceTest {
 		parametreService = mock(ParametreService.class);
 		collaborateurRepository = mock(CollaborateurRepository.class);
 		service = new ImportCollaborateursService(collaborateurRepository, null, null, parametreService, provider,
-				Clock.fixed(MAINTENANT, ZoneOffset.UTC));
+				Clock.fixed(MAINTENANT, ZoneOffset.UTC), null, null);
 		ctx = new ImportCollaborateursService.Contexte();
 		software = unite("DTECH-SW", "Département Software", true);
 		finance = unite("FIN", "Finance", false);
@@ -437,7 +440,7 @@ class ImportCollaborateursServiceTest {
 		ObjectProvider<CollaborateurCompteDemandePublisher> sans = mock(ObjectProvider.class);
 		when(sans.getIfAvailable()).thenReturn(null);
 		ImportCollaborateursService s = new ImportCollaborateursService(collaborateurRepository, null, null, parametreService,
-				sans, Clock.fixed(MAINTENANT, ZoneOffset.UTC));
+				sans, Clock.fixed(MAINTENANT, ZoneOffset.UTC), null, null);
 		Evaluation e = evaluer(colonnes("Matricule", "Prénom", "Nom", "Unité", "Courriel"),
 				lignes(l("NEW-1", "A", "B", "DTECH-SW", "a@x.test")), true);
 		org.assertj.core.api.Assertions.assertThatThrownBy(() -> s.appliquer(e.lignes(), ctx))
@@ -452,5 +455,108 @@ class ImportCollaborateursServiceTest {
 				lignes(l("N1", "<script>alert(1)</script>", "=cmd|' /C calc'!A0", "DTECH-SW", "@SUM(1)")), false);
 		assertThat(e.lignes().get(0).valeurs()).containsEntry("PRENOM", "<script>alert(1)</script>");
 		assertThat(new java.util.HashMap<>(new HashMap<>(e.lignes().get(0).valeurs()))).containsKey("NOM");
+	}
+
+	// ─── Exigences paramétrées (ADR-IMPORT-CHAMPS § 6, T2-6 à T2-9) ─────────────
+
+	private static ParametrageImport param(String code, String enTete, ExigenceChamp exigence) {
+		return CacheParametrageDeTest.regler(ParametrageImport.parDefaut(TypeImportParametrable.COLLABORATEURS), code, enTete, null,
+				exigence, null);
+	}
+
+	private static List<Colonne> colonnesParam(ParametrageImport p, String... entetes) {
+		ReconnaissanceEnTetes reco = new ReconnaissanceEnTetes(p);
+		List<Colonne> r = new ArrayList<>();
+		for (int i = 0; i < entetes.length; i++) {
+			String champ = reco.reconnaitre(entetes[i]).map(ChampImport::name).orElse(null);
+			r.add(new Colonne(i, entetes[i], champ, champ == null ? ImportModeles.IGNOREE : ImportModeles.RECONNUE));
+		}
+		return r;
+	}
+
+	private Evaluation evaluer(ParametrageImport p, List<Colonne> colonnes, List<LigneBrute> lignes, boolean creerComptes) {
+		return service.evaluer(lignes, colonnes, creerComptes, Set.of(), ctx, p);
+	}
+
+	@Test
+	@DisplayName("T2-6 : Poste « obligatoire à la création » -> ligne Création sans poste = CHAMP_OBLIGATOIRE « Poste obligatoire. » ; ligne Mise à jour sans poste -> aucune erreur")
+	void posteExigeAlaCreation() {
+		ParametrageImport p = param("POSTE", null, ExigenceChamp.CREATION);
+		Evaluation e = evaluer(p, colonnesParam(p, "Matricule", "Prénom", "Nom", "Unité", "Poste"),
+				lignes(l("NEW-1", "Ada", "Lovelace", "DTECH-SW", ""), l("COL-WEB", "Sarra", "Khemiri", "DTECH-SW", ""),
+						l("NEW-2", "Alan", "Turing", "DTECH-SW", "Ingénieur")), false);
+		assertThat(aErreur(e.lignes().get(0), "CHAMP_OBLIGATOIRE")).isTrue();
+		assertThat(e.lignes().get(0).erreurs().get(0).message()).isEqualTo("Poste obligatoire.");
+		assertThat(e.lignes().get(0).erreurs().get(0).colonne()).isEqualTo("Poste");
+		assertThat(e.lignes().get(1).enErreur()).isFalse();
+		assertThat(e.lignes().get(2).enErreur()).isFalse();
+	}
+
+	@Test
+	@DisplayName("T2-6 : fichier sans colonne Poste -> chaque ligne Création en erreur (en-tête réglé), lignes Mise à jour importables")
+	void posteExigeSansColonne() {
+		ParametrageImport p = param("POSTE", "Intitulé du poste", ExigenceChamp.CREATION);
+		Evaluation e = evaluer(p, colonnesParam(p, "Matricule", "Prénom", "Nom", "Unité"),
+				lignes(l("NEW-1", "Ada", "Lovelace", "DTECH-SW"), l("COL-WEB", "Sarra", "Khemiri", "DTECH-SW")), false);
+		assertThat(e.lignes().get(0).erreurs()).extracting(ImportModeles.Probleme::message).contains("Intitulé du poste obligatoire.");
+		assertThat(e.lignes().get(0).erreurs().get(0).colonne()).as("colonne absente : en-tête réglé").isEqualTo("Intitulé du poste");
+		assertThat(e.lignes().get(1).enErreur()).isFalse();
+	}
+
+	@Test
+	@DisplayName("T2-7 : Statut « toujours obligatoire » -> ligne Mise à jour à statut vide = CHAMP_OBLIGATOIRE ; ligne remplie acceptée")
+	void statutToujoursObligatoire() {
+		ParametrageImport p = param("STATUT", null, ExigenceChamp.TOUJOURS);
+		Evaluation e = evaluer(p, colonnesParam(p, "Matricule", "Statut"), lignes(l("COL-WEB", ""), l("DRH01", "Actif")), false);
+		assertThat(aErreur(e.lignes().get(0), "CHAMP_OBLIGATOIRE")).isTrue();
+		assertThat(e.lignes().get(0).erreurs().get(0).message()).isEqualTo("Statut obligatoire.");
+		assertThat(e.lignes().get(1).enErreur()).isFalse();
+	}
+
+	@Test
+	@DisplayName("T2-8 : Courriel facultatif, « Créer les comptes » cochée, création sans courriel -> COURRIEL_OBLIGATOIRE (inchangé) ; case décochée -> importée avec l'avertissement")
+	void courrielFacultatifEtComptes() {
+		ParametrageImport p = param("COURRIEL", "E-mail", null);
+		List<Colonne> c = colonnesParam(p, "Matricule", "Prénom", "Nom", "Unité", "E-mail");
+		List<LigneBrute> l = lignes(l("NEW-1", "Ada", "Lovelace", "DTECH-SW", ""));
+		LigneResultat avecComptes = evaluer(p, c, l, true).lignes().get(0);
+		assertThat(aErreur(avecComptes, "COURRIEL_OBLIGATOIRE")).isTrue();
+		assertThat(avecComptes.erreurs().get(0).colonne()).isEqualTo("E-mail");
+		LigneResultat sans = evaluer(p, c, l, false).lignes().get(0);
+		assertThat(sans.enErreur()).isFalse();
+		assertThat(aAvertissement(sans, "COMPTE_NON_CREE")).isTrue();
+	}
+
+	@Test
+	@DisplayName("T2-8 : Courriel « obligatoire à la création », case décochée -> CHAMP_OBLIGATOIRE « E-mail obligatoire. » ; case cochée -> une seule erreur (pas de doublon COURRIEL_OBLIGATOIRE)")
+	void courrielExigeUneSeuleErreur() {
+		ParametrageImport p = param("COURRIEL", "E-mail", ExigenceChamp.CREATION);
+		List<Colonne> c = colonnesParam(p, "Matricule", "Prénom", "Nom", "Unité", "E-mail");
+		List<LigneBrute> l = lignes(l("NEW-1", "Ada", "Lovelace", "DTECH-SW", ""));
+		LigneResultat decoche = evaluer(p, c, l, false).lignes().get(0);
+		assertThat(decoche.erreurs()).extracting(ImportModeles.Probleme::code).containsExactly("CHAMP_OBLIGATOIRE");
+		assertThat(decoche.erreurs().get(0).message()).isEqualTo("E-mail obligatoire.");
+		LigneResultat coche = evaluer(p, c, l, true).lignes().get(0);
+		assertThat(coche.erreurs()).extracting(ImportModeles.Probleme::code).containsExactly("CHAMP_OBLIGATOIRE");
+	}
+
+	@Test
+	@DisplayName("T2-9 / D-I18 : Prénom « toujours obligatoire » s'applique aussi aux lignes Mise à jour ; Prénom « à la création » ne les touche pas")
+	void prenomToujours() {
+		ParametrageImport toujours = param("PRENOM", null, ExigenceChamp.TOUJOURS);
+		List<Colonne> c = colonnesParam(toujours, "Matricule", "Prénom", "Poste");
+		List<LigneBrute> l = lignes(l("COL-WEB", "", "Architecte"));
+		assertThat(aErreur(evaluer(toujours, c, l, false).lignes().get(0), "CHAMP_OBLIGATOIRE")).isTrue();
+		assertThat(evaluer(ParametrageImport.parDefaut(TypeImportParametrable.COLLABORATEURS), c, l, false).lignes().get(0).enErreur())
+				.isFalse();
+	}
+
+	@Test
+	@DisplayName("T2-13 / D-I26 : les modifications de l'historique gardent le nom du champ de la fiche malgré l'en-tête réglé")
+	void historiqueGardeLeNomDeLaFiche() {
+		ParametrageImport p = param("POSTE", "Intitulé réglé", null);
+		Evaluation e = evaluer(p, colonnesParam(p, "Matricule", "Intitulé réglé"), lignes(l("COL-WEB", "Architecte")), false);
+		assertThat(e.lignes().get(0).modifications()).hasSize(1);
+		assertThat(e.lignes().get(0).modifications().get(0).champLibelle()).isEqualTo("Poste");
 	}
 }

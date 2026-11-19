@@ -1,5 +1,9 @@
 package com.hr.referentiel.service;
 
+import com.hr.referentiel.champsperso.DefinitionsPerso;
+import com.hr.referentiel.champsperso.ValeurTypee;
+import com.hr.referentiel.champsperso.ValeursPersoFicheService;
+import com.hr.referentiel.champsperso.ValeursPersoJdbc;
 import com.hr.referentiel.domain.OrigineMouvementSolde;
 import com.hr.referentiel.domain.TypeMouvementSolde;
 import com.hr.referentiel.dto.SoldeDtos.AjustementRequest;
@@ -39,11 +43,18 @@ public class AjustementSoldeService {
 	private final SoldeCongeService soldeService;
 	private final SoldeCongeLectureService lectureService;
 	private final RhNotificationPublisher notificationPublisher;
+	private final DefinitionsPerso definitions;
+	private final ValeursPersoFicheService valeursService;
+	private final ValeursPersoJdbc valeursJdbc;
 
 	public AjustementSoldeService(CollaborateurRepository collaborateurRepository,
 			CollaborateurConnecteService collaborateurConnecteService, AuteurParametreResolver auteurResolver,
 			SoldeCongeService soldeService, SoldeCongeLectureService lectureService,
-			RhNotificationPublisher notificationPublisher) {
+			RhNotificationPublisher notificationPublisher, DefinitionsPerso definitions,
+			ValeursPersoFicheService valeursService, ValeursPersoJdbc valeursJdbc) {
+		this.definitions = definitions;
+		this.valeursService = valeursService;
+		this.valeursJdbc = valeursJdbc;
 		this.collaborateurRepository = collaborateurRepository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
 		this.auteurResolver = auteurResolver;
@@ -67,6 +78,11 @@ public class AjustementSoldeService {
 		}
 		Saisie saisie = valider(req);
 		AuteurParametre auteur = auteurResolver.depuis(jwt);
+		// valeurs des champs personnalisés « soldes » : contrôlées après le corps (400) et avant les 422 / 409, sous FOR SHARE du type
+		Map<String, ValeurTypee> perso = Map.of();
+		if (req.champsPersonnalises() != null && !req.champsPersonnalises().isEmpty()) {
+			perso = valeursService.controler(req.champsPersonnalises(), definitions.lireSousVerrou("SOLDES"));
+		}
 
 		SoldeConge solde = soldeService.verrouiller(cible.getId());
 		BigDecimal ecart = saisie.ecart() != null ? saisie.ecart()
@@ -84,11 +100,18 @@ public class AjustementSoldeService {
 		}
 		MouvementSoldeConge m = soldeService.enregistrer(solde, TypeMouvementSolde.AJUSTEMENT, ecart,
 				OrigineMouvementSolde.SAISIE_MANUELLE, saisie.motif(), null, null, null, null, auteur);
+		List<ValeursPersoJdbc.Ecriture> valeursMouvement = new ArrayList<>();
+		perso.forEach((code, v) -> {
+			if (v != null) {
+				valeursMouvement.add(new ValeursPersoJdbc.Ecriture(m.getId(), code, v));
+			}
+		});
+		valeursJdbc.insererMouvements(valeursMouvement); // même transaction que le mouvement
 		String avertissement = solde.getAcquis().compareTo(soldeService.reserve(cible.getId())) < 0 ? AVERTISSEMENT : null;
 		BigDecimal apres = m.getSoldeApres();
 		ApresCommit.executer(() -> notificationPublisher.notifierSoldeAjuste(cible, ecart, apres, saisie.motif()));
 		return new AjustementResponse(lectureService.ligne(cible, appelant == null ? null : appelant.getId()),
-				lectureService.vers(m), avertissement);
+				lectureService.versBackoffice(m), avertissement);
 	}
 
 	/** Contrôles de corps (400) : liste tous les champs fautifs dans {@code champs}. */

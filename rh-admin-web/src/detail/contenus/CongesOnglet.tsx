@@ -23,6 +23,23 @@ function LibelleMouvement({ m }: { m: Mouvement }) {
   );
 }
 
+/** Valeurs des champs personnalisés d'un ajustement ; champs désactivés regroupés sous un libellé distinct. */
+function ValeursMouvement({ m }: { m: Mouvement }) {
+  const actifs = (m.champs_personnalises ?? []).filter((v) => v.valeur_affichee);
+  const desactives = (m.champs_desactives ?? []).filter((v) => v.valeur_affichee);
+  if (actifs.length === 0 && desactives.length === 0) return <>{TIRET}</>;
+  return (
+    <>
+      {actifs.map((v) => <div key={v.code}>{v.libelle} : {v.valeur_affichee}</div>)}
+      {desactives.length > 0 ? (
+        <div className="muted small">
+          Champs désactivés : {desactives.map((v) => `${v.libelle} : ${v.valeur_affichee}`).join(' ; ')}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 /** Onglet « Congés » de la fiche : solde, mouvements paginés par 20, ajustement (RH / ADMIN). */
 export default function CongesOnglet({ id }: { id: string }) {
   const lectureSeule = useLectureSeule();
@@ -108,7 +125,7 @@ export default function CongesOnglet({ id }: { id: string }) {
       <Charge etat={mouvements.etat} recharger={mouvements.recharger} vide={(p) => p.contenu.length === 0} messageVide="Aucun mouvement">
         {(p) => (
           <>
-            <Tableau colonnes={['Date', 'Mouvement', 'Nombre', 'Solde après', 'Auteur', 'Motif']}>
+            <Tableau colonnes={['Date', 'Mouvement', 'Nombre', 'Solde après', 'Auteur', 'Motif', 'Informations complémentaires']}>
               {p.contenu.map((m, i) => (
                 <tr key={`${m.cree_le}-${i}`}>
                   <td>{formatDateHeure(m.cree_le)}</td>
@@ -117,6 +134,7 @@ export default function CongesOnglet({ id }: { id: string }) {
                   <td>{formatJoursNombre(m.solde_apres)}</td>
                   <td>{m.auteur_nom ?? TIRET}</td>
                   <td>{m.motif ?? TIRET}</td>
+                  <td><ValeursMouvement m={m} /></td>
                 </tr>
               ))}
             </Tableau>

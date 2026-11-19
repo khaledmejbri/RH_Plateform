@@ -1,5 +1,8 @@
 package com.hr.referentiel.importation;
 
+import com.hr.referentiel.champsperso.ValeurTypee;
+import com.hr.referentiel.champsperso.ValeursPersoJdbc;
+import com.hr.referentiel.champsperso.ValeursPersoLot;
 import com.hr.referentiel.config.CacheConfig;
 import com.hr.referentiel.domain.ProfilAccesCollaborateur;
 import com.hr.referentiel.entity.Collaborateur;
@@ -16,6 +19,7 @@ import com.hr.referentiel.kafka.CollaborateurCompteDemandePublisher;
 import com.hr.referentiel.repository.CollaborateurRepository;
 import com.hr.referentiel.repository.UniteOrganisationRepository;
 import com.hr.referentiel.service.ApresCommit;
+import com.hr.referentiel.service.AuteurParametre;
 import com.hr.referentiel.service.FormatJours;
 import com.hr.referentiel.service.NormalisationLibelle;
 import com.hr.referentiel.service.ParametreService;
@@ -44,6 +48,10 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+
+import com.hr.referentiel.importation.parametrage.ExigenceChamp;
+import com.hr.referentiel.importation.parametrage.ParametrageImport;
+import com.hr.referentiel.importation.parametrage.TypeImportParametrable;
 
 import static com.hr.referentiel.importation.ChampImport.Fiche.*;
 
@@ -80,10 +88,15 @@ public class ImportCollaborateursService {
 	private final ParametreService parametreService;
 	private final ObjectProvider<CollaborateurCompteDemandePublisher> publisherProvider;
 	private final Clock clock;
+	private final ValeursPersoJdbc valeursJdbc;
+	private final ValeursPersoLot valeursLot;
 
 	public ImportCollaborateursService(CollaborateurRepository collaborateurRepository,
 			UniteOrganisationRepository uniteRepository, ParametresCache parametresCache, ParametreService parametreService,
-			ObjectProvider<CollaborateurCompteDemandePublisher> publisherProvider, Clock clock) {
+			ObjectProvider<CollaborateurCompteDemandePublisher> publisherProvider, Clock clock, ValeursPersoJdbc valeursJdbc,
+			ValeursPersoLot valeursLot) {
+		this.valeursJdbc = valeursJdbc;
+		this.valeursLot = valeursLot;
 		this.collaborateurRepository = collaborateurRepository;
 		this.uniteRepository = uniteRepository;
 		this.parametresCache = parametresCache;
@@ -99,6 +112,8 @@ public class ImportCollaborateursService {
 		final List<UniteOrganisation> unites = new ArrayList<>();
 		final Map<UUID, UniteOrganisation> unitesParId = new HashMap<>();
 		ParametresCache.Instantane referentiels;
+		/** Valeurs actuelles des champs personnalisés par fiche (comparaison typée, T7). */
+		final Map<UUID, Map<String, ValeurTypee>> valeursPerso = new HashMap<>();
 	}
 
 	@Transactional(readOnly = true)
@@ -117,6 +132,9 @@ public class ImportCollaborateursService {
 			ctx.unitesParId.put(u.getId(), u);
 		}
 		ctx.referentiels = parametresCache.instantane();
+		if (valeursJdbc != null) {
+			ctx.valeursPerso.putAll(valeursJdbc.toutes());
+		}
 		return ctx;
 	}
 
@@ -134,13 +152,30 @@ public class ImportCollaborateursService {
 
 	// ─── Évaluation (aucune écriture) ──────────────────────────────────────────
 
+	/** Évaluation avec le paramétrage par défaut (valeurs du code). */
 	public Evaluation evaluer(List<LigneBrute> donnees, List<Colonne> colonnes, boolean creerComptes,
 			Set<String> comptesExistants, Contexte ctx) {
+		return evaluer(donnees, colonnes, creerComptes, comptesExistants, ctx,
+				ParametrageImport.parDefaut(TypeImportParametrable.COLLABORATEURS));
+	}
+
+	/** Les exigences et les en-têtes cités dans les messages viennent de l'instantané figé par l'analyse (D-I18, D-I25). */
+	public Evaluation evaluer(List<LigneBrute> donnees, List<Colonne> colonnes, boolean creerComptes,
+			Set<String> comptesExistants, Contexte ctx, ParametrageImport parametrage) {
+		return evaluer(donnees, colonnes, creerComptes, comptesExistants, ctx, parametrage, null);
+	}
+
+	/** {@code auteurFicheId} : fiche de l'auteur de l'import (aucune modification de ses propres valeurs personnalisées). */
+	public Evaluation evaluer(List<LigneBrute> donnees, List<Colonne> colonnes, boolean creerComptes,
+			Set<String> comptesExistants, Contexte ctx, ParametrageImport parametrage, UUID auteurFicheId) {
 		Map<ChampImport.Fiche, String> enTetes = new EnumMap<>(ChampImport.Fiche.class);
 		for (Colonne c : colonnes) {
-			if (c.champ() != null) {
-				enTetes.putIfAbsent(ChampImport.Fiche.valueOf(c.champ()), c.enTete());
+			if (ChampImport.Fiche.parCode(c.champ()) != null) {
+				enTetes.putIfAbsent(ChampImport.Fiche.parCode(c.champ()), c.enTete());
 			}
+		}
+		for (ChampImport.Fiche champ : ChampImport.Fiche.values()) {
+			enTetes.putIfAbsent(champ, parametrage.enTete(champ.name())); // repli : en-tête réglé quand la colonne est absente
 		}
 		List<Map<ChampImport.Fiche, String>> lignes = new ArrayList<>();
 		Map<String, Integer> matricules = new HashMap<>();
@@ -155,7 +190,7 @@ public class ImportCollaborateursService {
 		List<LigneResultat> resultats = new ArrayList<>();
 		for (int i = 0; i < donnees.size(); i++) {
 			resultats.add(evaluerLigne(donnees.get(i).numero(), lignes.get(i), enTetes, creerComptes, comptesExistants, ctx,
-					matricules, courriels, aujourdhui));
+					matricules, courriels, aujourdhui, parametrage, ChampsPersoLigne.cellules(donnees.get(i), colonnes), auteurFicheId));
 		}
 		return new Evaluation(resultats, List.of(), List.of(), totaliser(resultats));
 	}
@@ -170,13 +205,13 @@ public class ImportCollaborateursService {
 	static Map<ChampImport.Fiche, String> valeurs(LigneBrute ligne, List<Colonne> colonnes) {
 		Map<ChampImport.Fiche, String> v = new EnumMap<>(ChampImport.Fiche.class);
 		for (Colonne c : colonnes) {
-			if (c.champ() == null || c.index() >= ligne.cellules().size()) {
+			if (ChampImport.Fiche.parCode(c.champ()) == null || c.index() >= ligne.cellules().size()) {
 				continue;
 			}
 			String brut = ligne.cellules().get(c.index());
 			String t = brut == null ? "" : brut.strip();
 			if (!t.isEmpty()) {
-				v.putIfAbsent(ChampImport.Fiche.valueOf(c.champ()), t);
+				v.putIfAbsent(ChampImport.Fiche.parCode(c.champ()), t);
 			}
 		}
 		return v;
@@ -184,7 +219,8 @@ public class ImportCollaborateursService {
 
 	private LigneResultat evaluerLigne(int numero, Map<ChampImport.Fiche, String> v, Map<ChampImport.Fiche, String> enTetes,
 			boolean creerComptes, Set<String> comptesExistants, Contexte ctx, Map<String, Integer> matricules,
-			Map<String, Integer> courriels, LocalDate aujourdhui) {
+			Map<String, Integer> courriels, LocalDate aujourdhui, ParametrageImport parametrage,
+			Map<String, String> persoBrutes, UUID auteurFicheId) {
 		List<Probleme> erreurs = new ArrayList<>();
 		List<Probleme> avertissements = new ArrayList<>();
 		List<Modification> modifs = new ArrayList<>();
@@ -225,15 +261,25 @@ public class ImportCollaborateursService {
 		referentiel(NIVEAU_SENIORITE, "NIVEAU_SENIORITE", v, enTetes, erreurs, modifs, techniques, !creation,
 				creation ? null : existant.getNiveauSeniorite(), ctx);
 		profil(v, enTetes, erreurs, modifs, techniques, existant, ctx);
+		ChampsPersoLigne.Resultat perso = ChampsPersoLigne.evaluer(persoBrutes, parametrage,
+				existant == null ? null : ctx.valeursPerso.getOrDefault(existant.getId(), Map.of()), creation,
+				existant != null && existant.getId().equals(auteurFicheId));
+		erreurs.addAll(perso.erreurs());
+		modifs.addAll(perso.modifications());
+		techniques.putAll(perso.canoniques());
 
-		if (creation) {
-			for (ChampImport.Fiche obligatoire : List.of(PRENOM, NOM, UNITE)) {
-				if (!v.containsKey(obligatoire)) {
-					erreurs.add(new Probleme("CHAMP_OBLIGATOIRE", libelleColonne(enTetes, obligatoire), null,
-							"Champ obligatoire : " + obligatoire.libelle() + "."));
-				}
+		boolean courrielDejaExige = false;
+		for (ChampImport.Fiche champ : ChampImport.Fiche.values()) {
+			ExigenceChamp exigence = parametrage.exigence(champ.name());
+			boolean exige = exigence == ExigenceChamp.TOUJOURS || (exigence == ExigenceChamp.CREATION && creation);
+			if (champ != MATRICULE && exige && !v.containsKey(champ)) {
+				erreurs.add(new Probleme("CHAMP_OBLIGATOIRE", libelleColonne(enTetes, champ), null,
+						parametrage.enTete(champ.name()) + " obligatoire."));
+				courrielDejaExige |= champ == COURRIEL;
 			}
-			if (creerComptes && !v.containsKey(COURRIEL)) {
+		}
+		if (creation) {
+			if (creerComptes && !v.containsKey(COURRIEL) && !courrielDejaExige) {
 				erreurs.add(new Probleme("COURRIEL_OBLIGATOIRE", libelleColonne(enTetes, COURRIEL), null,
 						"Courriel obligatoire pour créer le compte d'accès."));
 			}
@@ -530,7 +576,12 @@ public class ImportCollaborateursService {
 	// ─── Application (dans la transaction de confirmation) ─────────────────────
 
 	/** Bilan de l'application : fiches touchées et comptes demandés. */
-	public record Application(int creees, int misesAJour, int comptesDemandes, Map<String, UUID> idsParMatricule) {
+	public record Application(int creees, int misesAJour, int comptesDemandes, Map<String, UUID> idsParMatricule,
+			List<String> avertissements) {
+
+		public Application(int creees, int misesAJour, int comptesDemandes, Map<String, UUID> idsParMatricule) {
+			this(creees, misesAJour, comptesDemandes, idsParMatricule, List.of());
+		}
 	}
 
 	/**
@@ -541,6 +592,14 @@ public class ImportCollaborateursService {
 	@Transactional
 	@CacheEvict(value = {CacheConfig.CACHE_COLLABORATEUR_ID, CacheConfig.CACHE_COLLABORATEUR_MATRICULE}, allEntries = true)
 	public Application appliquer(List<LigneResultat> importables, Contexte ctx) {
+		return appliquer(importables, ctx, null, null, null);
+	}
+
+	/** Avec valeurs personnalisées : écrites en lot par {@link ValeursPersoLot} dans la même transaction (P2-8). */
+	@Transactional
+	@CacheEvict(value = {CacheConfig.CACHE_COLLABORATEUR_ID, CacheConfig.CACHE_COLLABORATEUR_MATRICULE}, allEntries = true)
+	public Application appliquer(List<LigneResultat> importables, Contexte ctx, UUID importId, ParametrageImport parametrage,
+			AuteurParametre auteur) {
 		CollaborateurCompteDemandePublisher publisher = publisherProvider.getIfAvailable();
 		boolean aDesComptes = importables.stream().anyMatch(LigneResultat::creerCompte);
 		if (aDesComptes && publisher == null) {
@@ -606,7 +665,12 @@ public class ImportCollaborateursService {
 		if (!evenements.isEmpty() && publisher != null) {
 			ApresCommit.executer(() -> evenements.forEach(e -> publisher.publishAsyncAfterCommit(e.collaborateurIdentifiant().toString(), e)));
 		}
-		return new Application(creees, majs, pourComptes.size(), ids);
+		List<String> avertissements = List.of();
+		if (valeursLot != null && parametrage != null) {
+			List<ValeursPersoLot.Demande> demandes = ChampsPersoLigne.demandes(importables, ids);
+			avertissements = valeursLot.ecrireFiches(demandes, parametrage, importId, auteur);
+		}
+		return new Application(creees, majs, pourComptes.size(), ids, avertissements);
 	}
 
 	private static Collaborateur trouver(List<Collaborateur> liste, String matricule) {

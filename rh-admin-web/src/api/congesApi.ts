@@ -37,7 +37,12 @@ export type Mouvement = {
   demande_numero: string | null;
   mois_acquisition: string | null;
   mois_acquisition_libelle: string | null;
+  /** Valeurs des champs personnalisés actifs (ordre réglé) et champs désactivés renseignés. */
+  champs_personnalises?: ValeurAffichee[] | null;
+  champs_desactives?: ValeurAffichee[] | null;
 };
+
+export type ValeurAffichee = { code: string; libelle: string; type_valeur: string; valeur: string | null; valeur_affichee: string | null };
 
 export type FiltresSoldes = {
   q?: string;
@@ -77,9 +82,10 @@ export function exporterMouvements(collaborateurId: string): Promise<void> {
   return telecharger(`${BASE}/${encodeURIComponent(collaborateurId)}/mouvements/export`, 'mouvements-conge.csv');
 }
 
-export type CorpsAjustement =
+export type CorpsAjustement = (
   | { ecart: number; motif: string; version: number }
-  | { nouveau_solde: number; motif: string; version: number };
+  | { nouveau_solde: number; motif: string; version: number }
+) & { champs_personnalises?: Record<string, string | null> };
 
 export type ReponseAjustement = { solde: SoldeLigne; mouvement: Mouvement; avertissement: string | null };
 
