@@ -45,7 +45,9 @@ class SocieteDefautResolverTest {
 		appender.start();
 		logger.addAppender(appender);
 		try {
-			SocieteDefautResolver resolver = new SocieteDefautResolver(societeRepository, "PRINCIPALE", true);
+			com.hr.identiteacces.config.SocieteProprietes props = new com.hr.identiteacces.config.SocieteProprietes();
+			props.setRepliDefautTransition(true);
+			SocieteDefautResolver resolver = new SocieteDefautResolver(societeRepository, props);
 
 			assertThat(resolver.resoudreIdSiTransitionActive()).isEqualTo(idDefaut);
 			Optional<UUID> res = resolver.resoudrePourTransitionAvecWarn("Appel interne test");
@@ -65,7 +67,9 @@ class SocieteDefautResolverTest {
 	@Test
 	@DisplayName("D-SOC03.e / D-SOC20 #3 : propriété à false → vide, sans aucune requête en base")
 	void proprieteFalse_videSansRequete() {
-		SocieteDefautResolver resolver = new SocieteDefautResolver(societeRepository, "PRINCIPALE", false);
+		com.hr.identiteacces.config.SocieteProprietes props = new com.hr.identiteacces.config.SocieteProprietes();
+		props.setRepliDefautTransition(false);
+		SocieteDefautResolver resolver = new SocieteDefautResolver(societeRepository, props);
 
 		assertThat(resolver.resoudreIdSiTransitionActive()).isNull();
 		assertThat(resolver.resoudrePourTransitionAvecWarn("Appel interne test")).isEmpty();

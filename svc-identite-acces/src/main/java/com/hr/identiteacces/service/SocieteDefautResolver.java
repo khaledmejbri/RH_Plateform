@@ -6,11 +6,9 @@ import com.hr.identiteacces.repository.SocieteRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,13 +28,10 @@ public class SocieteDefautResolver {
 	@Autowired
 	public SocieteDefautResolver(
 			SocieteRepository societeRepository,
-			@Value("${app.societe.defaut.code:${SOCIETE_DEFAUT_CODE:" + SocieteProprietes.CODE_DEFAUT_INITIAL + "}}") String codeDefaut,
-			@Value("${app.societe.repli-defaut-transition:${SOCIETE_REPLI_DEFAUT_TRANSITION:true}}") boolean repliDefautTransition) {
+			SocieteProprietes societeProprietes) {
 		this.societeRepository = societeRepository;
-		this.codeDefaut = (codeDefaut == null || codeDefaut.isBlank())
-				? SocieteProprietes.CODE_DEFAUT_INITIAL
-				: codeDefaut.trim().toUpperCase(Locale.ROOT);
-		this.repliDefautTransition = repliDefautTransition;
+		this.codeDefaut = societeProprietes.getDefaut().getCode();
+		this.repliDefautTransition = societeProprietes.isRepliDefautTransition();
 	}
 
 	public boolean isRepliDefautTransition() {

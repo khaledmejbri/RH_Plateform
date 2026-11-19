@@ -63,7 +63,7 @@ class AuthServiceSocieteTest {
 				societeRepository,
 				passwordEncoder,
 				jwtEncoder,
-				"PRINCIPALE",
+				new com.hr.identiteacces.config.SocieteProprietes(),
 				3600L,
 				"http://localhost:8080"
 		);

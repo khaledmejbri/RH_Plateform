@@ -51,7 +51,7 @@ class SocieteDefautRunnerTest {
 				.thenReturn(0);
 
 		SocieteDefautRunner runner = new SocieteDefautRunner(
-				societeRepository, userRepository, "PRINCIPALE", "Société principale");
+				societeRepository, userRepository, new SocieteProprietes());
 
 		// 1er démarrage
 		Societe s1 = runner.executer();

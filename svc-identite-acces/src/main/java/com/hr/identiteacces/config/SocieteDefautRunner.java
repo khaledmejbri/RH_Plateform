@@ -7,7 +7,6 @@ import com.hr.identiteacces.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
@@ -15,7 +14,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.Locale;
 
 /**
  * Crée la société par défaut au démarrage si elle est absente et lui rattache les comptes existants sans société
@@ -36,16 +34,11 @@ public class SocieteDefautRunner implements ApplicationRunner {
 	public SocieteDefautRunner(
 			SocieteRepository societeRepository,
 			UserRepository userRepository,
-			@Value("${app.societe.defaut.code:${SOCIETE_DEFAUT_CODE:" + SocieteProprietes.CODE_DEFAUT_INITIAL + "}}") String codeDefaut,
-			@Value("${app.societe.defaut.raison-sociale:${SOCIETE_DEFAUT_RAISON_SOCIALE:" + SocieteProprietes.RAISON_SOCIALE_DEFAUT_INITIALE + "}}") String raisonSocialeDefaut) {
+			SocieteProprietes societeProprietes) {
 		this.societeRepository = societeRepository;
 		this.userRepository = userRepository;
-		this.codeDefaut = (codeDefaut == null || codeDefaut.isBlank())
-				? SocieteProprietes.CODE_DEFAUT_INITIAL
-				: codeDefaut.trim().toUpperCase(Locale.ROOT);
-		this.raisonSocialeDefaut = (raisonSocialeDefaut == null || raisonSocialeDefaut.isBlank())
-				? SocieteProprietes.RAISON_SOCIALE_DEFAUT_INITIALE
-				: raisonSocialeDefaut.trim();
+		this.codeDefaut = societeProprietes.getDefaut().getCode();
+		this.raisonSocialeDefaut = societeProprietes.getDefaut().getRaisonSociale();
 	}
 
 	@Override

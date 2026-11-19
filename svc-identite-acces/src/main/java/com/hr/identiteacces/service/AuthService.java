@@ -51,16 +51,14 @@ public class AuthService {
 			SocieteRepository societeRepository,
 			PasswordEncoder passwordEncoder,
 			JwtEncoder jwtEncoder,
-			@Value("${app.societe.defaut.code:${SOCIETE_DEFAUT_CODE:" + SocieteProprietes.CODE_DEFAUT_INITIAL + "}}") String societeDefautCode,
+			SocieteProprietes societeProprietes,
 			@Value("${app.jwt.access-ttl-seconds:3600}") long accessTtlSeconds,
 			@Value("${spring.security.oauth2.authorizationserver.issuer:http://localhost:8080}") String issuer) {
 		this.userRepository = userRepository;
 		this.societeRepository = societeRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtEncoder = jwtEncoder;
-		this.societeDefautCode = (societeDefautCode == null || societeDefautCode.isBlank())
-				? SocieteProprietes.CODE_DEFAUT_INITIAL
-				: societeDefautCode.trim();
+		this.societeDefautCode = societeProprietes.getDefaut().getCode();
 		this.accessTtlSeconds = accessTtlSeconds > 0 ? accessTtlSeconds : 3600L;
 		this.issuer = (issuer == null || issuer.isBlank()) ? "http://localhost:8080" : issuer;
 		String encodeInitial = passwordEncoder != null ? passwordEncoder.encode("timing-guard-startup") : null;
