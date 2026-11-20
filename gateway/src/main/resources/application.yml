@@ -43,6 +43,10 @@ spring:
               uri: lb://svc-notification
               predicates:
                 - Path=/api/rh/v1/notifications/**
+            - id: svc-workflow
+              uri: lb://svc-workflow
+              predicates:
+                - Path=/api/rh/v1/workflow/**,/api/rh/v1/admin/workflow/**
             - id: svc-identite-acces-plateforme
               uri: lb://svc-identite-acces
               predicates:

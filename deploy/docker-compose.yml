@@ -116,6 +116,8 @@ services:
       SPRING_SECURITY_OAUTH2_AUTHORIZATIONSERVER_ISSUER: http://gateway:8080
       APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
       APP_MAIL_FROM: ${MAIL_FROM:-no-reply@sirh.local}
+      SOCIETE_DEFAUT_CODE: ${SOCIETE_DEFAUT_CODE:-PRINCIPALE}
+      SOCIETE_REPLI_DEFAUT_TRANSITION: "true"
 
   svc-referentiel-rh:
     <<: *service-java
@@ -128,6 +130,8 @@ services:
       APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
       # Import des collaborateurs : contrôle des comptes existants auprès de svc-identite-acces (adresse directe)
       REFERENTIEL_IDENTITE_BASEURL: http://svc-identite-acces:8081
+      SOCIETE_DEFAUT_CODE: ${SOCIETE_DEFAUT_CODE:-PRINCIPALE}
+      SOCIETE_REPLI_DEFAUT_TRANSITION: "true"
 
   svc-evaluation:
     <<: *service-java
@@ -171,6 +175,18 @@ services:
       NOTIFICATION_RETENTIONJOURS: ${NOTIFICATION_RETENTION_JOURS:-180}
       APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
       APP_MAIL_FROM: ${MAIL_FROM:-no-reply@sirh.local}
+
+  svc-workflow:
+    <<: *service-java
+    build: { context: .., dockerfile: deploy/Dockerfile.services, target: svc-workflow }
+    image: sirh/svc-workflow
+    environment:
+      <<: *env-commun
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/workflow_db
+      APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
+      WORKFLOW_REFERENTIEL_BASE_URL: http://svc-referentiel-rh:8083
+      WORKFLOW_PROPRIETAIRE_REFERENTIEL_BASE_URL: http://svc-referentiel-rh:8083
+      WORKFLOW_PROPRIETAIRE_PRESENCE_BASE_URL: http://svc-presence:8086
 
   # ---------- Front et HTTPS ----------
   web:
