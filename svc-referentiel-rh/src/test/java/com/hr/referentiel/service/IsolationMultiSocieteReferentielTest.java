@@ -515,6 +515,43 @@ class IsolationMultiSocieteReferentielTest {
 				.andExpect(status().isOk());
 	}
 
+	/**
+	 * Revue W1 boucle 3, amélioration 1 : violations venues de PostgreSQL (contrôle applicatif « exists » contourné).
+	 * Doublon de matricule → 409 MATRICULE_EXISTANT ; compte déjà relié → VIOLATION_INTEGRITE, jamais MATRICULE_EXISTANT,
+	 * alors que le SQL de l'insert cite la colonne matricule.
+	 */
+	@Test
+	void violationsVenuesDeLaBase_traduitesParNomDeContrainte() {
+		com.hr.referentiel.web.ReferentielExceptionHandler handler = new com.hr.referentiel.web.ReferentielExceptionHandler();
+		UUID compte = UUID.randomUUID();
+		SocieteContexte.executer(SOC_B, () -> collaborateurRepository.saveAndFlush(
+				fiche(uniteIdB, "M-PG-DUP-01", compte)));
+
+		org.springframework.dao.DataIntegrityViolationException doublonMatricule =
+				org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+						() -> SocieteContexte.executer(SOC_B, () -> collaborateurRepository.saveAndFlush(
+								fiche(uniteIdB, "M-PG-DUP-01", null))));
+		assertThat(handler.integrite(doublonMatricule).getBody()).containsEntry("code", "MATRICULE_EXISTANT");
+
+		org.springframework.dao.DataIntegrityViolationException compteDejaRelie =
+				org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+						() -> SocieteContexte.executer(SOC_B, () -> collaborateurRepository.saveAndFlush(
+								fiche(uniteIdB, "M-PG-DUP-02", compte))));
+		assertThat(handler.integrite(compteDejaRelie).getBody()).containsEntry("code", "VIOLATION_INTEGRITE");
+	}
+
+	private Collaborateur fiche(UUID uniteId, String matricule, UUID compte) {
+		Collaborateur c = new Collaborateur();
+		c.setMatricule(matricule);
+		c.setPrenom("Test");
+		c.setNom("[RECETTE-WF] " + matricule);
+		c.setStatut("ACTIF");
+		c.setProfilAcces("COLLABORATEUR");
+		c.setUnite(uniteRepository.findById(uniteId).orElseThrow());
+		c.setCompteUtilisateurId(compte);
+		return c;
+	}
+
 	private UUID assurerUnite(UUID societeId, String code) {
 		return SocieteContexte.executer(societeId, () -> uniteRepository.findByCodeIgnoreCase(code)
 				.map(UniteOrganisation::getId)

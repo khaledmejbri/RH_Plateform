@@ -160,7 +160,7 @@ public class ReferentielRhService {
 	public CollaborateurResponse creerCollaborateur(CollaborateurCreationRequest req) {
 		if (collaborateurRepository.existsByMatriculeIgnoreCase(req.getMatricule().trim())) {
 			throw ReferentielMetierException.conflict(
-					"MATRICULE_EXISTANT", "Un collaborateur avec ce matricule existe déjà.");
+					"MATRICULE_EXISTANT", com.hr.referentiel.web.ReferentielExceptionHandler.MESSAGE_MATRICULE_EXISTANT);
 		}
 		UniteOrganisation unite = uniteRepository.findById(req.getUniteIdentifiant())
 				.orElseThrow(() -> ReferentielMetierException.notFound("UNITE_INTROUVABLE", "Unité introuvable."));

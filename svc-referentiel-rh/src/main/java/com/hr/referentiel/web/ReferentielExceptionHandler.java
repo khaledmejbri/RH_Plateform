@@ -62,29 +62,49 @@ public class ReferentielExceptionHandler {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("erreur", ex.getMessage()));
 	}
 
+	/** Message du doublon de matricule (CA-01.3), partagé avec le contrôle applicatif de la création. */
+	public static final String MESSAGE_MATRICULE_EXISTANT = "Un collaborateur avec ce matricule existe déjà.";
+
+	/** Index unique (societe_id, matricule) posé par la reprise multi-société et par l'entité Collaborateur. */
+	static final String CONTRAINTE_MATRICULE = "idx_collab_societe_matricule";
+
 	/** SCRUM-8 — sans ce handler, l'erreur SQL partait vers /error (protégé) et revenait en 403 vide. */
 	@ExceptionHandler(DataIntegrityViolationException.class)
 	public ResponseEntity<Map<String, Object>> integrite(DataIntegrityViolationException ex) {
 		if (estDoublonMatricule(ex)) {
-			String msg = "Un collaborateur avec ce matricule existe déjà.";
 			return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-					"code", "MATRICULE_EXISTANT", "erreur", msg, "message", msg));
+					"code", "MATRICULE_EXISTANT",
+					"erreur", MESSAGE_MATRICULE_EXISTANT,
+					"message", MESSAGE_MATRICULE_EXISTANT));
 		}
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
 				"code", "VIOLATION_INTEGRITE",
 				"erreur", "La donnée ne respecte pas une contrainte de la base (valeur non autorisée ou doublon)."));
 	}
 
-	private static boolean estDoublonMatricule(Throwable ex) {
+	/**
+	 * Doublon de matricule reconnu par le seul nom de la contrainte violée (revue W1 boucle 3, amélioration 1).
+	 * Le message d'Hibernate contient le SQL de l'insert / update, qui cite toujours la colonne « matricule » :
+	 * on ne se fie donc jamais à ce texte, seulement au nom de contrainte fourni par Hibernate
+	 * ou au motif exact du pilote PostgreSQL.
+	 */
+	static boolean estDoublonMatricule(Throwable ex) {
 		Throwable cur = ex;
-		while (cur != null) {
-			String m = cur.getMessage();
-			if (m != null) {
-				String lower = m.toLowerCase(java.util.Locale.ROOT);
-				if (lower.contains("idx_collab_societe_matricule")
-						|| (lower.contains("rh_collaborateur") && lower.contains("matricule"))) {
-					return true;
-				}
+		int profondeur = 0;
+		while (cur != null && profondeur++ < 20) {
+			if (cur instanceof org.hibernate.exception.ConstraintViolationException cve
+					&& CONTRAINTE_MATRICULE.equalsIgnoreCase(cve.getConstraintName())) {
+				return true;
+			}
+			// Pilote PostgreSQL (dépendance runtime) : « violates unique constraint "<nom>" ». Le nom de l'index,
+			// entre guillemets, n'apparaît jamais dans le SQL de l'insert : seul ce motif exact est accepté.
+			if (cur instanceof java.sql.SQLException sqle && sqle.getMessage() != null
+					&& sqle.getMessage().toLowerCase(java.util.Locale.ROOT)
+							.contains("constraint \"" + CONTRAINTE_MATRICULE + "\"")) {
+				return true;
+			}
+			if (cur.getCause() == cur) {
+				break;
 			}
 			cur = cur.getCause();
 		}
