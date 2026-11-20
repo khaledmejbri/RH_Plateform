@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | **Accepté** par l'utilisateur le 17/11/2026 (avant le lot W0) |
+| **Statut** | **Accepté** par l'utilisateur le 17/11/2026 (avant le lot W0) ; **amendé le 20/11/2026** : D1 révisée, une installation par société (§ 2 bis) |
 | **Décideurs** | Utilisateur (porteur produit), architecte (Claude, session du 17/11/2026) |
 | **Spécification liée** | `docs/specs/SPEC-moteur-workflow.md` (règles D-W, D-SOC, contrat d'API, plan de lots) |
 | **Audits pris en compte** | `docs/audit/audit_production_2026-11-14.md` (T-06, T-09 à T-12, T-15, T-17, E-05, E-06), `docs/audit/audit_scalabilite_resilience_2026-11-14.md` (R-01, R-03, R-06, R-08, R-12) |
@@ -16,6 +16,18 @@
   - M02 / M05 (svc-referentiel-rh) : files RH propres.
 - Besoin client (17/11/2026, incomplet) : chaque société définit **ses** procédures (étapes, intervenants, conditions, délais, escalades, notifications), peut avoir un workflow qu'une autre n'a pas, et a **ses** réglages de travail (40 h ou 48 h par semaine, jours travaillés, fériés…).
 - Le développement sera fait par un autre modèle (Gemini, Antigravity) en suivant la spécification à la lettre ; la revue reste chez Claude (Opus).
+
+## 2 bis. Amendement du 20/11/2026 — une installation par société
+
+**Décision de l'utilisateur** : chaque société cliente dispose de **sa propre installation** (serveur et bases). L'hébergement de plusieurs sociétés sur une même installation n'est pas un besoin.
+
+- **D1 révisée.** Le multi-société « base partagée, colonne `societe_id` » n'est plus un objectif. Le code déjà livré (W0 : `sirh-commun`, registre des sociétés ; W1 : svc-referentiel-rh avec `@TenantId`) est **conservé** : il fonctionne avec une seule société, la société par défaut de l'installation, et son retrait coûterait plus cher (régressions) qu'il ne rapporte.
+- **Lot W2 annulé** : svc-presence, svc-evaluation, svc-notification restent sans `societe_id`.
+- **Repli de transition permanent** (`app.societe.repli-defaut-transition=true`) dans svc-identite-acces et svc-referentiel-rh : les appels internes et messages sans société vont à la société par défaut.
+- **Compte `PLATEFORME` non utilisé** : `PLATEFORME_ADMIN_*` n'est défini sur aucune installation.
+- **svc-workflow (W3+) mono-société** : pas de `societe_id`, pas de `@TenantId`, `VerrouPlanificateur` conservé.
+- **Conservé** : paramètres de la société (réglages de l'installation), fonctions, endpoints de résolution, D2 à D8.
+- **Conséquences** : complexité résiduelle dans svc-identite-acces et svc-referentiel-rh (dettes notées dans `CONTEXTE.md`) ; reprise automatique de la société par défaut au premier démarrage de chaque installation existante, après sauvegarde. Détail : spec § 0.1 (D-SOC29).
 
 ## 2. Décisions
 
