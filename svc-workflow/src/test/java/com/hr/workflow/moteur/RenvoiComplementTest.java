@@ -1,0 +1,219 @@
+package com.hr.workflow.moteur;
+
+import com.hr.workflow.catalogue.CatalogueTypesObjet;
+import com.hr.workflow.client.WorkflowReferentielClient;
+import com.hr.workflow.client.WorkflowReferentielClient.CalendrierSocieteResponse;
+import com.hr.workflow.client.WorkflowReferentielClient.IntervenantResolu;
+import com.hr.workflow.definition.DefinitionCodec;
+import com.hr.workflow.definition.DefinitionWorkflow;
+import com.hr.workflow.definition.DelaiDefinition;
+import com.hr.workflow.definition.EcheanceDefinition;
+import com.hr.workflow.definition.EtapeDefinition;
+import com.hr.workflow.definition.EtapeDefinition.RepliSiVideDefinition;
+import com.hr.workflow.definition.IntervenantsDefinition;
+import com.hr.workflow.domain.StatutEtapeExecution;
+import com.hr.workflow.domain.StatutInstance;
+import com.hr.workflow.domain.StatutTache;
+import com.hr.workflow.domain.TypeTache;
+import com.hr.workflow.dto.WorkflowMoteurDtos.DecisionRequest;
+import com.hr.workflow.entity.WfAppelEffet;
+import com.hr.workflow.entity.WfEtapeExecution;
+import com.hr.workflow.entity.WfInstance;
+import com.hr.workflow.entity.WfModeleVersion;
+import com.hr.workflow.entity.WfTache;
+import com.hr.workflow.entity.WfTacheCandidat;
+import com.hr.workflow.entity.WfTacheCandidatId;
+import com.hr.workflow.moteur.DecisionService.ResultatDecision;
+import com.hr.workflow.moteur.EffetClient.ResultatAppelEffet;
+import com.hr.workflow.moteur.ResolutionIntervenantsService.LotResolu;
+import com.hr.workflow.moteur.ResolutionIntervenantsService.ResultatRegleResolue;
+import com.hr.workflow.repository.WfAppelEffetRepository;
+import com.hr.workflow.repository.WfBeneficiaireRepository;
+import com.hr.workflow.repository.WfEtapeExecutionRepository;
+import com.hr.workflow.repository.WfHistoriqueRepository;
+import com.hr.workflow.repository.WfInstanceRepository;
+import com.hr.workflow.repository.WfTacheCandidatRepository;
+import com.hr.workflow.repository.WfTacheRepository;
+import com.hr.workflow.web.WorkflowMetierException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+/** Tests CA-13.1 à CA-13.3 : renvoi pour complément, réponse et plafond de 3 renvois (D-W10). */
+@ExtendWith(MockitoExtension.class)
+class RenvoiComplementTest {
+
+	@Mock private WfInstanceRepository instanceRepository;
+	@Mock private WfTacheRepository tacheRepository;
+	@Mock private WfTacheCandidatRepository candidatRepository;
+	@Mock private WfEtapeExecutionRepository etapeExecutionRepository;
+	@Mock private WfBeneficiaireRepository beneficiaireRepository;
+	@Mock private WfHistoriqueRepository historiqueRepository;
+	@Mock private WfAppelEffetRepository appelEffetRepository;
+	@Mock private ResolutionIntervenantsService resolutionService;
+	@Mock private WorkflowReferentielClient referentielClient;
+	@Mock private EffetClient effetClient;
+	@Mock private OutboxService outboxService;
+	@Mock private PlatformTransactionManager txManager;
+
+	private final CatalogueTypesObjet catalogue = new CatalogueTypesObjet();
+	private final DefinitionCodec codec = new DefinitionCodec();
+	private DecisionService service;
+
+	private UUID instanceId, tacheId, demandeurCollabId, demandeurCompteId, respCollabId, respCompteId;
+	private WfInstance instance;
+	private WfEtapeExecution ee;
+	private WfTache tache;
+
+	@BeforeEach
+	void setUp() {
+		lenient().when(txManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
+		service = new DecisionService(
+				instanceRepository, tacheRepository, candidatRepository, etapeExecutionRepository,
+				beneficiaireRepository, historiqueRepository, appelEffetRepository, catalogue, codec,
+				resolutionService, referentielClient, new PlanificationEcheanceService(), new AvancementService(),
+				effetClient, outboxService, txManager, Clock.fixed(Instant.parse("2026-11-20T10:00:00Z"), ZoneOffset.UTC));
+
+		instanceId = UUID.randomUUID();
+		tacheId = UUID.randomUUID();
+		demandeurCollabId = UUID.randomUUID();
+		demandeurCompteId = UUID.randomUUID();
+		respCollabId = UUID.randomUUID();
+		respCompteId = UUID.randomUUID();
+
+		EtapeDefinition etape = new EtapeDefinition("VALID_RESP", "Validation responsable", "VALIDATION", null,
+				new IntervenantsDefinition("MANAGER_NOEUD", Map.of(), "UN_SEUL"),
+				new RepliSiVideDefinition("PASSER", null), null, null, List.of("APPROUVER", "REFUSER", "RENVOYER"),
+				false, null, new DelaiDefinition(2, "JOURS_OUVRES", null), null,
+				new EcheanceDefinition("RIEN", null, null), null, null, null);
+		WfModeleVersion v = new WfModeleVersion();
+		v.setId(UUID.randomUUID());
+		v.setNumero(1);
+		v.setDefinition(codec.serialiser(new DefinitionWorkflow(1, "ORDRE_MISSION", null, List.of(etape))));
+
+		instance = new WfInstance();
+		instance.setId(instanceId);
+		instance.setModeleVersion(v);
+		instance.setObjetType("ORDRE_MISSION");
+		instance.setObjetId(UUID.randomUUID());
+		instance.setObjetNumero("DEM-202611-0010");
+		instance.setServiceProprietaire("svc-referentiel-rh");
+		instance.setDemandeurCollaborateurId(demandeurCollabId);
+		instance.setDemandeurCompteId(demandeurCompteId);
+		instance.setDemandeurNom("Sarra");
+		instance.setStatut(StatutInstance.EN_COURS);
+		instance.setEtapeCouranteCode("VALID_RESP");
+
+		ee = new WfEtapeExecution();
+		ee.setId(UUID.randomUUID());
+		ee.setInstance(instance);
+		ee.setEtapeCode("VALID_RESP");
+		ee.setOrdre(1);
+		ee.setStatut(StatutEtapeExecution.ACTIVE);
+		ee.setNbRenvois(0);
+
+		tache = new WfTache();
+		tache.setId(tacheId);
+		tache.setInstance(instance);
+		tache.setEtapeExecution(ee);
+		tache.setType(TypeTache.VALIDATION);
+		tache.setLibelle("Validation responsable");
+		tache.setStatut(StatutTache.A_TRAITER);
+		tache.setVersion(1L);
+
+		WfTacheCandidat candResp = new WfTacheCandidat();
+		candResp.setId(new WfTacheCandidatId(tacheId, respCollabId));
+		candResp.setCompteId(respCompteId);
+		candResp.setNom("Omar Belhadj");
+
+		lenient().when(tacheRepository.findByIdAvecDetails(tacheId)).thenReturn(Optional.of(tache));
+		lenient().when(beneficiaireRepository.findByIdInstanceId(instanceId)).thenReturn(List.of());
+		lenient().when(candidatRepository.existsByIdTacheIdAndCompteId(tacheId, respCompteId)).thenReturn(true);
+		lenient().when(candidatRepository.findByIdTacheIdAndCompteIdAndRetireLeIsNull(tacheId, respCompteId))
+				.thenReturn(Optional.of(candResp));
+		lenient().when(tacheRepository.findByEtapeExecutionId(ee.getId())).thenReturn(List.of(tache));
+		lenient().when(tacheRepository.findApprobateursCollaborateurIds(instanceId)).thenReturn(List.of());
+		lenient().when(instanceRepository.findByIdForUpdate(instanceId)).thenReturn(Optional.of(instance));
+		lenient().when(tacheRepository.findByIdForUpdate(tacheId)).thenReturn(Optional.of(tache));
+		lenient().when(referentielClient.calendrierSociete(any(), any())).thenReturn(CalendrierSocieteResponse.defaut());
+		lenient().when(tacheRepository.saveAndFlush(any(WfTache.class))).thenAnswer(inv -> {
+			WfTache saved = inv.getArgument(0);
+			if (saved.getId() == null) saved.setId(UUID.randomUUID());
+			return saved;
+		});
+	}
+
+	@Test
+	void ca13_1_renvoiCreeTacheComplementPourDemandeur() {
+		WfAppelEffet ae = new WfAppelEffet();
+		ae.setId(UUID.randomUUID());
+		when(appelEffetRepository.saveAndFlush(any())).thenReturn(ae);
+		when(appelEffetRepository.findById(ae.getId())).thenReturn(Optional.of(ae));
+		when(effetClient.appeler(any(), any(), any())).thenReturn(new ResultatAppelEffet.Succes(Map.of("ok", true)));
+
+		ResultatDecision res = service.decider(tacheId,
+				new DecisionRequest("RENVOYER", "Joindre l'invitation officielle", 1L, "cle-renvoi-1"),
+				respCompteId, "Omar", false);
+		assertThat(res.httpStatus()).isEqualTo(200);
+		assertThat(res.reponse().decision()).isEqualTo("RENVOYEE");
+		assertThat(ee.getNbRenvois()).isEqualTo(1);
+
+		ArgumentCaptor<WfTache> captor = ArgumentCaptor.forClass(WfTache.class);
+		verify(tacheRepository, atLeastOnce()).saveAndFlush(captor.capture());
+		assertThat(captor.getAllValues()).anyMatch(t -> t.getType() == TypeTache.COMPLEMENT);
+	}
+
+	@Test
+	void ca13_2_reponseAuComplement_reactiveEtapeEtNotifieResponsable() {
+		tache.setType(TypeTache.COMPLEMENT);
+		WfTacheCandidat candDem = new WfTacheCandidat();
+		candDem.setId(new WfTacheCandidatId(tacheId, demandeurCollabId));
+		candDem.setCompteId(demandeurCompteId);
+		candDem.setNom("Sarra");
+		when(candidatRepository.existsByIdTacheIdAndCompteId(tacheId, demandeurCompteId)).thenReturn(true);
+		when(candidatRepository.findByIdTacheIdAndCompteIdAndRetireLeIsNull(tacheId, demandeurCompteId))
+				.thenReturn(Optional.of(candDem));
+		when(resolutionService.resoudre(any(), any(), any(), any(), any())).thenReturn(new LotResolu(
+				Map.of("VALID_RESP", new ResultatRegleResolue(
+						List.of(new IntervenantResolu(respCollabId, respCompteId, "Omar", "Chef")), false, false, null)),
+				null));
+
+		ResultatDecision res = service.decider(tacheId,
+				new DecisionRequest("FAIT", "Invitation jointe", 1L, "cle-comp-1"),
+				demandeurCompteId, "Sarra", false);
+		assertThat(res.httpStatus()).isEqualTo(200);
+		assertThat(res.reponse().decision()).isEqualTo("FAITE");
+	}
+
+	@Test
+	void ca13_3_quatriemeRenvoiSurMemeEtape_422_RENVOIS_EPUISES() {
+		ee.setNbRenvois(3);
+		assertThatThrownBy(() -> service.decider(tacheId,
+				new DecisionRequest("RENVOYER", "Encore un renvoi", 1L, "cle-renvoi-4"),
+				respCompteId, "Omar", false))
+				.isInstanceOf(WorkflowMetierException.class)
+				.hasFieldOrPropertyWithValue("httpStatus", 422)
+				.hasFieldOrPropertyWithValue("code", "RENVOIS_EPUISES");
+	}
+}
