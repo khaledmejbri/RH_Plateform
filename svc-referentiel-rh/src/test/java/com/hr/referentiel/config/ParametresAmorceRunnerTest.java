@@ -220,4 +220,25 @@ class ParametresAmorceRunnerTest {
 		assertThat(recree.getLibelle()).isEqualTo("Attestation de travail (ATTESTATION_TRAVAIL)");
 		assertThat(recree.isActif()).isTrue();
 	}
+
+	@Test
+	@DisplayName("D-SOC22 : nouvelle société (non défaut) ne copie pas rh_famille_metier et reçoit les familles par défaut non utilisées")
+	void dSoc22NouvelleSocieteSansCopieFamilleMetier() {
+		jdbc.update("insert into rh_famille_metier values ('FAM_PRINCIPALE', 'Famille de PRINCIPALE', true, false)");
+		var societeDefaut = java.util.UUID.randomUUID();
+		var nouvelleSociete = AvecSocieteContexteExtension.SOCIETE_TEST;
+
+		var resolver = org.mockito.Mockito.mock(com.hr.referentiel.service.SocieteDefautResolver.class);
+		org.mockito.Mockito.when(resolver.idSocieteDefaut()).thenReturn(java.util.Optional.of(societeDefaut));
+
+		var r = new ParametresAmorceRunner(
+				jdbc, tm, new ReferentielEvenementsProperties(), JsonMapper.builder().build(),
+				() -> List.of(nouvelleSociete), resolver);
+		r.amorcerPourSociete(nouvelleSociete);
+
+		assertThat(repository.findByReferentielAndCode("FAMILLE_METIER", "FAM_PRINCIPALE")).isEmpty();
+		List<ParametreValeur> familles = repository.findByReferentielOrderByOrdreAscLibelleAsc("FAMILLE_METIER");
+		assertThat(familles).hasSize(6);
+		assertThat(familles).allSatisfy(f -> assertThat(f.getPremiereUtilisationLe()).isNull());
+	}
 }

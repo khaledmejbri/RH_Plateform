@@ -76,6 +76,7 @@ public class KafkaReferentielConfig {
 		ConcurrentKafkaListenerContainerFactory<String, CollaborateurCompteCreeEvent> factory =
 				new ConcurrentKafkaListenerContainerFactory<>();
 		factory.setConsumerFactory(collaborateurCreeConsumerFactory(appName));
+		factory.setAutoStartup(false);
 		return factory;
 	}
 
@@ -94,6 +95,7 @@ public class KafkaReferentielConfig {
 		ConcurrentKafkaListenerContainerFactory<String, String> factory =
 				new ConcurrentKafkaListenerContainerFactory<>();
 		factory.setConsumerFactory(societesConsumerFactory(appName));
+		factory.setAutoStartup(false);
 		return factory;
 	}
 }

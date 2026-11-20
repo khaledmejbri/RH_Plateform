@@ -143,14 +143,14 @@ class ResolutionIntervenantsControllerTest {
 	}
 
 	@Test
-	@DisplayName("Sécurité filtre interne : 403/401 sans X-Internal-Token et 400 sans X-Societe-Id")
+	@DisplayName("Sécurité filtre interne : 403 sans X-Internal-Token et 400 sans X-Societe-Id")
 	void securiteFiltreInterne() throws Exception {
 		String body = "{\"regles\":[{\"cle\":\"e1\",\"regle\":\"DEMANDEUR\"}]}";
 		mockMvc.perform(post(URL_RES)
 						.header("X-Societe-Id", SOCIETE_ID.toString())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(body))
-				.andExpect(status().is4xxClientError());
+				.andExpect(status().isForbidden());
 
 		mockMvc.perform(post(URL_RES)
 						.header("X-Internal-Token", TOKEN)
@@ -180,7 +180,7 @@ class ResolutionIntervenantsControllerTest {
 				    { "cle": "e_niv2", "regle": "MANAGER_NIVEAU", "params": { "niveau": 2 } },
 				    { "cle": "e_dept", "regle": "RESPONSABLE_TYPE", "params": { "type_noeud": "DEPARTEMENT" } },
 				    { "cle": "e_rh", "regle": "ROLE", "params": { "roles": ["RH"] } },
-				    { "cle": "e_fn", "regle": "FONCTION", "params": { "fonction_code": "GEST_PAIE", "portee": "TOUTE_SOCIETE" } },
+				    { "cle": "e_fn", "regle": "FONCTION", "params": { "fonction_code": "GEST_PAIE", "portee": "SOCIETE" } },
 				    { "cle": "e_exclu", "regle": "COLLABORATEUR", "params": { "collaborateur_id": "%s" } },
 				    { "cle": "e_inactif", "regle": "COLLABORATEUR", "params": { "collaborateur_id": "%s" } },
 				    { "cle": "e_fn_inconnue", "regle": "FONCTION", "params": { "fonction_code": "INCONNUE" } }
@@ -215,7 +215,7 @@ class ResolutionIntervenantsControllerTest {
 	}
 
 	@Test
-	@DisplayName("D-H03 et raisons vides : AUCUN_MANAGER, CHAINE_TERMINEE, AUCUN_TITULAIRE et manager inactif en RESPONSABLE_TYPE")
+	@DisplayName("D-H03 et raisons vides : AUCUN_MANAGER, CHAINE_TERMINEE, AUCUN_TITULAIRE, manager inactif et CD-SW demandeur")
 	void dH03EtRaisonsVides() throws Exception {
 		// Manager de département inactif : RESPONSABLE_TYPE doit renvoyer AUCUN_MANAGER (pas le manager inactif)
 		cdSw.setStatut("SORTI");
@@ -242,6 +242,47 @@ class ResolutionIntervenantsControllerTest {
 				.andExpect(jsonPath("$.resultats.r2.raison_vide").value("AUCUN_MANAGER"))
 				.andExpect(jsonPath("$.resultats.r3.raison_vide").value("AUCUN_TITULAIRE"));
 
+		// Demandeur colWeb (service sous uDeptSw) avec cdSw SORTI -> RESPONSABLE_TYPE DEPARTEMENT = AUCUN_MANAGER
+		String payloadColWebDeptInactif = """
+				{
+				  "date": "2026-11-19",
+				  "demandeur_id": "%s",
+				  "regles": [
+				    { "cle": "r_dept", "regle": "RESPONSABLE_TYPE", "params": { "type_noeud": "DEPARTEMENT" } }
+				  ]
+				}
+				""".formatted(colWeb.getId());
+
+		mockMvc.perform(post(URL_RES)
+						.header("X-Internal-Token", TOKEN)
+						.header("X-Societe-Id", SOCIETE_ID.toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(payloadColWebDeptInactif))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.resultats.r_dept.candidats").isEmpty())
+				.andExpect(jsonPath("$.resultats.r_dept.raison_vide").value("AUCUN_MANAGER"));
+
+		// CD-SW actif demandeur avec RESPONSABLE_TYPE DEPARTEMENT -> AUCUN_MANAGER (pas TOUS_EXCLUS)
+		cdSw.setStatut("ACTIF");
+		String payloadCdSw = """
+				{
+				  "date": "2026-11-19",
+				  "demandeur_id": "%s",
+				  "regles": [
+				    { "cle": "r_dept", "regle": "RESPONSABLE_TYPE", "params": { "type_noeud": "DEPARTEMENT" } }
+				  ]
+				}
+				""".formatted(cdSw.getId());
+
+		mockMvc.perform(post(URL_RES)
+						.header("X-Internal-Token", TOKEN)
+						.header("X-Societe-Id", SOCIETE_ID.toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(payloadCdSw))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.resultats.r_dept.candidats").isEmpty())
+				.andExpect(jsonPath("$.resultats.r_dept.raison_vide").value("AUCUN_MANAGER"));
+
 		// Demandeur est le DG au sommet : MANAGER_NOEUD -> CHAINE_TERMINEE et est_manager=true
 		String payloadDg = """
 				{
@@ -264,6 +305,57 @@ class ResolutionIntervenantsControllerTest {
 	}
 
 	@Test
+	@DisplayName("B1 : portee FONCTION SOCIETE (exemple spec), UNITE_DEMANDEUR et rejet TOUTE_SOCIETE")
+	void porteeFonctionSpecEtUniteDemandeur() throws Exception {
+		Fonction fInfo = new Fonction("INFORMATIQUE", "Informatique", null, "Test", Instant.now());
+		fInfo.setActif(true);
+		Fonction fHse = new Fonction("HSE", "HSE", null, "Test", Instant.now());
+		fHse.setActif(true);
+		when(fonctionRepo.findAll()).thenReturn(List.of(fInfo, fHse));
+
+		FonctionAffectation affInfo = new FonctionAffectation(
+				fInfo, drh01, null, LocalDate.of(2026, 1, 1), null, Instant.now());
+		FonctionAffectation affHseAncetre = new FonctionAffectation(
+				fHse, csWeb, uDeptSw, LocalDate.of(2026, 1, 1), null, Instant.now());
+		FonctionAffectation affHseHorsChaine = new FonctionAffectation(
+				fHse, dg01, uDirRh, LocalDate.of(2026, 1, 1), null, Instant.now());
+		when(affectationRepo.findActivesParCodesEtDate(any(), any()))
+				.thenReturn(List.of(affInfo, affHseAncetre, affHseHorsChaine));
+
+		// Exemple JSON exact de la spec (§ 13, ligne 1372)
+		String payloadSpec = """
+				{
+				  "date": "2026-11-19",
+				  "demandeur_id": "%s",
+				  "regles": [
+				    { "cle": "e_spec", "regle": "FONCTION", "params": { "fonction_code": "INFORMATIQUE", "portee": "SOCIETE" } },
+				    { "cle": "e_unite", "regle": "FONCTION", "params": { "fonction_code": "HSE", "portee": "UNITE_DEMANDEUR" } }
+				  ]
+				}
+				""".formatted(colWeb.getId());
+
+		mockMvc.perform(post(URL_RES)
+						.header("X-Internal-Token", TOKEN)
+						.header("X-Societe-Id", SOCIETE_ID.toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(payloadSpec))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.resultats.e_spec.candidats.length()").value(1))
+				.andExpect(jsonPath("$.resultats.e_spec.candidats[0].collaborateur_id").value(drh01.getId().toString()))
+				.andExpect(jsonPath("$.resultats.e_unite.candidats.length()").value(1))
+				.andExpect(jsonPath("$.resultats.e_unite.candidats[0].collaborateur_id").value(csWeb.getId().toString()));
+
+		// TOUTE_SOCIETE refusée avec 400 DEFINITION_INVALIDE
+		mockMvc.perform(post(URL_RES)
+						.header("X-Internal-Token", TOKEN)
+						.header("X-Societe-Id", SOCIETE_ID.toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"regles\":[{\"cle\":\"e1\",\"regle\":\"FONCTION\",\"params\":{\"fonction_code\":\"INFORMATIQUE\",\"portee\":\"TOUTE_SOCIETE\"}}]}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("DEFINITION_INVALIDE"));
+	}
+
+	@Test
 	@DisplayName("Validation B3 / D-SOC21 / #4 : >50 règles -> 400, ROLE DIRECTION -> 400 DEFINITION_INVALIDE, MANAGER_NIVEAU hors 1..4 -> 400, RESPONSABLE_TYPE SERVICE -> 400, demandeur inconnu -> 404")
 	void validationsEtErreursMetier() throws Exception {
 		// > 50 règles -> 400
@@ -280,7 +372,7 @@ class ResolutionIntervenantsControllerTest {
 						.content(sb.toString()))
 				.andExpect(status().isBadRequest());
 
-		// ROLE DIRECTION -> 400 DEFINITION_INVALIDE (D-SOC21)
+		// ROLE DIRECTION, vide, RO -> 400 DEFINITION_INVALIDE (D-SOC21)
 		mockMvc.perform(post(URL_RES)
 						.header("X-Internal-Token", TOKEN)
 						.header("X-Societe-Id", SOCIETE_ID.toString())
@@ -289,7 +381,31 @@ class ResolutionIntervenantsControllerTest {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("DEFINITION_INVALIDE"));
 
-		// MANAGER_NIVEAU 5 -> 400 DEFINITION_INVALIDE
+		mockMvc.perform(post(URL_RES)
+						.header("X-Internal-Token", TOKEN)
+						.header("X-Societe-Id", SOCIETE_ID.toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"regles\":[{\"cle\":\"e1\",\"regle\":\"ROLE\",\"params\":{\"roles\":[]}}]}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("DEFINITION_INVALIDE"));
+
+		mockMvc.perform(post(URL_RES)
+						.header("X-Internal-Token", TOKEN)
+						.header("X-Societe-Id", SOCIETE_ID.toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"regles\":[{\"cle\":\"e1\",\"regle\":\"ROLE\",\"params\":{\"roles\":[\"RO\"]}}]}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("DEFINITION_INVALIDE"));
+
+		// MANAGER_NIVEAU 0 et 5 -> 400 DEFINITION_INVALIDE
+		mockMvc.perform(post(URL_RES)
+						.header("X-Internal-Token", TOKEN)
+						.header("X-Societe-Id", SOCIETE_ID.toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"regles\":[{\"cle\":\"e1\",\"regle\":\"MANAGER_NIVEAU\",\"params\":{\"niveau\":0}}]}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("DEFINITION_INVALIDE"));
+
 		mockMvc.perform(post(URL_RES)
 						.header("X-Internal-Token", TOKEN)
 						.header("X-Societe-Id", SOCIETE_ID.toString())

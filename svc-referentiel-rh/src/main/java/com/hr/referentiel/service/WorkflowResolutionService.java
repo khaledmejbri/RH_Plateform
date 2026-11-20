@@ -52,7 +52,7 @@ public class WorkflowResolutionService {
 	private static final int MAX_REGLES = 50;
 	private static final Set<String> ROLES_AUTORISES = Set.of("RH", "ADMIN");
 	private static final Set<String> TYPES_NOEUDS_RESPONSABLE = Set.of("DEPARTEMENT", "DIRECTION", "DIRECTION_GENERALE");
-	private static final Set<String> PORTEES_FONCTION = Set.of("TOUTE_SOCIETE", "UNITE_DEMANDEUR");
+	private static final Set<String> PORTEES_FONCTION = Set.of("SOCIETE", "UNITE_DEMANDEUR");
 
 	private final CollaborateurRepository collaborateurRepository;
 	private final UniteOrganisationRepository uniteRepository;
@@ -288,7 +288,7 @@ public class WorkflowResolutionService {
 							"fonction_code est obligatoire pour la règle FONCTION.");
 				}
 				String portee = params.portee() == null || params.portee().isBlank()
-						? "TOUTE_SOCIETE"
+						? "SOCIETE"
 						: params.portee().trim().toUpperCase(Locale.ROOT);
 				if (!PORTEES_FONCTION.contains(portee)) {
 					throw ReferentielMetierException.badRequest("DEFINITION_INVALIDE",
@@ -480,7 +480,7 @@ public class WorkflowResolutionService {
 		}
 		boolean estManager = false;
 		for (UniteOrganisation u : toutesUnites) {
-			if (u.getManager() != null && demandeur.getId().equals(u.getManager().getId())) {
+			if (u.isActif() && u.getManager() != null && demandeur.getId().equals(u.getManager().getId())) {
 				estManager = true;
 				break;
 			}

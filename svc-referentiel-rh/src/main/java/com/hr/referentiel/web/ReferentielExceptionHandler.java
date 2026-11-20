@@ -64,10 +64,31 @@ public class ReferentielExceptionHandler {
 
 	/** SCRUM-8 — sans ce handler, l'erreur SQL partait vers /error (protégé) et revenait en 403 vide. */
 	@ExceptionHandler(DataIntegrityViolationException.class)
-	public ResponseEntity<Map<String, String>> integrite(DataIntegrityViolationException ex) {
+	public ResponseEntity<Map<String, Object>> integrite(DataIntegrityViolationException ex) {
+		if (estDoublonMatricule(ex)) {
+			String msg = "Un collaborateur avec ce matricule existe déjà.";
+			return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+					"code", "MATRICULE_EXISTANT", "erreur", msg, "message", msg));
+		}
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
 				"code", "VIOLATION_INTEGRITE",
 				"erreur", "La donnée ne respecte pas une contrainte de la base (valeur non autorisée ou doublon)."));
+	}
+
+	private static boolean estDoublonMatricule(Throwable ex) {
+		Throwable cur = ex;
+		while (cur != null) {
+			String m = cur.getMessage();
+			if (m != null) {
+				String lower = m.toLowerCase(java.util.Locale.ROOT);
+				if (lower.contains("idx_collab_societe_matricule")
+						|| (lower.contains("rh_collaborateur") && lower.contains("matricule"))) {
+					return true;
+				}
+			}
+			cur = cur.getCause();
+		}
+		return false;
 	}
 
 	@ExceptionHandler(AccessDeniedException.class)

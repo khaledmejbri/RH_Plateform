@@ -77,6 +77,8 @@ public abstract class ChampsPersoH2Base {
 	protected ChampPersoRepository persoRepository;
 	@Autowired
 	protected ChampPersoValeurListeRepository valeurRepository;
+	@Autowired
+	protected jakarta.persistence.EntityManager entityManager;
 
 	protected ParametrageImportCache cache;
 	protected ChampPersoUtilisations utilisations;
@@ -97,7 +99,7 @@ public abstract class ChampsPersoH2Base {
 		utilisations = new ChampPersoUtilisations(jdbc);
 		journal = new ImportChampsJournal(journalRepository);
 		ecriture = new ParametrageEcriture(parametrageRepository, champRepository, synonymeRepository, persoRepository,
-				valeurRepository, journal, factice, utilisations);
+				valeurRepository, journal, factice, utilisations, entityManager);
 		definitions = new ChampPersoDefinitionService(ecriture, persoRepository, valeurRepository, champRepository,
 				synonymeRepository, journal, utilisations, clock);
 		listes = new ChampPersoListeService(ecriture, valeurRepository, utilisations, clock);

@@ -42,9 +42,21 @@ public class DemarrageOrchestrateur implements ApplicationRunner {
 	public void run(ApplicationArguments args) {
 		pret.set(true);
 		KafkaListenerEndpointRegistry registry = kafkaRegistryProvider.getIfAvailable();
-		if (registry != null && !registry.isRunning()) {
-			registry.start();
-			log.info("Listeners Kafka démarrés après reprise et amorçages.");
+		if (registry != null) {
+			boolean demarreAuMoinsUn = false;
+			for (var container : registry.getListenerContainers()) {
+				if (!container.isRunning()) {
+					container.start();
+					demarreAuMoinsUn = true;
+				}
+			}
+			if (!registry.isRunning()) {
+				registry.start();
+				demarreAuMoinsUn = true;
+			}
+			if (demarreAuMoinsUn) {
+				log.info("Listeners Kafka démarrés après reprise et amorçages.");
+			}
 		}
 		log.info("svc-referentiel-rh prêt à recevoir le trafic HTTP.");
 	}

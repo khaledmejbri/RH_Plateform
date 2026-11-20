@@ -7,6 +7,7 @@ import com.hr.referentiel.domain.ValeursInitialesReferentiel;
 import com.hr.referentiel.domain.ValeursInitialesReferentiel.Valeur;
 import com.hr.referentiel.service.AuteurParametre;
 import com.hr.referentiel.service.NormalisationLibelle;
+import com.hr.referentiel.service.SocieteDefautResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,21 +74,29 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 	private final ReferentielEvenementsProperties evenementsProperties;
 	private final JsonMapper jsonMapper;
 	private final SocietesActives societesActives;
+	private final SocieteDefautResolver societeDefautResolver;
 
 	public ParametresAmorceRunner(JdbcTemplate jdbc, PlatformTransactionManager transactionManager,
 			ReferentielEvenementsProperties evenementsProperties, JsonMapper jsonMapper) {
-		this(jdbc, transactionManager, evenementsProperties, jsonMapper, List::of);
+		this(jdbc, transactionManager, evenementsProperties, jsonMapper, List::of, null);
+	}
+
+	public ParametresAmorceRunner(JdbcTemplate jdbc, PlatformTransactionManager transactionManager,
+			ReferentielEvenementsProperties evenementsProperties, JsonMapper jsonMapper,
+			SocietesActives societesActives) {
+		this(jdbc, transactionManager, evenementsProperties, jsonMapper, societesActives, null);
 	}
 
 	@Autowired
 	public ParametresAmorceRunner(JdbcTemplate jdbc, PlatformTransactionManager transactionManager,
 			ReferentielEvenementsProperties evenementsProperties, JsonMapper jsonMapper,
-			SocietesActives societesActives) {
+			SocietesActives societesActives, SocieteDefautResolver societeDefautResolver) {
 		this.jdbc = jdbc;
 		this.transactionManager = transactionManager;
 		this.evenementsProperties = evenementsProperties;
 		this.jsonMapper = jsonMapper;
 		this.societesActives = societesActives;
+		this.societeDefautResolver = societeDefautResolver;
 	}
 
 	@Override
@@ -104,18 +113,28 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 	/** Point d'entrée rejouable (aussi appelé par les tests, sous {@link SocieteContexte}). */
 	public void amorcer() {
 		UUID societeId = SocieteContexte.courante();
+		boolean defaut = estSocieteDefaut(societeId);
 		new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
 			verrouiller(societeId);
 			elargirColonnes();
 			supprimerContraintes();
-			int familles = reprendreFamilles(societeId);
-			int initiales = insererValeursInitiales(societeId);
+			int familles = defaut ? reprendreFamilles(societeId) : 0;
+			int initiales = insererValeursInitiales(societeId, defaut);
 			int orphelins = rapprocherOrphelins(societeId);
 			if (familles + initiales + orphelins > 0) {
 				log.info("Paramètres amorcés pour {} : {} famille(s) reprise(s), {} valeur(s) initiale(s), {} code(s) orphelin(s)"
 						+ " recréé(s) inactif(s)", societeId, familles, initiales, orphelins);
 			}
 		});
+	}
+
+	private boolean estSocieteDefaut(UUID societeId) {
+		if (societeDefautResolver == null) {
+			return true;
+		}
+		return societeDefautResolver.idSocieteDefaut()
+				.map(societeId::equals)
+				.orElse(false);
 	}
 
 	// ─── 1. Schéma ────────────────────────────────────────────────────────────
@@ -196,12 +215,15 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 
 	// ─── 3. Valeurs initiales et codes de comportement ──────────────────────────────
 
-	private int insererValeursInitiales(UUID societeId) {
+	private int insererValeursInitiales(UUID societeId, boolean estSocieteDefaut) {
 		List<Valeur> valeurs = ValeursInitialesReferentiel.toutes(evenementsProperties::delaiSlaHeuresPourDocument);
 		int inserees = 0;
 		for (Valeur v : valeurs) {
+			boolean utilisee = estSocieteDefaut
+					? v.utilisee()
+					: (!"FAMILLE_METIER".equals(v.referentiel()) && v.utilisee());
 			if (inserer(societeId, v.referentiel(), v.code(), v.libelle(), null, v.couleur(), v.ordre(), true, v.systeme(),
-					v.utilisee(), v.slaHeures(), v.pieceJointeObligatoire(), v.pieceJointeVerrouillee())) {
+					utilisee, v.slaHeures(), v.pieceJointeObligatoire(), v.pieceJointeVerrouillee())) {
 				inserees++;
 			} else if (!codeExiste(societeId, v.referentiel(), v.code())) {
 				// Le code est libre mais son libellé par défaut est déjà pris (valeur saisie ou reprise) : on ne
@@ -211,7 +233,7 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 				log.warn("Valeur initiale {}.{} : libellé « {} » déjà pris, créée sous « {} »", v.referentiel(),
 						v.code(), v.libelle(), avecCode);
 				if (inserer(societeId, v.referentiel(), v.code(), avecCode, null, v.couleur(), v.ordre(), true, v.systeme(),
-						v.utilisee(), v.slaHeures(), v.pieceJointeObligatoire(), v.pieceJointeVerrouillee())) {
+						utilisee, v.slaHeures(), v.pieceJointeObligatoire(), v.pieceJointeVerrouillee())) {
 					inserees++;
 				} else {
 					log.error("Valeur initiale {}.{} non créée (libellé « {} » toujours en conflit)", v.referentiel(),

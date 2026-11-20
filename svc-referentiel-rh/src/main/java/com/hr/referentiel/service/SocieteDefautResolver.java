@@ -48,6 +48,16 @@ public class SocieteDefautResolver {
 		this.idDefautEnCache = id;
 	}
 
+	/** Identifiant de la société par défaut (indépendant du drapeau de repli de transition). */
+	public Optional<UUID> idSocieteDefaut() {
+		if (idDefautEnCache != null) {
+			return Optional.of(idDefautEnCache);
+		}
+		Optional<UUID> id = identiteSocieteClient.trouverIdParCode(codeDefaut);
+		id.ifPresent(uuid -> this.idDefautEnCache = uuid);
+		return id;
+	}
+
 	/**
 	 * Renvoie l'identifiant de la société par défaut si {@code app.societe.repli-defaut-transition=true},
 	 * sinon {@code null}. Utilisé par {@code SocieteFiltreInterne}.

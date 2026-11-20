@@ -9,7 +9,6 @@ import com.hr.referentiel.importation.parametrage.ImportParametrageDtos.Parametr
 import com.hr.referentiel.service.AuteurParametre;
 import com.hr.referentiel.web.ReferentielMetierException;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -18,9 +17,12 @@ import java.util.List;
 import static com.hr.referentiel.importation.parametrage.ImportParametrageValidation.erreur;
 
 /**
- * Gabarit commun des écritures du paramétrage d'un type (ADR § 5, extrait de {@link ImportParametrageService}) : résoudre
- * le type, verrou {@code FOR UPDATE} sur la ligne du type, contrôle de version en dernier, {@code modifie_le} et
- * version + 1 seulement si quelque chose a changé, journal, invalidation du cache après commit. À appeler dans la
+ * Gabarit commun des écritures du paramétrage d'un type (ADR § 5, extrait de
+ * {@link ImportParametrageService}) : résoudre
+ * le type, verrou {@code FOR UPDATE} sur la ligne du type, contrôle de version
+ * en dernier, {@code modifie_le} et
+ * version + 1 seulement si quelque chose a changé, journal, invalidation du
+ * cache après commit. À appeler dans la
  * transaction de l'écriture ; toute exception l'annule.
  */
 @Component
@@ -34,14 +36,13 @@ public class ParametrageEcriture {
 	private final ImportChampsJournal journal;
 	private final ParametrageImportCache cache;
 	private final ChampPersoUtilisations utilisations;
+	private final EntityManager entityManager;
 
-	@PersistenceContext
-	private EntityManager entityManager;
-
-	public ParametrageEcriture(ImportParametrageRepository parametrageRepository, ImportChampRegleRepository champRepository,
+	public ParametrageEcriture(ImportParametrageRepository parametrageRepository,
+			ImportChampRegleRepository champRepository,
 			ImportSynonymeRepository synonymeRepository, ChampPersoRepository champPersoRepository,
 			ChampPersoValeurListeRepository valeurListeRepository, ImportChampsJournal journal,
-			ParametrageImportCache cache, ChampPersoUtilisations utilisations) {
+			ParametrageImportCache cache, ChampPersoUtilisations utilisations, EntityManager entityManager) {
 		this.parametrageRepository = parametrageRepository;
 		this.champRepository = champRepository;
 		this.synonymeRepository = synonymeRepository;
@@ -50,6 +51,7 @@ public class ParametrageEcriture {
 		this.journal = journal;
 		this.cache = cache;
 		this.utilisations = utilisations;
+		this.entityManager = java.util.Objects.requireNonNull(entityManager, "entityManager obligatoire");
 	}
 
 	public TypeImportParametrable resoudre(String chemin) {
@@ -72,7 +74,8 @@ public class ParametrageEcriture {
 	private EtatParametrage charger(TypeImportParametrable type, ImportParametrage p) {
 		List<ChampPerso> persos = champPersoRepository.findByTypeImport(type.name());
 		List<ChampPersoValeurListe> valeurs = persos.isEmpty() ? List.of()
-				: valeurListeRepository.findByChampPersoIdInOrderByOrdreAsc(persos.stream().map(ChampPerso::getId).toList());
+				: valeurListeRepository
+						.findByChampPersoIdInOrderByOrdreAsc(persos.stream().map(ChampPerso::getId).toList());
 		return new EtatParametrage(type, p, champRepository.findByTypeImportOrderByOrdreAsc(type.name()),
 				synonymeRepository.findByTypeImport(type.name()), persos, valeurs);
 	}
@@ -81,7 +84,10 @@ public class ParametrageEcriture {
 		return new IllegalStateException("Paramétrage des champs d'import non amorcé pour " + type.name());
 	}
 
-	/** 409 en dernier, une fois toutes les autres règles contrôlées sur l'état relu sous verrou. */
+	/**
+	 * 409 en dernier, une fois toutes les autres règles contrôlées sur l'état relu
+	 * sous verrou.
+	 */
 	public void controlerVersion(EtatParametrage etat, Long recue) {
 		if (recue == null || recue != etat.parametrage.getVersion()) {
 			throw ReferentielMetierException.conflict("PARAMETRE_MODIFIE_ENTRE_TEMPS",
@@ -90,15 +96,16 @@ public class ParametrageEcriture {
 	}
 
 	/**
-	 * Version + 1 et journal seulement si une ligne a changé ; invalide le cache après commit. Une ligne est
-	 * {@code {champ, attribut, avant, apres[, libelle figé]}} ; sans libellé explicite, celui d'un champ personnalisé
+	 * Version + 1 et journal seulement si une ligne a changé ; invalide le cache
+	 * après commit. Une ligne est
+	 * {@code {champ, attribut, avant, apres[, libelle figé]}} ; sans libellé
+	 * explicite, celui d'un champ personnalisé
 	 * encore défini est figé au journal.
 	 */
-	public Parametrage terminer(EtatParametrage etat, List<String[]> lignes, AuteurParametre auteur, Instant maintenant) {
+	public Parametrage terminer(EtatParametrage etat, List<String[]> lignes, AuteurParametre auteur,
+			Instant maintenant) {
 		if (!lignes.isEmpty()) {
-			if (entityManager != null) {
-				entityManager.detach(etat.parametrage);
-			}
+			entityManager.detach(etat.parametrage);
 			etat.parametrage.marquerModifie(maintenant, auteur.nom());
 			parametrageRepository.mettreAJourModification(
 					etat.type.name(),
@@ -108,7 +115,8 @@ public class ParametrageEcriture {
 					auteur.nom());
 			for (String[] l : lignes) {
 				String libelle = l.length > 4 ? l[4] : l[0] != null && etat.estPerso(l[0]) ? etat.libelle(l[0]) : null;
-				journal.ecrire(etat.type, etat.parametrage.getVersion(), l[0], l[1], l[2], l[3], auteur, maintenant, libelle);
+				journal.ecrire(etat.type, etat.parametrage.getVersion(), l[0], l[1], l[2], l[3], auteur, maintenant,
+						libelle);
 			}
 			cache.invaliderApresCommit(etat.type);
 		}

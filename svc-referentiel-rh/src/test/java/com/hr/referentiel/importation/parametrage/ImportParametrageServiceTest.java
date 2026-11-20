@@ -90,6 +90,8 @@ class ImportParametrageServiceTest {
 	com.hr.referentiel.champsperso.ChampPersoRepository champPersoRepository;
 	@Autowired
 	com.hr.referentiel.champsperso.ChampPersoValeurListeRepository valeurListeRepository;
+	@Autowired
+	jakarta.persistence.EntityManager entityManager;
 
 	private ParametrageImportCache cache;
 	private ImportParametrageService service;
@@ -101,7 +103,7 @@ class ImportParametrageServiceTest {
 		ImportChampsJournal journal = new ImportChampsJournal(journalRepository);
 		service = new ImportParametrageService(new ParametrageEcriture(parametrageRepository, champRepository,
 				synonymeRepository, champPersoRepository, valeurListeRepository, journal, cache,
-				new com.hr.referentiel.champsperso.ChampPersoUtilisations(jdbc)), synonymeRepository, journal, Clock.fixed(Instant.parse("2026-11-13T10:00:00Z"), ZoneOffset.UTC));
+				new com.hr.referentiel.champsperso.ChampPersoUtilisations(jdbc), entityManager), synonymeRepository, journal, Clock.fixed(Instant.parse("2026-11-13T10:00:00Z"), ZoneOffset.UTC));
 	}
 
 	// ─── Outils ────────────────────────────────────────────────────────────────

@@ -32,7 +32,7 @@ public class SocieteRepriseRunner implements ApplicationRunner {
 	private static final Logger log = LoggerFactory.getLogger(SocieteRepriseRunner.class);
 
 	/** Liste ordonnée des 29 tables métier existantes du référentiel à reprendre (19 initiales + 10 de 33efdd9). */
-	static final List<String> TABLES_METIER = List.of(
+	public static final List<String> TABLES_METIER = List.of(
 			"rh_unite_organisation",
 			"rh_collaborateur",
 			"rh_demande_administrative",

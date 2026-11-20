@@ -93,12 +93,6 @@ public class SocieteParametresService {
 
 	@Transactional
 	public SocieteParametresResponse modifier(SocieteParametresUpdateRequest req, AuteurParametre auteur) {
-		SocieteParametres entity = obtenirOuCreerDefaut();
-		if (req.version() == null || !Objects.equals(req.version(), entity.getVersion())) {
-			throw ReferentielMetierException.conflict("PARAMETRE_MODIFIE_ENTRE_TEMPS",
-					"Les paramètres société ont été modifiés entre-temps par un autre utilisateur.");
-		}
-
 		validerBornes(req.dureeHebdoMinutes(), req.dureeMaxSortieMinutes());
 		List<String> joursNormalises = normaliserJours(req.joursTravailles());
 		Map<String, Integer> dureesJour = validerDurees(joursNormalises, req.dureeHebdoMinutes(), req.dureeJourMinutes());
@@ -107,6 +101,12 @@ public class SocieteParametresService {
 		if (!debut.isBefore(fin)) {
 			throw ReferentielMetierException.badRequest("CORPS_INVALIDE",
 					"L'heure de début de journée doit être antérieure à l'heure de fin.");
+		}
+
+		SocieteParametres entity = obtenirOuCreerDefaut();
+		if (req.version() == null || !Objects.equals(req.version(), entity.getVersion())) {
+			throw ReferentielMetierException.conflict("PARAMETRE_MODIFIE_ENTRE_TEMPS",
+					"Les paramètres société ont été modifiés entre-temps par un autre utilisateur.");
 		}
 
 		String avantJson = serialiserEtat(entity);

@@ -159,7 +159,8 @@ public class ReferentielRhService {
 	@CacheEvict(value = { CacheConfig.CACHE_COLLABORATEUR_ID, CacheConfig.CACHE_COLLABORATEUR_MATRICULE }, allEntries = true)
 	public CollaborateurResponse creerCollaborateur(CollaborateurCreationRequest req) {
 		if (collaborateurRepository.existsByMatriculeIgnoreCase(req.getMatricule().trim())) {
-			throw new IllegalArgumentException("Matricule déjà utilisé : " + req.getMatricule());
+			throw ReferentielMetierException.conflict(
+					"MATRICULE_EXISTANT", "Un collaborateur avec ce matricule existe déjà.");
 		}
 		UniteOrganisation unite = uniteRepository.findById(req.getUniteIdentifiant())
 				.orElseThrow(() -> ReferentielMetierException.notFound("UNITE_INTROUVABLE", "Unité introuvable."));
