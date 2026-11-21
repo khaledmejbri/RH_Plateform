@@ -39,7 +39,8 @@ function nouvelleEtapeParDefaut(index: number): EtapeDefinition {
     intervenants: { regle: 'ROLE', params: { roles: ['RH'] }, mode: 'UN_SEUL' },
     repli_si_vide: { action: 'BLOQUER' },
     actions: ['APPROUVER', 'REFUSER'],
-    delai: { duree: 24, unite: 'HEURES_OUVREES' },
+    delai: { duree: 24, unite: 'HEURES' },
+    a_echeance: { action: 'RIEN' },
   };
 }
 
@@ -556,3 +557,4 @@ export default function WorkflowEditeurPage() {
     </div>
   );
 }
+

@@ -19,19 +19,16 @@ const TYPES_ETAPE: ReadonlyArray<{ code: string; libelle: string }> = [
 ];
 
 const TYPES_NOEUD: ReadonlyArray<{ code: string; libelle: string }> = [
-  { code: 'SERVICE', libelle: 'Service' },
   { code: 'DEPARTEMENT', libelle: 'Département' },
   { code: 'DIRECTION', libelle: 'Direction' },
   { code: 'DIRECTION_GENERALE', libelle: 'Direction générale' },
 ];
 
-const ROLES_DISPONIBLES = ['RH', 'ADMIN', 'DIRECTION'] as const;
-const ACTIONS_VALIDATION = ['APPROUVER', 'REFUSER', 'DEMANDER_COMPLEMENT'] as const;
+const ROLES_DISPONIBLES = ['RH', 'ADMIN'] as const;
+const ACTIONS_VALIDATION = ['APPROUVER', 'REFUSER', 'RENVOYER'] as const;
 const UNITES_DELAI: ReadonlyArray<{ code: string; libelle: string }> = [
-  { code: 'HEURES_OUVREES', libelle: 'Heures ouvrées' },
+  { code: 'HEURES', libelle: 'Heures ouvrées' },
   { code: 'JOURS_OUVRES', libelle: 'Jours ouvrés' },
-  { code: 'HEURES_CALENDAIRES', libelle: 'Heures calendaires' },
-  { code: 'JOURS_CALENDAIRES', libelle: 'Jours calendaires' },
 ];
 
 type Props = {
@@ -245,7 +242,7 @@ export default function PanneauEtape({
                       const nouvelle: TacheParalleleDefinition = {
                         code: `TACHE_${courantes.length + 1}`,
                         libelle: `Tâche ${courantes.length + 1}`,
-                        intervenants: { regle: 'ROLE', params: { roles: ['RH'] }, mode: 'UN_SEUL' },
+                        intervenants: { regle: 'ROLE', params: { roles: ['RH'] } },
                         repli_si_vide: { action: 'BLOQUER' },
                         obligatoire: true,
                       };
@@ -310,9 +307,10 @@ export default function PanneauEtape({
                     ) : null}
                   </div>
                   <EditeurIntervenant
-                    valeur={t.intervenants ?? { regle: 'ROLE', params: { roles: ['RH'] }, mode: 'UN_SEUL' }}
+                    valeur={t.intervenants ?? { regle: 'ROLE', params: { roles: ['RH'] } }}
                     catalogue={catalogue}
                     fonctionsActives={fonctionsActives}
+                    autoriserMode={false}
                     disabled={disabled}
                     onChange={(iv) => {
                       const next = (etape.taches ?? []).map((x, i) => (i === idx ? { ...x, intervenants: iv } : x));
@@ -328,6 +326,7 @@ export default function PanneauEtape({
                 valeur={intervenants}
                 catalogue={catalogue}
                 fonctionsActives={fonctionsActives}
+                autoriserMode={etape.type === 'VALIDATION'}
                 disabled={disabled}
                 onChange={(iv) => maj({ intervenants: iv })}
               />
@@ -402,7 +401,7 @@ export default function PanneauEtape({
                   const val = e.target.value ? Number(e.target.value) : undefined;
                   maj({
                     delai: val
-                      ? { ...(etape.delai ?? {}), duree: val, unite: etape.delai?.unite ?? 'HEURES_OUVREES' }
+                      ? { ...(etape.delai ?? {}), duree: val, unite: etape.delai?.unite ?? 'HEURES' }
                       : null,
                   });
                 }}
@@ -414,7 +413,7 @@ export default function PanneauEtape({
                 id="delai-unite"
                 className="field-input"
                 disabled={disabled || !etape.delai?.duree}
-                value={etape.delai?.unite ?? 'HEURES_OUVREES'}
+                value={etape.delai?.unite ?? 'HEURES'}
                 onChange={(e) => maj({ delai: { ...(etape.delai ?? {}), unite: e.target.value } })}
               >
                 {UNITES_DELAI.map((u) => (
@@ -458,7 +457,7 @@ export default function PanneauEtape({
                 id="rel-nb"
                 type="number"
                 min={0}
-                max={10}
+                max={3}
                 className="field-input"
                 disabled={disabled}
                 value={etape.relances?.nombre ?? ''}
@@ -474,18 +473,18 @@ export default function PanneauEtape({
                 id="ech-action"
                 className="field-input"
                 disabled={disabled}
-                value={etape.a_echeance?.action ?? ''}
+                value={etape.a_echeance?.action ?? 'RIEN'}
                 onChange={(e) =>
                   maj({
-                    a_echeance: e.target.value ? { ...(etape.a_echeance ?? {}), action: e.target.value } : null,
+                    a_echeance: { ...(etape.a_echeance ?? {}), action: e.target.value },
                   })
                 }
               >
-                <option value="">Aucune</option>
                 <option value="RIEN">Ne rien faire (marquer en retard)</option>
                 <option value="ESCALADER">Escalader</option>
-                <option value="PASSER">Passer l’étape</option>
                 <option value="EXPIRER">Expirer la demande</option>
+                <option value="REFUSER_AUTO">Refuser automatiquement</option>
+                <option value="APPROUVER_AUTO">Approuver automatiquement</option>
               </select>
             </div>
           </div>
@@ -564,12 +563,14 @@ function EditeurIntervenant({
   valeur,
   catalogue,
   fonctionsActives,
+  autoriserMode = true,
   disabled,
   onChange,
 }: {
   valeur: IntervenantsDefinition;
   catalogue: CatalogueWorkflow;
   fonctionsActives: FonctionRh[];
+  autoriserMode?: boolean;
   disabled?: boolean;
   onChange: (iv: IntervenantsDefinition) => void;
 }) {
@@ -607,19 +608,21 @@ function EditeurIntervenant({
           </select>
         </div>
 
-        <div>
-          <label className="field-label">Mode de décision</label>
-          <select
-            aria-label="Mode de décision"
-            className="field-input"
-            disabled={disabled}
-            value={valeur.mode ?? 'UN_SEUL'}
-            onChange={(e) => onChange({ ...valeur, mode: e.target.value })}
-          >
-            <option value="UN_SEUL">Un seul intervenant suffit</option>
-            <option value="TOUS">Tous les intervenants doivent valider</option>
-          </select>
-        </div>
+        {autoriserMode ? (
+          <div>
+            <label className="field-label">Mode de décision</label>
+            <select
+              aria-label="Mode de décision"
+              className="field-input"
+              disabled={disabled}
+              value={valeur.mode ?? 'UN_SEUL'}
+              onChange={(e) => onChange({ ...valeur, mode: e.target.value })}
+            >
+              <option value="UN_SEUL">Un seul intervenant suffit</option>
+              <option value="TOUS">Tous les intervenants doivent valider</option>
+            </select>
+          </div>
+        ) : null}
       </div>
 
       {valeur.regle === 'MANAGER_NIVEAU' ? (
@@ -628,7 +631,7 @@ function EditeurIntervenant({
           <input
             type="number"
             min={1}
-            max={5}
+            max={4}
             className="field-input"
             disabled={disabled}
             value={Number(params.niveau ?? 2)}
@@ -697,3 +700,4 @@ function EditeurIntervenant({
     </div>
   );
 }
+
