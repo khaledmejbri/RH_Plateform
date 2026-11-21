@@ -110,7 +110,7 @@ class EffetRepriseSchedulerTest {
 
 		scheduler = new EffetRepriseScheduler(
 				appelEffetRepository, instanceRepository, tacheRepository, beneficiaireRepository,
-				historiqueRepository, catalogue, codec, preparationService, applicationService,
+				historiqueRepository, catalogue, codec, resolutionService, preparationService, applicationService,
 				effetClient, outboxService, verrouPlanificateur, txManager, clock);
 		decisionService = new DecisionService(
 				instanceRepository, tacheRepository, candidatRepository, beneficiaireRepository,
@@ -287,6 +287,9 @@ class EffetRepriseSchedulerTest {
 
 	@Test
 	void reprise24hDepassees_passeInstanceEnErreur() {
+		UUID adminCompteId = UUID.randomUUID();
+		when(resolutionService.resoudreComptesRoles(any(), eq(List.of("ADMIN"))))
+				.thenReturn(List.of(adminCompteId));
 		appelEffet.setCreeLe(maintenant.minus(Duration.ofHours(25)));
 		when(effetClient.appeler(any(), any(), any())).thenReturn(new ResultatAppelEffet.Incertain("Timeout"));
 
@@ -294,6 +297,9 @@ class EffetRepriseSchedulerTest {
 
 		assertThat(instance.getStatut()).isEqualTo(StatutInstance.ERREUR);
 		assertThat(appelEffet.getProchaineTentativeLe()).isNull();
+		verify(outboxService).publierNotification(
+				any(), eq(adminCompteId.toString()), eq("WEBSOCKET"), eq("WF_BLOQUEE"),
+				any(), any(), eq("CONGE"), any(), any());
 		verify(historiqueRepository).save(argThat(h -> "INSTANCE_ERREUR".equals(h.getTypeEvenement())));
 		verify(outboxService).publierEvenementWorkflow(any(), eq("INSTANCE_TERMINEE"), eq(instance), any(), any(), any());
 	}

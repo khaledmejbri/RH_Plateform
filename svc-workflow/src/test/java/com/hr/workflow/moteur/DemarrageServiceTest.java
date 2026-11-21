@@ -56,7 +56,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -223,5 +226,62 @@ class DemarrageServiceTest {
 				.isInstanceOf(WorkflowMetierException.class)
 				.hasFieldOrPropertyWithValue("httpStatus", 503)
 				.hasFieldOrPropertyWithValue("code", "SERVICE_INDISPONIBLE");
+	}
+
+	@Test
+	void etapeBloquee_notifieComptesRhAdminResolusEtJamaisLitteralRh() {
+		DemarrerInstanceRequest r = req("CONGE", Map.of());
+		WfActivation act = new WfActivation();
+		act.setMode(ModeActivation.MOTEUR);
+		when(activationRepository.findByObjetType("CONGE")).thenReturn(Optional.of(act));
+		WfModele m = new WfModele();
+		m.setId(UUID.randomUUID());
+		m.setCode("M01_CONGE");
+		when(modeleRepository.findActifParObjetTypeEtSousType("CONGE", null)).thenReturn(Optional.of(m));
+
+		EtapeDefinition e1 = new EtapeDefinition("E1", "Validation RH", "VALIDATION", null,
+				new IntervenantsDefinition("ROLE", Map.of("roles", List.of("RH")), "UN_SEUL"),
+				new RepliSiVideDefinition("BLOQUER", null), null, null, List.of("APPROUVER", "REFUSER"),
+				false, null, new DelaiDefinition(2, "JOURS_OUVRES", null), null,
+				new EcheanceDefinition("RIEN", null, null), null, null, null);
+		WfModeleVersion v = new WfModeleVersion();
+		v.setId(UUID.randomUUID());
+		v.setNumero(1);
+		v.setDefinition(codec.serialiser(new DefinitionWorkflow(1, "CONGE", null, List.of(e1))));
+		when(versionRepository.findByModeleIdAndStatut(m.getId(), StatutVersion.PUBLIEE)).thenReturn(Optional.of(v));
+		when(versionRepository.getReferenceById(v.getId())).thenReturn(v);
+
+		when(resolutionService.resoudre(any(), any(), any(), any(), any())).thenReturn(
+				new LotResolu(Map.of("E1", new ResultatRegleResolue(List.of(), false, true, "AUCUN_TITULAIRE")),
+						new ContexteDemandeur("COLLABORATEUR", "SERVICE", 12, false)));
+		UUID rhCompte = UUID.randomUUID();
+		UUID adminCompte = UUID.randomUUID();
+		when(resolutionService.resoudreComptesRoles(any(), eq(List.of("RH", "ADMIN"))))
+				.thenReturn(List.of(rhCompte, adminCompte));
+		when(referentielClient.calendrierSociete(any(), any())).thenReturn(CalendrierSocieteResponse.defaut());
+		when(instanceRepository.saveAndFlush(any(WfInstance.class))).thenAnswer(inv -> {
+			WfInstance i = inv.getArgument(0);
+			i.setId(UUID.randomUUID());
+			return i;
+		});
+		when(etapeExecutionRepository.saveAndFlush(any(WfEtapeExecution.class))).thenAnswer(inv -> {
+			WfEtapeExecution e = inv.getArgument(0);
+			e.setId(UUID.randomUUID());
+			return e;
+		});
+		when(tacheRepository.saveAndFlush(any(WfTache.class))).thenAnswer(inv -> {
+			WfTache t = inv.getArgument(0);
+			t.setId(UUID.randomUUID());
+			return t;
+		});
+
+		ResultatDemarrage res = service.demarrer("cle-bloquee", r);
+
+		assertThat(res.reponse().statut()).isEqualTo(StatutInstance.BLOQUEE);
+		verify(outboxService).publierNotification(any(), eq(rhCompte.toString()), eq("WEBSOCKET"), eq("WF_BLOQUEE"),
+				any(), any(), eq("CONGE"), any(), any());
+		verify(outboxService).publierNotification(any(), eq(adminCompte.toString()), eq("WEBSOCKET"), eq("WF_BLOQUEE"),
+				any(), any(), eq("CONGE"), any(), any());
+		verify(outboxService, never()).publierNotification(any(), eq("RH"), any(), any(), any(), any(), any(), any(), any());
 	}
 }

@@ -35,6 +35,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -59,6 +60,7 @@ public class EffetRepriseScheduler {
 	private final WfHistoriqueRepository historiqueRepository;
 	private final CatalogueTypesObjet catalogue;
 	private final DefinitionCodec codec;
+	private final ResolutionIntervenantsService resolutionService;
 	private final PreparationDecisionService preparationService;
 	private final ApplicationDecisionService applicationService;
 	private final EffetClient effetClient;
@@ -75,6 +77,7 @@ public class EffetRepriseScheduler {
 			WfHistoriqueRepository historiqueRepository,
 			CatalogueTypesObjet catalogue,
 			DefinitionCodec codec,
+			ResolutionIntervenantsService resolutionService,
 			PreparationDecisionService preparationService,
 			ApplicationDecisionService applicationService,
 			EffetClient effetClient,
@@ -89,6 +92,7 @@ public class EffetRepriseScheduler {
 		this.historiqueRepository = historiqueRepository;
 		this.catalogue = catalogue;
 		this.codec = codec;
+		this.resolutionService = resolutionService;
 		this.preparationService = preparationService;
 		this.applicationService = applicationService;
 		this.effetClient = effetClient;
@@ -198,8 +202,9 @@ public class EffetRepriseScheduler {
 							item.objetId(), item.effet(), acteur, item.commentaire(),
 							item.instanceId(), item.libelleTache()));
 
-			// 2b. HORS TRANSACTION : recalcul du plan et résolutions si l'effet vient d'aboutir (200)
+			// 2b. HORS TRANSACTION : recalcul du plan si 200, ou résolution ADMIN si 24 h dépassées
 			PlanExecutionDecision exec = null;
+			List<UUID> comptesAdmin = List.of();
 			if (res instanceof ResultatAppelEffet.Succes) {
 				List<IntervenantResolu> cands = item.decideurCollabId() != null && item.decideurCompteId() != null
 						? List.of(new IntervenantResolu(item.decideurCollabId(), item.decideurCompteId(), item.decideurNom(), null))
@@ -210,17 +215,29 @@ public class EffetRepriseScheduler {
 						item.demandeurCollaborateurId(), item.demandeurCompteId(),
 						item.beneficiaires(), item.approbateursPrecedents(), item.decideurCollabId(),
 						true, cands);
+			} else if (res instanceof ResultatAppelEffet.Incertain
+					&& Duration.between(item.creeLe(), clock.instant()).compareTo(DUREE_MAX_REPRISE) >= 0) {
+				try {
+					comptesAdmin = resolutionService.resoudreComptesRoles(LocalDate.now(clock), List.of("ADMIN"));
+				} catch (Exception ex) {
+					log.warn("Impossible de résoudre les comptes ADMIN lors du passage en ERREUR de {}", item.instanceId(), ex);
+				}
 			}
 
 			// 3. Transaction courte : enregistrer l'issue
 			final PlanExecutionDecision finalExec = exec;
-			txTemplate.executeWithoutResult(status -> traiterIssueReprise(item, res, finalExec));
+			final List<UUID> finalComptesAdmin = comptesAdmin;
+			txTemplate.executeWithoutResult(status -> traiterIssueReprise(item, res, finalExec, finalComptesAdmin));
 			traites++;
 		}
 		return traites;
 	}
 
-	private void traiterIssueReprise(EffetARejouer item, ResultatAppelEffet res, PlanExecutionDecision exec) {
+	private void traiterIssueReprise(
+			EffetARejouer item,
+			ResultatAppelEffet res,
+			PlanExecutionDecision exec,
+			List<UUID> comptesAdmin) {
 		WfInstance inst = instanceRepository.findByIdForUpdate(item.instanceId()).orElse(null);
 		WfTache t = item.tacheId() != null ? tacheRepository.findByIdForUpdate(item.tacheId()).orElse(null) : null;
 		WfAppelEffet ae = appelEffetRepository.findById(item.appelEffetId()).orElse(null);
@@ -285,9 +302,11 @@ public class EffetRepriseScheduler {
 
 			String texte = TextesNotificationWorkflow.erreurEffet(item.typeCatalogue().libelle(), item.objetNumero());
 			UUID evId = UUID.randomUUID();
-			outboxService.publierNotification(evId, "ADMIN", "WEBSOCKET", "WF_BLOQUEE",
-					"Erreur d'enregistrement workflow", texte, item.typeCatalogue().objetType(),
-					item.objetId(), item.objetNumero());
+			for (UUID adminCompteId : comptesAdmin) {
+				outboxService.publierNotification(evId, adminCompteId.toString(), "WEBSOCKET", "WF_BLOQUEE",
+						"Erreur d'enregistrement workflow", texte, item.typeCatalogue().objetType(),
+						item.objetId(), item.objetNumero());
+			}
 			outboxService.publierEvenementWorkflow(evId, "INSTANCE_TERMINEE", inst, null, null, null);
 			enregistrerHistorique(inst.getId(), item.tacheId(), "INSTANCE_ERREUR",
 					Map.of("effet", item.effet(), "tentatives", tentatives), maintenant);

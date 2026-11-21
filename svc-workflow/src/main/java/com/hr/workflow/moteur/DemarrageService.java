@@ -231,7 +231,10 @@ public class DemarrageService {
 					aujourdhui, info.publicDestinataires(), req.demandeurCollaborateurId(), req.demandeurCompteId(), List.of()));
 		}
 		List<UUID> comptesNotifActivation = List.of();
-		if (plan.etapeSuivante() != null && plan.etapeSuivante().etape().notifications() != null
+		List<UUID> comptesBloquee = List.of();
+		if (plan.etapeSuivante() != null && plan.etapeSuivante().bloquee()) {
+			comptesBloquee = resolutionService.resoudreComptesRoles(aujourdhui, List.of("RH", "ADMIN"));
+		} else if (plan.etapeSuivante() != null && plan.etapeSuivante().etape().notifications() != null
 				&& plan.etapeSuivante().etape().notifications().aLActivation() != null) {
 			List<IntervenantResolu> tousCandidats = plan.etapeSuivante().taches().stream()
 					.flatMap(t -> t.candidats().stream()).toList();
@@ -242,10 +245,11 @@ public class DemarrageService {
 
 		// Étape 4 (TRANSACTION COURTE) : persistance atomique + outbox, capture concurrence (§ 9.6.7)
 		final List<UUID> finalComptesNotifActivation = comptesNotifActivation;
+		final List<UUID> finalComptesBloquee = comptesBloquee;
 		try {
 			DemarrerInstanceResponse rep = txWrite.execute(status -> persisterDemarrage(
 					cleDemarrage, req, typeCatalogue, prep.versionId(), prep.modeleCode(), prep.versionNumero(),
-					variables, plan, echeanceEtape, comptesInfos, finalComptesNotifActivation, maintenant));
+					variables, plan, echeanceEtape, comptesInfos, finalComptesNotifActivation, finalComptesBloquee, maintenant));
 			return new ResultatDemarrage(true, rep);
 		} catch (DataIntegrityViolationException ex) {
 			// Concurrence § 9.6.7 : relire l'instance existante pour la même clé
@@ -270,6 +274,7 @@ public class DemarrageService {
 			Instant echeanceEtape,
 			Map<String, List<UUID>> comptesInfos,
 			List<UUID> comptesNotifActivation,
+			List<UUID> comptesBloquee,
 			Instant maintenant) {
 		WfModeleVersion versionRef = versionRepository.getReferenceById(versionId);
 		WfInstance inst = new WfInstance();
@@ -405,8 +410,10 @@ public class DemarrageService {
 				String texteBloque = TextesNotificationWorkflow.bloquee(
 						etapeDef.libelle(), typeCatalogue.libelle(), req.demandeurNom(), req.objetNumero());
 				UUID evBloque = UUID.randomUUID();
-				outboxService.publierNotification(evBloque, "RH", "WEBSOCKET", "WF_BLOQUEE",
-						"Workflow bloqué", texteBloque, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+				for (UUID compteId : comptesBloquee) {
+					outboxService.publierNotification(evBloque, compteId.toString(), "WEBSOCKET", "WF_BLOQUEE",
+							"Workflow bloqué", texteBloque, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+				}
 				outboxService.publierEvenementWorkflow(evBloque, "INSTANCE_BLOQUEE", inst, etapeDef.code(), etapeDef.libelle(), echeanceEtape);
 			} else {
 				outboxService.publierEvenementWorkflow(UUID.randomUUID(), "INSTANCE_DEMARREE", inst, etapeDef.code(), etapeDef.libelle(), echeanceEtape);
