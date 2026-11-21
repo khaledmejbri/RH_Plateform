@@ -53,6 +53,8 @@ public class DemandeAdministrativeRhService {
 	private final AuteurParametreResolver auteurResolver;
 	private final WorkflowActivationService workflowActivationService;
 	private final WorkflowDemarrageService workflowDemarrageService;
+	private final com.hr.referentiel.client.WorkflowMoteurClient moteurClient;
+	private final WorkflowVariablesBuilder variablesBuilder;
 	private final org.springframework.transaction.support.TransactionTemplate txEcriture;
 	private final org.springframework.transaction.support.TransactionTemplate txLecture;
 
@@ -72,7 +74,7 @@ public class DemandeAdministrativeRhService {
 		this(demandeRepo, collaborateurRepository, collaborateurConnecteService, validationService,
 				notificationPublisher, workflowHistoryRepository, numeroLisibleService, parametreService,
 				congeDecompteService, annulationCongeService, champsDecideurSolde, auteurResolver,
-				null, null, null);
+				null, null, null, null, null);
 	}
 
 	@org.springframework.beans.factory.annotation.Autowired
@@ -91,6 +93,8 @@ public class DemandeAdministrativeRhService {
 			AuteurParametreResolver auteurResolver,
 			WorkflowActivationService workflowActivationService,
 			WorkflowDemarrageService workflowDemarrageService,
+			com.hr.referentiel.client.WorkflowMoteurClient moteurClient,
+			WorkflowVariablesBuilder variablesBuilder,
 			org.springframework.transaction.PlatformTransactionManager txManager) {
 		this.parametreService = parametreService;
 		this.congeDecompteService = congeDecompteService;
@@ -106,6 +110,8 @@ public class DemandeAdministrativeRhService {
 		this.numeroLisibleService = numeroLisibleService;
 		this.workflowActivationService = workflowActivationService;
 		this.workflowDemarrageService = workflowDemarrageService;
+		this.moteurClient = moteurClient;
+		this.variablesBuilder = variablesBuilder;
 		if (txManager != null) {
 			this.txEcriture = new org.springframework.transaction.support.TransactionTemplate(txManager);
 			this.txLecture = new org.springframework.transaction.support.TransactionTemplate(txManager);
@@ -233,7 +239,7 @@ public class DemandeAdministrativeRhService {
 	@Transactional(readOnly = true)
 	public List<DemandeAdministrativeRhResponse> demandesEnAttenteRo(Jwt jwt) {
 		Collaborateur manager = collaborateurConnecteService.exigerCollaborateur(jwt);
-		return versReponses(demandeRepo.findByValideurAttenduIdAndStatutOrderByCreeLeDesc(
+		return versReponses(demandeRepo.findEnAttenteRoHerite(
 				manager.getId(), StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR));
 	}
 
@@ -315,15 +321,29 @@ public class DemandeAdministrativeRhService {
 				d.getId(), d.getTypeDemande(), d.getStatut(), avecRo,
 				etapesAdministratif(d.getStatut(), avecRo, snapshot, actions));
 		response.setNumero(d.getNumero());
+		response.setWorkflowMode(d.getWorkflowMode());
+		response.setWorkflowInstanceId(d.getWorkflowInstanceId());
+		response.setEtapeCouranteLibelle(d.getWorkflowEtapeLibelle());
+		response.setEcheanceLe(d.getWorkflowEcheanceLe());
 		enrichirValideurSuivi(response, snapshot, d.getStatut(), d.getDemandeur());
 		return response;
 	}
 
 	// ─── Validation RO ────────────────────────────────────────────────────────
 
+	private static final String MESSAGE_DEMANDE_SOUS_WORKFLOW = "Cette demande se traite depuis Mes tâches.";
+
+	private static boolean estModeMoteur(DemandeAdministrativeRh d) {
+		return WorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode());
+	}
+
 	@Transactional
 	public DemandeAdministrativeRhResponse validerSuperieur(UUID id, Jwt jwt) {
 		DemandeAdministrativeRh d = chargerPourDecision(id);
+		if (estModeMoteur(d)) {
+			verifierEstRoDuDemandeurEtRetourner(jwt, d);
+			throw ReferentielMetierException.conflict("DEMANDE_SOUS_WORKFLOW", MESSAGE_DEMANDE_SOUS_WORKFLOW);
+		}
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR,
 				"Cette demande n'est pas en attente de validation du responsable.");
 		Collaborateur ro = verifierEstRoDuDemandeurEtRetourner(jwt, d);
@@ -348,6 +368,10 @@ public class DemandeAdministrativeRhService {
 	@Transactional
 	public DemandeAdministrativeRhResponse refuserSuperieur(UUID id, Jwt jwt, DemandeRefusRequest req) {
 		DemandeAdministrativeRh d = chargerPourDecision(id);
+		if (estModeMoteur(d)) {
+			verifierEstRoDuDemandeurEtRetourner(jwt, d);
+			throw ReferentielMetierException.conflict("DEMANDE_SOUS_WORKFLOW", MESSAGE_DEMANDE_SOUS_WORKFLOW);
+		}
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR,
 				"Cette demande n'est pas en attente de validation du responsable.");
 		Collaborateur ro = verifierEstRoDuDemandeurEtRetourner(jwt, d);
@@ -373,6 +397,10 @@ public class DemandeAdministrativeRhService {
 	@Transactional
 	public DemandeAdministrativeRhResponse validerRrh(UUID id, Jwt jwt) {
 		DemandeAdministrativeRh d = chargerPourDecision(id);
+		if (estModeMoteur(d)) {
+			verifierPasPropreDemandeRrh(jwt, d);
+			throw ReferentielMetierException.conflict("DEMANDE_SOUS_WORKFLOW", MESSAGE_DEMANDE_SOUS_WORKFLOW);
+		}
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_RRH,
 				"Cette demande n'est pas en attente de validation de la RH.");
 		Collaborateur rh = verifierPasPropreDemandeRrh(jwt, d);
@@ -396,6 +424,10 @@ public class DemandeAdministrativeRhService {
 	@Transactional
 	public DemandeAdministrativeRhResponse refuserRrh(UUID id, Jwt jwt, DemandeRefusRequest req) {
 		DemandeAdministrativeRh d = chargerPourDecision(id);
+		if (estModeMoteur(d)) {
+			verifierPasPropreDemandeRrh(jwt, d);
+			throw ReferentielMetierException.conflict("DEMANDE_SOUS_WORKFLOW", MESSAGE_DEMANDE_SOUS_WORKFLOW);
+		}
 		verifierStatut(d, StatutDemandeAdministrativeRh.EN_VALIDATION_RRH,
 				"Cette demande n'est pas en attente de validation de la RH.");
 		Collaborateur rh = verifierPasPropreDemandeRrh(jwt, d);
@@ -415,10 +447,92 @@ public class DemandeAdministrativeRhService {
 		return toResponse(d);
 	}
 
-	// ─── Annulation par le demandeur ──────────────────────────────────────────
+	// ─── Annulation par le demandeur (D-W5-11) ────────────────────────────────
 
-	@Transactional
+	private record ContexteAnnulationMoteur(
+			boolean modeMoteur,
+			boolean aDemarrer,
+			UUID instanceId,
+			com.hr.referentiel.client.WorkflowMoteurClient.ActeurInterne acteur
+	) {
+	}
+
 	public DemandeAdministrativeRhResponse annuler(UUID id, Jwt jwt) {
+		if (txLecture == null || moteurClient == null) {
+			return annulerHeriteEnTransaction(id, jwt);
+		}
+		ContexteAnnulationMoteur ctx = txLecture.execute(status -> {
+			DemandeAdministrativeRh d = demandeRepo.findByIdAvecDemandeur(id)
+					.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable."));
+			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
+			if (!d.getDemandeur().getId().equals(c.getId())) {
+				throw new AccessDeniedException("Seul le demandeur peut annuler sa demande.");
+			}
+			if (!estModeMoteur(d)) {
+				return new ContexteAnnulationMoteur(false, false, null, null);
+			}
+			if (d.getStatut() == StatutDemandeAdministrativeRh.APPROUVEE
+					&& d.getTypeDemande() == TypeDemandeAdministrativeRh.CONGE) {
+				throw new AccessDeniedException("Pour annuler un congé approuvé, contactez les RH.");
+			}
+			if (d.getStatut() != StatutDemandeAdministrativeRh.EN_COURS
+					&& d.getStatut() != StatutDemandeAdministrativeRh.A_COMPLETER) {
+				throw ReferentielMetierException.conflict("DEMANDE_DEJA_DECIDEE",
+						"Annulation impossible : la demande est « " + d.getStatut().getLibelle() + " ».");
+			}
+			boolean aDemarrer = WorkflowDemarrageService.ETAT_A_DEMARRER.equals(d.getWorkflowEtat())
+					|| d.getWorkflowInstanceId() == null;
+			var acteur = new com.hr.referentiel.client.WorkflowMoteurClient.ActeurInterne(
+					c.getCompteUtilisateurId(), c.getId(), nomComplet(c));
+			return new ContexteAnnulationMoteur(true, aDemarrer, d.getWorkflowInstanceId(), acteur);
+		});
+
+		if (ctx == null || !ctx.modeMoteur()) {
+			return txEcriture.execute(status -> annulerHeriteEnTransaction(id, jwt));
+		}
+		if (ctx.aDemarrer()) {
+			return txEcriture.execute(status -> annulerLocalementMoteur(id, jwt));
+		}
+
+		// D-W5-11 : appel moteur HORS transaction
+		var issue = moteurClient.annuler(ctx.instanceId(), "Annulée par le demandeur", ctx.acteur());
+		if (issue == com.hr.referentiel.client.WorkflowMoteurClient.IssueAnnulation.INSTANCE_TERMINEE) {
+			DemandeAdministrativeRh relue = txLecture.execute(status -> charger(id));
+			throw ReferentielMetierException.conflict("DEMANDE_DEJA_DECIDEE",
+					"Annulation impossible : la demande est « "
+							+ (relue != null ? relue.getStatut().getLibelle() : "déjà décidée") + " ».");
+		}
+		if (issue == com.hr.referentiel.client.WorkflowMoteurClient.IssueAnnulation.INDISPONIBLE) {
+			throw ReferentielMetierException.serviceUnavailable("SERVICE_INDISPONIBLE",
+					"Annulation momentanément impossible, réessayez dans quelques instants.");
+		}
+		return txEcriture.execute(status -> annulerLocalementMoteur(id, jwt));
+	}
+
+	private DemandeAdministrativeRhResponse annulerLocalementMoteur(UUID id, Jwt jwt) {
+		DemandeAdministrativeRh d = chargerPourDecision(id);
+		Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
+		if (!d.getDemandeur().getId().equals(c.getId())) {
+			throw new AccessDeniedException("Seul le demandeur peut annuler sa demande.");
+		}
+		if (d.getStatut() == StatutDemandeAdministrativeRh.ANNULEE) {
+			return toResponse(d);
+		}
+		if (d.getStatut() != StatutDemandeAdministrativeRh.EN_COURS
+				&& d.getStatut() != StatutDemandeAdministrativeRh.A_COMPLETER) {
+			throw ReferentielMetierException.conflict("DEMANDE_DEJA_DECIDEE",
+					"Annulation impossible : la demande est « " + d.getStatut().getLibelle() + " ».");
+		}
+		d.setStatut(StatutDemandeAdministrativeRh.ANNULEE);
+		d.setMotifAnnulation("Annulée par le demandeur");
+		demandeRepo.save(d);
+		enregistrerWorkflow(d, ActionWorkflowAdministratif.ANNULATION_DEMANDEUR,
+				c.getId(), nomComplet(c), "Annulée par le demandeur");
+		// Aucune notification métier du référentiel en mode MOTEUR
+		return toResponse(d);
+	}
+
+	private DemandeAdministrativeRhResponse annulerHeriteEnTransaction(UUID id, Jwt jwt) {
 		DemandeAdministrativeRh d = chargerPourDecision(id);
 		Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
 		if (!d.getDemandeur().getId().equals(c.getId())) {
@@ -448,6 +562,97 @@ public class DemandeAdministrativeRhService {
 		notificationPublisher.notifierAnnulationDemandeur(demandeur, d.getTypeDemande().name(), d.getValideurAttendu(), d.getId(), d.getNumero());
 
 		return toResponse(d);
+	}
+
+	// ─── Complément fourni par le demandeur (D-W5-12) ─────────────────────────
+
+	private record ContexteComplement(
+			UUID instanceId,
+			com.hr.referentiel.client.WorkflowMoteurClient.ActeurInterne acteur
+	) {
+	}
+
+	private record ResultatComplementTx(
+			DemandeAdministrativeRhResponse reponse,
+			Map<String, Object> variables
+	) {
+	}
+
+	public DemandeAdministrativeRhResponse fournirComplement(UUID id, DemandeComplementRequest req, Jwt jwt) {
+		if (txLecture == null || moteurClient == null) {
+			throw ReferentielMetierException.serviceUnavailable("SERVICE_INDISPONIBLE",
+					"Service de workflow non configuré.");
+		}
+		String commentaire = req.commentaire().trim();
+		ContexteComplement ctx = txLecture.execute(status -> {
+			DemandeAdministrativeRh d = demandeRepo.findByIdAvecDemandeur(id)
+					.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable."));
+			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
+			if (!d.getDemandeur().getId().equals(c.getId())) {
+				throw new AccessDeniedException("Seul le demandeur peut fournir un complément sur sa demande.");
+			}
+			if (!estModeMoteur(d)
+					|| d.getStatut() != StatutDemandeAdministrativeRh.A_COMPLETER
+					|| d.getWorkflowInstanceId() == null) {
+				throw ReferentielMetierException.conflict("ETAT_INCORRECT",
+						"Un complément ne peut être fourni que sur une demande en attente de complément.");
+			}
+			var acteur = new com.hr.referentiel.client.WorkflowMoteurClient.ActeurInterne(
+					c.getCompteUtilisateurId(), c.getId(), nomComplet(c));
+			return new ContexteComplement(d.getWorkflowInstanceId(), acteur);
+		});
+
+		// D-W5-12 : appel moteur HORS transaction (peut rappeler l'endpoint d'effet du référentiel)
+		var issue = moteurClient.complementFourni(ctx.instanceId(), ctx.acteur(), commentaire);
+		if (issue == com.hr.referentiel.client.WorkflowMoteurClient.IssueComplement.ETAT_INCORRECT) {
+			throw ReferentielMetierException.conflict("ETAT_INCORRECT",
+					"La demande n'est plus en attente de complément.");
+		}
+		if (issue == com.hr.referentiel.client.WorkflowMoteurClient.IssueComplement.INDISPONIBLE) {
+			throw ReferentielMetierException.serviceUnavailable("SERVICE_INDISPONIBLE",
+					"Envoi du complément momentanément impossible, réessayez dans quelques instants.");
+		}
+
+		ResultatComplementTx res = txEcriture.execute(status -> {
+			DemandeAdministrativeRh d = chargerPourDecision(id);
+			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
+			// Si elle est encore A_COMPLETER → EN_COURS ; sinon déjà décidée par un effet pendant la réactivation
+			if (d.getStatut() == StatutDemandeAdministrativeRh.A_COMPLETER) {
+				d.setStatut(StatutDemandeAdministrativeRh.EN_COURS);
+			}
+			if (req.piecesJointes() != null && !req.piecesJointes().isEmpty()) {
+				ajouterPiecesJointes(d, req.piecesJointes());
+			}
+			demandeRepo.save(d);
+			enregistrerWorkflow(d, ActionWorkflowAdministratif.COMPLEMENT_FOURNI,
+					c.getId(), nomComplet(c), commentaire);
+			Map<String, Object> vars = variablesBuilder != null ? variablesBuilder.construire(d) : null;
+			return new ResultatComplementTx(toResponse(d), vars);
+		});
+
+		// Recalcul et envoi des variables HORS transaction
+		if (res != null && res.variables() != null) {
+			moteurClient.majVariables(ctx.instanceId(), res.variables());
+		}
+		return res != null ? res.reponse() : null;
+	}
+
+	private static void ajouterPiecesJointes(DemandeAdministrativeRh d, List<Object> nouvelles) {
+		Map<String, Object> contenu = d.getContenu() != null ? new HashMap<>(d.getContenu()) : new HashMap<>();
+		List<Object> liste = new ArrayList<>();
+		Object existant = contenu.get("pieces_jointes");
+		if (existant instanceof Collection<?> col) {
+			liste.addAll(col);
+		} else if (existant != null && !String.valueOf(existant).isBlank()) {
+			liste.add(existant);
+		}
+		for (Object pj : nouvelles) {
+			if (pj != null) {
+				liste.add(pj);
+			}
+		}
+		contenu.put("pieces_jointes", liste);
+		d.setContenu(contenu);
 	}
 
 	// ─── Annulation par la RH d'un congé approuvé (D4) ───────────────────────
@@ -681,6 +886,10 @@ public class DemandeAdministrativeRhService {
 			r.setValideurAttenduIdentifiant(snapshot.getId());
 			r.setValideurAttenduNomComplet(nomComplet(snapshot));
 		}
+		r.setWorkflowMode(d.getWorkflowMode());
+		r.setWorkflowInstanceId(d.getWorkflowInstanceId());
+		r.setEtapeCouranteLibelle(d.getWorkflowEtapeLibelle());
+		r.setEcheanceLe(d.getWorkflowEcheanceLe());
 		return r;
 	}
 

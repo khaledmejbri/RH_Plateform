@@ -26,6 +26,14 @@ public interface DemandeAdministrativeRhRepository extends JpaRepository<Demande
 	List<DemandeAdministrativeRh> findByValideurAttenduIdAndStatutOrderByCreeLeDesc(
 			UUID valideurAttenduId, StatutDemandeAdministrativeRh statut);
 
+	/** D-W5-13 : exclut en base les demandes {@code MOTEUR} de la file héritée {@code en-attente-ro}. */
+	@Query("select d from DemandeAdministrativeRh d where d.valideurAttendu.id = :valideurId "
+			+ "and d.statut = :statut and (d.workflowMode is null or d.workflowMode <> 'MOTEUR') "
+			+ "order by d.creeLe desc")
+	List<DemandeAdministrativeRh> findEnAttenteRoHerite(
+			@Param("valideurId") UUID valideurId,
+			@Param("statut") StatutDemandeAdministrativeRh statut);
+
 	List<DemandeAdministrativeRh> findByDemandeurIdAndTypeDemandeOrderByCreeLeDesc(UUID demandeurId,
 			TypeDemandeAdministrativeRh typeDemande);
 
