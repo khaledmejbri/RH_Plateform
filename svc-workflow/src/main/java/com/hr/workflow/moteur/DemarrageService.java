@@ -444,7 +444,8 @@ public class DemarrageService {
 			String libelle = taches.isEmpty() ? inst.getEtapeCouranteCode() : taches.get(0).getLibelle();
 			etapeDto = new EtapeCouranteDto(inst.getEtapeCouranteCode(), libelle, echeance, null);
 		}
-		String effetImmediat = (inst.getStatut() == StatutInstance.APPROUVEE && inst.getEtapeCouranteCode() == null)
+		boolean sansEtapeHumaine = tacheRepository.findByInstanceId(inst.getId()).isEmpty();
+		String effetImmediat = (inst.getStatut() == StatutInstance.APPROUVEE && sansEtapeHumaine)
 				? "APPROUVER" : null;
 		return new DemarrerInstanceResponse(inst.getId(), inst.getStatut(), etapeDto, effetImmediat);
 	}

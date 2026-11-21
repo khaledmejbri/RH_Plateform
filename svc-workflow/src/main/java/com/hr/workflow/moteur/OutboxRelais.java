@@ -95,6 +95,8 @@ public class OutboxRelais {
 					} else {
 						log.warn("Échec publication outbox {} (tentative {}) sur {}", msg.getId(), tentatives, msg.getSujet());
 					}
+					outboxRepository.save(msg);
+					break;
 				}
 				outboxRepository.save(msg);
 			}

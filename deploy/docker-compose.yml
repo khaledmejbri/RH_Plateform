@@ -184,9 +184,9 @@ services:
       <<: *env-commun
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/workflow_db
       APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
-      WORKFLOW_REFERENTIEL_BASE_URL: http://svc-referentiel-rh:8083
-      WORKFLOW_PROPRIETAIRE_REFERENTIEL_BASE_URL: http://svc-referentiel-rh:8083
-      WORKFLOW_PROPRIETAIRE_PRESENCE_BASE_URL: http://svc-presence:8086
+      WORKFLOW_REFERENTIEL_BASE_URL: ${WORKFLOW_REFERENTIEL_BASE_URL:-http://svc-referentiel-rh:8083}
+      WORKFLOW_PROPRIETAIRE_REFERENTIEL_BASE_URL: ${WORKFLOW_PROPRIETAIRE_REFERENTIEL_BASE_URL:-http://svc-referentiel-rh:8083}
+      WORKFLOW_PROPRIETAIRE_PRESENCE_BASE_URL: ${WORKFLOW_PROPRIETAIRE_PRESENCE_BASE_URL:-http://svc-presence:8086}
 
   # ---------- Front et HTTPS ----------
   web:

@@ -2,6 +2,7 @@ package com.hr.workflow.service;
 
 import com.hr.workflow.catalogue.CatalogueTypesObjet;
 import com.hr.workflow.catalogue.CatalogueTypesObjet.TypeObjetCatalogue;
+import com.hr.workflow.client.WorkflowReferentielClient;
 import com.hr.workflow.domain.StatutInstance;
 import com.hr.workflow.domain.StatutTache;
 import com.hr.workflow.domain.TypeTache;
@@ -49,7 +50,9 @@ public class InstanceInterneService {
 	private final OutboxService outboxService;
 	private final DecisionService decisionService;
 	private final WorkflowUtilisateurService utilisateurService;
+	private final WorkflowReferentielClient referentielClient;
 	private final TransactionTemplate txReadOnly;
+	private final TransactionTemplate txWrite;
 	private final Clock clock;
 
 	public InstanceInterneService(
@@ -61,6 +64,7 @@ public class InstanceInterneService {
 			OutboxService outboxService,
 			DecisionService decisionService,
 			WorkflowUtilisateurService utilisateurService,
+			WorkflowReferentielClient referentielClient,
 			PlatformTransactionManager transactionManager,
 			Clock clock) {
 		this.instanceRepository = instanceRepository;
@@ -71,8 +75,10 @@ public class InstanceInterneService {
 		this.outboxService = outboxService;
 		this.decisionService = decisionService;
 		this.utilisateurService = utilisateurService;
+		this.referentielClient = referentielClient;
 		this.txReadOnly = new TransactionTemplate(transactionManager);
 		this.txReadOnly.setReadOnly(true);
+		this.txWrite = new TransactionTemplate(transactionManager);
 		this.clock = clock;
 	}
 
@@ -91,58 +97,65 @@ public class InstanceInterneService {
 		return fusion;
 	}
 
-	@Transactional
 	public void annuler(UUID instanceId, AnnulerInstanceRequest req) {
-		WfInstance inst = instanceRepository.findByIdForUpdate(instanceId)
-				.orElseThrow(() -> WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable."));
-		if (inst.getStatut() == StatutInstance.ANNULEE) {
-			return;
-		}
-		if (inst.getStatut().estTerminale()) {
-			throw WorkflowMetierException.conflict("INSTANCE_TERMINEE", "Instance déjà terminée.");
-		}
+		String nomActeurResolu = (req != null && req.acteur() != null && req.acteur().compteId() != null
+				&& (req.acteur().nom() == null || req.acteur().nom().isBlank()))
+				? referentielClient.nomAfficheOuRepli(req.acteur().compteId(), null)
+				: null;
 
-		Instant maintenant = clock.instant();
-		String motif = req != null && req.motif() != null ? req.motif() : "Annulée par le demandeur";
-		UUID acteurCompteId = req != null && req.acteur() != null ? req.acteur().compteId() : inst.getDemandeurCompteId();
-		String acteurNom = req != null && req.acteur() != null && req.acteur().nom() != null
-				? req.acteur().nom() : inst.getDemandeurNom();
+		txWrite.executeWithoutResult(status -> {
+			WfInstance inst = instanceRepository.findByIdForUpdate(instanceId)
+					.orElseThrow(() -> WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable."));
+			if (inst.getStatut() == StatutInstance.ANNULEE) {
+				return;
+			}
+			if (inst.getStatut().estTerminale()) {
+				throw WorkflowMetierException.conflict("INSTANCE_TERMINEE", "Instance déjà terminée.");
+			}
 
-		TypeObjetCatalogue tc = catalogue.findByObjetType(inst.getObjetType()).orElse(null);
-		String typeLibelle = tc != null ? tc.libelle() : inst.getObjetType();
+			Instant maintenant = clock.instant();
+			String motif = req != null && req.motif() != null ? req.motif() : "Annulée par le demandeur";
+			UUID acteurCompteId = req != null && req.acteur() != null ? req.acteur().compteId() : inst.getDemandeurCompteId();
+			String acteurNom = (req != null && req.acteur() != null && req.acteur().nom() != null && !req.acteur().nom().isBlank())
+					? req.acteur().nom()
+					: (nomActeurResolu != null ? nomActeurResolu : inst.getDemandeurNom());
 
-		UUID evId = UUID.randomUUID();
-		List<WfTache> tachesOuvertes = tacheRepository.findByInstanceIdAndStatutIn(
-				instanceId, List.of(StatutTache.A_TRAITER, StatutTache.RESERVEE));
-		for (WfTache t : tachesOuvertes) {
-			t.setStatut(StatutTache.ANNULEE);
-			tacheRepository.save(t);
-			for (WfTacheCandidat cand : candidatRepository.findByIdTacheIdAndRetireLeIsNull(t.getId())) {
-				if (cand.getCompteId() != null) {
-					String texte = TextesNotificationWorkflow.annuleeParDemandeur(
-							typeLibelle, inst.getDemandeurNom(), inst.getObjetNumero());
-					outboxService.publierNotification(evId, cand.getCompteId().toString(), "WEBSOCKET",
-							"WF_FIN", "Demande annulée", texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+			TypeObjetCatalogue tc = catalogue.findByObjetType(inst.getObjetType()).orElse(null);
+			String typeLibelle = tc != null ? tc.libelle() : inst.getObjetType();
+
+			UUID evId = UUID.randomUUID();
+			List<WfTache> tachesOuvertes = tacheRepository.findByInstanceIdAndStatutIn(
+					instanceId, List.of(StatutTache.A_TRAITER, StatutTache.RESERVEE));
+			for (WfTache t : tachesOuvertes) {
+				t.setStatut(StatutTache.ANNULEE);
+				tacheRepository.save(t);
+				for (WfTacheCandidat cand : candidatRepository.findByIdTacheIdAndRetireLeIsNull(t.getId())) {
+					if (cand.getCompteId() != null) {
+						String texte = TextesNotificationWorkflow.annuleeParDemandeur(
+								typeLibelle, inst.getDemandeurNom(), inst.getObjetNumero());
+						outboxService.publierNotification(evId, cand.getCompteId().toString(), "WEBSOCKET",
+								"WF_FIN", "Demande annulée", texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+					}
 				}
 			}
-		}
 
-		inst.setStatut(StatutInstance.ANNULEE);
-		inst.setEtapeCouranteCode(null);
-		inst.setTermineLe(maintenant);
-		inst.setResultatMotif(motif);
-		instanceRepository.save(inst);
+			inst.setStatut(StatutInstance.ANNULEE);
+			inst.setEtapeCouranteCode(null);
+			inst.setTermineLe(maintenant);
+			inst.setResultatMotif(motif);
+			instanceRepository.save(inst);
 
-		WfHistorique h = new WfHistorique();
-		h.setInstanceId(inst.getId());
-		h.setTypeEvenement("INSTANCE_ANNULEE");
-		h.setActeurCompteId(acteurCompteId);
-		h.setActeurNom(acteurNom);
-		h.setDetails(Map.of("motif", motif));
-		h.setHorodatage(maintenant);
-		historiqueRepository.save(h);
+			WfHistorique h = new WfHistorique();
+			h.setInstanceId(inst.getId());
+			h.setTypeEvenement("INSTANCE_ANNULEE");
+			h.setActeurCompteId(acteurCompteId);
+			h.setActeurNom(acteurNom);
+			h.setDetails(Map.of("motif", motif));
+			h.setHorodatage(maintenant);
+			historiqueRepository.save(h);
 
-		outboxService.publierEvenementWorkflow(evId, "INSTANCE_TERMINEE", inst, null, null, null);
+			outboxService.publierEvenementWorkflow(evId, "INSTANCE_TERMINEE", inst, null, null, null);
+		});
 	}
 
 	/** Complément fourni côté propriétaire : clôt la tâche {@code COMPLEMENT} ouverte et réactive l'étape (D-W10). */

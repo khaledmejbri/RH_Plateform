@@ -1,6 +1,7 @@
 package com.hr.workflow.web;
 
 import com.hr.workflow.catalogue.CatalogueTypesObjet;
+import com.hr.workflow.client.WorkflowReferentielClient;
 import com.hr.workflow.config.WorkflowSecurityExpressions;
 import com.hr.workflow.dto.AdminWorkflowDtos.ActionVersionRequest;
 import com.hr.workflow.dto.AdminWorkflowDtos.ActivationResponse;
@@ -51,16 +52,23 @@ public class WorkflowAdminController {
 	private final ActivationService activationService;
 	private final ModeleVersionService modeleVersionService;
 	private final SimulationService simulationService;
+	private final WorkflowReferentielClient referentielClient;
 
 	public WorkflowAdminController(
 			CatalogueTypesObjet catalogue,
 			ActivationService activationService,
 			ModeleVersionService modeleVersionService,
-			SimulationService simulationService) {
+			SimulationService simulationService,
+			WorkflowReferentielClient referentielClient) {
 		this.catalogue = catalogue;
 		this.activationService = activationService;
 		this.modeleVersionService = modeleVersionService;
 		this.simulationService = simulationService;
+		this.referentielClient = referentielClient;
+	}
+
+	private String auteurNom(Authentication auth) {
+		return referentielClient.nomAfficheOuRepli(IdentiteJwt.compteId(auth), IdentiteJwt.nomAffiche(auth));
 	}
 
 	@GetMapping("/catalogue")
@@ -81,7 +89,7 @@ public class WorkflowAdminController {
 			@PathVariable("objetType") String objetType,
 			@Valid @RequestBody ModifierActivationRequest req,
 			Authentication auth) {
-		return activationService.modifier(objetType, req, IdentiteJwt.compteId(auth), IdentiteJwt.nomAffiche(auth));
+		return activationService.modifier(objetType, req, IdentiteJwt.compteId(auth), auteurNom(auth));
 	}
 
 	@GetMapping("/modeles")
@@ -98,7 +106,7 @@ public class WorkflowAdminController {
 	@ResponseStatus(HttpStatus.CREATED)
 	@PreAuthorize(WorkflowSecurityExpressions.BACKOFFICE_ECRITURE)
 	public ModeleDetailResponse creerModele(@Valid @RequestBody CreerModeleRequest req, Authentication auth) {
-		return modeleVersionService.creerModele(req, IdentiteJwt.compteId(auth), IdentiteJwt.nomAffiche(auth));
+		return modeleVersionService.creerModele(req, IdentiteJwt.compteId(auth), auteurNom(auth));
 	}
 
 	@GetMapping("/modeles/{id}")
@@ -113,7 +121,7 @@ public class WorkflowAdminController {
 			@PathVariable("id") UUID id,
 			@Valid @RequestBody ModifierModeleRequest req,
 			Authentication auth) {
-		return modeleVersionService.modifierModele(id, req, IdentiteJwt.compteId(auth), IdentiteJwt.nomAffiche(auth));
+		return modeleVersionService.modifierModele(id, req, IdentiteJwt.compteId(auth), auteurNom(auth));
 	}
 
 	@PostMapping("/modeles/{id}/activer")
@@ -122,7 +130,7 @@ public class WorkflowAdminController {
 			@PathVariable("id") UUID id,
 			@Valid @RequestBody ActionVersionRequest req,
 			Authentication auth) {
-		return modeleVersionService.activerModele(id, req, IdentiteJwt.compteId(auth), IdentiteJwt.nomAffiche(auth));
+		return modeleVersionService.activerModele(id, req, IdentiteJwt.compteId(auth), auteurNom(auth));
 	}
 
 	@PostMapping("/modeles/{id}/desactiver")
@@ -131,7 +139,7 @@ public class WorkflowAdminController {
 			@PathVariable("id") UUID id,
 			@Valid @RequestBody ActionVersionRequest req,
 			Authentication auth) {
-		return modeleVersionService.desactiverModele(id, req, IdentiteJwt.compteId(auth), IdentiteJwt.nomAffiche(auth));
+		return modeleVersionService.desactiverModele(id, req, IdentiteJwt.compteId(auth), auteurNom(auth));
 	}
 
 	@DeleteMapping("/modeles/{id}")
@@ -151,7 +159,7 @@ public class WorkflowAdminController {
 	@ResponseStatus(HttpStatus.CREATED)
 	@PreAuthorize(WorkflowSecurityExpressions.BACKOFFICE_ECRITURE)
 	public VersionDetailResponse creerBrouillon(@PathVariable("id") UUID id, Authentication auth) {
-		return modeleVersionService.creerBrouillon(id, IdentiteJwt.compteId(auth), IdentiteJwt.nomAffiche(auth));
+		return modeleVersionService.creerBrouillon(id, IdentiteJwt.compteId(auth), auteurNom(auth));
 	}
 
 	@GetMapping("/versions/{vid}")
@@ -166,7 +174,7 @@ public class WorkflowAdminController {
 			@PathVariable("vid") UUID vid,
 			@Valid @RequestBody ModifierVersionRequest req,
 			Authentication auth) {
-		return modeleVersionService.modifierBrouillon(vid, req, IdentiteJwt.compteId(auth), IdentiteJwt.nomAffiche(auth));
+		return modeleVersionService.modifierBrouillon(vid, req, IdentiteJwt.compteId(auth), auteurNom(auth));
 	}
 
 	@PostMapping("/versions/{vid}/valider")
@@ -189,14 +197,14 @@ public class WorkflowAdminController {
 			@PathVariable("vid") UUID vid,
 			@Valid @RequestBody ActionVersionRequest req,
 			Authentication auth) {
-		return modeleVersionService.publier(vid, req, IdentiteJwt.compteId(auth), IdentiteJwt.nomAffiche(auth));
+		return modeleVersionService.publier(vid, req, IdentiteJwt.compteId(auth), auteurNom(auth));
 	}
 
 	@DeleteMapping("/versions/{vid}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@PreAuthorize(WorkflowSecurityExpressions.BACKOFFICE_ECRITURE)
 	public void supprimerBrouillon(@PathVariable("vid") UUID vid, Authentication auth) {
-		modeleVersionService.supprimerBrouillon(vid, IdentiteJwt.compteId(auth), IdentiteJwt.nomAffiche(auth));
+		modeleVersionService.supprimerBrouillon(vid, IdentiteJwt.compteId(auth), auteurNom(auth));
 	}
 
 	@GetMapping("/versions/{vid}/comparer/{autreVid}")

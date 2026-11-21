@@ -136,6 +136,20 @@ public class WorkflowReferentielClient {
 		});
 	}
 
+	public String nomAfficheOuRepli(UUID compteId, String repli) {
+		if (compteId == null) {
+			return repli;
+		}
+		try {
+			return collaborateurParCompte(compteId)
+					.map(CollaborateurResume::nom)
+					.filter(n -> n != null && !n.isBlank())
+					.orElse(repli);
+		} catch (WorkflowMetierException ex) {
+			return repli;
+		}
+	}
+
 	/** Marque une fonction comme utilisée lors de la publication d'une version (D-W3-05). */
 	public void marquerFonctionUtilisee(String codeFonction) {
 		executerAvecCloison(() -> {

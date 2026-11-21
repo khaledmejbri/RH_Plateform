@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -73,24 +74,33 @@ class OutboxRelaisTest {
 	}
 
 	@Test
-	void relayerLot_echecKafka_incrementeTentativesEtPlanifieBackoff() {
-		WfOutbox msg = new WfOutbox();
-		msg.setId(UUID.randomUUID());
-		msg.setSujet("rh.notifications");
-		msg.setCle("compte-1");
-		msg.setCharge("{}");
-		msg.setTentatives(0);
+	void relayerLot_echecKafka_incrementeTentativesEtArreteLeLot() {
+		WfOutbox msg1 = new WfOutbox();
+		msg1.setId(UUID.randomUUID());
+		msg1.setSujet("rh.notifications");
+		msg1.setCle("compte-1");
+		msg1.setCharge("{}");
+		msg1.setTentatives(0);
 
-		when(outboxRepository.verrouillerLotAPublier(eq(t0), anyInt())).thenReturn(List.of(msg));
+		WfOutbox msg2 = new WfOutbox();
+		msg2.setId(UUID.randomUUID());
+		msg2.setSujet("rh.notifications");
+		msg2.setCle("compte-2");
+		msg2.setCharge("{}");
+		msg2.setTentatives(0);
+
+		when(outboxRepository.verrouillerLotAPublier(eq(t0), anyInt())).thenReturn(List.of(msg1, msg2));
 		when(kafkaTemplate.send(any(ProducerRecord.class)))
 				.thenReturn(CompletableFuture.failedFuture(new RuntimeException("Broker indisponible")));
 
 		int ok = relais.relayerLot();
 		assertThat(ok).isEqualTo(0);
-		assertThat(msg.getPublieLe()).isNull();
-		assertThat(msg.getTentatives()).isEqualTo(1);
-		assertThat(msg.getProchaineTentativeLe()).isEqualTo(t0.plusSeconds(1));
-		assertThat(msg.getDerniereErreur()).contains("Broker indisponible");
+		assertThat(msg1.getPublieLe()).isNull();
+		assertThat(msg1.getTentatives()).isEqualTo(1);
+		assertThat(msg1.getProchaineTentativeLe()).isEqualTo(t0.plusSeconds(1));
+		assertThat(msg1.getDerniereErreur()).contains("Broker indisponible");
+		assertThat(msg2.getTentatives()).isEqualTo(0);
+		verify(kafkaTemplate, times(1)).send(any(ProducerRecord.class));
 	}
 
 	@Test

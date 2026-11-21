@@ -49,6 +49,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -72,6 +73,7 @@ public class WorkflowUtilisateurService {
 	private final WfEtapeExecutionRepository etapeExecutionRepository;
 	private final WfBeneficiaireRepository beneficiaireRepository;
 	private final WorkflowReferentielClient referentielClient;
+	private final ModeleVersionService modeleVersionService;
 	private final DefinitionCodec codec;
 	private final EvaluateurCondition evaluateur = new EvaluateurCondition();
 	private final TransactionTemplate txReadOnly;
@@ -87,6 +89,7 @@ public class WorkflowUtilisateurService {
 			WfEtapeExecutionRepository etapeExecutionRepository,
 			WfBeneficiaireRepository beneficiaireRepository,
 			WorkflowReferentielClient referentielClient,
+			ModeleVersionService modeleVersionService,
 			DefinitionCodec codec,
 			PlatformTransactionManager transactionManager,
 			Clock clock) {
@@ -99,10 +102,18 @@ public class WorkflowUtilisateurService {
 		this.etapeExecutionRepository = etapeExecutionRepository;
 		this.beneficiaireRepository = beneficiaireRepository;
 		this.referentielClient = referentielClient;
+		this.modeleVersionService = modeleVersionService;
 		this.codec = codec;
 		this.txReadOnly = new TransactionTemplate(transactionManager);
 		this.txReadOnly.setReadOnly(true);
 		this.clock = clock;
+	}
+
+	private DefinitionWorkflow chargerDefinition(WfModeleVersion version) {
+		if (modeleVersionService != null) {
+			return modeleVersionService.chargerDefinition(version.getId());
+		}
+		return codec.deserialiser(version.getDefinition());
 	}
 
 	@Transactional(readOnly = true)
@@ -170,7 +181,7 @@ public class WorkflowUtilisateurService {
 			boolean enRetard = tache.getStatut() == StatutTache.A_TRAITER
 					&& tache.getEcheanceLe() != null
 					&& tache.getEcheanceLe().isBefore(maintenant);
-			List<String> actions = actionsPermisesSimple(tache.getType());
+			List<String> actions = actionsPermises(tache, inst);
 			return new TacheListeItemResponse(
 					tache.getId(), inst.getId(), tache.getType(), tache.getLibelle(),
 					inst.getObjetType(), objetLibelle, inst.getObjetNumero(), inst.getObjetId(),
@@ -216,7 +227,7 @@ public class WorkflowUtilisateurService {
 					.orElseThrow(() -> WorkflowMetierException.notFound("TACHE_INTROUVABLE", "Tâche introuvable."));
 			WfInstance inst = t.getInstance();
 
-			DefinitionWorkflow def = codec.deserialiser(inst.getModeleVersion().getDefinition());
+			DefinitionWorkflow def = chargerDefinition(inst.getModeleVersion());
 			EtapeDefinition etapeDef = def.etapes().stream()
 					.filter(e -> e.code().equals(t.getEtapeExecution().getEtapeCode()))
 					.findFirst().orElse(null);
@@ -275,7 +286,7 @@ public class WorkflowUtilisateurService {
 		return txReadOnly.execute(status -> {
 			WfInstance inst = instanceRepository.findByIdAvecVersion(instanceId)
 					.orElseThrow(() -> WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable."));
-			DefinitionWorkflow def = codec.deserialiser(inst.getModeleVersion().getDefinition());
+			DefinitionWorkflow def = chargerDefinition(inst.getModeleVersion());
 			return construireSuivi(inst, def, voirNomsPool);
 		});
 	}
@@ -306,7 +317,7 @@ public class WorkflowUtilisateurService {
 		return txReadOnly.execute(status -> {
 			WfInstance inst = instanceRepository.findByObjetTypeAndObjetIdAvecVersion(objetType, objetId)
 					.orElseThrow(() -> WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable."));
-			DefinitionWorkflow def = codec.deserialiser(inst.getModeleVersion().getDefinition());
+			DefinitionWorkflow def = chargerDefinition(inst.getModeleVersion());
 			return construireSuivi(inst, def, voirNomsPool);
 		});
 	}
@@ -361,9 +372,15 @@ public class WorkflowUtilisateurService {
 					: libelle;
 
 			List<WfTache> ts = tachesParEtape.getOrDefault(ee.getId(), List.of());
+			Comparator<WfTache> parPlusRecente = Comparator
+					.comparing((WfTache t) -> t.getStatut() == StatutTache.ANNULEE ? 0 : 1)
+					.thenComparing(WfTache::getDecideLe, Comparator.nullsLast(Comparator.naturalOrder()))
+					.thenComparing(WfTache::getEcheanceLe, Comparator.nullsLast(Comparator.naturalOrder()))
+					.thenComparing(WfTache::getId)
+					.reversed();
 			WfTache tPrincipale = ts.stream()
-					.filter(t -> t.getStatut() == StatutTache.TRAITEE || t.getStatut() == StatutTache.A_TRAITER || t.getStatut() == StatutTache.RESERVEE)
-					.findFirst().orElse(ts.isEmpty() ? null : ts.get(0));
+					.min(parPlusRecente)
+					.orElse(null);
 
 			List<String> nomsCandidats = null;
 			if (voirNomsPool && tPrincipale != null && ee.getStatut() == StatutEtapeExecution.ACTIVE) {
@@ -417,6 +434,20 @@ public class WorkflowUtilisateurService {
 				inst.getId(), inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero(),
 				inst.getModeleCode(), inst.getModeleVersionNumero(), inst.getStatut(),
 				couranteDto, inst.getDemarreLe(), inst.getTermineLe(), inst.getResultatMotif(), etapesDto);
+	}
+
+	private List<String> actionsPermises(WfTache tache, WfInstance inst) {
+		if (tache.getType() != TypeTache.VALIDATION) {
+			return actionsPermisesSimple(tache.getType());
+		}
+		DefinitionWorkflow def = chargerDefinition(inst.getModeleVersion());
+		String etapeCode = tache.getEtapeExecution() != null ? tache.getEtapeExecution().getEtapeCode() : null;
+		EtapeDefinition etapeDef = (def != null && def.etapes() != null && etapeCode != null)
+				? def.etapes().stream().filter(e -> etapeCode.equals(e.code())).findFirst().orElse(null)
+				: null;
+		return (etapeDef != null && etapeDef.actions() != null)
+				? etapeDef.actions()
+				: actionsPermisesSimple(tache.getType());
 	}
 
 	private static List<String> actionsPermisesSimple(TypeTache type) {

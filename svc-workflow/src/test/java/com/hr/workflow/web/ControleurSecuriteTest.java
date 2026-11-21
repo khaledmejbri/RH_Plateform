@@ -1,6 +1,7 @@
 package com.hr.workflow.web;
 
 import com.hr.workflow.catalogue.CatalogueTypesObjet;
+import com.hr.workflow.client.WorkflowReferentielClient;
 import com.hr.workflow.config.SecurityConfig;
 import com.hr.workflow.domain.ModeActivation;
 import com.hr.workflow.dto.AdminWorkflowDtos.PageResponse;
@@ -70,6 +71,7 @@ class ControleurSecuriteTest {
 	@MockitoBean private DecisionService decisionService;
 	@MockitoBean private DemarrageService demarrageService;
 	@MockitoBean private InstanceInterneService instanceInterneService;
+	@MockitoBean private WorkflowReferentielClient referentielClient;
 	@MockitoBean private JwtDecoder jwtDecoder;
 	@MockitoBean private CacheManager cacheManager;
 

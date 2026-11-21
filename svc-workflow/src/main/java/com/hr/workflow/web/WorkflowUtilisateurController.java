@@ -1,5 +1,6 @@
 package com.hr.workflow.web;
 
+import com.hr.workflow.client.WorkflowReferentielClient;
 import com.hr.workflow.config.WorkflowSecurityExpressions;
 import com.hr.workflow.dto.AdminWorkflowDtos.PageResponse;
 import com.hr.workflow.dto.WorkflowMoteurDtos.CompteurTachesResponse;
@@ -37,12 +38,15 @@ public class WorkflowUtilisateurController {
 
 	private final WorkflowUtilisateurService utilisateurService;
 	private final DecisionService decisionService;
+	private final WorkflowReferentielClient referentielClient;
 
 	public WorkflowUtilisateurController(
 			WorkflowUtilisateurService utilisateurService,
-			DecisionService decisionService) {
+			DecisionService decisionService,
+			WorkflowReferentielClient referentielClient) {
 		this.utilisateurService = utilisateurService;
 		this.decisionService = decisionService;
+		this.referentielClient = referentielClient;
 	}
 
 	@GetMapping("/types-ouverts")
@@ -83,11 +87,12 @@ public class WorkflowUtilisateurController {
 			@PathVariable("id") UUID id,
 			@Valid @RequestBody DecisionRequest req,
 			Authentication auth) {
+		UUID compteId = IdentiteJwt.compteId(auth);
 		ResultatDecision res = decisionService.decider(
 				id,
 				req,
-				IdentiteJwt.compteId(auth),
-				IdentiteJwt.nomAffiche(auth),
+				compteId,
+				referentielClient.nomAfficheOuRepli(compteId, IdentiteJwt.nomAffiche(auth)),
 				IdentiteJwt.estBackofficeLecture(auth));
 		if (res.decisionEnCours()) {
 			return ResponseEntity.status(HttpStatus.ACCEPTED).body(new DecisionEnCoursResponse("DECISION_EN_COURS"));

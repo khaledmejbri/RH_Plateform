@@ -80,7 +80,7 @@ class WorkflowUtilisateurServiceTest {
 		service = new WorkflowUtilisateurService(
 				catalogue, activationRepository, versionRepository, tacheRepository, candidatRepository,
 				instanceRepository, etapeExecutionRepository, beneficiaireRepository, referentielClient,
-				codec, txManager, Clock.fixed(maintenant, ZoneOffset.UTC));
+				null, codec, txManager, Clock.fixed(maintenant, ZoneOffset.UTC));
 
 		instanceId = UUID.randomUUID();
 		tacheId = UUID.randomUUID();
