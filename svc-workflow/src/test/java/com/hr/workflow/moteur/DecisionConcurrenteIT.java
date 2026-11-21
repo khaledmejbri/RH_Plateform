@@ -1,6 +1,14 @@
 package com.hr.workflow.moteur;
 
 import com.hr.workflow.WorkflowApplication;
+import com.hr.workflow.definition.DefinitionCodec;
+import com.hr.workflow.definition.DefinitionWorkflow;
+import com.hr.workflow.definition.DelaiDefinition;
+import com.hr.workflow.definition.EcheanceDefinition;
+import com.hr.workflow.definition.EtapeDefinition;
+import com.hr.workflow.definition.EtapeDefinition.RepliSiVideDefinition;
+import com.hr.workflow.definition.EtapeDefinition.TacheParalleleDefinition;
+import com.hr.workflow.definition.IntervenantsDefinition;
 import com.hr.workflow.domain.ModeActivation;
 import com.hr.workflow.domain.OrigineCandidat;
 import com.hr.workflow.domain.StatutEtapeExecution;
@@ -112,7 +120,12 @@ class DecisionConcurrenteIT {
 			}
 		});
 		fakeServer.createContext("/internal/referentiel/v1/workflow/resolutions", exchange -> {
-			byte[] resp = "{\"resultats\":{},\"contexte_demandeur\":{\"profil_acces\":\"COLLABORATEUR\",\"type_noeud\":\"SERVICE\",\"anciennete_mois\":12,\"est_manager\":false}}"
+			String collabId = UUID.randomUUID().toString();
+			String compteId = UUID.randomUUID().toString();
+			byte[] resp = ("{\"resultats\":{\"ETAPE_SUIV\":{\"candidats\":[{\"collaborateur_id\":\"" + collabId
+					+ "\",\"compte_id\":\"" + compteId
+					+ "\",\"nom\":\"Valideur Suivant\",\"intitule\":\"RH\"}],\"raison_vide\":null}},"
+					+ "\"contexte_demandeur\":{\"profil_acces\":\"COLLABORATEUR\",\"type_noeud\":\"SERVICE\",\"anciennete_mois\":12,\"est_manager\":false}}")
 					.getBytes(StandardCharsets.UTF_8);
 			exchange.getResponseHeaders().add("Content-Type", "application/json");
 			exchange.sendResponseHeaders(200, resp.length);
@@ -268,5 +281,130 @@ class DecisionConcurrenteIT {
 				"SELECT COUNT(*) FROM wf_outbox WHERE sujet = 'rh.notifications' AND charge->>'objet_id' = ?",
 				Integer.class, inst.getObjetId().toString());
 		assertThat(nbNotifs).isEqualTo(1);
+	}
+
+	@Test
+	void modeTous_deuxApprobationsSimultanees_uneSeuleEtapeSuivanteCreee_instanceNonFigee() throws Exception {
+		verifierConcurrenceDeuxTaches("VALIDATION", "APPROUVER", TypeTache.VALIDATION);
+	}
+
+	@Test
+	void tachesParalleles_deuxFaitSimultanes_uneSeuleEtapeSuivanteCreee_instanceNonFigee() throws Exception {
+		verifierConcurrenceDeuxTaches("TACHES_PARALLELES", "FAIT", TypeTache.TACHE);
+	}
+
+	private void verifierConcurrenceDeuxTaches(String typeEtape1, String action, TypeTache typeTache) throws Exception {
+		DefinitionCodec codec = new DefinitionCodec();
+		EtapeDefinition e1 = "TACHES_PARALLELES".equals(typeEtape1)
+				? new EtapeDefinition("ETAPE_1", "Tâches parallèles", "TACHES_PARALLELES", null, null, null,
+						List.of(
+								new TacheParalleleDefinition("T1", "Tâche 1", new IntervenantsDefinition("ROLE", Map.of("roles", List.of("RH")), null), null, true),
+								new TacheParalleleDefinition("T2", "Tâche 2", new IntervenantsDefinition("ROLE", Map.of("roles", List.of("RH")), null), null, true)),
+						null, null, false, null, new DelaiDefinition(2, "JOURS_OUVRES", null), null, null, null, null, null)
+				: new EtapeDefinition("ETAPE_1", "Validation TOUS", "VALIDATION", null,
+						new IntervenantsDefinition("ROLE", Map.of("roles", List.of("RH")), "TOUS"),
+						new RepliSiVideDefinition("BLOQUER", null), null, null, List.of("APPROUVER", "REFUSER"),
+						false, null, new DelaiDefinition(2, "JOURS_OUVRES", null), null, null, null, null, null);
+		EtapeDefinition eSuiv = new EtapeDefinition("ETAPE_SUIV", "Validation Finale", "VALIDATION", null,
+				new IntervenantsDefinition("ROLE", Map.of("roles", List.of("RH")), "UN_SEUL"),
+				new RepliSiVideDefinition("BLOQUER", null), null, null, List.of("APPROUVER", "REFUSER"),
+				false, null, new DelaiDefinition(2, "JOURS_OUVRES", null), null, null, null, null, null);
+
+		WfModele modele = modeleRepository.findByCode("M01_CONGE").orElseThrow();
+		WfModeleVersion v = new WfModeleVersion();
+		v.setModele(modele);
+		v.setNumero(900 + Math.abs(UUID.randomUUID().hashCode() % 10000));
+		v.setStatut(StatutVersion.RETIREE);
+		DefinitionWorkflow def = new DefinitionWorkflow(1, "CONGE", null, List.of(e1, eSuiv));
+		v.setDefinition(codec.serialiser(def));
+		v.setFormatDefinition(1);
+		v.setEmpreinte(codec.calculerEmpreinte(def));
+		v.setModifieLe(Instant.now());
+		v = versionRepository.saveAndFlush(v);
+
+		Instant maintenant = Instant.now();
+		WfInstance inst = new WfInstance();
+		inst.setModeleVersion(v);
+		inst.setModeleCode(modele.getCode());
+		inst.setModeleVersionNumero(v.getNumero());
+		inst.setObjetType("CONGE");
+		inst.setObjetId(UUID.randomUUID());
+		inst.setObjetNumero("DEM-TOUS-" + UUID.randomUUID().toString().substring(0, 6));
+		inst.setServiceProprietaire("svc-referentiel-rh");
+		inst.setDemandeurCollaborateurId(UUID.randomUUID());
+		inst.setDemandeurCompteId(UUID.randomUUID());
+		inst.setDemandeurNom("Demandeur TOUS");
+		inst.setStatut(StatutInstance.EN_COURS);
+		inst.setEtapeCouranteCode("ETAPE_1");
+		inst.setVariables(Map.of());
+		inst.setCleDemarrage("TOUS:" + UUID.randomUUID());
+		inst.setDemarreLe(maintenant);
+		inst = instanceRepository.saveAndFlush(inst);
+
+		WfEtapeExecution ee = new WfEtapeExecution();
+		ee.setInstance(inst);
+		ee.setEtapeCode("ETAPE_1");
+		ee.setOrdre(1);
+		ee.setStatut(StatutEtapeExecution.ACTIVE);
+		ee.setActiveLe(maintenant);
+		ee = etapeExecutionRepository.saveAndFlush(ee);
+
+		UUID compte1 = UUID.randomUUID();
+		UUID compte2 = UUID.randomUUID();
+		WfTache t1 = creerTacheAvecCandidat(inst, ee, typeTache, "T1", compte1, "Valideur 1", maintenant);
+		WfTache t2 = creerTacheAvecCandidat(inst, ee, typeTache, "T2", compte2, "Valideur 2", maintenant);
+
+		CountDownLatch pret = new CountDownLatch(2);
+		CountDownLatch depart = new CountDownLatch(1);
+		ExecutorService pool = Executors.newFixedThreadPool(2);
+		Future<Integer> f1 = pool.submit(() -> {
+			pret.countDown();
+			depart.await();
+			return decisionService.decider(t1.getId(), new DecisionRequest(action, null, t1.getVersion(), "cle-1-" + UUID.randomUUID()),
+					compte1, "Valideur 1", false).httpStatus();
+		});
+		Future<Integer> f2 = pool.submit(() -> {
+			pret.countDown();
+			depart.await();
+			return decisionService.decider(t2.getId(), new DecisionRequest(action, null, t2.getVersion(), "cle-2-" + UUID.randomUUID()),
+					compte2, "Valideur 2", false).httpStatus();
+		});
+		pret.await();
+		depart.countDown();
+		assertThat(f1.get()).isEqualTo(200);
+		assertThat(f2.get()).isEqualTo(200);
+		pool.shutdown();
+
+		WfInstance instRelue = instanceRepository.findById(inst.getId()).orElseThrow();
+		assertThat(instRelue.getStatut()).isEqualTo(StatutInstance.EN_COURS);
+		assertThat(instRelue.getEtapeCouranteCode()).isEqualTo("ETAPE_SUIV");
+
+		List<WfEtapeExecution> executions = etapeExecutionRepository.findByInstanceIdOrderByOrdreAsc(inst.getId());
+		assertThat(executions).hasSize(2);
+		assertThat(executions.get(0).getStatut()).isEqualTo(StatutEtapeExecution.TERMINEE);
+		assertThat(executions.get(1).getEtapeCode()).isEqualTo("ETAPE_SUIV");
+		assertThat(executions.get(1).getStatut()).isEqualTo(StatutEtapeExecution.ACTIVE);
+	}
+
+	private WfTache creerTacheAvecCandidat(WfInstance inst, WfEtapeExecution ee, TypeTache type, String libelle,
+			UUID compteId, String nom, Instant maintenant) {
+		WfTache t = new WfTache();
+		t.setInstance(inst);
+		t.setEtapeExecution(ee);
+		t.setType(type);
+		t.setLibelle(libelle);
+		t.setStatut(StatutTache.A_TRAITER);
+		t.setObligatoire(true);
+		t.setEcheanceLe(maintenant.plusSeconds(3600));
+		t = tacheRepository.saveAndFlush(t);
+
+		WfTacheCandidat cand = new WfTacheCandidat();
+		cand.setId(new WfTacheCandidatId(t.getId(), UUID.randomUUID()));
+		cand.setCompteId(compteId);
+		cand.setNom(nom);
+		cand.setOrigine(OrigineCandidat.TITULAIRE);
+		cand.setAjouteLe(maintenant);
+		candidatRepository.saveAndFlush(cand);
+		return t;
 	}
 }

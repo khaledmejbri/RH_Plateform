@@ -215,10 +215,36 @@ public class DecisionService {
 						"Type d'objet inconnu : " + ctx.objetType()));
 
 		String nomActeur = ctx.candidatNom() != null && !ctx.candidatNom().isBlank() ? ctx.candidatNom() : appelantNom;
+		// 3..6. Exécution (avec rejeu unique hors transaction si l'étape devient finie sous verrou en mode TOUS / TACHES_PARALLELES)
+		try {
+			return executerDecision(tacheId, req, appelantCompteId, nomActeur, ctx, typeCatalogue, action, commentaire, false);
+		} catch (EtapeDevenueFinieException ex) {
+			LectureContexte ctxRejeu = txReadOnly.execute(status -> chargerContexte(
+					tacheId, req.cleIdempotence(), appelantCompteId, estBackofficeLecture));
+			if (ctxRejeu.reponseMemorisee() != null) {
+				return ResultatDecision.ok(ApplicationDecisionService.reconstruireReponse(ctxRejeu.reponseMemorisee()));
+			}
+			return executerDecision(tacheId, req, appelantCompteId, nomActeur, ctxRejeu, typeCatalogue, action, commentaire, true);
+		}
+	}
+
+	private static final class EtapeDevenueFinieException extends RuntimeException {
+	}
+
+	private ResultatDecision executerDecision(
+			UUID tacheId,
+			DecisionRequest req,
+			UUID appelantCompteId,
+			String nomActeur,
+			LectureContexte ctx,
+			TypeObjetCatalogue typeCatalogue,
+			String action,
+			String commentaire,
+			boolean forcerTermineEtape) {
 		ActeurEffet acteurEffet = new ActeurEffet(appelantCompteId, ctx.candidatCollaborateurId(), nomActeur, ctx.pourNom());
 
 		// 3. HORS TRANSACTION : CONTROLER (si applicable)
-		if ("APPROUVER".equals(action) && ctx.etapeDef() != null && ctx.etapeDef().controleAvantApprobationActif()) {
+		if (!forcerTermineEtape && "APPROUVER".equals(action) && ctx.etapeDef() != null && ctx.etapeDef().controleAvantApprobationActif()) {
 			ResultatAppelEffet ctrl = effetClient.appeler(
 					ctx.serviceProprietaire(),
 					typeCatalogue.cheminEffet(),
@@ -238,7 +264,7 @@ public class DecisionService {
 				? List.of(new IntervenantResolu(ctx.candidatCollaborateurId(), appelantCompteId, nomActeur, null))
 				: List.of();
 
-		boolean termineEtape = determinerSiTermineEtape(ctx, action);
+		boolean termineEtape = forcerTermineEtape || determinerSiTermineEtape(ctx, action);
 		PlanExecutionDecision exec = preparationService.preparer(
 				action, ctx.typeTache(), ctx.etapeCode(), ctx.etapeDef(), ctx.definition(), ctx.objetType(),
 				ctx.variables(), ctx.demandeurCollaborateurId(), ctx.demandeurCompteId(), ctx.beneficiaires(),
@@ -422,6 +448,17 @@ public class DecisionService {
 			}
 			if (!t.getVersion().equals(req.version())) {
 				throw WorkflowMetierException.conflict("MODIFIE_ENTRE_TEMPS", "La tâche a été modifiée entre-temps.");
+			}
+			// Mode TOUS / TACHES_PARALLELES : revérifier sous verrou s'il reste d'autres tâches obligatoires ouvertes
+			if (exec.plan() == null && exec.planReactivation() == null
+					&& !"RENVOYER".equals(action) && t.getType() != TypeTache.COMPLEMENT) {
+				boolean autreObligatoireOuverte = tacheRepository.findByEtapeExecutionId(t.getEtapeExecution().getId()).stream()
+						.anyMatch(autre -> !autre.getId().equals(t.getId())
+								&& autre.isObligatoire()
+								&& (autre.getStatut() == StatutTache.A_TRAITER || autre.getStatut() == StatutTache.RESERVEE));
+				if (!autreObligatoireOuverte) {
+					throw new EtapeDevenueFinieException();
+				}
 			}
 		}
 
