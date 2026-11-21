@@ -4,6 +4,7 @@ import com.hr.workflow.dto.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -41,6 +42,16 @@ public class WorkflowExceptionHandler {
 				.body(ErrorResponse.of("MODIFIE_ENTRE_TEMPS",
 						"La ressource a été modifiée par un autre utilisateur. Rechargez puis recommencez.",
 						"Conflit de version optimiste",
+						req != null ? req.getRequestURI() : null,
+						HttpStatus.CONFLICT.value()));
+	}
+
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	public ResponseEntity<ErrorResponse> conflitIntegrite(DataIntegrityViolationException ex, HttpServletRequest req) {
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("MODIFIE_ENTRE_TEMPS",
+						"La ressource a été modifiée par un autre utilisateur. Rechargez puis recommencez.",
+						"Conflit d'intégrité",
 						req != null ? req.getRequestURI() : null,
 						HttpStatus.CONFLICT.value()));
 	}

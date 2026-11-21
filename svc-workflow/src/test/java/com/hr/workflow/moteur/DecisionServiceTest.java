@@ -323,4 +323,37 @@ class DecisionServiceTest {
 		assertThat(instance.getStatut()).isEqualTo(StatutInstance.ANNULEE);
 		assertThat(tache.getStatut()).isEqualTo(StatutTache.ANNULEE);
 	}
+
+	@Test
+	void nouvelEssaiApres422AvecMemeCle_reutiliseWfAppelEffetRejeteEtRetourne200() {
+		String cleEffet = "decision:" + tacheId + ":cle-rejeu-422";
+		WfAppelEffet ae = new WfAppelEffet();
+		ae.setId(UUID.randomUUID());
+		ae.setCleIdempotence(cleEffet);
+		ae.setEffet("APPROUVER");
+		ae.setStatut(StatutAppelEffet.RESERVE);
+
+		when(appelEffetRepository.findByCleIdempotence(cleEffet))
+				.thenReturn(Optional.empty())
+				.thenReturn(Optional.of(ae));
+		when(appelEffetRepository.saveAndFlush(any())).thenReturn(ae);
+		when(appelEffetRepository.findById(ae.getId())).thenReturn(Optional.of(ae));
+		when(effetClient.appeler(any(), any(), any()))
+				.thenReturn(new ResultatAppelEffet.Succes(Map.of("ok", true))) // 1er CONTROLER
+				.thenReturn(new ResultatAppelEffet.RejetMetier(422, "SOLDE_INSUFFISANT", "Solde insuffisant", Map.of())) // 1er APPLIQUER -> 422
+				.thenReturn(new ResultatAppelEffet.Succes(Map.of("ok", true))) // 2e CONTROLER
+				.thenReturn(new ResultatAppelEffet.Succes(Map.of("ok", true))); // 2e APPLIQUER -> 200
+
+		assertThatThrownBy(() -> service.decider(tacheId, new DecisionRequest("APPROUVER", null, 1L, "cle-rejeu-422"),
+				valideurCompteId, "Amel", true))
+				.isInstanceOf(WorkflowMetierException.class)
+				.hasFieldOrPropertyWithValue("httpStatus", 422);
+		assertThat(ae.getStatut()).isEqualTo(StatutAppelEffet.REJETE);
+
+		ResultatDecision res = service.decider(tacheId, new DecisionRequest("APPROUVER", null, 1L, "cle-rejeu-422"),
+				valideurCompteId, "Amel", true);
+		assertThat(res.httpStatus()).isEqualTo(200);
+		assertThat(ae.getStatut()).isEqualTo(StatutAppelEffet.APPLIQUE);
+		assertThat(instance.getStatut()).isEqualTo(StatutInstance.APPROUVEE);
+	}
 }

@@ -418,15 +418,33 @@ public class DecisionService {
 		t.setCleIdempotence(req.cleIdempotence());
 		tacheRepository.saveAndFlush(t);
 
-		WfAppelEffet ae = new WfAppelEffet();
-		ae.setCleIdempotence(cleEffet);
-		ae.setInstanceId(instanceId);
-		ae.setTacheId(tacheId);
-		ae.setEffet(effet);
-		ae.setServiceProprietaire(serviceProprietaire);
-		ae.setStatut(StatutAppelEffet.RESERVE);
-		ae.setTentatives(0);
-		ae.setCreeLe(maintenant);
+		WfAppelEffet ae = appelEffetRepository.findByCleIdempotence(cleEffet).orElse(null);
+		if (ae != null) {
+			if (ae.getStatut() != StatutAppelEffet.REJETE) {
+				throw WorkflowMetierException.conflict("DECISION_EN_COURS",
+						"Une décision avec cette clé est déjà en cours ou appliquée.");
+			}
+			ae.setInstanceId(instanceId);
+			ae.setTacheId(tacheId);
+			ae.setEffet(effet);
+			ae.setServiceProprietaire(serviceProprietaire);
+			ae.setStatut(StatutAppelEffet.RESERVE);
+			ae.setTentatives(0);
+			ae.setReponse(null);
+			ae.setProchaineTentativeLe(null);
+			ae.setTermineLe(null);
+			ae.setCreeLe(maintenant);
+		} else {
+			ae = new WfAppelEffet();
+			ae.setCleIdempotence(cleEffet);
+			ae.setInstanceId(instanceId);
+			ae.setTacheId(tacheId);
+			ae.setEffet(effet);
+			ae.setServiceProprietaire(serviceProprietaire);
+			ae.setStatut(StatutAppelEffet.RESERVE);
+			ae.setTentatives(0);
+			ae.setCreeLe(maintenant);
+		}
 		ae = appelEffetRepository.saveAndFlush(ae);
 		return ae.getId();
 	}
