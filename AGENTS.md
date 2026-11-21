@@ -2,6 +2,10 @@
 
 Source de vérité : [`docs/sirh_basefonctionnelle.md`](docs/sirh_basefonctionnelle.md)
 
+> **Antigravity** : la configuration est dans `.agents/` (règles, skills, agents, hooks, MCP) et le guide dans
+> [`.agents/LISEZMOI.md`](.agents/LISEZMOI.md). Commence chaque conversation par lire `CONTEXTE.md`
+> (skill `/sirh-reprise`). Les sections Cursor et Claude Code ci-dessous restent valables pour ces outils.
+
 Rules : `.cursor/rules/` · Skills : `.cursor/skills/`
 
 ## Rôles (un agent = un skill)

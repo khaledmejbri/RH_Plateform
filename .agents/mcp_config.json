@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "sirh": {
+      "command": "python",
+      "args": ["C:/Local/Khaled/project/tools/mcp-sirh/server.py"],
+      "cwd": "C:/Local/Khaled/project",
+      "env": { "PYTHONIOENCODING": "utf-8" },
+      "timeoutSeconds": 900
+    },
+    "atlassian": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.atlassian.com/v1/mcp"]
+    }
+  }
+}

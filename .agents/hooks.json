@@ -1,0 +1,22 @@
+{
+  "garde-secrets": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "python C:/Local/Khaled/project/.agents/hooks/garde_secrets.py", "timeout": 10 }
+        ]
+      }
+    ]
+  },
+  "controle-code": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "python C:/Local/Khaled/project/.agents/hooks/controle_code.py", "timeout": 15 }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,59 @@
+#!/usr/bin/env python
+"""Pre-commit Git du SIRH : dernière barrière, quel que soit l'outil (Antigravity, Claude Code, terminal).
+
+Installation (une fois par clone) :  git config core.hooksPath tools/git-hooks
+Refuse le commit si un fichier indexé est interdit ou contient un secret / une erreur connue.
+"""
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+RACINE = Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip())
+sys.path.insert(0, str(RACINE / ".agents" / "hooks"))
+try:
+    from controle_code import constats  # noqa: E402
+except ImportError:
+    def constats(chemin, texte):
+        return []
+
+INTERDITS = [
+    (re.compile(r"^recette/"), "recette/ ne se versionne jamais"),
+    (re.compile(r"^deploy/\.env$"), "deploy/.env contient les secrets du serveur"),
+    (re.compile(r"^deploy/donnees/"), "deploy/donnees/ contient des données réelles"),
+    (re.compile(r"(^|/)gittoken\.txt$"), "gittoken.txt est un secret"),
+    (re.compile(r"(^|/)recette_pw\.txt$"), "mot de passe de recette"),
+    (re.compile(r"^rh_mobile_app_temp/"), "rh_mobile_app_temp/ est obsolète"),
+]
+DOCS_AUTORISES = re.compile(r"^docs/(sirh_basefonctionnelle\.md|adr/)")
+
+
+def git(*arguments: str) -> str:
+    return subprocess.run(["git", *arguments], capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", cwd=RACINE).stdout
+
+
+def main() -> int:
+    erreurs = []
+    lignes = [l for l in git("diff", "--cached", "--name-status", "--diff-filter=ACMR").splitlines() if l.strip()]
+    for ligne in lignes:
+        morceaux = ligne.split("\t")
+        etat, chemin = morceaux[0], morceaux[-1].replace("\\", "/")
+        for motif, raison in INTERDITS:
+            if motif.search(chemin):
+                erreurs.append(f"{chemin} : {raison}")
+        if chemin.startswith("docs/") and not DOCS_AUTORISES.match(chemin) and etat.startswith("A"):
+            erreurs.append(f"{chemin} : docs/ reste local (seuls sirh_basefonctionnelle.md et docs/adr/ se versionnent)")
+        if Path(chemin).suffix in (".java", ".dart", ".ts", ".tsx", ".yml", ".yaml", ".properties", ".md", ".json", ".py"):
+            texte = git("show", f":{chemin}")
+            for c in constats(Path(chemin), texte):
+                erreurs.append(f"{chemin} : {c}")
+    if erreurs:
+        print("Commit refusé par tools/git-hooks/pre-commit :\n  - " + "\n  - ".join(erreurs), file=sys.stderr)
+        print("Corrige ou retire ces fichiers de l'index (git restore --staged <fichier>). Ne pas contourner.", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
