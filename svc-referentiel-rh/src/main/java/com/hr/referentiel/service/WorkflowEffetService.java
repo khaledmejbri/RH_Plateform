@@ -95,6 +95,14 @@ public class WorkflowEffetService {
 				.orElseThrow(() -> ReferentielMetierException.notFound(
 						"DEMANDE_INTROUVABLE", "Demande administrative introuvable."));
 
+		// Deux appels concurrents avec la même clé : le second attend le verrou de la demande, puis doit
+		// renvoyer la réponse mémorisée par le premier, et non un 409 « déjà décidée ».
+		Optional<RhWorkflowEffet> memorise = effetRepo.findById(cle);
+		if (memorise.isPresent()) {
+			RhWorkflowEffet e = memorise.get();
+			return new ResultatEffet(e.getStatutHttp(), e.getReponse());
+		}
+
 		if (!WorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode())
 				|| (d.getStatut() != StatutDemandeAdministrativeRh.EN_COURS
 				&& d.getStatut() != StatutDemandeAdministrativeRh.A_COMPLETER)) {

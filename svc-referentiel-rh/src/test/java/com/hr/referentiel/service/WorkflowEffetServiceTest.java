@@ -156,7 +156,8 @@ class WorkflowEffetServiceTest {
 		RhWorkflowEffet dejaFait = new RhWorkflowEffet(
 				cle, d.getId(), "APPROUVER", "APPROUVEE", 200, Map.of("statut", "APPROUVEE"));
 
-		when(effetRepo.findById(cle)).thenReturn(Optional.empty()).thenReturn(Optional.of(dejaFait));
+		// 1er appel : lecture avant puis après le verrou (vide) ; 2e appel : réponse mémorisée
+		when(effetRepo.findById(cle)).thenReturn(Optional.empty(), Optional.empty(), Optional.of(dejaFait));
 		when(demandeRepo.findByIdForUpdate(d.getId())).thenReturn(Optional.of(d));
 
 		ResultatEffet r1 = service.appliquer(requete("APPLIQUER", d, cle, "APPROUVER", null));
@@ -168,6 +169,25 @@ class WorkflowEffetServiceTest {
 		verify(congeDecompteService, times(1)).approuver(any(), any());
 		verify(historyRepo, times(1)).save(any());
 		verify(effetRepo, times(1)).save(any());
+	}
+
+	@Test
+	void appelConcurrentMemeCleRelitLaReponseMemoriseeApresLeVerrouAuLieuDe409() {
+		// Le premier appel a approuvé et mémorisé 200 pendant que le second attendait le verrou de la demande.
+		DemandeAdministrativeRh d = demandeMoteur(TypeDemandeAdministrativeRh.CONGE, StatutDemandeAdministrativeRh.APPROUVEE);
+		String cle = "wf:inst-2:APPROUVER";
+		RhWorkflowEffet memorise = new RhWorkflowEffet(
+				cle, d.getId(), "APPROUVER", "APPROUVEE", 200, Map.of("statut", "APPROUVEE"));
+		when(effetRepo.findById(cle)).thenReturn(Optional.empty(), Optional.of(memorise));
+		when(demandeRepo.findByIdForUpdate(d.getId())).thenReturn(Optional.of(d));
+
+		ResultatEffet res = service.appliquer(requete("APPLIQUER", d, cle, "APPROUVER", null));
+
+		assertThat(res.statutHttp()).isEqualTo(200);
+		assertThat(res.corps()).containsEntry("statut", "APPROUVEE");
+		verify(effetRepo, never()).save(any());
+		verify(historyRepo, never()).save(any());
+		verify(congeDecompteService, never()).approuver(any(), any());
 	}
 
 	@Test

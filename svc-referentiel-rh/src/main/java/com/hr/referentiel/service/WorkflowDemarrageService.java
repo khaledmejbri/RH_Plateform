@@ -111,7 +111,9 @@ public class WorkflowDemarrageService {
 			DemarrerInstanceResponse rep = d.reponse();
 			boolean rattache = Boolean.TRUE.equals(txEcriture.execute(
 					status -> rattacherInstance(demandeId, rep.instanceId(), rep.etapeCourante())));
-			if (rattache && "APPROUVER".equals(rep.effetImmediat())) {
+			if (!rattache) {
+				annulerInstanceOrpheline(demandeId, rep.instanceId());
+			} else if ("APPROUVER".equals(rep.effetImmediat())) {
 				effetService.appliquer(new RequeteEffet(
 						"demarrage:" + rep.instanceId(),
 						WorkflowEffetService.MODE_APPLIQUER,
@@ -127,8 +129,11 @@ public class WorkflowDemarrageService {
 			Optional<SuiviObjetInterne> existante = moteurClient.obtenirParObjet(ctx.type().name(), demandeId);
 			if (existante.isPresent() && existante.get().instanceId() != null) {
 				SuiviObjetInterne s = existante.get();
-				txEcriture.executeWithoutResult(
-						status -> rattacherInstance(demandeId, s.instanceId(), s.etapeCourante()));
+				boolean rattache = Boolean.TRUE.equals(txEcriture.execute(
+						status -> rattacherInstance(demandeId, s.instanceId(), s.etapeCourante())));
+				if (!rattache) {
+					annulerInstanceOrpheline(demandeId, s.instanceId());
+				}
 			} else {
 				enregistrerEchecEtReplierSiSeuil(demandeId);
 			}
@@ -138,6 +143,24 @@ public class WorkflowDemarrageService {
 			txEcriture.executeWithoutResult(status -> replierSurHerite(demandeId, false));
 		} else if (issue instanceof IssueDemarrage.Indisponible) {
 			enregistrerEchecEtReplierSiSeuil(demandeId);
+		}
+	}
+
+	/**
+	 * L'instance a été créée chez le moteur mais la demande ne peut plus la porter (annulée ou repliée
+	 * sur le circuit hérité pendant le démarrage) : on l'annule pour ne pas laisser de tâche fantôme.
+	 * Appelé hors transaction ; un échec est seulement journalisé.
+	 */
+	private void annulerInstanceOrpheline(UUID demandeId, UUID instanceId) {
+		if (instanceId == null) {
+			return;
+		}
+		WorkflowMoteurClient.IssueAnnulation issue = moteurClient.annuler(instanceId,
+				"Demande annulée ou repliée sur le circuit standard pendant le démarrage",
+				new WorkflowMoteurClient.ActeurInterne(null, null, AuteurParametre.NOM_SYSTEME));
+		if (issue != WorkflowMoteurClient.IssueAnnulation.ANNULEE) {
+			log.warn("Instance orpheline non annulée instanceId={} demandeId={} (issue={})",
+					instanceId, demandeId, issue);
 		}
 	}
 

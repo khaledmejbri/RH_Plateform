@@ -150,6 +150,27 @@ class WorkflowDemarrageServiceTest {
 	}
 
 	@Test
+	void demarrageSurDemandeAnnuleePendantLAppelAnnuleLInstanceOrphelineHorsTransaction() {
+		UUID instanceId = UUID.randomUUID();
+		when(moteurClient.demarrer(eq("CONGE:" + demande.getId()), any())).thenAnswer(inv -> {
+			// le demandeur annule pendant que le moteur crée l'instance
+			demande.setStatut(StatutDemandeAdministrativeRh.ANNULEE);
+			return new IssueDemarrage.Demarre(201, new DemarrerInstanceResponse(
+					instanceId, "EN_COURS", "APPROUVER", null));
+		});
+		when(moteurClient.annuler(eq(instanceId), any(), any())).thenAnswer(inv -> {
+			assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+			return com.hr.referentiel.client.WorkflowMoteurClient.IssueAnnulation.ANNULEE;
+		});
+
+		service.demarrer(demande.getId());
+
+		verify(moteurClient).annuler(eq(instanceId), any(), any());
+		verify(effetService, never()).appliquer(any());
+		assertThat(demande.getWorkflowInstanceId()).isNull();
+	}
+
+	@Test
 	void demarrage200AvecEffetImmediatAppliqueLocalementAvecCleDemarrage() {
 		UUID instanceId = UUID.randomUUID();
 		when(moteurClient.demarrer(eq("CONGE:" + demande.getId()), any()))
@@ -182,6 +203,26 @@ class WorkflowDemarrageServiceTest {
 		assertThat(demande.getWorkflowInstanceId()).isEqualTo(instanceId);
 		assertThat(demande.getWorkflowEtat()).isEqualTo("DEMARRE");
 		assertThat(demande.getWorkflowEtapeLibelle()).isEqualTo("Validation RH");
+	}
+
+	@Test
+	void instanceExistanteSurDemandeAnnuleeEstAnnuleeHorsTransaction() {
+		UUID instanceId = UUID.randomUUID();
+		when(moteurClient.demarrer(any(), any())).thenAnswer(inv -> {
+			demande.setStatut(StatutDemandeAdministrativeRh.ANNULEE);
+			return new IssueDemarrage.InstanceExistante();
+		});
+		when(moteurClient.obtenirParObjet("CONGE", demande.getId())).thenReturn(Optional.of(new SuiviObjetInterne(
+				instanceId, "CONGE", demande.getId(), "EN_COURS", new EtapeCouranteDto("RO", "Validation responsable", null))));
+		when(moteurClient.annuler(eq(instanceId), any(), any())).thenAnswer(inv -> {
+			assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+			return com.hr.referentiel.client.WorkflowMoteurClient.IssueAnnulation.ANNULEE;
+		});
+
+		service.demarrer(demande.getId());
+
+		verify(moteurClient).annuler(eq(instanceId), any(), any());
+		assertThat(demande.getWorkflowInstanceId()).isNull();
 	}
 
 	@Test

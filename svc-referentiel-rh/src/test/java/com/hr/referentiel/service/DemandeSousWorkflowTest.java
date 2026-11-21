@@ -5,6 +5,7 @@ import com.hr.referentiel.client.WorkflowMoteurClient.IssueAnnulation;
 import com.hr.referentiel.client.WorkflowMoteurClient.IssueComplement;
 import com.hr.referentiel.domain.StatutDemandeAdministrativeRh;
 import com.hr.referentiel.domain.TypeDemandeAdministrativeRh;
+import com.hr.referentiel.dto.DemandeAdministrativeRhCreationRequest;
 import com.hr.referentiel.dto.DemandeAdministrativeRhResponse;
 import com.hr.referentiel.dto.DemandeComplementRequest;
 import com.hr.referentiel.dto.DemandeRefusRequest;
@@ -19,6 +20,7 @@ import com.hr.referentiel.web.ReferentielMetierException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
@@ -30,6 +32,7 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,9 +43,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -337,5 +343,113 @@ class DemandeSousWorkflowTest {
 		assertThat(rep.getWorkflowInstanceId()).isEqualTo(demande.getWorkflowInstanceId());
 		assertThat(rep.getEtapeCouranteLibelle()).isEqualTo("Validation responsable");
 		assertThat(rep.getEcheanceLe()).isEqualTo(Instant.parse("2026-12-02T17:00:00Z"));
+	}
+
+	// ─── D-W5-04 : création en mode MOTEUR ────────────────────────────────────
+
+	private static DemandeAdministrativeRhCreationRequest requeteConge() {
+		DemandeAdministrativeRhCreationRequest req = new DemandeAdministrativeRhCreationRequest();
+		req.setTypeDemande(TypeDemandeAdministrativeRh.CONGE);
+		req.setContenu(new HashMap<>(Map.of("type_conge", "ANNUEL",
+				"date_debut", "2026-12-07", "date_fin", "2026-12-08")));
+		return req;
+	}
+
+	private void preparerCreationMoteur(List<Boolean> txPendantAppelsMoteur, UUID[] idCree) {
+		when(workflowActivationService.estMoteur(TypeDemandeAdministrativeRh.CONGE)).thenAnswer(inv -> {
+			txPendantAppelsMoteur.add(TransactionSynchronizationManager.isActualTransactionActive());
+			return true;
+		});
+		when(validationService.validerContenu(eq(TypeDemandeAdministrativeRh.CONGE), any())).thenReturn("ANNUEL");
+		when(numeroLisibleService.attribuer(any(), any())).thenReturn("DEM-202612-0001");
+		when(demandeRepo.save(any(DemandeAdministrativeRh.class))).thenAnswer(inv -> {
+			DemandeAdministrativeRh d = inv.getArgument(0);
+			if (d.getId() == null) {
+				d.setId(UUID.randomUUID());
+			}
+			idCree[0] = d.getId();
+			return d;
+		});
+	}
+
+	@Test
+	void creationMoteurEnCoursADemarrerSansNotificationEtAppelsMoteurHorsTransaction() {
+		List<Boolean> txPendantAppelsMoteur = new ArrayList<>();
+		UUID[] idCree = new UUID[1];
+		preparerCreationMoteur(txPendantAppelsMoteur, idCree);
+		doAnswer(inv -> {
+			txPendantAppelsMoteur.add(TransactionSynchronizationManager.isActualTransactionActive());
+			return null;
+		}).when(workflowDemarrageService).demarrer(any());
+
+		DemandeAdministrativeRhResponse r = service.creer(requeteConge(), jwtDemandeur);
+
+		ArgumentCaptor<DemandeAdministrativeRh> capt = ArgumentCaptor.forClass(DemandeAdministrativeRh.class);
+		verify(demandeRepo).save(capt.capture());
+		DemandeAdministrativeRh saved = capt.getValue();
+		assertThat(saved.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.EN_COURS);
+		assertThat(saved.getWorkflowMode()).isEqualTo("MOTEUR");
+		assertThat(saved.getWorkflowEtat()).isEqualTo("A_DEMARRER");
+		assertThat(saved.getValideurAttendu()).isNull();
+		verify(workflowDemarrageService).demarrer(idCree[0]);
+		// estMoteur puis demarrer : jamais dans une transaction
+		assertThat(txPendantAppelsMoteur).containsExactly(false, false);
+		verifyNoInteractions(notificationPublisher);
+		assertThat(r).isNotNull();
+		assertThat(r.getIdentifiant()).isEqualTo(idCree[0]);
+	}
+
+	@Test
+	void creationMoteurRendLaReponseMemeSiLeDemarrageEchoue() {
+		List<Boolean> txPendantAppelsMoteur = new ArrayList<>();
+		UUID[] idCree = new UUID[1];
+		preparerCreationMoteur(txPendantAppelsMoteur, idCree);
+		doThrow(new IllegalStateException("moteur injoignable")).when(workflowDemarrageService).demarrer(any());
+
+		DemandeAdministrativeRhResponse r = service.creer(requeteConge(), jwtDemandeur);
+
+		assertThat(r).isNotNull();
+		assertThat(r.getIdentifiant()).isEqualTo(idCree[0]);
+		assertThat(r.getStatut()).isEqualTo(StatutDemandeAdministrativeRh.EN_COURS);
+		verifyNoInteractions(notificationPublisher);
+	}
+
+	// ─── D-W5-08 / D-W5-13 : suivi d'une demande MOTEUR ───────────────────────
+
+	@Test
+	void suiviMoteurEnCoursMontreEtapeCouranteSansMessageNiEtapeHeritee() {
+		var suivi = service.suivi(demande.getId(), jwtDemandeur, false);
+
+		assertThat(suivi.getMessageExplication())
+				.isEqualTo(DemandeAdministrativeRhService.MSG_SUIVI_MOTEUR)
+				.doesNotContain("directement en validation RH");
+		assertThat(suivi.getEtapes()).extracting(e -> e.getCode())
+				.containsExactly("DEPOT", "WORKFLOW", "CLOTURE");
+		assertThat(suivi.getEtapes().get(1).getLibelle()).isEqualTo("Validation responsable");
+		assertThat(suivi.getEtapes().get(1).isEnCours()).isTrue();
+		assertThat(suivi.getValideurAttenduNomComplet()).isNull();
+		assertThat(suivi.getWorkflowMode()).isEqualTo("MOTEUR");
+	}
+
+	@Test
+	void suiviMoteurAnnuleeNeCochePasLEtapeDeValidation() {
+		demande.setStatut(StatutDemandeAdministrativeRh.ANNULEE);
+
+		var suivi = service.suivi(demande.getId(), jwtDemandeur, false);
+
+		assertThat(suivi.getEtapes().get(1).isTerminee()).isFalse();
+		assertThat(suivi.getEtapes().get(2).getLibelle()).isEqualTo("Annulée par le demandeur");
+	}
+
+	@Test
+	void suiviMoteurApprouveeEstClotureeSansMessage() {
+		demande.setStatut(StatutDemandeAdministrativeRh.APPROUVEE);
+
+		var suivi = service.suivi(demande.getId(), jwtDemandeur, false);
+
+		assertThat(suivi.getMessageExplication()).isNull();
+		assertThat(suivi.getEtapes().get(2).getLibelle()).isEqualTo("Approuvée ✓");
+		assertThat(suivi.getEtapes().get(2).isTerminee()).isTrue();
+		assertThat(suivi.getEtapes().get(1).isEnCours()).isFalse();
 	}
 }

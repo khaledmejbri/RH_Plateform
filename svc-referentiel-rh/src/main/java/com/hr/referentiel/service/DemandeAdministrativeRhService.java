@@ -307,6 +307,9 @@ public class DemandeAdministrativeRhService {
 				throw new AccessDeniedException("Accès refusé.");
 			}
 		}
+		if (estModeMoteur(d)) {
+			return suiviMoteur(d);
+		}
 		// H2-R06 : étape supérieur = snapshot uniquement (pas de recalcul live → pas d'étape fantôme)
 		Collaborateur snapshot = d.getValideurAttendu();
 		boolean avecRo = snapshot != null;
@@ -327,6 +330,52 @@ public class DemandeAdministrativeRhService {
 		response.setEcheanceLe(d.getWorkflowEcheanceLe());
 		enrichirValideurSuivi(response, snapshot, d.getStatut(), d.getDemandeur());
 		return response;
+	}
+
+	static final String MSG_SUIVI_MOTEUR = "Votre demande suit le circuit de validation paramétré par la RH.";
+
+	/**
+	 * D-W5-08 / D-W5-13 : une demande MOTEUR n'a ni valideur figé ni étapes héritées ; le suivi montre
+	 * le dépôt, l'étape courante projetée depuis le moteur et la clôture.
+	 */
+	private DemandeAdministrativeSuiviResponse suiviMoteur(DemandeAdministrativeRh d) {
+		StatutDemandeAdministrativeRh s = d.getStatut();
+		boolean enCours = s == StatutDemandeAdministrativeRh.EN_COURS
+				|| s == StatutDemandeAdministrativeRh.A_COMPLETER;
+		List<WorkflowEtapeResponse> etapes = new ArrayList<>();
+		etapes.add(new WorkflowEtapeResponse("DEPOT", "Demande enregistrée", true, false));
+		String libelleEtape;
+		if (s == StatutDemandeAdministrativeRh.A_COMPLETER) {
+			libelleEtape = "Complément demandé";
+		} else if (d.getWorkflowEtapeLibelle() != null && !d.getWorkflowEtapeLibelle().isBlank()) {
+			libelleEtape = d.getWorkflowEtapeLibelle();
+		} else {
+			libelleEtape = "Validation en cours";
+		}
+		// une demande annulée n'a pas franchi l'étape de validation : pas de coche « terminée »
+		boolean etapeTerminee = !enCours && s != StatutDemandeAdministrativeRh.ANNULEE;
+		etapes.add(new WorkflowEtapeResponse("WORKFLOW", libelleEtape, etapeTerminee, enCours));
+		etapes.add(new WorkflowEtapeResponse("CLOTURE", libelleCloture(s), !enCours, false));
+		DemandeAdministrativeSuiviResponse response = new DemandeAdministrativeSuiviResponse(
+				d.getId(), d.getTypeDemande(), s, false, etapes);
+		response.setNumero(d.getNumero());
+		response.setWorkflowMode(d.getWorkflowMode());
+		response.setWorkflowInstanceId(d.getWorkflowInstanceId());
+		response.setEtapeCouranteLibelle(d.getWorkflowEtapeLibelle());
+		response.setEcheanceLe(d.getWorkflowEcheanceLe());
+		if (enCours) {
+			response.setMessageExplication(MSG_SUIVI_MOTEUR);
+		}
+		return response;
+	}
+
+	private static String libelleCloture(StatutDemandeAdministrativeRh s) {
+		return switch (s) {
+			case APPROUVEE -> "Approuvée ✓";
+			case REFUSEE -> "Refusée";
+			case ANNULEE -> "Annulée par le demandeur";
+			case SOUMISE, EN_VALIDATION_SUPERIEUR, EN_VALIDATION_RRH, EN_COURS, A_COMPLETER -> "Clôture";
+		};
 	}
 
 	// ─── Validation RO ────────────────────────────────────────────────────────
@@ -854,12 +903,7 @@ public class DemandeAdministrativeRhService {
 		boolean cloturee = rrhTerminee || s == StatutDemandeAdministrativeRh.ANNULEE
 				|| s == StatutDemandeAdministrativeRh.REFUSEE;
 		etapes.add(new WorkflowEtapeResponse("RRH", "Approbation RH", rrhTerminee, rrhEnCours));
-		String libelleFin = switch (s) {
-			case APPROUVEE -> "Approuvée ✓";
-			case REFUSEE -> "Refusée";
-			case ANNULEE -> "Annulée par le demandeur";
-			default -> "Clôture";
-		};
+		String libelleFin = libelleCloture(s);
 		etapes.add(new WorkflowEtapeResponse("CLOTURE", libelleFin, cloturee, false));
 		return etapes;
 	}
