@@ -134,7 +134,7 @@ class DecisionConcurrenteIT {
 			}
 		});
 		fakeServer.createContext("/internal/referentiel/v1/societe/calendrier", exchange -> {
-			byte[] resp = "{\"fuseau\":\"Africa/Tunis\",\"jours_travailles\":[\"LUNDI\",\"MARDI\",\"MERCREDI\",\"JEUDI\",\"VENDREDI\"],\"heure_debut_journee\":\"08:00\",\"heure_fin_journee\":\"17:00\",\"delegation_auto_conges\":true,\"publication_quatre_yeux\":false,\"jours_feries\":[]}"
+			byte[] resp = "{\"fuseau\":\"Africa/Tunis\",\"jours_travailles\":[\"LUN\",\"MAR\",\"MER\",\"JEU\",\"VEN\"],\"heure_debut_journee\":\"08:00\",\"heure_fin_journee\":\"17:00\",\"delegation_auto_conges\":true,\"publication_quatre_yeux\":false,\"jours_feries\":[]}"
 					.getBytes(StandardCharsets.UTF_8);
 			exchange.getResponseHeaders().add("Content-Type", "application/json");
 			exchange.sendResponseHeaders(200, resp.length);

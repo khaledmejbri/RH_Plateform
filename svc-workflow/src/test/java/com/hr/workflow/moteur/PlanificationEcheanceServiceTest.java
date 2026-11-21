@@ -23,7 +23,7 @@ class PlanificationEcheanceServiceTest {
 		// 20/11/2026 est un vendredi
 		Instant vendredi10h = ZonedDateTime.of(2026, 11, 20, 10, 0, 0, 0, TUNIS).toInstant();
 		CalendrierSocieteResponse cal = new CalendrierSocieteResponse(
-				"Africa/Tunis", List.of("LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"),
+				"Africa/Tunis", List.of("LUN", "MAR", "MER", "JEU", "VEN"),
 				"08:00", "17:00", true, false, List.of());
 
 		Instant echeance = service.calculerEcheance(vendredi10h, new DelaiDefinition(2, "JOURS_OUVRES", null), cal, Map.of());
@@ -35,7 +35,7 @@ class PlanificationEcheanceServiceTest {
 	void ca10_2_vendredi10h_2JoursOuvres_lunSam_donneLundi17h() {
 		Instant vendredi10h = ZonedDateTime.of(2026, 11, 20, 10, 0, 0, 0, TUNIS).toInstant();
 		CalendrierSocieteResponse cal = new CalendrierSocieteResponse(
-				"Africa/Tunis", List.of("LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"),
+				"Africa/Tunis", List.of("LUN", "MAR", "MER", "JEU", "VEN", "SAM"),
 				"08:00", "17:00", true, false, List.of());
 
 		Instant echeance = service.calculerEcheance(vendredi10h, new DelaiDefinition(2, "JOURS_OUVRES", null), cal, Map.of());
@@ -63,7 +63,7 @@ class PlanificationEcheanceServiceTest {
 	void joursFeriesExclus_etPlafondPasseDonnePlus2Heures() {
 		Instant vendredi10h = ZonedDateTime.of(2026, 11, 20, 10, 0, 0, 0, TUNIS).toInstant();
 		CalendrierSocieteResponse cal = new CalendrierSocieteResponse(
-				"Africa/Tunis", List.of("LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"),
+				"Africa/Tunis", List.of("LUN", "MAR", "MER", "JEU", "VEN"),
 				"08:00", "17:00", true, false, List.of(LocalDate.of(2026, 11, 23)));
 
 		// Lundi 23/11 férié -> 2 JO = mercredi 25/11 17h

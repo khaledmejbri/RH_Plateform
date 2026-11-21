@@ -2,6 +2,8 @@ package com.hr.workflow.moteur;
 
 import com.hr.workflow.client.WorkflowReferentielClient.CalendrierSocieteResponse;
 import com.hr.workflow.definition.DelaiDefinition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.DayOfWeek;
@@ -24,6 +26,7 @@ import java.util.Set;
 @Service
 public class PlanificationEcheanceService {
 
+	private static final Logger log = LoggerFactory.getLogger(PlanificationEcheanceService.class);
 	private static final ZoneId FUSEAU_DEFAUT = ZoneId.of("Africa/Tunis");
 	private static final LocalTime HEURE_FIN_DEFAUT = LocalTime.of(17, 0);
 
@@ -156,15 +159,14 @@ public class PlanificationEcheanceService {
 				continue;
 			}
 			switch (j.trim().toUpperCase(Locale.ROOT)) {
-				case "LUNDI", "MONDAY" -> out.add(DayOfWeek.MONDAY);
-				case "MARDI", "TUESDAY" -> out.add(DayOfWeek.TUESDAY);
-				case "MERCREDI", "WEDNESDAY" -> out.add(DayOfWeek.WEDNESDAY);
-				case "JEUDI", "THURSDAY" -> out.add(DayOfWeek.THURSDAY);
-				case "VENDREDI", "FRIDAY" -> out.add(DayOfWeek.FRIDAY);
-				case "SAMEDI", "SATURDAY" -> out.add(DayOfWeek.SATURDAY);
-				case "DIMANCHE", "SUNDAY" -> out.add(DayOfWeek.SUNDAY);
-				default -> {
-				}
+				case "LUN", "LUNDI", "MONDAY" -> out.add(DayOfWeek.MONDAY);
+				case "MAR", "MARDI", "TUESDAY" -> out.add(DayOfWeek.TUESDAY);
+				case "MER", "MERCREDI", "WEDNESDAY" -> out.add(DayOfWeek.WEDNESDAY);
+				case "JEU", "JEUDI", "THURSDAY" -> out.add(DayOfWeek.THURSDAY);
+				case "VEN", "VENDREDI", "FRIDAY" -> out.add(DayOfWeek.FRIDAY);
+				case "SAM", "SAMEDI", "SATURDAY" -> out.add(DayOfWeek.SATURDAY);
+				case "DIM", "DIMANCHE", "SUNDAY" -> out.add(DayOfWeek.SUNDAY);
+				default -> log.warn("Code jour travaillé inconnu dans le calendrier société : '{}'", j);
 			}
 		}
 		return out.isEmpty()
