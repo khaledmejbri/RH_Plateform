@@ -47,9 +47,9 @@ class DemandeMoteurIT {
 		Assumptions.assumeTrue(demoPw != null && !demoPw.isBlank(),
 				"DemandeMoteurIT ignoré : variable d'environnement DEMO_PW absente");
 
-		jwtRh = signin("drh01", demoPw);
-		jwtColWeb = signin("col.web", demoPw);
-		jwtCsWeb = signin("cs.web", demoPw);
+		jwtRh = signin("DRH01", demoPw);
+		jwtColWeb = signin("COL-WEB", demoPw);
+		jwtCsWeb = signin("CS-WEB", demoPw);
 	}
 
 	@AfterEach
@@ -70,8 +70,10 @@ class DemandeMoteurIT {
 		// Laisse le temps au cache 30 s éventuel de svc-referentiel-rh d'expirer seulement si nécessaire ;
 		// en environnement propre (ou après démarrage), la première lecture lit MOTEUR.
 
-		// 2. Solde avant création
-		double acquisAvant = lireSoldeAcquis(jwtColWeb);
+		// 2. Solde avant création (lu par la RH sur la fiche de COL-WEB)
+		JsonNode moi = getJson(GATEWAY + "/api/referentiel/v1/collaborateurs/moi", jwtColWeb);
+		String colWebId = moi.get("identifiant").asText();
+		double acquisAvant = lireSoldeAcquis(colWebId, jwtRh);
 
 		// 3. COL-WEB crée un congé ANNUEL (dates futures uniques pour éviter tout chevauchement)
 		LocalDate debutMoteur = LocalDate.of(2028, 3, 6); // lundi
@@ -97,20 +99,20 @@ class DemandeMoteurIT {
 		basculerActivation("CONGE", "HERITE", jwtRh);
 
 		// 6. CS-WEB approuve sa tâche chez le moteur → étape suivante RH
-		String tacheRo = trouverTachePourInstance(jwtCsWeb, instanceId);
-		assertThat(tacheRo).isNotNull();
+		JsonNode tacheRo = trouverTachePourInstance(jwtCsWeb, instanceId);
+		assertThat(tacheRo).as("Tâche RO pour instance %s", instanceId).isNotNull();
 		deciderTache(jwtCsWeb, tacheRo, "APPROUVER", "[RECETTE-W5] OK RO");
 
 		// 7. RH approuve sa tâche chez le moteur → effet APPROUVER → demande APPROUVEE, solde débité une fois
-		String tacheRh = trouverTachePourInstance(jwtRh, instanceId);
-		assertThat(tacheRh).isNotNull();
+		JsonNode tacheRh = trouverTachePourInstance(jwtRh, instanceId);
+		assertThat(tacheRh).as("Tâche RH pour instance %s", instanceId).isNotNull();
 		deciderTache(jwtRh, tacheRh, "APPROUVER", "[RECETTE-W5] OK RH");
 
 		JsonNode apres = getJson(GATEWAY + "/api/rh/v1/demandes-administratives/" + demandeId, jwtColWeb);
 		assertThat(apres.get("statut").asText()).isEqualTo("APPROUVEE");
 		assertThat(apres.get("workflow_mode").asText()).isEqualTo("MOTEUR");
 
-		double acquisApres = lireSoldeAcquis(jwtColWeb);
+		double acquisApres = lireSoldeAcquis(colWebId, jwtRh);
 		assertThat(acquisAvant - acquisApres).isEqualTo(1.0);
 	}
 
@@ -128,7 +130,10 @@ class DemandeMoteurIT {
 	}
 
 	private static String signin(String login, String password) throws Exception {
-		String body = MAPPER.writeValueAsString(Map.of("username", login, "password", password));
+		String body = MAPPER.writeValueAsString(Map.of(
+				"nom_utilisateur", login,
+				"mot_de_passe", password,
+				"societe_code", "PRINCIPALE"));
 		HttpResponse<String> r = HTTP.send(
 				HttpRequest.newBuilder(URI.create(GATEWAY + "/api/auth/signin"))
 						.header("Content-Type", "application/json")
@@ -136,22 +141,37 @@ class DemandeMoteurIT {
 						.POST(HttpRequest.BodyPublishers.ofString(body))
 						.build(),
 				HttpResponse.BodyHandlers.ofString());
-		assertThat(r.statusCode()).as("Connexion %s", login).isEqualTo(200);
+		assertThat(r.statusCode()).as("Connexion %s : %s", login, r.body()).isEqualTo(200);
 		JsonNode root = MAPPER.readTree(r.body());
-		return root.has("token") ? root.get("token").asText() : root.get("accessToken").asText();
+		return root.get("jeton_acces").asText();
 	}
 
 	private static void basculerActivation(String objetType, String mode, String jwt) throws Exception {
-		String body = MAPPER.writeValueAsString(Map.of("mode", mode));
+		JsonNode liste = getJson(GATEWAY + "/api/rh/v1/admin/workflow/activations", jwt);
+		long version = 0L;
+		String modeActuel = null;
+		if (liste.isArray()) {
+			for (JsonNode item : liste) {
+				if (objetType.equals(item.path("objet_type").asText())) {
+					version = item.path("version").asLong(0L);
+					modeActuel = item.path("mode").asText(null);
+					break;
+				}
+			}
+		}
+		if (mode.equals(modeActuel)) {
+			return;
+		}
+		String body = MAPPER.writeValueAsString(Map.of("mode", mode, "version", version));
 		HttpResponse<String> r = HTTP.send(
-				HttpRequest.newBuilder(URI.create(GATEWAY + "/api/rh/v1/workflow/activations/" + objetType))
+				HttpRequest.newBuilder(URI.create(GATEWAY + "/api/rh/v1/admin/workflow/activations/" + objetType))
 						.header("Content-Type", "application/json")
 						.header("Authorization", "Bearer " + jwt)
 						.timeout(Duration.ofSeconds(5))
 						.PUT(HttpRequest.BodyPublishers.ofString(body))
 						.build(),
 				HttpResponse.BodyHandlers.ofString());
-		assertThat(r.statusCode()).as("Activation %s -> %s", objetType, mode).isBetween(200, 204);
+		assertThat(r.statusCode()).as("Activation %s -> %s : %s", objetType, mode, r.body()).isBetween(200, 204);
 	}
 
 	private static JsonNode creerCongeAnnuel(String jwt, LocalDate debut, LocalDate fin, String motif) throws Exception {
@@ -168,33 +188,36 @@ class DemandeMoteurIT {
 		return MAPPER.readTree(r.body());
 	}
 
-	private static double lireSoldeAcquis(String jwt) throws Exception {
-		JsonNode n = getJson(GATEWAY + "/api/rh/v1/soldes-conge/moi", jwt);
+	private static double lireSoldeAcquis(String collaborateurId, String jwtRh) throws Exception {
+		JsonNode n = getJson(GATEWAY + "/api/rh/v1/admin/conges/soldes/" + collaborateurId, jwtRh);
 		return n.get("acquis").asDouble();
 	}
 
-	private static String trouverTachePourInstance(String jwt, String instanceId) throws Exception {
-		JsonNode root = getJson(GATEWAY + "/api/rh/v1/workflow/mes-taches", jwt);
-		JsonNode items = root.isArray() ? root : (root.has("content") ? root.get("content") : root.get("taches"));
+	private static JsonNode trouverTachePourInstance(String jwt, String instanceId) throws Exception {
+		JsonNode root = getJson(GATEWAY + "/api/rh/v1/workflow/taches/moi?taille=100", jwt);
+		JsonNode items = root.isArray() ? root : root.get("elements");
 		if (items != null && items.isArray()) {
 			for (JsonNode t : items) {
 				String inst = t.has("instance_id") ? t.get("instance_id").asText() : "";
 				if (instanceId.equals(inst)) {
-					return t.has("id") ? t.get("id").asText() : t.get("identifiant").asText();
+					return t;
 				}
 			}
 		}
 		return null;
 	}
 
-	private static void deciderTache(String jwt, String tacheId, String decision, String commentaire) throws Exception {
+	private static void deciderTache(String jwt, JsonNode tache, String action, String commentaire) throws Exception {
+		String tacheId = tache.has("id") ? tache.get("id").asText() : tache.get("tache_id").asText();
+		long version = tache.has("version") ? tache.get("version").asLong() : 0L;
 		String body = MAPPER.writeValueAsString(Map.of(
-				"decision", decision,
+				"action", action,
 				"commentaire", commentaire,
+				"version", version,
 				"cle_idempotence", "it-w5-" + UUID.randomUUID()));
 		HttpResponse<String> r = post(
 				GATEWAY + "/api/rh/v1/workflow/taches/" + tacheId + "/decision", jwt, body);
-		assertThat(r.statusCode()).as("Décision %s sur tâche %s : %s", decision, tacheId, r.body()).isEqualTo(200);
+		assertThat(r.statusCode()).as("Décision %s sur tâche %s : %s", action, tacheId, r.body()).isEqualTo(200);
 	}
 
 	private static JsonNode getJson(String url, String jwt) throws Exception {
