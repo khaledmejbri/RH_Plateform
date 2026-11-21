@@ -136,9 +136,11 @@ public class EffetRepriseScheduler {
 
 	/** Visible pour les tests. */
 	public int reprendreIncertains() {
-		// 1. Transaction courte : verrouiller les effets INCERTAIN échus et préparer les requêtes
+		// 1. Transaction courte : verrouiller les effets INCERTAIN échus et RESERVE orphelins (> 1 min)
 		List<EffetARejouer> aRejouer = txTemplate.execute(status -> {
-			List<WfAppelEffet> lot = appelEffetRepository.verrouillerLotIncertains(clock.instant(), TAILLE_LOT);
+			Instant maintenant = clock.instant();
+			List<WfAppelEffet> lot = appelEffetRepository.verrouillerLotIncertains(
+					maintenant, maintenant.minus(Duration.ofMinutes(1)), TAILLE_LOT);
 			return lot.stream().map(ae -> {
 				WfInstance inst = instanceRepository.findById(ae.getInstanceId()).orElse(null);
 				WfTache t = ae.getTacheId() != null ? tacheRepository.findById(ae.getTacheId()).orElse(null) : null;

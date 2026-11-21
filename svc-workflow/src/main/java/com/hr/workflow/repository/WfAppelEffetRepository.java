@@ -16,13 +16,14 @@ public interface WfAppelEffetRepository extends JpaRepository<WfAppelEffet, UUID
 
 	@Query(value = """
 			SELECT * FROM wf_appel_effet
-			WHERE statut = 'INCERTAIN'
-			  AND prochaine_tentative_le <= :maintenant
-			ORDER BY prochaine_tentative_le ASC
+			WHERE (statut = 'INCERTAIN' AND prochaine_tentative_le <= :maintenant)
+			   OR (statut = 'RESERVE' AND cree_le < :seuilReserve)
+			ORDER BY COALESCE(prochaine_tentative_le, cree_le) ASC
 			LIMIT :limite
 			FOR UPDATE SKIP LOCKED
 			""", nativeQuery = true)
 	List<WfAppelEffet> verrouillerLotIncertains(
 			@Param("maintenant") Instant maintenant,
+			@Param("seuilReserve") Instant seuilReserve,
 			@Param("limite") int limite);
 }

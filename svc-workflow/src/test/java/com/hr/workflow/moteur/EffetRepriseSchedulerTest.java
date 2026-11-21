@@ -181,7 +181,7 @@ class EffetRepriseSchedulerTest {
 		appelEffet.setTentatives(1);
 		appelEffet.setCreeLe(maintenant.minus(Duration.ofMinutes(2)));
 
-		lenient().when(appelEffetRepository.verrouillerLotIncertains(any(), anyInt())).thenReturn(List.of(appelEffet));
+		lenient().when(appelEffetRepository.verrouillerLotIncertains(any(), any(), anyInt())).thenReturn(List.of(appelEffet));
 		lenient().when(appelEffetRepository.findById(appelEffetId)).thenReturn(Optional.of(appelEffet));
 		lenient().when(instanceRepository.findById(instanceId)).thenReturn(Optional.of(instance));
 		lenient().when(instanceRepository.findByIdForUpdate(instanceId)).thenReturn(Optional.of(instance));
@@ -323,5 +323,23 @@ class EffetRepriseSchedulerTest {
 		assertThat(appelEffet.getStatut()).isEqualTo(StatutAppelEffet.REJETE);
 		assertThat(tache.getStatut()).isEqualTo(StatutTache.ANNULEE);
 		assertThat(instance.getStatut()).isEqualTo(StatutInstance.ANNULEE);
+	}
+
+	@Test
+	void repriseReserveOrpheline_rejoueAvecMemeCleEtTermine() {
+		appelEffet.setStatut(StatutAppelEffet.RESERVE);
+		appelEffet.setTentatives(0);
+		appelEffet.setCreeLe(maintenant.minus(Duration.ofMinutes(2)));
+		when(effetClient.appeler(any(), any(), any())).thenReturn(new ResultatAppelEffet.Succes(Map.of("ok", true)));
+
+		int n = scheduler.reprendreIncertains();
+
+		assertThat(n).isEqualTo(1);
+		verify(appelEffetRepository).verrouillerLotIncertains(
+				eq(maintenant), eq(maintenant.minus(Duration.ofMinutes(1))), eq(50));
+		verify(effetClient).appeler(eq("svc-referentiel-rh"), any(), argThat(req ->
+				("decision:" + tacheId + ":cle-client-1").equals(req.cleIdempotence())));
+		assertThat(appelEffet.getStatut()).isEqualTo(StatutAppelEffet.APPLIQUE);
+		assertThat(instance.getStatut()).isEqualTo(StatutInstance.APPROUVEE);
 	}
 }
