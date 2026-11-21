@@ -23,6 +23,7 @@ import SocieteParametresPage from './pages/parametres/SocieteParametresPage';
 import FonctionsPage from './pages/parametres/FonctionsPage';
 import WorkflowsListePage from './pages/workflow/WorkflowsListePage';
 import WorkflowEditeurPage from './pages/workflow/WorkflowEditeurPage';
+import MesTachesPage from './pages/workflow/MesTachesPage';
 import SoldesCongePage from './pages/SoldesCongePage';
 import ImportPage from './pages/imports/ImportPage';
 import FichePage from './detail/FichePage';
@@ -36,6 +37,7 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/app/accueil" element={<HomePage />} />
+          <Route path="/app/taches" element={<MesTachesPage />} />
           <Route path="/app/acces-refuse" element={<AccesRefusePage />} />
           <Route path="/app/demandes-administratives" element={<DemandesAdministrativesPage />} />
           <Route path="/app/demandes-administratives/:id" element={<FichePage type="demande" />} />

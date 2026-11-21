@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Client } from '@stomp/stompjs';
 import { getToken } from '../api/auth';
 import {
@@ -8,6 +9,7 @@ import { parseContenuNotification } from '../api/notificationContenu';
 import { typeDepuisNotification } from '../detail/refs';
 import { useDetail } from '../detail/contexte';
 import { formatDateHeure } from '../utils/format';
+import { EVENEMENT_RAFRAICHIR_TACHES } from '../pages/workflow/MesTachesPage';
 
 /** Même origine que la page (ws/wss), surchargeable par VITE_WS_URL. */
 function resolveBrokerUrl(): string {
@@ -29,6 +31,7 @@ function badge(n: number): string {
 /** Cloche : liste persistée paginée, compteur serveur, marquage lu, temps réel STOMP (2G, 2F). */
 export default function NotificationBell() {
   const { ouvrir } = useDetail();
+  const navigate = useNavigate();
   const [ouvert, setOuvert] = useState(false);
   const [nonLues, setNonLues] = useState(0);
   const [seulementNonLues, setSeulementNonLues] = useState(false);
@@ -78,6 +81,9 @@ export default function NotificationBell() {
             const n = JSON.parse(msg.body) as NotificationDto;
             setNonLues((x) => x + 1);
             if (n.id) setItems((prev) => (prev.some((p) => p.id === n.id) ? prev : [{ ...n, lu: false }, ...prev]));
+            if (typeof n.evenement === 'string' && n.evenement.startsWith('WF_')) {
+              window.dispatchEvent(new Event(EVENEMENT_RAFRAICHIR_TACHES));
+            }
           } catch {
             rafraichirCompteur();
           }
@@ -113,6 +119,15 @@ export default function NotificationBell() {
       setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, lu: true } : x)));
       setNonLues((x) => Math.max(0, x - 1));
       try { await marquerNotificationLue(n.id); } catch { rafraichirCompteur(); }
+    }
+    if (typeof n.evenement === 'string' && n.evenement.startsWith('WF_')) {
+      setOuvert(false);
+      const q = new URLSearchParams();
+      if (n.objet_type) q.set('objet_type', n.objet_type);
+      if (n.objet_id) q.set('objet_id', n.objet_id);
+      const qs = q.toString();
+      navigate(`/app/taches${qs ? `?${qs}` : ''}`);
+      return;
     }
     const type = typeDepuisNotification(n.objet_type);
     if (type && n.objet_id) {
