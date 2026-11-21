@@ -244,6 +244,10 @@ public class EffetRepriseScheduler {
 		if (inst == null || ae == null) {
 			return;
 		}
+		// Relue sous le verrou de l'instance : le chemin interactif a pu clore la ligne entre-temps.
+		if (ae.getStatut() == StatutAppelEffet.APPLIQUE || ae.getStatut() == StatutAppelEffet.REJETE) {
+			return;
+		}
 		Instant maintenant = clock.instant();
 		int tentatives = ae.getTentatives() + 1;
 		ae.setTentatives(tentatives);
@@ -259,7 +263,7 @@ public class EffetRepriseScheduler {
 				applicationService.appliquerDansTransaction(
 						inst, t, cleTache, item.action(), item.commentaire(),
 						item.decideurCompteId(), item.decideurCollabId(), item.decideurNom(),
-						null, item.pourNom(), item.typeCatalogue(), item.etapeDef(), exec);
+						t.getPourCollaborateurId(), item.pourNom(), item.typeCatalogue(), item.etapeDef(), exec);
 			}
 			return;
 		}
@@ -312,6 +316,8 @@ public class EffetRepriseScheduler {
 					Map.of("effet", item.effet(), "tentatives", tentatives), maintenant);
 			log.error("Instance {} passée en ERREUR après 24 h de reprise sur l'effet {}", inst.getId(), item.effet());
 		} else {
+			// Une ligne RESERVE orpheline rejouée passe INCERTAIN pour suivre la cadence 1, 5, 15, 60 min (D-W29).
+			ae.setStatut(StatutAppelEffet.INCERTAIN);
 			ae.setProchaineTentativeLe(maintenant.plus(delaiReprise(tentatives)));
 			appelEffetRepository.save(ae);
 		}

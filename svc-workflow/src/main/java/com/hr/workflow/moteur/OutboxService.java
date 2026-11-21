@@ -77,7 +77,7 @@ public class OutboxService {
 			return;
 		}
 		Instant maintenant = clock.instant();
-		String notifId = notificationIdDeterministe(evenementId, recipientCompteId);
+		String notifId = notificationIdDeterministe(evenementId, recipientCompteId, evenementNotif, sujet);
 		String typeCanal = ("BOTH".equalsIgnoreCase(canal)) ? "BOTH" : "WEBSOCKET";
 
 		Map<String, Object> charge = new LinkedHashMap<>();
@@ -95,8 +95,14 @@ public class OutboxService {
 		enregistrer(KafkaWorkflowConfig.SUJET_NOTIFICATIONS, recipientCompteId, charge, maintenant);
 	}
 
-	public static String notificationIdDeterministe(UUID evenementId, String destinataire) {
-		return UUID.nameUUIDFromBytes((evenementId + ":" + destinataire).getBytes(StandardCharsets.UTF_8)).toString();
+	/**
+	 * Identifiant stable pour un même événement rejoué (C-06), mais distinct pour deux notifications différentes
+	 * adressées au même compte dans une même décision (ex. « Étape validée » puis « Demande à traiter »), que
+	 * svc-notification dédoublonnerait sinon en silence.
+	 */
+	public static String notificationIdDeterministe(UUID evenementId, String destinataire, String evenementNotif, String sujet) {
+		String base = evenementId + ":" + destinataire + ":" + evenementNotif + ":" + sujet;
+		return UUID.nameUUIDFromBytes(base.getBytes(StandardCharsets.UTF_8)).toString();
 	}
 
 	private void enregistrer(String sujet, String cle, Map<String, Object> charge, Instant maintenant) {

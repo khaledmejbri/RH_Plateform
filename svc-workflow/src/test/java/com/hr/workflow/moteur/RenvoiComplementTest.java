@@ -310,4 +310,59 @@ class RenvoiComplementTest {
 		verify(outboxService).publierEvenementWorkflow(any(), eq("INSTANCE_BLOQUEE"), eq(instance),
 				eq("VALID_RESP"), eq("Validation responsable"), any());
 	}
+
+	@Test
+	void reactivationComplement_repliPasserTerminal_appliqueEffetApprouverAvantApprouvee() {
+		// Étape unique, repli PASSER (setUp) : plus aucun manager résolu au moment du complément.
+		tache.setType(TypeTache.COMPLEMENT);
+		WfTacheCandidat candDem = new WfTacheCandidat();
+		candDem.setId(new WfTacheCandidatId(tacheId, demandeurCollabId));
+		candDem.setCompteId(demandeurCompteId);
+		candDem.setNom("Sarra");
+		when(candidatRepository.existsByIdTacheIdAndCompteId(tacheId, demandeurCompteId)).thenReturn(true);
+		when(candidatRepository.findByIdTacheIdAndCompteIdAndRetireLeIsNull(tacheId, demandeurCompteId))
+				.thenReturn(Optional.of(candDem));
+		when(resolutionService.resoudre(any(), any(), any(), any(), any())).thenReturn(new LotResolu(
+				Map.of("VALID_RESP", new ResultatRegleResolue(List.of(), true, false, "AUCUN_TITULAIRE")),
+				null));
+		WfAppelEffet ae = new WfAppelEffet();
+		ae.setId(UUID.randomUUID());
+		when(appelEffetRepository.saveAndFlush(any())).thenReturn(ae);
+		when(appelEffetRepository.findById(ae.getId())).thenReturn(Optional.of(ae));
+		when(effetClient.appeler(any(), any(), any())).thenReturn(new ResultatAppelEffet.Succes(Map.of("ok", true)));
+
+		ResultatDecision res = service.decider(tacheId,
+				new DecisionRequest("FAIT", "Pièces ajoutées", 1L, "cle-comp-passer"),
+				demandeurCompteId, "Sarra", false);
+
+		assertThat(res.httpStatus()).isEqualTo(200);
+		verify(effetClient).appeler(any(), any(), argThat(r -> "APPLIQUER".equals(r.mode()) && "APPROUVER".equals(r.effet())));
+		assertThat(res.reponse().instance().statut()).isEqualTo(StatutInstance.APPROUVEE);
+	}
+
+	@Test
+	void reactivationComplement_repliPasserTerminal_effetIndisponible_instanceNonApprouvee() {
+		tache.setType(TypeTache.COMPLEMENT);
+		WfTacheCandidat candDem = new WfTacheCandidat();
+		candDem.setId(new WfTacheCandidatId(tacheId, demandeurCollabId));
+		candDem.setCompteId(demandeurCompteId);
+		candDem.setNom("Sarra");
+		when(candidatRepository.existsByIdTacheIdAndCompteId(tacheId, demandeurCompteId)).thenReturn(true);
+		when(candidatRepository.findByIdTacheIdAndCompteIdAndRetireLeIsNull(tacheId, demandeurCompteId))
+				.thenReturn(Optional.of(candDem));
+		when(resolutionService.resoudre(any(), any(), any(), any(), any())).thenReturn(new LotResolu(
+				Map.of("VALID_RESP", new ResultatRegleResolue(List.of(), true, false, "AUCUN_TITULAIRE")),
+				null));
+		WfAppelEffet ae = new WfAppelEffet();
+		ae.setId(UUID.randomUUID());
+		when(appelEffetRepository.saveAndFlush(any())).thenReturn(ae);
+		lenient().when(appelEffetRepository.findById(ae.getId())).thenReturn(Optional.of(ae));
+		when(effetClient.appeler(any(), any(), any())).thenReturn(new ResultatAppelEffet.Incertain("timeout"));
+
+		service.decider(tacheId, new DecisionRequest("FAIT", "Pièces ajoutées", 1L, "cle-comp-passer-2"),
+				demandeurCompteId, "Sarra", false);
+
+		assertThat(instance.getStatut()).isNotEqualTo(StatutInstance.APPROUVEE);
+		assertThat(tache.getStatut()).isEqualTo(StatutTache.RESERVEE);
+	}
 }

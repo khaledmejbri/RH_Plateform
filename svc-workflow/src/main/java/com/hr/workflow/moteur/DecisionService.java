@@ -24,6 +24,7 @@ import com.hr.workflow.entity.WfTacheCandidat;
 import com.hr.workflow.moteur.EffetClient.ActeurEffet;
 import com.hr.workflow.moteur.EffetClient.RequeteEffet;
 import com.hr.workflow.moteur.EffetClient.ResultatAppelEffet;
+import com.hr.workflow.moteur.AvancementService.PlanAvancement;
 import com.hr.workflow.moteur.PreparationDecisionService.PlanExecutionDecision;
 import com.hr.workflow.repository.WfAppelEffetRepository;
 import com.hr.workflow.repository.WfBeneficiaireRepository;
@@ -362,10 +363,13 @@ public class DecisionService {
 	}
 
 	private static String determinerEffetTerminal(PlanExecutionDecision exec, String action, TypeObjetCatalogue typeCatalogue) {
-		if (exec.plan() != null && exec.plan().statutFinal() == StatutInstance.APPROUVEE) {
+		// Plan après l'étape, ou plan de réactivation après complément (repli PASSER qui termine l'instance) :
+		// toute fin APPROUVEE / REFUSEE passe par l'effet APPLIQUER du propriétaire (I8).
+		PlanAvancement p = exec.plan() != null ? exec.plan() : exec.planReactivation();
+		if (p != null && p.statutFinal() == StatutInstance.APPROUVEE) {
 			return "APPROUVER";
 		}
-		if (exec.plan() != null && exec.plan().statutFinal() == StatutInstance.REFUSEE) {
+		if (p != null && p.statutFinal() == StatutInstance.REFUSEE) {
 			return "REFUSER";
 		}
 		if ("RENVOYER".equals(action) && typeCatalogue.supporteComplement()) {
