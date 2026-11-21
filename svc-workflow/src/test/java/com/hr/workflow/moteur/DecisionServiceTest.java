@@ -55,7 +55,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -355,5 +357,63 @@ class DecisionServiceTest {
 		assertThat(res.httpStatus()).isEqualTo(200);
 		assertThat(ae.getStatut()).isEqualTo(StatutAppelEffet.APPLIQUE);
 		assertThat(instance.getStatut()).isEqualTo(StatutInstance.APPROUVEE);
+	}
+
+	@Test
+	void publicsNotificationDW27_aLaFinEtALActivation_appliquesLorsDecision() {
+		EtapeDefinition.NotificationsEtapeDefinition notif1 = new EtapeDefinition.NotificationsEtapeDefinition(
+				null, List.of("ROLE:ADMIN"), "WEBSOCKET");
+		EtapeDefinition.NotificationsEtapeDefinition notif2 = new EtapeDefinition.NotificationsEtapeDefinition(
+				List.of("ROLE:RH"), null, "BOTH");
+		EtapeDefinition e1 = new EtapeDefinition("ETAPE_1", "Validation Responsable", "VALIDATION", null,
+				new IntervenantsDefinition("MANAGER_NOEUD", Map.of(), "UN_SEUL"),
+				new RepliSiVideDefinition("BLOQUER", null), null, null, List.of("APPROUVER", "REFUSER"),
+				false, null, new DelaiDefinition(2, "JOURS_OUVRES", null), null,
+				new EcheanceDefinition("RIEN", null, null), null, null, notif1);
+		EtapeDefinition e2 = new EtapeDefinition("ETAPE_2", "Validation RH", "VALIDATION", null,
+				new IntervenantsDefinition("ROLE", Map.of("roles", List.of("RH")), "UN_SEUL"),
+				new RepliSiVideDefinition("BLOQUER", null), null, null, List.of("APPROUVER", "REFUSER"),
+				false, null, new DelaiDefinition(2, "JOURS_OUVRES", null), null,
+				new EcheanceDefinition("RIEN", null, null), null, null, notif2);
+
+		instance.getModeleVersion().setDefinition(
+				codec.serialiser(new DefinitionWorkflow(1, "CONGE", null, List.of(e1, e2))));
+		instance.setEtapeCouranteCode("ETAPE_1");
+		etapeExec.setEtapeCode("ETAPE_1");
+
+		UUID rhSuivantCollab = UUID.randomUUID();
+		UUID rhSuivantCompte = UUID.randomUUID();
+		UUID adminFinCompte = UUID.randomUUID();
+		UUID rhActivationCompte = UUID.randomUUID();
+
+		when(resolutionService.resoudre(any(), any(), any(), any(), any())).thenReturn(new LotResolu(
+				Map.of("ETAPE_2", new ResultatRegleResolue(
+						List.of(new IntervenantResolu(rhSuivantCollab, rhSuivantCompte, "Nadia", "RH")),
+						false, false, null)),
+				null));
+		when(resolutionService.resoudreComptesPublics(any(), eq(List.of("ROLE:ADMIN")), any(), any(), any()))
+				.thenReturn(List.of(adminFinCompte));
+		when(resolutionService.resoudreComptesPublics(any(), eq(List.of("ROLE:RH")), any(), any(), any()))
+				.thenReturn(List.of(rhActivationCompte));
+		when(etapeExecutionRepository.saveAndFlush(any(WfEtapeExecution.class))).thenAnswer(inv -> {
+			WfEtapeExecution e = inv.getArgument(0);
+			if (e.getId() == null) e.setId(UUID.randomUUID());
+			return e;
+		});
+		when(tacheRepository.saveAndFlush(any(WfTache.class))).thenAnswer(inv -> {
+			WfTache t = inv.getArgument(0);
+			if (t.getId() == null) t.setId(UUID.randomUUID());
+			return t;
+		});
+
+		ResultatDecision res = service.decider(tacheId, new DecisionRequest("APPROUVER", null, 1L, "cle-dw27"),
+				valideurCompteId, "Omar", false);
+
+		assertThat(res.httpStatus()).isEqualTo(200);
+		assertThat(res.reponse().instance().etapeCourante().code()).isEqualTo("ETAPE_2");
+		verify(outboxService).publierNotification(any(), eq(adminFinCompte.toString()), eq("WEBSOCKET"),
+				eq("WF_DECISION"), eq("Validation Responsable"), any(), eq("CONGE"), any(), any());
+		verify(outboxService).publierNotification(any(), eq(rhActivationCompte.toString()), eq("BOTH"),
+				eq("WF_TACHE_CREEE"), eq("Validation RH"), any(), eq("CONGE"), any(), any());
 	}
 }
