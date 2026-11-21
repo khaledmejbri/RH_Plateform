@@ -21,6 +21,7 @@ import BornePage from './pages/BornePage';
 import ParametresPage from './pages/ParametresPage';
 import SocieteParametresPage from './pages/parametres/SocieteParametresPage';
 import FonctionsPage from './pages/parametres/FonctionsPage';
+import WorkflowsListePage from './pages/workflow/WorkflowsListePage';
 import SoldesCongePage from './pages/SoldesCongePage';
 import ImportPage from './pages/imports/ImportPage';
 import FichePage from './detail/FichePage';
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="/app/parametres" element={<ParametresPage />} />
           <Route path="/app/parametres/societe" element={<SocieteParametresPage />} />
           <Route path="/app/parametres/fonctions" element={<FonctionsPage />} />
+          <Route path="/app/parametres/workflows" element={<WorkflowsListePage />} />
           <Route element={<RequireWriteAccess />}>
             <Route path="/app/collaborateurs/import" element={<ImportPage type="COLLABORATEURS" />} />
             <Route path="/app/conges/soldes/import" element={<ImportPage type="SOLDES" />} />

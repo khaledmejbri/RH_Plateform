@@ -52,6 +52,7 @@ const MENU: Menu[] = [
       { id: 'parametres', to: '/app/parametres', label: 'Paramètres' },
       { id: 'societe', to: '/app/parametres/societe', label: 'Société' },
       { id: 'fonctions', to: '/app/parametres/fonctions', label: 'Fonctions' },
+      { id: 'workflows', to: '/app/parametres/workflows', label: 'Workflows' },
       { id: 'structure', to: '/app/structure', label: 'Structure RH', writeOnly: true },
       { id: 'organisation', to: '/app/unites', label: 'Unités', writeOnly: true },
     ],
@@ -85,6 +86,7 @@ export function entreeActive(pathname: string, search: string): string {
   if (p.startsWith('/app/unites')) return 'organisation';
   if (p.startsWith('/app/parametres/societe')) return 'societe';
   if (p.startsWith('/app/parametres/fonctions')) return 'fonctions';
+  if (p.startsWith('/app/parametres/workflows')) return 'workflows';
   if (p.startsWith('/app/parametres')) return 'parametres';
   if (p.startsWith('/app/accueil')) return 'accueil';
   return '';
