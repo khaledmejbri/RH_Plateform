@@ -26,6 +26,14 @@ public interface DemandeAdministrativeRhRepository extends JpaRepository<Demande
 	List<DemandeAdministrativeRh> findByValideurAttenduIdAndStatutOrderByCreeLeDesc(
 			UUID valideurAttenduId, StatutDemandeAdministrativeRh statut);
 
+	/** D-W5-13 : exclut en base les demandes {@code MOTEUR} de la file héritée {@code en-attente-ro}. */
+	@Query("select d from DemandeAdministrativeRh d where d.valideurAttendu.id = :valideurId "
+			+ "and d.statut = :statut and (d.workflowMode is null or d.workflowMode <> 'MOTEUR') "
+			+ "order by d.creeLe desc")
+	List<DemandeAdministrativeRh> findEnAttenteRoHerite(
+			@Param("valideurId") UUID valideurId,
+			@Param("statut") StatutDemandeAdministrativeRh statut);
+
 	List<DemandeAdministrativeRh> findByDemandeurIdAndTypeDemandeOrderByCreeLeDesc(UUID demandeurId,
 			TypeDemandeAdministrativeRh typeDemande);
 
@@ -56,6 +64,17 @@ public interface DemandeAdministrativeRhRepository extends JpaRepository<Demande
 	@org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
 	@Query("select d from DemandeAdministrativeRh d where d.id = :id")
 	java.util.Optional<DemandeAdministrativeRh> findByIdForUpdate(@Param("id") UUID id);
+
+	@Query("select d from DemandeAdministrativeRh d join fetch d.demandeur where d.id = :id")
+	java.util.Optional<DemandeAdministrativeRh> findByIdAvecDemandeur(@Param("id") UUID id);
+
+	/** Lot de demandes MOTEUR en attente de démarrage (D-W5-05, verrou non bloquant). */
+	@Query(value = "SELECT identifiant FROM rh_demande_administrative "
+			+ "WHERE societe_id = :societeId AND workflow_mode = 'MOTEUR' "
+			+ "AND workflow_etat = 'A_DEMARRER' AND statut <> 'ANNULEE' "
+			+ "ORDER BY cree_le ASC LIMIT :limite FOR UPDATE SKIP LOCKED",
+			nativeQuery = true)
+	List<UUID> findIdsADemarrerPourReprise(@Param("societeId") UUID societeId, @Param("limite") int limite);
 
 	/** Réservé : jours des demandes ANNUEL décomptées en cours de validation (D-S04). */
 	@Query("select coalesce(sum(d.joursDecomptes), 0) from DemandeAdministrativeRh d "

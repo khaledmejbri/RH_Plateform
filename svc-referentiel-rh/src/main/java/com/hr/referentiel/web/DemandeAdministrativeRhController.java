@@ -135,6 +135,17 @@ public class DemandeAdministrativeRhController {
 				demandeAdministrativeRhService.annuler(identifiant, principal.getToken()));
 	}
 
+	/** Complément fourni par le demandeur sur une demande MOTEUR en statut A_COMPLETER (D-W5-12). */
+	@PostMapping("/{identifiant}/complement")
+	@PreAuthorize("hasRole('USER')")
+	public ResponseEntity<DemandeAdministrativeRhResponse> fournirComplement(
+			@PathVariable UUID identifiant,
+			@Valid @RequestBody DemandeComplementRequest requete,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(
+				demandeAdministrativeRhService.fournirComplement(identifiant, requete, principal.getToken()));
+	}
+
 	/**
 	 * Annulation par la RH d'un congé déjà approuvé (D-S06.d) : RH / ADMIN autre que le demandeur, motif 5 à 500,
 	 * congé non commencé. Recrédit du solde pour un congé annuel décompté.

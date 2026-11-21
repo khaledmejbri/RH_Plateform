@@ -10,6 +10,8 @@ public enum ActionWorkflowAdministratif {
 	APPROBATION_RRH("Approuvée par la RH"),
 	ANNULATION_DEMANDEUR("Annulée par le demandeur"),
 	ANNULATION_APRES_APPROBATION("Annulée après approbation"),
+	DEMANDE_COMPLEMENT("Complément demandé"),
+	COMPLEMENT_FOURNI("Complément fourni"),
 	CLOTUREE("Clôturée");
 
 	private final String libelle;

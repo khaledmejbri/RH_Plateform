@@ -62,4 +62,8 @@ public class ReferentielMetierException extends RuntimeException {
 	public static ReferentielMetierException payloadTooLarge(String code, String message) {
 		return new ReferentielMetierException(code, message, 413);
 	}
+
+	public static ReferentielMetierException serviceUnavailable(String code, String message) {
+		return new ReferentielMetierException(code, message, 503);
+	}
 }

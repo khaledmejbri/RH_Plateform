@@ -146,4 +146,49 @@ public class DemandeAdministrativeSuiviResponse {
 	public void setEtapes(List<WorkflowEtapeResponse> etapes) {
 		this.etapes = etapes;
 	}
+
+	/** D-W5-13 : champs workflow exposés sur le suivi M01. */
+	@JsonProperty("workflow_mode")
+	private String workflowMode;
+
+	@JsonProperty("workflow_instance_id")
+	private UUID workflowInstanceId;
+
+	@JsonProperty("etape_courante_libelle")
+	private String etapeCouranteLibelle;
+
+	@JsonProperty("echeance_le")
+	private java.time.Instant echeanceLe;
+
+	public String getWorkflowMode() {
+		return workflowMode;
+	}
+
+	public void setWorkflowMode(String workflowMode) {
+		this.workflowMode = workflowMode;
+	}
+
+	public UUID getWorkflowInstanceId() {
+		return workflowInstanceId;
+	}
+
+	public void setWorkflowInstanceId(UUID workflowInstanceId) {
+		this.workflowInstanceId = workflowInstanceId;
+	}
+
+	public String getEtapeCouranteLibelle() {
+		return etapeCouranteLibelle;
+	}
+
+	public void setEtapeCouranteLibelle(String etapeCouranteLibelle) {
+		this.etapeCouranteLibelle = etapeCouranteLibelle;
+	}
+
+	public java.time.Instant getEcheanceLe() {
+		return echeanceLe;
+	}
+
+	public void setEcheanceLe(java.time.Instant echeanceLe) {
+		this.echeanceLe = echeanceLe;
+	}
 }

@@ -98,4 +98,39 @@ public class KafkaReferentielConfig {
 		factory.setAutoStartup(false);
 		return factory;
 	}
+
+	@Bean
+	public ConsumerFactory<String, String> workflowEvenementsConsumerFactory() {
+		Map<String, Object> config = new HashMap<>();
+		config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+		config.put(ConsumerConfig.GROUP_ID_CONFIG, "svc-referentiel-rh-workflow");
+		return new DefaultKafkaConsumerFactory<>(config, new StringDeserializer(), new StringDeserializer());
+	}
+
+	/**
+	 * D-W5-09 : consommateur {@code rh.workflow.evenements} (groupe {@code svc-referentiel-rh-workflow}),
+	 * reprise 1 s, 5 s, 30 s puis {@code rh.workflow.evenements.DLT}.
+	 */
+	@Bean
+	public ConcurrentKafkaListenerContainerFactory<String, String> workflowEvenementsKafkaListenerContainerFactory(
+			KafkaTemplate<String, String> kafkaTemplate) {
+		ConcurrentKafkaListenerContainerFactory<String, String> factory =
+				new ConcurrentKafkaListenerContainerFactory<>();
+		factory.setConsumerFactory(workflowEvenementsConsumerFactory());
+		factory.setAutoStartup(false);
+		var recoverer = new org.springframework.kafka.listener.DeadLetterPublishingRecoverer(
+				kafkaTemplate,
+				(record, ex) -> new org.apache.kafka.common.TopicPartition("rh.workflow.evenements.DLT", -1));
+		long[] delaisMs = {1_000L, 5_000L, 30_000L};
+		org.springframework.util.backoff.BackOff backOff = () -> new org.springframework.util.backoff.BackOffExecution() {
+			private int essai = 0;
+
+			@Override
+			public long nextBackOff() {
+				return essai < delaisMs.length ? delaisMs[essai++] : STOP;
+			}
+		};
+		factory.setCommonErrorHandler(new org.springframework.kafka.listener.DefaultErrorHandler(recoverer, backOff));
+		return factory;
+	}
 }

@@ -4,6 +4,8 @@ public enum StatutDemandeAdministrativeRh {
 	SOUMISE("Soumise"),
 	EN_VALIDATION_SUPERIEUR("En attente du responsable"),
 	EN_VALIDATION_RRH("En attente de validation RH"),
+	EN_COURS("En cours de validation"),
+	A_COMPLETER("À compléter"),
 	APPROUVEE("Approuvée"),
 	REFUSEE("Refusée"),
 	ANNULEE("Annulée");

@@ -40,7 +40,8 @@ public class CongeDecompteService {
 	static final String CLE_DERNIER = "periode_dernier_jour";
 	static final Set<StatutDemandeAdministrativeRh> STATUTS_CHEVAUCHANTS = EnumSet.of(
 			StatutDemandeAdministrativeRh.SOUMISE, StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR,
-			StatutDemandeAdministrativeRh.EN_VALIDATION_RRH, StatutDemandeAdministrativeRh.APPROUVEE);
+			StatutDemandeAdministrativeRh.EN_VALIDATION_RRH, StatutDemandeAdministrativeRh.EN_COURS,
+			StatutDemandeAdministrativeRh.A_COMPLETER, StatutDemandeAdministrativeRh.APPROUVEE);
 	public static final String MENTION_ANTERIEURE = "Demande antérieure aux soldes : non décomptée";
 
 	private final JourFerieService jourFerieService;
@@ -130,6 +131,26 @@ public class CongeDecompteService {
 	public void controlerValidation(DemandeAdministrativeRh d) {
 		if (d.getJoursDecomptes() != null) {
 			recalculerSousVerrou(d);
+		}
+	}
+
+	/**
+	 * Contrôle lecture seule (endpoint d'effet {@code CONTROLER}, D-W5-07) : même règle sur le solde acquis sans
+	 * verrouiller ni modifier la demande.
+	 */
+	public void controlerValidationLectureSeule(DemandeAdministrativeRh d) {
+		if (d.getJoursDecomptes() == null) {
+			return;
+		}
+		Periodes p = periodesDe(d);
+		Set<LocalDate> feries = jourFerieService.datesActives();
+		BigDecimal jours = DecompteJoursOuvres.jours(p, feries, baseDecompte(), joursTravailles());
+		if (jours.signum() == 0) {
+			throw aucunJourOuvre();
+		}
+		BigDecimal acquis = soldeService.acquis(d.getDemandeur().getId());
+		if (jours.compareTo(acquis) > 0) {
+			throw soldeInsuffisant(jours, acquis);
 		}
 	}
 
