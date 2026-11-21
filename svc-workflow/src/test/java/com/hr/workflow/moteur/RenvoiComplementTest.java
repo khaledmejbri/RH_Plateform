@@ -55,8 +55,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -221,5 +224,90 @@ class RenvoiComplementTest {
 				.isInstanceOf(WorkflowMetierException.class)
 				.hasFieldOrPropertyWithValue("httpStatus", 422)
 				.hasFieldOrPropertyWithValue("code", "RENVOIS_EPUISES");
+	}
+
+	@Test
+	void reactivationComplement_utiliseLibelleEtape_etModeTousCreeUneTacheParCandidat() {
+		EtapeDefinition etapeTous = new EtapeDefinition("VALID_RESP", "Validation responsable", "VALIDATION", null,
+				new IntervenantsDefinition("MANAGER_NOEUD", Map.of(), "TOUS"),
+				new RepliSiVideDefinition("BLOQUER", null), null, null, List.of("APPROUVER", "REFUSER", "RENVOYER"),
+				false, null, new DelaiDefinition(2, "JOURS_OUVRES", null), null,
+				new EcheanceDefinition("RIEN", null, null), null, null, null);
+		instance.getModeleVersion().setDefinition(
+				codec.serialiser(new DefinitionWorkflow(1, "ORDRE_MISSION", null, List.of(etapeTous))));
+
+		tache.setType(TypeTache.COMPLEMENT);
+		WfTacheCandidat candDem = new WfTacheCandidat();
+		candDem.setId(new WfTacheCandidatId(tacheId, demandeurCollabId));
+		candDem.setCompteId(demandeurCompteId);
+		candDem.setNom("Sarra");
+		when(candidatRepository.existsByIdTacheIdAndCompteId(tacheId, demandeurCompteId)).thenReturn(true);
+		when(candidatRepository.findByIdTacheIdAndCompteIdAndRetireLeIsNull(tacheId, demandeurCompteId))
+				.thenReturn(Optional.of(candDem));
+
+		UUID cand2CollabId = UUID.randomUUID();
+		UUID cand2CompteId = UUID.randomUUID();
+		when(resolutionService.resoudre(any(), any(), any(), any(), any())).thenReturn(new LotResolu(
+				Map.of("VALID_RESP", new ResultatRegleResolue(List.of(
+						new IntervenantResolu(respCollabId, respCompteId, "Omar", "Chef"),
+						new IntervenantResolu(cand2CollabId, cand2CompteId, "Youssef", "Directeur")),
+						false, false, null)),
+				null));
+
+		ResultatDecision res = service.decider(tacheId,
+				new DecisionRequest("FAIT", "Pièces ajoutées", 1L, "cle-comp-tous"),
+				demandeurCompteId, "Sarra", false);
+
+		assertThat(res.httpStatus()).isEqualTo(200);
+		assertThat(res.reponse().instance().statut()).isEqualTo(StatutInstance.EN_COURS);
+		assertThat(res.reponse().instance().etapeCourante().libelle()).isEqualTo("Validation responsable");
+
+		ArgumentCaptor<WfTache> tacheCaptor = ArgumentCaptor.forClass(WfTache.class);
+		verify(tacheRepository, atLeastOnce()).saveAndFlush(tacheCaptor.capture());
+		List<WfTache> creees = tacheCaptor.getAllValues().stream()
+				.filter(t -> t.getType() == TypeTache.VALIDATION && "Validation responsable".equals(t.getLibelle()))
+				.toList();
+		assertThat(creees).hasSize(2);
+		verify(outboxService).publierNotification(any(), eq(respCompteId.toString()), eq("WEBSOCKET"),
+				eq("WF_TACHE_CREEE"), any(), any(), eq("ORDRE_MISSION"), any(), any());
+		verify(outboxService).publierNotification(any(), eq(cand2CompteId.toString()), eq("WEBSOCKET"),
+				eq("WF_TACHE_CREEE"), any(), any(), eq("ORDRE_MISSION"), any(), any());
+	}
+
+	@Test
+	void reactivationComplement_listeVideEtRepliBloquer_passeInstanceBloqueeEtNotifieRhAdmin() {
+		EtapeDefinition etapeBloquer = new EtapeDefinition("VALID_RESP", "Validation responsable", "VALIDATION", null,
+				new IntervenantsDefinition("MANAGER_NOEUD", Map.of(), "UN_SEUL"),
+				new RepliSiVideDefinition("BLOQUER", null), null, null, List.of("APPROUVER", "REFUSER", "RENVOYER"),
+				false, null, new DelaiDefinition(2, "JOURS_OUVRES", null), null,
+				new EcheanceDefinition("RIEN", null, null), null, null, null);
+		instance.getModeleVersion().setDefinition(
+				codec.serialiser(new DefinitionWorkflow(1, "ORDRE_MISSION", null, List.of(etapeBloquer))));
+
+		tache.setType(TypeTache.COMPLEMENT);
+		WfTacheCandidat candDem = new WfTacheCandidat();
+		candDem.setId(new WfTacheCandidatId(tacheId, demandeurCollabId));
+		candDem.setCompteId(demandeurCompteId);
+		candDem.setNom("Sarra");
+		when(candidatRepository.existsByIdTacheIdAndCompteId(tacheId, demandeurCompteId)).thenReturn(true);
+		when(candidatRepository.findByIdTacheIdAndCompteIdAndRetireLeIsNull(tacheId, demandeurCompteId))
+				.thenReturn(Optional.of(candDem));
+		when(resolutionService.resoudre(any(), any(), any(), any(), any())).thenReturn(new LotResolu(
+				Map.of("VALID_RESP", new ResultatRegleResolue(List.of(), false, true, "AUCUN_TITULAIRE")),
+				null));
+		UUID rhCompte = UUID.randomUUID();
+		when(resolutionService.resoudreComptesRoles(any(), eq(List.of("RH", "ADMIN"))))
+				.thenReturn(List.of(rhCompte));
+
+		ResultatDecision res = service.decider(tacheId,
+				new DecisionRequest("FAIT", "Pièces ajoutées", 1L, "cle-comp-vide"),
+				demandeurCompteId, "Sarra", false);
+
+		assertThat(res.httpStatus()).isEqualTo(200);
+		assertThat(res.reponse().instance().statut()).isEqualTo(StatutInstance.BLOQUEE);
+		verify(outboxService).publierNotification(any(), eq(rhCompte.toString()), eq("WEBSOCKET"),
+				eq("WF_BLOQUEE"), eq("Workflow bloqué"), any(), eq("ORDRE_MISSION"), any(), any());
+		verify(outboxService).publierEvenementWorkflow(any(), eq("INSTANCE_BLOQUEE"), eq(instance),
+				eq("VALID_RESP"), eq("Validation responsable"), any());
 	}
 }
