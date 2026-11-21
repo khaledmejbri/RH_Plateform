@@ -4,6 +4,8 @@ import com.hr.workflow.catalogue.CatalogueTypesObjet;
 import com.hr.workflow.catalogue.CatalogueTypesObjet.TypeObjetCatalogue;
 import com.hr.workflow.catalogue.CatalogueTypesObjet.TypeVariable;
 import com.hr.workflow.catalogue.CatalogueTypesObjet.VariableCatalogue;
+import com.hr.workflow.client.WorkflowReferentielClient;
+import com.hr.workflow.client.WorkflowReferentielClient.CollaborateurResume;
 import com.hr.workflow.definition.DefinitionCodec;
 import com.hr.workflow.definition.DefinitionWorkflow;
 import com.hr.workflow.definition.EtapeDefinition;
@@ -39,7 +41,9 @@ import com.hr.workflow.web.WorkflowMetierException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -67,8 +71,10 @@ public class WorkflowUtilisateurService {
 	private final WfInstanceRepository instanceRepository;
 	private final WfEtapeExecutionRepository etapeExecutionRepository;
 	private final WfBeneficiaireRepository beneficiaireRepository;
+	private final WorkflowReferentielClient referentielClient;
 	private final DefinitionCodec codec;
 	private final EvaluateurCondition evaluateur = new EvaluateurCondition();
+	private final TransactionTemplate txReadOnly;
 	private final Clock clock;
 
 	public WorkflowUtilisateurService(
@@ -80,7 +86,9 @@ public class WorkflowUtilisateurService {
 			WfInstanceRepository instanceRepository,
 			WfEtapeExecutionRepository etapeExecutionRepository,
 			WfBeneficiaireRepository beneficiaireRepository,
+			WorkflowReferentielClient referentielClient,
 			DefinitionCodec codec,
+			PlatformTransactionManager transactionManager,
 			Clock clock) {
 		this.catalogue = catalogue;
 		this.activationRepository = activationRepository;
@@ -90,7 +98,10 @@ public class WorkflowUtilisateurService {
 		this.instanceRepository = instanceRepository;
 		this.etapeExecutionRepository = etapeExecutionRepository;
 		this.beneficiaireRepository = beneficiaireRepository;
+		this.referentielClient = referentielClient;
 		this.codec = codec;
+		this.txReadOnly = new TransactionTemplate(transactionManager);
+		this.txReadOnly.setReadOnly(true);
 		this.clock = clock;
 	}
 
@@ -178,69 +189,126 @@ public class WorkflowUtilisateurService {
 		return new CompteurTachesResponse(aTraiter, enRetard);
 	}
 
-	@Transactional(readOnly = true)
 	public TacheDetailResponse detailTache(UUID tacheId, UUID appelantCompteId, boolean estBackofficeLecture, boolean voirNomsPool) {
-		WfTache t = tacheRepository.findByIdAvecDetails(tacheId)
-				.orElseThrow(() -> WorkflowMetierException.notFound("TACHE_INTROUVABLE", "Tâche introuvable."));
-		WfInstance inst = t.getInstance();
-
-		if (!estVisible(inst, appelantCompteId, estBackofficeLecture)) {
-			throw WorkflowMetierException.notFound("TACHE_INTROUVABLE", "Tâche introuvable.");
-		}
-
-		DefinitionWorkflow def = codec.deserialiser(inst.getModeleVersion().getDefinition());
-		EtapeDefinition etapeDef = def.etapes().stream()
-				.filter(e -> e.code().equals(t.getEtapeExecution().getEtapeCode()))
-				.findFirst().orElse(null);
-
-		List<String> actions = (t.getType() == TypeTache.VALIDATION && etapeDef != null && etapeDef.actions() != null)
-				? etapeDef.actions()
-				: actionsPermisesSimple(t.getType());
-
-		boolean commentaireOblig = false;
-		if (etapeDef != null && etapeDef.commentaireObligatoireSi() != null) {
-			Map<String, TypeVariable> typesVars = new HashMap<>();
-			for (VariableCatalogue vc : catalogue.variablesPour(inst.getObjetType()).values()) {
-				typesVars.put(vc.nom(), vc.type());
+		record PreCheck(UUID instanceId, boolean visible, boolean verifierBeneficiaire) {}
+		PreCheck check = txReadOnly.execute(status -> {
+			WfTache t = tacheRepository.findByIdAvecDetails(tacheId)
+					.orElseThrow(() -> WorkflowMetierException.notFound("TACHE_INTROUVABLE", "Tâche introuvable."));
+			WfInstance inst = t.getInstance();
+			if (estVisibleDirect(inst, appelantCompteId, estBackofficeLecture)) {
+				return new PreCheck(inst.getId(), true, false);
 			}
-			commentaireOblig = evaluateur.evaluer(etapeDef.commentaireObligatoireSi(), inst.getVariables(), typesVars);
+			boolean aBenefs = !beneficiaireRepository.findByIdInstanceId(inst.getId()).isEmpty();
+			return new PreCheck(inst.getId(), false, aBenefs);
+		});
+
+		if (!check.visible()) {
+			UUID collabId = check.verifierBeneficiaire() ? resoudreCollabHorsTransaction(appelantCompteId) : null;
+			boolean visibleBenef = collabId != null && Boolean.TRUE.equals(txReadOnly.execute(status ->
+					beneficiaireRepository.existsByIdInstanceIdAndIdCollaborateurId(check.instanceId(), collabId)));
+			if (!visibleBenef) {
+				throw WorkflowMetierException.notFound("TACHE_INTROUVABLE", "Tâche introuvable.");
+			}
 		}
 
-		String objetLibelle = catalogue.findByObjetType(inst.getObjetType())
-				.map(TypeObjetCatalogue::libelle).orElse(inst.getObjetType());
-		boolean enRetard = t.getStatut() == StatutTache.A_TRAITER
-				&& t.getEcheanceLe() != null
-				&& t.getEcheanceLe().isBefore(clock.instant());
+		return txReadOnly.execute(status -> {
+			WfTache t = tacheRepository.findByIdAvecDetails(tacheId)
+					.orElseThrow(() -> WorkflowMetierException.notFound("TACHE_INTROUVABLE", "Tâche introuvable."));
+			WfInstance inst = t.getInstance();
 
-		SuiviInstanceResponse suivi = construireSuivi(inst, def, voirNomsPool);
+			DefinitionWorkflow def = codec.deserialiser(inst.getModeleVersion().getDefinition());
+			EtapeDefinition etapeDef = def.etapes().stream()
+					.filter(e -> e.code().equals(t.getEtapeExecution().getEtapeCode()))
+					.findFirst().orElse(null);
 
-		return new TacheDetailResponse(
-				t.getId(), inst.getId(), t.getType(), t.getStatut(), t.getLibelle(),
-				inst.getObjetType(), objetLibelle, inst.getObjetNumero(), inst.getObjetId(),
-				inst.getDemandeurNom(), t.getEcheanceLe(), enRetard,
-				actions, commentaireOblig, t.getVersion(), extraireResume(inst.getVariables()), suivi);
+			List<String> actions = (t.getType() == TypeTache.VALIDATION && etapeDef != null && etapeDef.actions() != null)
+					? etapeDef.actions()
+					: actionsPermisesSimple(t.getType());
+
+			boolean commentaireOblig = false;
+			if (etapeDef != null && etapeDef.commentaireObligatoireSi() != null) {
+				Map<String, TypeVariable> typesVars = new HashMap<>();
+				for (VariableCatalogue vc : catalogue.variablesPour(inst.getObjetType()).values()) {
+					typesVars.put(vc.nom(), vc.type());
+				}
+				commentaireOblig = evaluateur.evaluer(etapeDef.commentaireObligatoireSi(), inst.getVariables(), typesVars);
+			}
+
+			String objetLibelle = catalogue.findByObjetType(inst.getObjetType())
+					.map(TypeObjetCatalogue::libelle).orElse(inst.getObjetType());
+			boolean enRetard = t.getStatut() == StatutTache.A_TRAITER
+					&& t.getEcheanceLe() != null
+					&& t.getEcheanceLe().isBefore(clock.instant());
+
+			SuiviInstanceResponse suivi = construireSuivi(inst, def, voirNomsPool);
+
+			return new TacheDetailResponse(
+					t.getId(), inst.getId(), t.getType(), t.getStatut(), t.getLibelle(),
+					inst.getObjetType(), objetLibelle, inst.getObjetNumero(), inst.getObjetId(),
+					inst.getDemandeurNom(), t.getEcheanceLe(), enRetard,
+					actions, commentaireOblig, t.getVersion(), extraireResume(inst.getVariables()), suivi);
+		});
 	}
 
-	@Transactional(readOnly = true)
 	public SuiviInstanceResponse suiviParInstance(UUID instanceId, UUID appelantCompteId, boolean estBackofficeLecture, boolean voirNomsPool) {
-		WfInstance inst = instanceRepository.findByIdAvecVersion(instanceId)
-				.orElseThrow(() -> WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable."));
-		if (!estVisible(inst, appelantCompteId, estBackofficeLecture)) {
-			throw WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable.");
+		boolean verifierBenef = Boolean.TRUE.equals(txReadOnly.execute(status -> {
+			WfInstance inst = instanceRepository.findByIdAvecVersion(instanceId)
+					.orElseThrow(() -> WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable."));
+			if (estVisibleDirect(inst, appelantCompteId, estBackofficeLecture)) {
+				return false;
+			}
+			if (beneficiaireRepository.findByIdInstanceId(inst.getId()).isEmpty()) {
+				throw WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable.");
+			}
+			return true;
+		}));
+
+		if (verifierBenef) {
+			UUID collabId = resoudreCollabHorsTransaction(appelantCompteId);
+			boolean visibleBenef = collabId != null && Boolean.TRUE.equals(txReadOnly.execute(status ->
+					beneficiaireRepository.existsByIdInstanceIdAndIdCollaborateurId(instanceId, collabId)));
+			if (!visibleBenef) {
+				throw WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable.");
+			}
 		}
-		DefinitionWorkflow def = codec.deserialiser(inst.getModeleVersion().getDefinition());
-		return construireSuivi(inst, def, voirNomsPool);
+
+		return txReadOnly.execute(status -> {
+			WfInstance inst = instanceRepository.findByIdAvecVersion(instanceId)
+					.orElseThrow(() -> WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable."));
+			DefinitionWorkflow def = codec.deserialiser(inst.getModeleVersion().getDefinition());
+			return construireSuivi(inst, def, voirNomsPool);
+		});
 	}
 
-	@Transactional(readOnly = true)
 	public SuiviInstanceResponse suiviParObjet(String objetType, UUID objetId, UUID appelantCompteId, boolean estBackofficeLecture, boolean voirNomsPool) {
-		WfInstance inst = instanceRepository.findByObjetTypeAndObjetIdAvecVersion(objetType, objetId)
-				.orElseThrow(() -> WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable."));
-		if (!estVisible(inst, appelantCompteId, estBackofficeLecture)) {
-			throw WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable.");
+		record PreCheckObjet(UUID instanceId, boolean verifierBenef) {}
+		PreCheckObjet check = txReadOnly.execute(status -> {
+			WfInstance inst = instanceRepository.findByObjetTypeAndObjetIdAvecVersion(objetType, objetId)
+					.orElseThrow(() -> WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable."));
+			if (estVisibleDirect(inst, appelantCompteId, estBackofficeLecture)) {
+				return new PreCheckObjet(inst.getId(), false);
+			}
+			if (beneficiaireRepository.findByIdInstanceId(inst.getId()).isEmpty()) {
+				throw WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable.");
+			}
+			return new PreCheckObjet(inst.getId(), true);
+		});
+
+		if (check.verifierBenef()) {
+			UUID collabId = resoudreCollabHorsTransaction(appelantCompteId);
+			boolean visibleBenef = collabId != null && Boolean.TRUE.equals(txReadOnly.execute(status ->
+					beneficiaireRepository.existsByIdInstanceIdAndIdCollaborateurId(check.instanceId(), collabId)));
+			if (!visibleBenef) {
+				throw WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable.");
+			}
 		}
-		DefinitionWorkflow def = codec.deserialiser(inst.getModeleVersion().getDefinition());
-		return construireSuivi(inst, def, voirNomsPool);
+
+		return txReadOnly.execute(status -> {
+			WfInstance inst = instanceRepository.findByObjetTypeAndObjetIdAvecVersion(objetType, objetId)
+					.orElseThrow(() -> WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable."));
+			DefinitionWorkflow def = codec.deserialiser(inst.getModeleVersion().getDefinition());
+			return construireSuivi(inst, def, voirNomsPool);
+		});
 	}
 
 	@Transactional(readOnly = true)
@@ -251,18 +319,25 @@ public class WorkflowUtilisateurService {
 		return construireSuivi(inst, def, true);
 	}
 
-	/** Visibilité § 9.10 : demandeur, bénéficiaire, candidat actuel ou passé, ou BACKOFFICE_LECTURE ; sinon 404. */
-	private boolean estVisible(WfInstance inst, UUID appelantCompteId, boolean estBackofficeLecture) {
+	private UUID resoudreCollabHorsTransaction(UUID compteId) {
+		try {
+			return referentielClient.collaborateurParCompte(compteId)
+					.map(CollaborateurResume::id)
+					.orElse(null);
+		} catch (WorkflowMetierException ex) {
+			return null;
+		}
+	}
+
+	/** Visibilité § 9.10 (hors bénéficiaire vérifié hors transaction) : demandeur, candidat actuel ou passé, ou BACKOFFICE_LECTURE. */
+	private boolean estVisibleDirect(WfInstance inst, UUID appelantCompteId, boolean estBackofficeLecture) {
 		if (estBackofficeLecture) {
 			return true;
 		}
 		if (appelantCompteId.equals(inst.getDemandeurCompteId())) {
 			return true;
 		}
-		if (candidatRepository.existsCandidatPourInstanceEtCompte(inst.getId(), appelantCompteId)) {
-			return true;
-		}
-		return false;
+		return candidatRepository.existsCandidatPourInstanceEtCompte(inst.getId(), appelantCompteId);
 	}
 
 	private SuiviInstanceResponse construireSuivi(WfInstance inst, DefinitionWorkflow def, boolean voirNomsPool) {
