@@ -64,7 +64,21 @@ public class AvancementService {
 			Map<String, Object> variables,
 			Map<String, TypeVariable> typesVariables,
 			Map<String, ResultatRegleResolue> resolutions) {
-		return avancerDepuisIndex(definition, 0, variables, typesVariables, resolutions);
+		return avancerDepuisIndex(definition, 0, variables, typesVariables, resolutions, false);
+	}
+
+	/** Calcule le plan de réactivation de l'étape courante après fourniture d'un complément (D-W10). */
+	public PlanAvancement calculerReactivation(
+			DefinitionWorkflow definition,
+			String etapeCouranteCode,
+			Map<String, Object> variables,
+			Map<String, TypeVariable> typesVariables,
+			Map<String, ResultatRegleResolue> resolutions) {
+		int idxCourant = trouverIndex(definition.etapes(), etapeCouranteCode);
+		if (idxCourant < 0) {
+			throw new IllegalArgumentException("Étape courante introuvable dans la définition : " + etapeCouranteCode);
+		}
+		return avancerDepuisIndex(definition, idxCourant, variables, typesVariables, resolutions, true);
 	}
 
 	/**
@@ -118,7 +132,7 @@ public class AvancementService {
 			idxDepart = idxCourant + 1;
 		}
 
-		return avancerDepuisIndex(definition, idxDepart, variables, typesVariables, resolutions);
+		return avancerDepuisIndex(definition, idxDepart, variables, typesVariables, resolutions, false);
 	}
 
 	private PlanAvancement avancerDepuisIndex(
@@ -126,7 +140,8 @@ public class AvancementService {
 			int indexDepart,
 			Map<String, Object> variables,
 			Map<String, TypeVariable> typesVariables,
-			Map<String, ResultatRegleResolue> resolutions) {
+			Map<String, ResultatRegleResolue> resolutions,
+			boolean ignorerConditionPremier) {
 		List<EtapeDefinition> etapes = definition.etapes();
 		List<EtapeSautee> sautees = new ArrayList<>();
 		List<EtapeInformation> infos = new ArrayList<>();
@@ -136,7 +151,9 @@ public class AvancementService {
 			EtapeDefinition etape = etapes.get(i);
 
 			// D-W12 : condition d'activation évaluée au moment de l'arrivée sur l'étape
-			if (etape.condition() != null && !evaluateur.evaluer(etape.condition(), variables, typesVariables)) {
+			if (!(ignorerConditionPremier && i == indexDepart)
+					&& etape.condition() != null
+					&& !evaluateur.evaluer(etape.condition(), variables, typesVariables)) {
 				sautees.add(new EtapeSautee(etape.code(), etape.libelle(), RaisonSautEtape.CONDITION));
 				continue;
 			}

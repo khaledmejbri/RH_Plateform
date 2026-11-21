@@ -3,9 +3,15 @@ package com.hr.workflow.moteur;
 import com.hr.commun.planif.VerrouPlanificateur;
 import com.hr.workflow.catalogue.CatalogueTypesObjet;
 import com.hr.workflow.catalogue.CatalogueTypesObjet.TypeObjetCatalogue;
+import com.hr.workflow.client.WorkflowReferentielClient.IntervenantResolu;
+import com.hr.workflow.definition.DefinitionCodec;
+import com.hr.workflow.definition.DefinitionWorkflow;
+import com.hr.workflow.definition.EtapeDefinition;
+import com.hr.workflow.domain.DecisionTache;
 import com.hr.workflow.domain.StatutAppelEffet;
 import com.hr.workflow.domain.StatutInstance;
 import com.hr.workflow.domain.StatutTache;
+import com.hr.workflow.domain.TypeTache;
 import com.hr.workflow.entity.WfAppelEffet;
 import com.hr.workflow.entity.WfHistorique;
 import com.hr.workflow.entity.WfInstance;
@@ -13,7 +19,9 @@ import com.hr.workflow.entity.WfTache;
 import com.hr.workflow.moteur.EffetClient.ActeurEffet;
 import com.hr.workflow.moteur.EffetClient.RequeteEffet;
 import com.hr.workflow.moteur.EffetClient.ResultatAppelEffet;
+import com.hr.workflow.moteur.PreparationDecisionService.PlanExecutionDecision;
 import com.hr.workflow.repository.WfAppelEffetRepository;
+import com.hr.workflow.repository.WfBeneficiaireRepository;
 import com.hr.workflow.repository.WfHistoriqueRepository;
 import com.hr.workflow.repository.WfInstanceRepository;
 import com.hr.workflow.repository.WfTacheRepository;
@@ -47,8 +55,12 @@ public class EffetRepriseScheduler {
 	private final WfAppelEffetRepository appelEffetRepository;
 	private final WfInstanceRepository instanceRepository;
 	private final WfTacheRepository tacheRepository;
+	private final WfBeneficiaireRepository beneficiaireRepository;
 	private final WfHistoriqueRepository historiqueRepository;
 	private final CatalogueTypesObjet catalogue;
+	private final DefinitionCodec codec;
+	private final PreparationDecisionService preparationService;
+	private final ApplicationDecisionService applicationService;
 	private final EffetClient effetClient;
 	private final OutboxService outboxService;
 	private final VerrouPlanificateur verrouPlanificateur;
@@ -59,8 +71,12 @@ public class EffetRepriseScheduler {
 			WfAppelEffetRepository appelEffetRepository,
 			WfInstanceRepository instanceRepository,
 			WfTacheRepository tacheRepository,
+			WfBeneficiaireRepository beneficiaireRepository,
 			WfHistoriqueRepository historiqueRepository,
 			CatalogueTypesObjet catalogue,
+			DefinitionCodec codec,
+			PreparationDecisionService preparationService,
+			ApplicationDecisionService applicationService,
 			EffetClient effetClient,
 			OutboxService outboxService,
 			VerrouPlanificateur verrouPlanificateur,
@@ -69,8 +85,12 @@ public class EffetRepriseScheduler {
 		this.appelEffetRepository = appelEffetRepository;
 		this.instanceRepository = instanceRepository;
 		this.tacheRepository = tacheRepository;
+		this.beneficiaireRepository = beneficiaireRepository;
 		this.historiqueRepository = historiqueRepository;
 		this.catalogue = catalogue;
+		this.codec = codec;
+		this.preparationService = preparationService;
+		this.applicationService = applicationService;
 		this.effetClient = effetClient;
 		this.outboxService = outboxService;
 		this.verrouPlanificateur = verrouPlanificateur;
@@ -88,13 +108,22 @@ public class EffetRepriseScheduler {
 			String cleIdempotence,
 			UUID instanceId,
 			UUID tacheId,
+			String tacheCleIdempotence,
 			String effet,
+			String action,
+			TypeTache typeTache,
 			String serviceProprietaire,
-			String cheminEffet,
-			String objetType,
-			String objetLibelle,
+			TypeObjetCatalogue typeCatalogue,
 			UUID objetId,
 			String objetNumero,
+			UUID demandeurCollaborateurId,
+			UUID demandeurCompteId,
+			Map<String, Object> variables,
+			DefinitionWorkflow definition,
+			String etapeCode,
+			EtapeDefinition etapeDef,
+			List<UUID> beneficiaires,
+			List<UUID> approbateursPrecedents,
 			String commentaire,
 			String libelleTache,
 			UUID decideurCompteId,
@@ -120,15 +149,31 @@ public class EffetRepriseScheduler {
 				if (tc == null) {
 					return null;
 				}
+				DefinitionWorkflow def = codec.deserialiser(inst.getModeleVersion().getDefinition());
+				String etapeCode = t != null ? t.getEtapeExecution().getEtapeCode() : inst.getEtapeCouranteCode();
+				EtapeDefinition etapeDef = def.etapes().stream()
+						.filter(e -> e.code().equals(etapeCode))
+						.findFirst().orElse(null);
+				List<UUID> benefs = beneficiaireRepository.findByIdInstanceId(inst.getId()).stream()
+						.map(b -> b.getId().getCollaborateurId()).toList();
+				List<UUID> approbateurs = tacheRepository.findApprobateursCollaborateurIds(inst.getId());
+				String action = deduireAction(ae.getEffet(), t != null ? t.getDecision() : null);
+
 				return new EffetARejouer(
 						ae.getId(), ae.getCleIdempotence(), inst.getId(), ae.getTacheId(),
-						ae.getEffet(), ae.getServiceProprietaire(), tc.cheminEffet(),
-						inst.getObjetType(), tc.libelle(), inst.getObjetId(), inst.getObjetNumero(),
+						t != null ? t.getCleIdempotence() : null,
+						ae.getEffet(), action,
+						t != null ? t.getType() : TypeTache.VALIDATION,
+						ae.getServiceProprietaire(), tc,
+						inst.getObjetId(), inst.getObjetNumero(),
+						inst.getDemandeurCollaborateurId(), inst.getDemandeurCompteId(),
+						inst.getVariables() != null ? inst.getVariables() : Map.of(),
+						def, etapeCode, etapeDef, benefs, approbateurs,
 						t != null ? t.getCommentaire() : null,
 						t != null ? t.getLibelle() : null,
 						t != null ? t.getDecideParCompteId() : null,
 						t != null ? t.getDecideParCollaborateurId() : null,
-						t != null ? t.getDecideParNom() : "Système",
+						t != null && t.getDecideParNom() != null ? t.getDecideParNom() : "Système",
 						t != null ? t.getPourNom() : null,
 						ae.getTentatives(),
 						ae.getCreeLe());
@@ -146,18 +191,34 @@ public class EffetRepriseScheduler {
 					item.decideurNom(), item.pourNom());
 			ResultatAppelEffet res = effetClient.appeler(
 					item.serviceProprietaire(),
-					item.cheminEffet(),
-					new RequeteEffet(item.cleIdempotence(), "APPLIQUER", item.objetType(), item.objetId(),
-							item.effet(), acteur, item.commentaire(), item.instanceId(), item.libelleTache()));
+					item.typeCatalogue().cheminEffet(),
+					new RequeteEffet(item.cleIdempotence(), "APPLIQUER", item.typeCatalogue().objetType(),
+							item.objetId(), item.effet(), acteur, item.commentaire(),
+							item.instanceId(), item.libelleTache()));
+
+			// 2b. HORS TRANSACTION : recalcul du plan et résolutions si l'effet vient d'aboutir (200)
+			PlanExecutionDecision exec = null;
+			if (res instanceof ResultatAppelEffet.Succes) {
+				List<IntervenantResolu> cands = item.decideurCollabId() != null && item.decideurCompteId() != null
+						? List.of(new IntervenantResolu(item.decideurCollabId(), item.decideurCompteId(), item.decideurNom(), null))
+						: List.of();
+				exec = preparationService.preparer(
+						item.action(), item.typeTache(), item.etapeCode(), item.etapeDef(), item.definition(),
+						item.typeCatalogue().objetType(), item.variables(),
+						item.demandeurCollaborateurId(), item.demandeurCompteId(),
+						item.beneficiaires(), item.approbateursPrecedents(), item.decideurCollabId(),
+						true, cands);
+			}
 
 			// 3. Transaction courte : enregistrer l'issue
-			txTemplate.executeWithoutResult(status -> traiterIssueReprise(item, res));
+			final PlanExecutionDecision finalExec = exec;
+			txTemplate.executeWithoutResult(status -> traiterIssueReprise(item, res, finalExec));
 			traites++;
 		}
 		return traites;
 	}
 
-	private void traiterIssueReprise(EffetARejouer item, ResultatAppelEffet res) {
+	private void traiterIssueReprise(EffetARejouer item, ResultatAppelEffet res, PlanExecutionDecision exec) {
 		WfInstance inst = instanceRepository.findByIdForUpdate(item.instanceId()).orElse(null);
 		WfTache t = item.tacheId() != null ? tacheRepository.findByIdForUpdate(item.tacheId()).orElse(null) : null;
 		WfAppelEffet ae = appelEffetRepository.findById(item.appelEffetId()).orElse(null);
@@ -175,22 +236,12 @@ public class EffetRepriseScheduler {
 			appelEffetRepository.save(ae);
 
 			if (t != null && t.getStatut() == StatutTache.RESERVEE) {
-				t.setStatut(StatutTache.TRAITEE);
-				t.setDecideLe(maintenant);
-				tacheRepository.save(t);
+				String cleTache = item.tacheCleIdempotence() != null ? item.tacheCleIdempotence() : item.cleIdempotence();
+				applicationService.appliquerDansTransaction(
+						inst, t, cleTache, item.action(), item.commentaire(),
+						item.decideurCompteId(), item.decideurCollabId(), item.decideurNom(),
+						null, item.pourNom(), item.typeCatalogue(), item.etapeDef(), exec);
 			}
-			if ("APPROUVER".equals(item.effet())) {
-				inst.setStatut(StatutInstance.APPROUVEE);
-				inst.setEtapeCouranteCode(null);
-				inst.setTermineLe(maintenant);
-			} else if ("REFUSER".equals(item.effet())) {
-				inst.setStatut(StatutInstance.REFUSEE);
-				inst.setEtapeCouranteCode(null);
-				inst.setTermineLe(maintenant);
-				inst.setResultatMotif(item.commentaire());
-			}
-			instanceRepository.save(inst);
-			outboxService.publierEvenementWorkflow(UUID.randomUUID(), "INSTANCE_TERMINEE", inst, null, null, null);
 			return;
 		}
 
@@ -207,7 +258,7 @@ public class EffetRepriseScheduler {
 			if (item.decideurCompteId() != null) {
 				outboxService.publierNotification(UUID.randomUUID(), item.decideurCompteId().toString(),
 						"WEBSOCKET", "WF_DECISION", "Décision refusée par le service métier",
-						rejet.message(), item.objetType(), item.objetId(), item.objetNumero());
+						rejet.message(), item.typeCatalogue().objetType(), item.objetId(), item.objetNumero());
 			}
 			enregistrerHistorique(inst.getId(), item.tacheId(), "EFFET_REJETE",
 					Map.of("effet", item.effet(), "code", rejet.code()), maintenant);
@@ -226,10 +277,11 @@ public class EffetRepriseScheduler {
 			inst.setResultatMotif("Effet impossible à appliquer après 24 h de reprise.");
 			instanceRepository.save(inst);
 
-			String texte = TextesNotificationWorkflow.erreurEffet(item.objetLibelle(), item.objetNumero());
+			String texte = TextesNotificationWorkflow.erreurEffet(item.typeCatalogue().libelle(), item.objetNumero());
 			UUID evId = UUID.randomUUID();
 			outboxService.publierNotification(evId, "ADMIN", "WEBSOCKET", "WF_BLOQUEE",
-					"Erreur d'enregistrement workflow", texte, item.objetType(), item.objetId(), item.objetNumero());
+					"Erreur d'enregistrement workflow", texte, item.typeCatalogue().objetType(),
+					item.objetId(), item.objetNumero());
 			outboxService.publierEvenementWorkflow(evId, "INSTANCE_TERMINEE", inst, null, null, null);
 			enregistrerHistorique(inst.getId(), item.tacheId(), "INSTANCE_ERREUR",
 					Map.of("effet", item.effet(), "tentatives", tentatives), maintenant);
@@ -238,6 +290,18 @@ public class EffetRepriseScheduler {
 			ae.setProchaineTentativeLe(maintenant.plus(delaiReprise(tentatives)));
 			appelEffetRepository.save(ae);
 		}
+	}
+
+	private static String deduireAction(String effet, DecisionTache decision) {
+		if (decision != null) {
+			return switch (decision) {
+				case APPROUVEE -> "APPROUVER";
+				case REFUSEE -> "REFUSER";
+				case RENVOYEE -> "RENVOYER";
+				case FAITE -> "FAIT";
+			};
+		}
+		return "METTRE_A_COMPLETER".equals(effet) ? "RENVOYER" : effet;
 	}
 
 	/** Cadence D-W29 : 1 min, 5 min, 15 min, puis toutes les heures. */

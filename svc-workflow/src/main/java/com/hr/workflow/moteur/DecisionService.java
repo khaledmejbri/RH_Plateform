@@ -4,46 +4,29 @@ import com.hr.workflow.catalogue.CatalogueTypesObjet;
 import com.hr.workflow.catalogue.CatalogueTypesObjet.TypeObjetCatalogue;
 import com.hr.workflow.catalogue.CatalogueTypesObjet.TypeVariable;
 import com.hr.workflow.catalogue.CatalogueTypesObjet.VariableCatalogue;
-import com.hr.workflow.client.WorkflowReferentielClient;
-import com.hr.workflow.client.WorkflowReferentielClient.CalendrierSocieteResponse;
 import com.hr.workflow.client.WorkflowReferentielClient.IntervenantResolu;
 import com.hr.workflow.definition.DefinitionCodec;
 import com.hr.workflow.definition.DefinitionWorkflow;
 import com.hr.workflow.definition.EtapeDefinition;
 import com.hr.workflow.definition.EvaluateurCondition;
-import com.hr.workflow.domain.DecisionTache;
-import com.hr.workflow.domain.OrigineCandidat;
-import com.hr.workflow.domain.ResultatEtapeExecution;
 import com.hr.workflow.domain.StatutAppelEffet;
-import com.hr.workflow.domain.StatutEtapeExecution;
 import com.hr.workflow.domain.StatutInstance;
 import com.hr.workflow.domain.StatutTache;
 import com.hr.workflow.domain.TypeTache;
 import com.hr.workflow.dto.WorkflowMoteurDtos.DecisionRequest;
 import com.hr.workflow.dto.WorkflowMoteurDtos.DecisionResponse;
-import com.hr.workflow.dto.WorkflowMoteurDtos.EtapeCouranteDto;
-import com.hr.workflow.dto.WorkflowMoteurDtos.InstanceDecisionDto;
 import com.hr.workflow.entity.WfAppelEffet;
-import com.hr.workflow.entity.WfBeneficiaire;
 import com.hr.workflow.entity.WfEtapeExecution;
 import com.hr.workflow.entity.WfHistorique;
 import com.hr.workflow.entity.WfInstance;
 import com.hr.workflow.entity.WfTache;
 import com.hr.workflow.entity.WfTacheCandidat;
-import com.hr.workflow.entity.WfTacheCandidatId;
-import com.hr.workflow.moteur.AvancementService.EtapeActivee;
-import com.hr.workflow.moteur.AvancementService.EtapeInformation;
-import com.hr.workflow.moteur.AvancementService.EtapeSautee;
-import com.hr.workflow.moteur.AvancementService.PlanAvancement;
-import com.hr.workflow.moteur.AvancementService.TacheACreer;
 import com.hr.workflow.moteur.EffetClient.ActeurEffet;
 import com.hr.workflow.moteur.EffetClient.RequeteEffet;
 import com.hr.workflow.moteur.EffetClient.ResultatAppelEffet;
-import com.hr.workflow.moteur.ResolutionIntervenantsService.LotResolu;
-import com.hr.workflow.moteur.ResolutionIntervenantsService.RegleAResoudre;
+import com.hr.workflow.moteur.PreparationDecisionService.PlanExecutionDecision;
 import com.hr.workflow.repository.WfAppelEffetRepository;
 import com.hr.workflow.repository.WfBeneficiaireRepository;
-import com.hr.workflow.repository.WfEtapeExecutionRepository;
 import com.hr.workflow.repository.WfHistoriqueRepository;
 import com.hr.workflow.repository.WfInstanceRepository;
 import com.hr.workflow.repository.WfTacheCandidatRepository;
@@ -55,11 +38,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -78,18 +58,14 @@ public class DecisionService {
 	private final WfInstanceRepository instanceRepository;
 	private final WfTacheRepository tacheRepository;
 	private final WfTacheCandidatRepository candidatRepository;
-	private final WfEtapeExecutionRepository etapeExecutionRepository;
 	private final WfBeneficiaireRepository beneficiaireRepository;
 	private final WfHistoriqueRepository historiqueRepository;
 	private final WfAppelEffetRepository appelEffetRepository;
 	private final CatalogueTypesObjet catalogue;
 	private final DefinitionCodec codec;
-	private final ResolutionIntervenantsService resolutionService;
-	private final WorkflowReferentielClient referentielClient;
-	private final PlanificationEcheanceService planificationEcheanceService;
-	private final AvancementService avancementService;
+	private final PreparationDecisionService preparationService;
+	private final ApplicationDecisionService applicationService;
 	private final EffetClient effetClient;
-	private final OutboxService outboxService;
 	private final TransactionTemplate txReadOnly;
 	private final TransactionTemplate txWrite;
 	private final EvaluateurCondition evaluateur = new EvaluateurCondition();
@@ -99,35 +75,27 @@ public class DecisionService {
 			WfInstanceRepository instanceRepository,
 			WfTacheRepository tacheRepository,
 			WfTacheCandidatRepository candidatRepository,
-			WfEtapeExecutionRepository etapeExecutionRepository,
 			WfBeneficiaireRepository beneficiaireRepository,
 			WfHistoriqueRepository historiqueRepository,
 			WfAppelEffetRepository appelEffetRepository,
 			CatalogueTypesObjet catalogue,
 			DefinitionCodec codec,
-			ResolutionIntervenantsService resolutionService,
-			WorkflowReferentielClient referentielClient,
-			PlanificationEcheanceService planificationEcheanceService,
-			AvancementService avancementService,
+			PreparationDecisionService preparationService,
+			ApplicationDecisionService applicationService,
 			EffetClient effetClient,
-			OutboxService outboxService,
 			PlatformTransactionManager transactionManager,
 			Clock clock) {
 		this.instanceRepository = instanceRepository;
 		this.tacheRepository = tacheRepository;
 		this.candidatRepository = candidatRepository;
-		this.etapeExecutionRepository = etapeExecutionRepository;
 		this.beneficiaireRepository = beneficiaireRepository;
 		this.historiqueRepository = historiqueRepository;
 		this.appelEffetRepository = appelEffetRepository;
 		this.catalogue = catalogue;
 		this.codec = codec;
-		this.resolutionService = resolutionService;
-		this.referentielClient = referentielClient;
-		this.planificationEcheanceService = planificationEcheanceService;
-		this.avancementService = avancementService;
+		this.preparationService = preparationService;
+		this.applicationService = applicationService;
 		this.effetClient = effetClient;
-		this.outboxService = outboxService;
 		this.txReadOnly = new TransactionTemplate(transactionManager);
 		this.txReadOnly.setReadOnly(true);
 		this.txWrite = new TransactionTemplate(transactionManager);
@@ -188,7 +156,7 @@ public class DecisionService {
 				tacheId, req.cleIdempotence(), appelantCompteId, estBackofficeLecture));
 
 		if (ctx.reponseMemorisee() != null) {
-			return ResultatDecision.ok(reconstruireReponse(ctx.reponseMemorisee()));
+			return ResultatDecision.ok(ApplicationDecisionService.reconstruireReponse(ctx.reponseMemorisee()));
 		}
 
 		// 2. Contrôles dans l'ordre exact du § 9.6.4
@@ -249,7 +217,7 @@ public class DecisionService {
 		String nomActeur = ctx.candidatNom() != null && !ctx.candidatNom().isBlank() ? ctx.candidatNom() : appelantNom;
 		ActeurEffet acteurEffet = new ActeurEffet(appelantCompteId, ctx.candidatCollaborateurId(), nomActeur, ctx.pourNom());
 
-		// 3. HORS TRANSACTION : CONTROLER (si applicable) + calcul du plan + résolutions suivantes
+		// 3. HORS TRANSACTION : CONTROLER (si applicable)
 		if ("APPROUVER".equals(action) && ctx.etapeDef() != null && ctx.etapeDef().controleAvantApprobationActif()) {
 			ResultatAppelEffet ctrl = effetClient.appeler(
 					ctx.serviceProprietaire(),
@@ -266,93 +234,32 @@ public class DecisionService {
 			}
 		}
 
-		Instant maintenant = clock.instant();
-		LocalDate aujourdhui = LocalDate.now(clock);
-		CalendrierSocieteResponse calendrier = null;
-		PlanAvancement plan = null;
-		Instant echeanceSuivante = null;
-		List<IntervenantResolu> candidatsReactivation = null;
-		Map<String, List<UUID>> comptesInfos = Map.of();
+		List<IntervenantResolu> candidatsEtapeTerminee = (ctx.candidatCollaborateurId() != null)
+				? List.of(new IntervenantResolu(ctx.candidatCollaborateurId(), appelantCompteId, nomActeur, null))
+				: List.of();
 
 		boolean termineEtape = determinerSiTermineEtape(ctx, action);
-
-		if ("RENVOYER".equals(action)) {
-			calendrier = referentielClient.calendrierSociete(aujourdhui, aujourdhui.plusDays(30));
-			echeanceSuivante = planificationEcheanceService.calculerEcheanceComplement(maintenant, calendrier);
-		} else if (ctx.typeTache() == TypeTache.COMPLEMENT) {
-			// Réactivation de l'étape avec résolution fraîche des candidats (D-W10)
-			calendrier = referentielClient.calendrierSociete(aujourdhui, aujourdhui.plusDays(60));
-			List<UUID> exclure = ctx.definition().separationDesTaches() ? ctx.approbateursPrecedents() : List.of();
-			RegleAResoudre regle = new RegleAResoudre(
-					ctx.etapeCode(), ctx.etapeDef().intervenants(), ctx.etapeDef().repliSiVide(),
-					"VALIDATION".equals(ctx.etapeDef().type()));
-			LotResolu lot = resolutionService.resoudre(
-					aujourdhui, ctx.demandeurCollaborateurId(), ctx.beneficiaires(), exclure, List.of(regle));
-			var res = lot.resultats().get(ctx.etapeCode());
-			candidatsReactivation = res != null ? res.candidats() : List.of();
-			echeanceSuivante = planificationEcheanceService.calculerEcheance(
-					maintenant, ctx.etapeDef().delai(), calendrier, ctx.variables());
-		} else if (termineEtape) {
-			List<UUID> exclure = new ArrayList<>();
-			if (ctx.definition().separationDesTaches()) {
-				exclure.addAll(ctx.approbateursPrecedents());
-				if ("APPROUVER".equals(action) && ctx.candidatCollaborateurId() != null) {
-					exclure.add(ctx.candidatCollaborateurId());
-				}
-			}
-			List<RegleAResoudre> regles = DemarrageService.collecterRegles(ctx.definition());
-			LotResolu lot = resolutionService.resoudre(
-					aujourdhui, ctx.demandeurCollaborateurId(), ctx.beneficiaires(), exclure, regles);
-			String resultatEtape = "REFUSER".equals(action) ? "REFUSEE"
-					: ("FAIT".equals(action) ? "FAITE" : "APPROUVEE");
-			plan = avancementService.calculerApresEtape(
-					ctx.definition(), ctx.etapeCode(), resultatEtape,
-					ctx.variables(), typesVariablesPour(ctx.objetType()), lot.resultats());
-			if (plan.etapeSuivante() != null && !plan.etapeSuivante().bloquee()) {
-				calendrier = referentielClient.calendrierSociete(aujourdhui, aujourdhui.plusDays(60));
-				echeanceSuivante = planificationEcheanceService.calculerEcheance(
-						maintenant, plan.etapeSuivante().etape().delai(), calendrier, ctx.variables());
-			}
-			if (!plan.etapesInformation().isEmpty()) {
-				Map<String, List<UUID>> mapInfos = new HashMap<>();
-				for (EtapeInformation info : plan.etapesInformation()) {
-					mapInfos.put(info.code(), resolutionService.resoudreComptesPublics(
-							aujourdhui, info.publicDestinataires(), ctx.demandeurCollaborateurId(),
-							ctx.demandeurCompteId(), List.of()));
-				}
-				comptesInfos = mapInfos;
-			}
-		}
+		PlanExecutionDecision exec = preparationService.preparer(
+				action, ctx.typeTache(), ctx.etapeCode(), ctx.etapeDef(), ctx.definition(), ctx.objetType(),
+				ctx.variables(), ctx.demandeurCollaborateurId(), ctx.demandeurCompteId(), ctx.beneficiaires(),
+				ctx.approbateursPrecedents(), ctx.candidatCollaborateurId(), termineEtape, candidatsEtapeTerminee);
 
 		// 4. Effet terminal (§ 9.6.4 étape 4)
-		String effetTerminal = null;
-		if (plan != null && plan.statutFinal() == StatutInstance.APPROUVEE) {
-			effetTerminal = "APPROUVER";
-		} else if (plan != null && plan.statutFinal() == StatutInstance.REFUSEE) {
-			effetTerminal = "REFUSER";
-		} else if ("RENVOYER".equals(action) && typeCatalogue.supporteComplement()) {
-			effetTerminal = "METTRE_A_COMPLETER";
-		}
+		String effetTerminal = determinerEffetTerminal(exec, action, typeCatalogue);
 
 		// 5. SANS EFFET TERMINAL : une transaction atomique
-		final PlanAvancement finalPlan = plan;
-		final Instant finalEcheance = echeanceSuivante;
-		final List<IntervenantResolu> finalCandReactiv = candidatsReactivation;
-		final Map<String, List<UUID>> finalComptesInfos = comptesInfos;
-
 		if (effetTerminal == null) {
 			DecisionResponse rep = txWrite.execute(status -> appliquerDecisionDansTransaction(
 					ctx.instanceId(), tacheId, req, action, commentaire, appelantCompteId,
 					ctx.candidatCollaborateurId(), nomActeur, ctx.pourCollaborateurId(), ctx.pourNom(),
-					typeCatalogue, finalPlan, finalEcheance, finalCandReactiv, finalComptesInfos, false));
+					typeCatalogue, ctx.etapeDef(), exec, false));
 			return ResultatDecision.ok(rep);
 		}
 
 		// 6. AVEC EFFET TERMINAL : transaction 1 (RESERVEE + wf_appel_effet RESERVE) -> appel APPLIQUER hors tx -> transaction 2
-		final String finalEffetTerminal = effetTerminal;
 		String cleEffet = "decision:" + tacheId + ":" + req.cleIdempotence();
 		UUID appelEffetId = txWrite.execute(status -> reserverPourEffet(
-				ctx.instanceId(), tacheId, req, cleEffet, finalEffetTerminal, ctx.serviceProprietaire(),
+				ctx.instanceId(), tacheId, req, cleEffet, effetTerminal, ctx.serviceProprietaire(),
 				appelantCompteId, ctx.candidatCollaborateurId(), nomActeur, ctx.pourCollaborateurId(), ctx.pourNom(), commentaire));
 
 		ResultatAppelEffet resEffet = effetClient.appeler(
@@ -372,7 +279,7 @@ public class DecisionService {
 				return appliquerDecisionDansTransaction(
 						ctx.instanceId(), tacheId, req, action, commentaire, appelantCompteId,
 						ctx.candidatCollaborateurId(), nomActeur, ctx.pourCollaborateurId(), ctx.pourNom(),
-						typeCatalogue, finalPlan, finalEcheance, finalCandReactiv, finalComptesInfos, true);
+						typeCatalogue, ctx.etapeDef(), exec, true);
 			});
 			return ResultatDecision.ok(rep);
 		}
@@ -409,6 +316,19 @@ public class DecisionService {
 		return ResultatDecision.enCours();
 	}
 
+	private static String determinerEffetTerminal(PlanExecutionDecision exec, String action, TypeObjetCatalogue typeCatalogue) {
+		if (exec.plan() != null && exec.plan().statutFinal() == StatutInstance.APPROUVEE) {
+			return "APPROUVER";
+		}
+		if (exec.plan() != null && exec.plan().statutFinal() == StatutInstance.REFUSEE) {
+			return "REFUSER";
+		}
+		if ("RENVOYER".equals(action) && typeCatalogue.supporteComplement()) {
+			return "METTRE_A_COMPLETER";
+		}
+		return null;
+	}
+
 	private UUID reserverPourEffet(
 			UUID instanceId,
 			UUID tacheId,
@@ -443,7 +363,7 @@ public class DecisionService {
 
 		Instant maintenant = clock.instant();
 		t.setStatut(StatutTache.RESERVEE);
-		t.setDecision(versDecisionTache(req.action().trim()));
+		t.setDecision(ApplicationDecisionService.versDecisionTache(req.action().trim()));
 		t.setCommentaire(commentaire);
 		t.setDecideParCompteId(appelantCompteId);
 		t.setDecideParCollaborateurId(appelantCollabId);
@@ -478,10 +398,8 @@ public class DecisionService {
 			UUID pourCollabId,
 			String pourNom,
 			TypeObjetCatalogue typeCatalogue,
-			PlanAvancement plan,
-			Instant echeanceSuivante,
-			List<IntervenantResolu> candidatsReactivation,
-			Map<String, List<UUID>> comptesInfos,
+			EtapeDefinition etapeTermineeDef,
+			PlanExecutionDecision exec,
 			boolean depuisReservee) {
 		// Ordre strict des verrous : wf_instance PUIS wf_tache (§ 9.6.7)
 		WfInstance inst = instanceRepository.findByIdForUpdate(instanceId)
@@ -491,7 +409,7 @@ public class DecisionService {
 
 		if (!depuisReservee) {
 			if (req.cleIdempotence().equals(t.getCleIdempotence()) && t.getReponseDecision() != null) {
-				return reconstruireReponse(t.getReponseDecision());
+				return ApplicationDecisionService.reconstruireReponse(t.getReponseDecision());
 			}
 			if (inst.getStatut().estTerminale()) {
 				throw WorkflowMetierException.conflict("INSTANCE_TERMINEE", "Cette instance est déjà terminée.");
@@ -507,243 +425,9 @@ public class DecisionService {
 			}
 		}
 
-		Instant maintenant = clock.instant();
-		DecisionTache decisionEnum = versDecisionTache(action);
-		t.setStatut(StatutTache.TRAITEE);
-		t.setDecision(decisionEnum);
-		t.setCommentaire(commentaire);
-		t.setDecideParCompteId(appelantCompteId);
-		t.setDecideParCollaborateurId(appelantCollabId);
-		t.setDecideParNom(appelantNom);
-		t.setPourCollaborateurId(pourCollabId);
-		t.setPourNom(pourNom);
-		t.setDecideLe(maintenant);
-		t.setCleIdempotence(req.cleIdempotence());
-		tacheRepository.saveAndFlush(t);
-
-		enregistrerHistorique(inst.getId(), t.getId(), "DECISION", appelantCompteId, appelantNom, pourNom,
-				Map.of("action", action, "decision", decisionEnum.name(), "commentaire", commentaire), maintenant);
-
-		UUID evId = UUID.randomUUID();
-		EtapeCouranteDto etapeCouranteDto = null;
-
-		if ("RENVOYER".equals(action)) {
-			// D-W10 : incrémenter nb_renvois, annuler les éventuelles autres tâches ouvertes de l'étape, créer tâche COMPLEMENT
-			WfEtapeExecution ee = t.getEtapeExecution();
-			ee.setNbRenvois(ee.getNbRenvois() + 1);
-			etapeExecutionRepository.save(ee);
-
-			for (WfTache autre : tacheRepository.findByEtapeExecutionId(ee.getId())) {
-				if (!autre.getId().equals(t.getId()) && autre.getStatut() == StatutTache.A_TRAITER) {
-					autre.setStatut(StatutTache.ANNULEE);
-					tacheRepository.save(autre);
-				}
-			}
-
-			WfTache comp = new WfTache();
-			comp.setInstance(inst);
-			comp.setEtapeExecution(ee);
-			comp.setType(TypeTache.COMPLEMENT);
-			comp.setLibelle("Complément demandé : " + t.getLibelle());
-			comp.setStatut(StatutTache.A_TRAITER);
-			comp.setObligatoire(true);
-			comp.setEcheanceLe(echeanceSuivante);
-			comp = tacheRepository.saveAndFlush(comp);
-
-			WfTacheCandidat candDemandeur = new WfTacheCandidat();
-			candDemandeur.setId(new WfTacheCandidatId(comp.getId(), inst.getDemandeurCollaborateurId()));
-			candDemandeur.setCompteId(inst.getDemandeurCompteId());
-			candDemandeur.setNom(inst.getDemandeurNom());
-			candDemandeur.setOrigine(OrigineCandidat.TITULAIRE);
-			candDemandeur.setAjouteLe(maintenant);
-			candidatRepository.save(candDemandeur);
-
-			if (inst.getDemandeurCompteId() != null) {
-				String texte = TextesNotificationWorkflow.renvoyee(typeCatalogue.libelle(), commentaire, inst.getObjetNumero());
-				outboxService.publierNotification(evId, inst.getDemandeurCompteId().toString(), "WEBSOCKET",
-						"WF_DECISION", "Complément demandé", texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
-			}
-			outboxService.publierEvenementWorkflow(evId, "TACHE_TRAITEE", inst, ee.getEtapeCode(), comp.getLibelle(), echeanceSuivante);
-			etapeCouranteDto = new EtapeCouranteDto(ee.getEtapeCode(), comp.getLibelle(), echeanceSuivante, "Demandeur");
-
-		} else if (t.getType() == TypeTache.COMPLEMENT) {
-			// Réactivation de l'étape (D-W10)
-			WfEtapeExecution ee = t.getEtapeExecution();
-			WfTache nouvelle = new WfTache();
-			nouvelle.setInstance(inst);
-			nouvelle.setEtapeExecution(ee);
-			nouvelle.setType(TypeTache.VALIDATION);
-			nouvelle.setLibelle(ee.getEtapeCode());
-			nouvelle.setStatut(StatutTache.A_TRAITER);
-			nouvelle.setObligatoire(true);
-			nouvelle.setEcheanceLe(echeanceSuivante);
-			nouvelle = tacheRepository.saveAndFlush(nouvelle);
-
-			if (candidatsReactivation != null) {
-				for (IntervenantResolu cand : candidatsReactivation) {
-					WfTacheCandidat c = new WfTacheCandidat();
-					c.setId(new WfTacheCandidatId(nouvelle.getId(), cand.collaborateurId()));
-					c.setCompteId(cand.compteId());
-					c.setNom(cand.nom());
-					c.setOrigine(OrigineCandidat.TITULAIRE);
-					c.setAjouteLe(maintenant);
-					candidatRepository.save(c);
-					String texte = TextesNotificationWorkflow.tacheCreee(
-							typeCatalogue.libelle(), inst.getDemandeurNom(), nouvelle.getLibelle(), echeanceSuivante, inst.getObjetNumero());
-					outboxService.publierNotification(evId, cand.compteId().toString(), "WEBSOCKET",
-							"WF_TACHE_CREEE", "Complément fourni", texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
-				}
-			}
-			outboxService.publierEvenementWorkflow(evId, "TACHE_CREEE", inst, ee.getEtapeCode(), nouvelle.getLibelle(), echeanceSuivante);
-			etapeCouranteDto = new EtapeCouranteDto(ee.getEtapeCode(), nouvelle.getLibelle(), echeanceSuivante, null);
-
-		} else if (plan == null) {
-			// Mode TOUS ou TACHES_PARALLELES : l'étape n'est pas encore terminée (d'autres tâches obligatoires restent ouvertes)
-			WfEtapeExecution ee = t.getEtapeExecution();
-			outboxService.publierEvenementWorkflow(evId, "TACHE_TRAITEE", inst, ee.getEtapeCode(), t.getLibelle(), t.getEcheanceLe());
-			etapeCouranteDto = new EtapeCouranteDto(ee.getEtapeCode(), t.getLibelle(), t.getEcheanceLe(), null);
-
-		} else {
-			// L'étape est terminée : annuler les éventuelles autres tâches ouvertes de cette étape (ex. refus en mode TOUS)
-			WfEtapeExecution ee = t.getEtapeExecution();
-			for (WfTache autre : tacheRepository.findByEtapeExecutionId(ee.getId())) {
-				if (!autre.getId().equals(t.getId()) && autre.getStatut() == StatutTache.A_TRAITER) {
-					autre.setStatut(StatutTache.ANNULEE);
-					tacheRepository.save(autre);
-				}
-			}
-			ee.setStatut(StatutEtapeExecution.TERMINEE);
-			ee.setResultat("REFUSER".equals(action) ? ResultatEtapeExecution.REFUSEE
-					: ("FAIT".equals(action) ? ResultatEtapeExecution.FAITE : ResultatEtapeExecution.APPROUVEE));
-			ee.setTermineeLe(maintenant);
-			etapeExecutionRepository.save(ee);
-
-			int prochainOrdre = ee.getOrdre() + 1;
-			for (EtapeSautee saut : plan.etapesSautees()) {
-				WfEtapeExecution eSaut = new WfEtapeExecution();
-				eSaut.setInstance(inst);
-				eSaut.setEtapeCode(saut.code());
-				eSaut.setOrdre(prochainOrdre++);
-				eSaut.setStatut(StatutEtapeExecution.SAUTEE);
-				eSaut.setRaisonSaut(saut.raison());
-				eSaut.setActiveLe(maintenant);
-				eSaut.setTermineeLe(maintenant);
-				etapeExecutionRepository.save(eSaut);
-				enregistrerHistorique(inst.getId(), null, "ETAPE_SAUTEE", null, "Système", null,
-						Map.of("etape_code", saut.code(), "raison", saut.raison().name()), maintenant);
-			}
-
-			for (EtapeInformation info : plan.etapesInformation()) {
-				WfEtapeExecution eInfo = new WfEtapeExecution();
-				eInfo.setInstance(inst);
-				eInfo.setEtapeCode(info.code());
-				eInfo.setOrdre(prochainOrdre++);
-				eInfo.setStatut(StatutEtapeExecution.TERMINEE);
-				eInfo.setActiveLe(maintenant);
-				eInfo.setTermineeLe(maintenant);
-				etapeExecutionRepository.save(eInfo);
-				UUID evInfo = UUID.randomUUID();
-				String texte = TextesNotificationWorkflow.information(
-						info.libelle(), typeCatalogue.libelle(), inst.getDemandeurNom(), inst.getObjetNumero());
-				for (UUID compteId : comptesInfos.getOrDefault(info.code(), List.of())) {
-					outboxService.publierNotification(evInfo, compteId.toString(), info.canal(), "WF_INFORMATION",
-							info.libelle(), texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
-				}
-			}
-
-			if (plan.estTerminal()) {
-				inst.setStatut(plan.statutFinal());
-				inst.setEtapeCouranteCode(null);
-				inst.setTermineLe(maintenant);
-				if (plan.statutFinal() == StatutInstance.REFUSEE) {
-					inst.setResultatMotif(commentaire);
-				}
-				instanceRepository.save(inst);
-
-				if (inst.getDemandeurCompteId() != null) {
-					String texte = plan.statutFinal() == StatutInstance.APPROUVEE
-							? TextesNotificationWorkflow.approuvee(typeCatalogue.libelle(), inst.getObjetNumero())
-							: TextesNotificationWorkflow.refusee(typeCatalogue.libelle(), appelantNom, commentaire, inst.getObjetNumero());
-					String sujet = plan.statutFinal() == StatutInstance.APPROUVEE ? "Demande approuvée" : "Demande refusée";
-					outboxService.publierNotification(evId, inst.getDemandeurCompteId().toString(), "WEBSOCKET",
-							"WF_FIN", sujet, texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
-				}
-				outboxService.publierEvenementWorkflow(evId, "INSTANCE_TERMINEE", inst, null, null, null);
-				enregistrerHistorique(inst.getId(), t.getId(), "INSTANCE_TERMINEE", appelantCompteId, appelantNom,
-						pourNom, Map.of("statut", inst.getStatut().name()), maintenant);
-			} else {
-				EtapeActivee activee = plan.etapeSuivante();
-				EtapeDefinition etapeDef = activee.etape();
-				inst.setStatut(activee.bloquee() ? StatutInstance.BLOQUEE : StatutInstance.EN_COURS);
-				inst.setEtapeCouranteCode(etapeDef.code());
-				instanceRepository.save(inst);
-
-				WfEtapeExecution eSuiv = new WfEtapeExecution();
-				eSuiv.setInstance(inst);
-				eSuiv.setEtapeCode(etapeDef.code());
-				eSuiv.setOrdre(prochainOrdre);
-				eSuiv.setStatut(StatutEtapeExecution.ACTIVE);
-				eSuiv.setActiveLe(maintenant);
-				eSuiv = etapeExecutionRepository.saveAndFlush(eSuiv);
-
-				String canal = etapeDef.notifications() != null ? etapeDef.notifications().canal() : "WEBSOCKET";
-				for (TacheACreer tc : activee.taches()) {
-					WfTache nt = new WfTache();
-					nt.setInstance(inst);
-					nt.setEtapeExecution(eSuiv);
-					nt.setCodeTache(tc.codeTache());
-					nt.setType(tc.type());
-					nt.setLibelle(tc.libelle());
-					nt.setStatut(StatutTache.A_TRAITER);
-					nt.setObligatoire(tc.obligatoire());
-					nt.setEcheanceLe(echeanceSuivante);
-					nt = tacheRepository.saveAndFlush(nt);
-
-					for (IntervenantResolu cand : tc.candidats()) {
-						WfTacheCandidat c = new WfTacheCandidat();
-						c.setId(new WfTacheCandidatId(nt.getId(), cand.collaborateurId()));
-						c.setCompteId(cand.compteId());
-						c.setNom(cand.nom());
-						c.setOrigine(OrigineCandidat.TITULAIRE);
-						c.setAjouteLe(maintenant);
-						candidatRepository.save(c);
-
-						String texte = TextesNotificationWorkflow.tacheCreee(
-								typeCatalogue.libelle(), inst.getDemandeurNom(), tc.libelle(), echeanceSuivante, inst.getObjetNumero());
-						outboxService.publierNotification(evId, cand.compteId().toString(), canal, "WF_TACHE_CREEE",
-								"Demande à traiter", texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
-					}
-				}
-
-				if (inst.getDemandeurCompteId() != null && "APPROUVER".equals(action)) {
-					String texteDem = TextesNotificationWorkflow.etapeApprouvee(
-							typeCatalogue.libelle(), appelantNom, t.getLibelle(), etapeDef.libelle(), inst.getObjetNumero());
-					outboxService.publierNotification(evId, inst.getDemandeurCompteId().toString(), "WEBSOCKET",
-							"WF_DECISION", "Étape validée", texteDem, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
-				}
-
-				if (activee.bloquee()) {
-					String texteBloque = TextesNotificationWorkflow.bloquee(
-							etapeDef.libelle(), typeCatalogue.libelle(), inst.getDemandeurNom(), inst.getObjetNumero());
-					outboxService.publierNotification(evId, "RH", "WEBSOCKET", "WF_BLOQUEE",
-							"Workflow bloqué", texteBloque, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
-					outboxService.publierEvenementWorkflow(evId, "INSTANCE_BLOQUEE", inst, etapeDef.code(), etapeDef.libelle(), echeanceSuivante);
-				} else {
-					outboxService.publierEvenementWorkflow(evId, "TACHE_CREEE", inst, etapeDef.code(), etapeDef.libelle(), echeanceSuivante);
-				}
-
-				String intitule = etapeDef.intervenants() != null
-						? CatalogueTypesObjet.libelleRegle(etapeDef.intervenants().regle(), etapeDef.intervenants().params())
-						: etapeDef.libelle();
-				etapeCouranteDto = new EtapeCouranteDto(etapeDef.code(), etapeDef.libelle(), echeanceSuivante, intitule);
-			}
-		}
-
-		DecisionResponse reponse = new DecisionResponse(
-				t.getId(), decisionEnum.name(), new InstanceDecisionDto(inst.getStatut(), etapeCouranteDto));
-		t.setReponseDecision(versMap(reponse));
-		tacheRepository.save(t);
-		return reponse;
+		return applicationService.appliquerDansTransaction(
+				inst, t, req.cleIdempotence(), action, commentaire, appelantCompteId,
+				appelantCollabId, appelantNom, pourCollabId, pourNom, typeCatalogue, etapeTermineeDef, exec);
 	}
 
 	private LectureContexte chargerContexte(UUID tacheId, String cleIdempotence, UUID appelantCompteId, boolean estBackofficeLecture) {
@@ -831,60 +515,12 @@ public class DecisionService {
 		}
 	}
 
-	private static DecisionTache versDecisionTache(String action) {
-		return switch (action) {
-			case "APPROUVER" -> DecisionTache.APPROUVEE;
-			case "REFUSER" -> DecisionTache.REFUSEE;
-			case "RENVOYER" -> DecisionTache.RENVOYEE;
-			case "FAIT" -> DecisionTache.FAITE;
-			default -> throw WorkflowMetierException.unprocessable("ACTION_NON_AUTORISEE", "Action inconnue : " + action);
-		};
-	}
-
 	private Map<String, TypeVariable> typesVariablesPour(String objetType) {
 		Map<String, TypeVariable> map = new HashMap<>();
 		for (VariableCatalogue vc : catalogue.variablesPour(objetType).values()) {
 			map.put(vc.nom(), vc.type());
 		}
 		return map;
-	}
-
-	private static Map<String, Object> versMap(DecisionResponse rep) {
-		Map<String, Object> m = new LinkedHashMap<>();
-		m.put("tache_id", rep.tacheId().toString());
-		m.put("decision", rep.decision());
-		Map<String, Object> inst = new LinkedHashMap<>();
-		inst.put("statut", rep.instance().statut().name());
-		if (rep.instance().etapeCourante() != null) {
-			Map<String, Object> ec = new LinkedHashMap<>();
-			ec.put("code", rep.instance().etapeCourante().code());
-			ec.put("libelle", rep.instance().etapeCourante().libelle());
-			ec.put("echeance_le", rep.instance().etapeCourante().echeanceLe() != null
-					? rep.instance().etapeCourante().echeanceLe().toString() : null);
-			ec.put("intitule_intervenants", rep.instance().etapeCourante().intituleIntervenants());
-			inst.put("etape_courante", ec);
-		}
-		m.put("instance", inst);
-		return m;
-	}
-
-	@SuppressWarnings("unchecked")
-	private static DecisionResponse reconstruireReponse(Map<String, Object> m) {
-		UUID tacheId = UUID.fromString(String.valueOf(m.get("tache_id")));
-		String decision = String.valueOf(m.get("decision"));
-		Map<String, Object> instMap = (Map<String, Object>) m.get("instance");
-		StatutInstance statut = StatutInstance.valueOf(String.valueOf(instMap.get("statut")));
-		EtapeCouranteDto ec = null;
-		Object ecObj = instMap.get("etape_courante");
-		if (ecObj instanceof Map<?, ?> ecMap) {
-			String ech = ecMap.get("echeance_le") != null ? String.valueOf(ecMap.get("echeance_le")) : null;
-			ec = new EtapeCouranteDto(
-					ecMap.get("code") != null ? String.valueOf(ecMap.get("code")) : null,
-					ecMap.get("libelle") != null ? String.valueOf(ecMap.get("libelle")) : null,
-					ech != null ? Instant.parse(ech) : null,
-					ecMap.get("intitule_intervenants") != null ? String.valueOf(ecMap.get("intitule_intervenants")) : null);
-		}
-		return new DecisionResponse(tacheId, decision, new InstanceDecisionDto(statut, ec));
 	}
 
 	private void enregistrerHistorique(

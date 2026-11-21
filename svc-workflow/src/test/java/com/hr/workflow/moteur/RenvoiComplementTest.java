@@ -89,11 +89,17 @@ class RenvoiComplementTest {
 	@BeforeEach
 	void setUp() {
 		lenient().when(txManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
-		service = new DecisionService(
+		Clock clock = Clock.fixed(Instant.parse("2026-11-20T10:00:00Z"), ZoneOffset.UTC);
+		PreparationDecisionService preparationService = new PreparationDecisionService(
+				catalogue, resolutionService, referentielClient, new PlanificationEcheanceService(),
+				new AvancementService(), clock);
+		ApplicationDecisionService applicationService = new ApplicationDecisionService(
 				instanceRepository, tacheRepository, candidatRepository, etapeExecutionRepository,
+				historiqueRepository, outboxService, clock);
+		service = new DecisionService(
+				instanceRepository, tacheRepository, candidatRepository,
 				beneficiaireRepository, historiqueRepository, appelEffetRepository, catalogue, codec,
-				resolutionService, referentielClient, new PlanificationEcheanceService(), new AvancementService(),
-				effetClient, outboxService, txManager, Clock.fixed(Instant.parse("2026-11-20T10:00:00Z"), ZoneOffset.UTC));
+				preparationService, applicationService, effetClient, txManager, clock);
 
 		instanceId = UUID.randomUUID();
 		tacheId = UUID.randomUUID();

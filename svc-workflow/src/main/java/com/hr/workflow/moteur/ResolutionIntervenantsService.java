@@ -203,6 +203,32 @@ public class ResolutionIntervenantsService {
 	}
 
 	/**
+	 * Résout les comptes titulaires d'au moins un des rôles donnés (D-W16, D-W29).
+	 */
+	public List<UUID> resoudreComptesRoles(LocalDate date, List<String> roles) {
+		if (roles == null || roles.isEmpty()) {
+			return List.of();
+		}
+		ResolutionLotResponse rep = referentielClient.resoudreLot(new ResolutionLotRequest(
+				date, null, List.of(), List.of(),
+				List.of(new RegleResolutionRequest("roles", "ROLE", Map.of("roles", roles)))));
+		if (rep == null || rep.resultats() == null) {
+			return List.of();
+		}
+		ResultatResolution res = rep.resultats().get("roles");
+		if (res == null || res.candidats() == null) {
+			return List.of();
+		}
+		Set<UUID> comptes = new HashSet<>();
+		for (IntervenantResolu i : res.candidats()) {
+			if (i != null && i.compteId() != null) {
+				comptes.add(i.compteId());
+			}
+		}
+		return new ArrayList<>(comptes);
+	}
+
+	/**
 	 * Revérification stricte de l'invariant I1 et des exclusions côté moteur (§ 9.5.3).
 	 */
 	public static List<IntervenantResolu> filtrerExclusions(
