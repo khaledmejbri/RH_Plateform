@@ -112,6 +112,18 @@ public class RhNotificationPublisher {
     }
 
     /**
+     * D-W5-05 : après 10 échecs de démarrage chez {@code svc-workflow}, la demande bascule sur le circuit hérité et
+     * la RH est prévenue.
+     */
+    public void notifierRepliWorkflowRh(Collaborateur demandeur, UUID demandeId, String numero) {
+        String ref = (numero != null && !numero.isBlank()) ? numero : String.valueOf(demandeId);
+        notifierTousLesRh(
+                "Repli sur le circuit standard",
+                "Demande " + ref + " : le circuit paramétré est indisponible, la demande suit le circuit standard.",
+                demandeur, objet("DEMANDE", "DEMANDE_REPLI_WORKFLOW", demandeId, numero));
+    }
+
+    /**
      * Étape 2b : RO a refusé → notifie le demandeur avec le motif.
      */
     public void notifierRefusRo(Collaborateur demandeur, String typeDemande, String motif, UUID demandeId,

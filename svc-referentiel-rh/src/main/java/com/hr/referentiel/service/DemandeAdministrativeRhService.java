@@ -51,6 +51,10 @@ public class DemandeAdministrativeRhService {
 	private final AnnulationCongeService annulationCongeService;
 	private final ChampsDecideurSolde champsDecideurSolde;
 	private final AuteurParametreResolver auteurResolver;
+	private final WorkflowActivationService workflowActivationService;
+	private final WorkflowDemarrageService workflowDemarrageService;
+	private final org.springframework.transaction.support.TransactionTemplate txEcriture;
+	private final org.springframework.transaction.support.TransactionTemplate txLecture;
 
 	public DemandeAdministrativeRhService(
 			DemandeAdministrativeRhRepository demandeRepo,
@@ -65,6 +69,29 @@ public class DemandeAdministrativeRhService {
 			AnnulationCongeService annulationCongeService,
 			ChampsDecideurSolde champsDecideurSolde,
 			AuteurParametreResolver auteurResolver) {
+		this(demandeRepo, collaborateurRepository, collaborateurConnecteService, validationService,
+				notificationPublisher, workflowHistoryRepository, numeroLisibleService, parametreService,
+				congeDecompteService, annulationCongeService, champsDecideurSolde, auteurResolver,
+				null, null, null);
+	}
+
+	@org.springframework.beans.factory.annotation.Autowired
+	public DemandeAdministrativeRhService(
+			DemandeAdministrativeRhRepository demandeRepo,
+			CollaborateurRepository collaborateurRepository,
+			CollaborateurConnecteService collaborateurConnecteService,
+			DemandeAdministrativeValidationService validationService,
+			RhNotificationPublisher notificationPublisher,
+			DemandeAdminWorkflowHistoryRepository workflowHistoryRepository,
+			NumeroLisibleService numeroLisibleService,
+			ParametreService parametreService,
+			CongeDecompteService congeDecompteService,
+			AnnulationCongeService annulationCongeService,
+			ChampsDecideurSolde champsDecideurSolde,
+			AuteurParametreResolver auteurResolver,
+			WorkflowActivationService workflowActivationService,
+			WorkflowDemarrageService workflowDemarrageService,
+			org.springframework.transaction.PlatformTransactionManager txManager) {
 		this.parametreService = parametreService;
 		this.congeDecompteService = congeDecompteService;
 		this.annulationCongeService = annulationCongeService;
@@ -77,12 +104,50 @@ public class DemandeAdministrativeRhService {
 		this.notificationPublisher = notificationPublisher;
 		this.workflowHistoryRepository = workflowHistoryRepository;
 		this.numeroLisibleService = numeroLisibleService;
+		this.workflowActivationService = workflowActivationService;
+		this.workflowDemarrageService = workflowDemarrageService;
+		if (txManager != null) {
+			this.txEcriture = new org.springframework.transaction.support.TransactionTemplate(txManager);
+			this.txLecture = new org.springframework.transaction.support.TransactionTemplate(txManager);
+			this.txLecture.setReadOnly(true);
+		} else {
+			this.txEcriture = null;
+			this.txLecture = null;
+		}
 	}
 
 	// ─── Création ─────────────────────────────────────────────────────────────
 
-	@Transactional
 	public DemandeAdministrativeRhResponse creer(DemandeAdministrativeRhCreationRequest req, Jwt jwt) {
+		// D-W5-04 : mode lu AVANT la transaction de création (hors transaction).
+		boolean modeMoteur = workflowActivationService != null
+				&& workflowActivationService.estMoteur(req.getTypeDemande());
+
+		DemandeAdministrativeRhResponse creee = txEcriture != null
+				? txEcriture.execute(status -> creerEnTransaction(req, jwt, modeMoteur))
+				: creerEnTransaction(req, jwt, modeMoteur);
+
+		// D-W5-04 : après validation de la transaction (hors transaction), démarrage moteur.
+		// La réponse HTTP 201 ne dépend pas du démarrage.
+		if (modeMoteur && creee != null && workflowDemarrageService != null) {
+			try {
+				workflowDemarrageService.demarrer(creee.getIdentifiant());
+				DemandeAdministrativeRhResponse maj = txLecture != null
+						? txLecture.execute(status -> demandeRepo.findByIdAvecDemandeur(creee.getIdentifiant())
+								.map(this::toResponse).orElse(creee))
+						: demandeRepo.findById(creee.getIdentifiant()).map(this::toResponse).orElse(creee);
+				if (maj != null) {
+					return maj;
+				}
+			} catch (RuntimeException ignored) {
+				// Repris par WorkflowDemarrageRepriseScheduler (D-W5-05)
+			}
+		}
+		return creee;
+	}
+
+	private DemandeAdministrativeRhResponse creerEnTransaction(
+			DemandeAdministrativeRhCreationRequest req, Jwt jwt, boolean modeMoteur) {
 		Collaborateur demandeur = exigerCollaborateurDetail(jwt);
 		String codeConge = validationService.validerContenu(req.getTypeDemande(),
 				req.getContenu() != null ? req.getContenu() : new HashMap<>());
@@ -104,6 +169,22 @@ public class DemandeAdministrativeRhService {
 		if (req.getTypeDemande() == TypeDemandeAdministrativeRh.CONGE) {
 			// D-S01 / D-S06 : périodes, jours décomptés, solde disponible et chevauchement (verrou du solde)
 			congeDecompteService.preparerCreation(demandeur, codeConge, d);
+		}
+
+		if (modeMoteur) {
+			// D-W5-04 : statut EN_COURS, workflow_mode = MOTEUR, workflow_etat = A_DEMARRER, valideur_attendu null
+			d.setWorkflowMode(WorkflowActivationService.MODE_MOTEUR);
+			d.setWorkflowEtat(WorkflowDemarrageService.ETAT_A_DEMARRER);
+			d.setValideurAttendu(null);
+			d.setStatut(StatutDemandeAdministrativeRh.EN_COURS);
+
+			DemandeAdministrativeRh saved = demandeRepo.save(d);
+			enregistrerWorkflow(saved, ActionWorkflowAdministratif.CREATION_DEMANDE,
+					demandeur.getId(), demandeur.getPrenom() + " " + demandeur.getNom(),
+					commentaireCreation(req.getTypeDemande(), d.getContenu(),
+							code -> ParametreService.enMinuscule(parametreService.libelleOuDefaut("TYPE_CONGE", code))));
+			// Aucune notification métier du référentiel en mode MOTEUR
+			return toResponse(saved);
 		}
 
 		Collaborateur valideurAttendu = managerNoeudActif(demandeur);

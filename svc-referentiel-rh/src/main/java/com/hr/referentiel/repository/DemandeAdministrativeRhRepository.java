@@ -57,6 +57,17 @@ public interface DemandeAdministrativeRhRepository extends JpaRepository<Demande
 	@Query("select d from DemandeAdministrativeRh d where d.id = :id")
 	java.util.Optional<DemandeAdministrativeRh> findByIdForUpdate(@Param("id") UUID id);
 
+	@Query("select d from DemandeAdministrativeRh d join fetch d.demandeur where d.id = :id")
+	java.util.Optional<DemandeAdministrativeRh> findByIdAvecDemandeur(@Param("id") UUID id);
+
+	/** Lot de demandes MOTEUR en attente de démarrage (D-W5-05, verrou non bloquant). */
+	@Query(value = "SELECT identifiant FROM rh_demande_administrative "
+			+ "WHERE societe_id = :societeId AND workflow_mode = 'MOTEUR' "
+			+ "AND workflow_etat = 'A_DEMARRER' AND statut <> 'ANNULEE' "
+			+ "ORDER BY cree_le ASC LIMIT :limite FOR UPDATE SKIP LOCKED",
+			nativeQuery = true)
+	List<UUID> findIdsADemarrerPourReprise(@Param("societeId") UUID societeId, @Param("limite") int limite);
+
 	/** Réservé : jours des demandes ANNUEL décomptées en cours de validation (D-S04). */
 	@Query("select coalesce(sum(d.joursDecomptes), 0) from DemandeAdministrativeRh d "
 			+ "where d.demandeur.id = :id and d.statut in :statuts and d.joursDecomptes is not null")
