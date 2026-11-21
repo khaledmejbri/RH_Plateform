@@ -6,3 +6,4 @@ CREATE DATABASE referentiel_rh_db;
 CREATE DATABASE evaluation_rh_db;
 CREATE DATABASE presence_db;
 CREATE DATABASE notification_db;
+CREATE DATABASE workflow_db;

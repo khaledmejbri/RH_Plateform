@@ -1,0 +1,12 @@
+package com.hr.workflow.domain;
+
+public enum ActionJournalModele {
+	CREATION,
+	MODIFICATION,
+	PUBLICATION,
+	RETRAIT,
+	ACTIVATION,
+	DESACTIVATION,
+	SUPPRESSION_BROUILLON,
+	BASCULE_MODE
+}

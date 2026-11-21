@@ -7,6 +7,8 @@ FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /src
 # Dépendances d'abord : la couche est réutilisée tant que les pom.xml ne changent pas
 COPY pom.xml .
+COPY sirh-commun/pom.xml sirh-commun/
+COPY svc-workflow/pom.xml svc-workflow/
 COPY eureka-server/pom.xml eureka-server/
 COPY gateway/pom.xml gateway/
 COPY svc-identite-acces/pom.xml svc-identite-acces/
@@ -18,7 +20,7 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -q dependency:go-offline || true
 COPY . .
 RUN --mount=type=cache,target=/root/.m2 mvn -B -q package -DskipTests \
  && mkdir /jars \
- && for m in eureka-server gateway svc-identite-acces svc-referentiel-rh svc-evaluation svc-presence svc-notification; do \
+ && for m in eureka-server gateway svc-identite-acces svc-referentiel-rh svc-evaluation svc-presence svc-notification svc-workflow; do \
       cp "$m/target/$m-0.0.1-SNAPSHOT.jar" "/jars/$m.jar"; \
     done
 
@@ -50,3 +52,6 @@ COPY --from=build /jars/svc-presence.jar app.jar
 
 FROM runtime AS svc-notification
 COPY --from=build /jars/svc-notification.jar app.jar
+
+FROM runtime AS svc-workflow
+COPY --from=build /jars/svc-workflow.jar app.jar
