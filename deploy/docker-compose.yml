@@ -130,6 +130,8 @@ services:
       APP_INTERNALAPI_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN manquant dans .env}
       # Import des collaborateurs : contrôle des comptes existants auprès de svc-identite-acces (adresse directe)
       REFERENTIEL_IDENTITE_BASEURL: http://svc-identite-acces:8081
+      # Moteur de workflow (lot W5, D-W5-02)
+      REFERENTIEL_WORKFLOW_BASEURL: ${REFERENTIEL_WORKFLOW_BASEURL:-http://svc-workflow:8087}
       SOCIETE_DEFAUT_CODE: ${SOCIETE_DEFAUT_CODE:-PRINCIPALE}
       SOCIETE_REPLI_DEFAUT_TRANSITION: "true"
 
