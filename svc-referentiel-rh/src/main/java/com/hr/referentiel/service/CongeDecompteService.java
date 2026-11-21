@@ -135,6 +135,26 @@ public class CongeDecompteService {
 	}
 
 	/**
+	 * Contrôle lecture seule (endpoint d'effet {@code CONTROLER}, D-W5-07) : même règle sur le solde acquis sans
+	 * verrouiller ni modifier la demande.
+	 */
+	public void controlerValidationLectureSeule(DemandeAdministrativeRh d) {
+		if (d.getJoursDecomptes() == null) {
+			return;
+		}
+		Periodes p = periodesDe(d);
+		Set<LocalDate> feries = jourFerieService.datesActives();
+		BigDecimal jours = DecompteJoursOuvres.jours(p, feries, baseDecompte(), joursTravailles());
+		if (jours.signum() == 0) {
+			throw aucunJourOuvre();
+		}
+		BigDecimal acquis = soldeService.acquis(d.getDemandeur().getId());
+		if (jours.compareTo(acquis) > 0) {
+			throw soldeInsuffisant(jours, acquis);
+		}
+	}
+
+	/**
 	 * Approbation RH : mêmes contrôles, jours figés, mouvement « Congé pris » (D-S06.c). Renvoie le mouvement, ou vide
 	 * pour une demande antérieure aux soldes (aucun contrôle ni mouvement, D-S06.g).
 	 */

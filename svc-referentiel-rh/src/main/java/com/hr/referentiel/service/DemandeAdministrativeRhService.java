@@ -297,11 +297,9 @@ public class DemandeAdministrativeRhService {
 		Collaborateur rh = verifierPasPropreDemandeRrh(jwt, d);
 		Collaborateur demandeur = chargerDemandeurDetail(d);
 
-		// D-S06.c : contrôle de l'acquis, jours figés et mouvement « Congé pris » dans la même transaction
-		boolean anterieure = CongeDecompteService.estAnnuel(d) && d.getJoursDecomptes() == null;
-		congeDecompteService.approuver(d, auteurResolver.depuis(jwt));
-		d.setStatut(StatutDemandeAdministrativeRh.APPROUVEE);
-		demandeRepo.save(d);
+		// D-S06.c / D-W5-07 : contrôle de l'acquis, jours figés, mouvement « Congé pris » et approbation (méthode commune)
+		boolean anterieure = DemandeApprobationSupport.approuverSousVerrou(
+				d, auteurResolver.depuis(jwt), congeDecompteService, demandeRepo);
 
 		// Enregistrer l'historique (approbateur tracé, SCRUM-24)
 		enregistrerWorkflow(d, ActionWorkflowAdministratif.APPROBATION_RRH,
