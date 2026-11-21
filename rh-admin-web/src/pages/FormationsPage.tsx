@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   getDemandesFormations,
   getTousCollaborateurs,
@@ -211,6 +212,12 @@ export default function FormationsPage() {
                   <th scope="col">Cible</th>
                   <th scope="col">Budget</th>
                   <th scope="col">Statut</th>
+                  {affichees.some((x) => x.workflow_mode === 'MOTEUR') ? (
+                    <>
+                      <th scope="col">Étape en cours</th>
+                      <th scope="col">Échéance</th>
+                    </>
+                  ) : null}
                   <th scope="col"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
@@ -229,13 +236,30 @@ export default function FormationsPage() {
                     <td data-label="Cible">{d.cible === 'UNITE' && d.unite_cible_identifiant ? <DetailLink type="unite" id={d.unite_cible_identifiant} libelle={cibleLabel(d)} /> : cibleLabel(d)}</td>
                     <td data-label="Budget" style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{formatTnd(d.cout_estime)}</td>
                     <td data-label="Statut"><StatusBadge referentiel="STATUT_FORMATION" statut={d.statut} label={labelStatut(d.statut)} /></td>
+                    {affichees.some((x) => x.workflow_mode === 'MOTEUR') ? (
+                      <>
+                        <td data-label="Étape en cours" className="cell-meta">
+                          {d.workflow_mode === 'MOTEUR' ? (d.etape_courante_libelle ?? '—') : '—'}
+                        </td>
+                        <td data-label="Échéance" className="cell-meta">
+                          {d.workflow_mode === 'MOTEUR' && d.echeance_le ? formatDateHeure(d.echeance_le) : '—'}
+                        </td>
+                      </>
+                    ) : null}
                     <td data-label="Actions">
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <button type="button" className="btn btn--sm btn--ghost" onClick={() => viewDetail(d)}>
                           <Icon name="eye" size={14} />
                           Détails
                         </button>
-                        {!lectureSeule && d.statut === 'EN_VALIDATION_RRH' ? (
+                        {d.workflow_mode === 'MOTEUR' ? (
+                          <Link
+                            to={`/app/taches?objet_type=FORMATION&objet_id=${encodeURIComponent(d.identifiant)}`}
+                            className="btn btn--sm btn--secondary"
+                          >
+                            Voir dans Mes tâches
+                          </Link>
+                        ) : !lectureSeule && d.statut === 'EN_VALIDATION_RRH' ? (
                           <>
                             <button type="button" className="btn btn--sm btn--secondary" onClick={() => openAction('refuser', d)}>
                               Refuser
