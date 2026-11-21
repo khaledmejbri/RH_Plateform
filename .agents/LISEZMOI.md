@@ -41,6 +41,8 @@ Règle d'or : **le modèle qui a écrit le code ne fait pas sa revue**. Revue = 
 | Vous voulez… | Tapez |
 |---|---|
 | Reprendre le projet / savoir où on en est | `/sirh-reprise` |
+| **Tout faire d'un coup**, du besoin à la livraison (2 arrêts seulement) | `/sirh-autopilote` + votre besoin |
+| Reprendre un pilote automatique interrompu | `/sirh-autopilote reprends <nom>` |
 | Relancer la démo et obtenir l'adresse pour le client | `/sirh-relancer-demo` |
 | Faire un besoin complet (règles → Jira → code → recette → revue) | `/sirh-boucle-qualite` + votre besoin |
 | Lancer un lot du moteur de workflow | `/sirh-boucle-qualite lot W1` (prompts dans `docs/specs/workflow/lots/`) |
@@ -50,6 +52,47 @@ Règle d'or : **le modèle qui a écrit le code ne fait pas sa revue**. Revue = 
 
 Skills métier chargés automatiquement selon la tâche : `sirh-expert-rh`, `sirh-architecte`, `sirh-dev-backend`,
 `sirh-dev-web`, `sirh-dev-mobile`, `sirh-testeur`, `sirh-redaction-jira`, `graphify`, `ui-ux-pro-max`.
+
+## 3 bis. Pilote automatique et façon de parler à Antigravity
+
+### Le pilote automatique (`/sirh-autopilote`)
+Une conversation **Gemini Pro** (les développeurs héritent de Pro, le testeur tourne sur Flash) :
+```
+/sirh-autopilote Le client veut que le congé maladie exige un certificat au-delà de 2 jours.
+```
+1. Il analyse le besoin, puis s'arrête (**arrêt 1**) avec les questions métier, chacune avec une réponse par
+   défaut. Vous répondez (ou « défauts OK »).
+2. Il conçoit, développe (sous-agents), teste, corrige, fait relire par un sous-agent neuf, en boucle (3 tours
+   au plus), sans rien vous demander.
+3. Il s'arrête (**arrêt 2**) avec le rapport final et un message tout prêt à coller dans une **nouvelle conversation
+   Claude Opus** (revue finale indépendante).
+4. Après la revue Opus : « livre » (fusion dans `delivery`, push, Jira, `CONTEXTE.md`), et « démo » si vous voulez
+   mettre à jour le kit 8090 du client. Si Opus dit NO-GO, collez ses corrections dans la conversation du pilote.
+
+- Lot déjà préparé : `/sirh-autopilote lot W5` (pas d'arrêt 1 : les décisions sont dans le prompt du lot).
+- Tout est noté dans `docs/autopilote/<nom>/` (`etat.md`, fiche, décisions, rapports). Si la conversation devient
+  trop longue : nouvelle conversation, `/sirh-autopilote reprends <nom>`.
+- Qualité maximale pour un besoin important : faites l'étape 1 sur **Claude Opus** (jusqu'à l'arrêt 1), puis
+  continuez sur Gemini Pro avec `/sirh-autopilote reprends <nom>`.
+
+### Les phrases qui changent tout (pilote ou non)
+- « Ne devine pas : arrête-toi et pose la question. »
+- « Montre la sortie réelle de la commande. » (jamais « tous les tests passent » sans la preuve)
+- « Reste dans ces dossiers : … »
+- « Écris un test qui échoue sans ta correction. »
+- « N'annonce que ce qui est fait et vérifié. »
+
+### Messages types hors pilote
+- Bug : « Bug : <écran ou route>, compte <COL-WEB>, j'ai fait <étapes>, j'obtiens <erreur>, j'attends <résultat>.
+  Trouve la cause avant de corriger, ajoute un test qui échoue sans le correctif, montre la sortie des tests. »
+- Revue (Claude Opus, nouvelle conversation) : `/sirh-code-review <branche>, <dossier>` + les documents du lot.
+- Démo : `/sirh-relancer-demo`.
+
+### À ne jamais laisser faire
+- Commiter ou pousser avant la revue Opus GO.
+- Toucher au kit 8090 ou au tunnel pendant que le client l'utilise.
+- Donner un mot de passe ou un jeton dans le chat (les outils les lisent eux-mêmes).
+- Croire une note de livraison sans revue : celle de W3 citait des tests qui n'existaient pas.
 
 ## 4. Le cycle d'un lot (moteur de workflow W0 → W3…)
 

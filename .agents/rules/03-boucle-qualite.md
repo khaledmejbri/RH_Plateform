@@ -29,3 +29,5 @@ Règles de la boucle :
 - Seul l'agent principal commite et pousse, et seulement quand l'utilisateur le demande.
 - Le modèle qui a écrit le code ne fait pas sa propre revue : la revue se fait dans une **nouvelle conversation**
   avec Claude Opus sélectionné, à partir du diff.
+
+Raccourci : `/sirh-autopilote <besoin>` enchaîne toute cette boucle par sous-agents avec deux arrêts seulement (questions métier, accord de livraison) ; skill `.agents/skills/sirh-autopilote/SKILL.md`.
