@@ -295,36 +295,55 @@ public class DecisionService {
 						acteurEffet, commentaire, ctx.instanceId(), ctx.libelleTache()));
 
 		if (resEffet instanceof ResultatAppelEffet.Succes succes) {
-			DecisionResponse rep = txWrite.execute(status -> {
+			record IssueSucces(DecisionResponse reponse, String codeConflit, String messageConflit) {}
+			IssueSucces issue = txWrite.execute(status -> {
+				WfInstance inst = instanceRepository.findByIdForUpdate(ctx.instanceId())
+						.orElseThrow(() -> WorkflowMetierException.notFound("INSTANCE_INTROUVABLE", "Instance introuvable."));
+				WfTache t = tacheRepository.findByIdForUpdate(tacheId)
+						.orElseThrow(() -> WorkflowMetierException.notFound("TACHE_INTROUVABLE", "Tâche introuvable."));
 				WfAppelEffet ae = appelEffetRepository.findById(appelEffetId).orElseThrow();
 				ae.setStatut(StatutAppelEffet.APPLIQUE);
 				ae.setReponse(succes.corps());
 				ae.setTentatives(ae.getTentatives() + 1);
 				ae.setTermineLe(clock.instant());
 				appelEffetRepository.save(ae);
-				return appliquerDecisionDansTransaction(
-						ctx.instanceId(), tacheId, req, action, commentaire, appelantCompteId,
+
+				if (inst.getStatut().estTerminale()) {
+					return new IssueSucces(null, "INSTANCE_TERMINEE", "Cette instance est déjà terminée.");
+				}
+				if (t.getStatut() != StatutTache.RESERVEE) {
+					return new IssueSucces(null, "TACHE_DEJA_TRAITEE", "Cette tâche a déjà été traitée.");
+				}
+				DecisionResponse rep = applicationService.appliquerDansTransaction(
+						inst, t, req.cleIdempotence(), action, commentaire, appelantCompteId,
 						ctx.candidatCollaborateurId(), nomActeur, ctx.pourCollaborateurId(), ctx.pourNom(),
-						typeCatalogue, ctx.etapeDef(), exec, true);
+						typeCatalogue, ctx.etapeDef(), exec);
+				return new IssueSucces(rep, null, null);
 			});
-			return ResultatDecision.ok(rep);
+			if (issue != null && issue.codeConflit() != null) {
+				throw WorkflowMetierException.conflict(issue.codeConflit(), issue.messageConflit());
+			}
+			return ResultatDecision.ok(issue.reponse());
 		}
 
 		if (resEffet instanceof ResultatAppelEffet.RejetMetier rejet) {
 			txWrite.executeWithoutResult(status -> {
 				WfInstance inst = instanceRepository.findByIdForUpdate(ctx.instanceId()).orElseThrow();
 				WfTache t = tacheRepository.findByIdForUpdate(tacheId).orElseThrow();
-				t.setStatut(StatutTache.A_TRAITER);
-				t.setCleIdempotence(null);
-				tacheRepository.save(t);
 				WfAppelEffet ae = appelEffetRepository.findById(appelEffetId).orElseThrow();
 				ae.setStatut(StatutAppelEffet.REJETE);
 				ae.setReponse(rejet.corps());
 				ae.setTentatives(ae.getTentatives() + 1);
 				ae.setTermineLe(clock.instant());
 				appelEffetRepository.save(ae);
-				enregistrerHistorique(inst.getId(), t.getId(), "EFFET_REJETE", appelantCompteId, nomActeur,
-						ctx.pourNom(), Map.of("effet", ae.getEffet(), "code", rejet.code()), clock.instant());
+
+				if (!inst.getStatut().estTerminale() && t.getStatut() == StatutTache.RESERVEE) {
+					t.setStatut(StatutTache.A_TRAITER);
+					t.setCleIdempotence(null);
+					tacheRepository.save(t);
+					enregistrerHistorique(inst.getId(), t.getId(), "EFFET_REJETE", appelantCompteId, nomActeur,
+							ctx.pourNom(), Map.of("effet", ae.getEffet(), "code", rejet.code()), clock.instant());
+				}
 			});
 			throw new WorkflowMetierException(rejet.code(), rejet.message(), rejet.httpStatus());
 		}

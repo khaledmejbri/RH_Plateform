@@ -11,6 +11,7 @@ import com.hr.workflow.definition.EcheanceDefinition;
 import com.hr.workflow.definition.EtapeDefinition;
 import com.hr.workflow.definition.EtapeDefinition.RepliSiVideDefinition;
 import com.hr.workflow.definition.IntervenantsDefinition;
+import com.hr.workflow.domain.StatutAppelEffet;
 import com.hr.workflow.domain.StatutEtapeExecution;
 import com.hr.workflow.domain.StatutInstance;
 import com.hr.workflow.domain.StatutTache;
@@ -266,5 +267,60 @@ class DecisionServiceTest {
 		assertThat(incertain.httpStatus()).isEqualTo(202);
 		assertThat(incertain.decisionEnCours()).isTrue();
 		assertThat(tache.getStatut()).isEqualTo(StatutTache.RESERVEE);
+	}
+
+	@Test
+	void annulationPendantEffet_puis409Proprietaire_tacheResteAnnulee() {
+		WfAppelEffet ae = new WfAppelEffet();
+		ae.setId(UUID.randomUUID());
+		ae.setEffet("APPROUVER");
+		when(appelEffetRepository.saveAndFlush(any())).thenReturn(ae);
+		when(appelEffetRepository.findById(ae.getId())).thenReturn(Optional.of(ae));
+		when(effetClient.appeler(any(), any(), any())).thenAnswer(inv -> {
+			EffetClient.RequeteEffet req = inv.getArgument(2);
+			if ("CONTROLER".equals(req.mode())) {
+				return new ResultatAppelEffet.Succes(Map.of("ok", true));
+			}
+			// Annulation concurrente pendant l'appel APPLIQUER
+			instance.setStatut(StatutInstance.ANNULEE);
+			tache.setStatut(StatutTache.ANNULEE);
+			return new ResultatAppelEffet.RejetMetier(409, "DEJA_ANNULEE", "Demande annulée", Map.of());
+		});
+
+		assertThatThrownBy(() -> service.decider(tacheId, new DecisionRequest("APPROUVER", null, 1L, "cle-annul-409"),
+				valideurCompteId, "Amel", true))
+				.isInstanceOf(WorkflowMetierException.class)
+				.hasFieldOrPropertyWithValue("httpStatus", 409);
+
+		assertThat(ae.getStatut()).isEqualTo(StatutAppelEffet.REJETE);
+		assertThat(tache.getStatut()).isEqualTo(StatutTache.ANNULEE);
+		assertThat(instance.getStatut()).isEqualTo(StatutInstance.ANNULEE);
+	}
+
+	@Test
+	void annulationPendantEffet_puis200Proprietaire_instanceResteAnnulee() {
+		WfAppelEffet ae = new WfAppelEffet();
+		ae.setId(UUID.randomUUID());
+		ae.setEffet("APPROUVER");
+		when(appelEffetRepository.saveAndFlush(any())).thenReturn(ae);
+		when(appelEffetRepository.findById(ae.getId())).thenReturn(Optional.of(ae));
+		when(effetClient.appeler(any(), any(), any())).thenAnswer(inv -> {
+			EffetClient.RequeteEffet req = inv.getArgument(2);
+			if ("CONTROLER".equals(req.mode())) {
+				return new ResultatAppelEffet.Succes(Map.of("ok", true));
+			}
+			instance.setStatut(StatutInstance.ANNULEE);
+			tache.setStatut(StatutTache.ANNULEE);
+			return new ResultatAppelEffet.Succes(Map.of("ok", true));
+		});
+
+		assertThatThrownBy(() -> service.decider(tacheId, new DecisionRequest("APPROUVER", null, 1L, "cle-annul-200"),
+				valideurCompteId, "Amel", true))
+				.isInstanceOf(WorkflowMetierException.class)
+				.hasFieldOrPropertyWithValue("code", "INSTANCE_TERMINEE");
+
+		assertThat(ae.getStatut()).isEqualTo(StatutAppelEffet.APPLIQUE);
+		assertThat(instance.getStatut()).isEqualTo(StatutInstance.ANNULEE);
+		assertThat(tache.getStatut()).isEqualTo(StatutTache.ANNULEE);
 	}
 }

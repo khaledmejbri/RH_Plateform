@@ -297,4 +297,31 @@ class EffetRepriseSchedulerTest {
 		verify(historiqueRepository).save(argThat(h -> "INSTANCE_ERREUR".equals(h.getTypeEvenement())));
 		verify(outboxService).publierEvenementWorkflow(any(), eq("INSTANCE_TERMINEE"), eq(instance), any(), any(), any());
 	}
+
+	@Test
+	void reprise200ApresAnnulation_instanceEtTacheRestentAnnulees() {
+		instance.setStatut(StatutInstance.ANNULEE);
+		tache.setStatut(StatutTache.ANNULEE);
+		when(effetClient.appeler(any(), any(), any())).thenReturn(new ResultatAppelEffet.Succes(Map.of("ok", true)));
+
+		scheduler.reprendreIncertains();
+
+		assertThat(appelEffet.getStatut()).isEqualTo(StatutAppelEffet.APPLIQUE);
+		assertThat(instance.getStatut()).isEqualTo(StatutInstance.ANNULEE);
+		assertThat(tache.getStatut()).isEqualTo(StatutTache.ANNULEE);
+	}
+
+	@Test
+	void reprise409ApresAnnulation_tacheResteAnnulee() {
+		instance.setStatut(StatutInstance.ANNULEE);
+		tache.setStatut(StatutTache.ANNULEE);
+		when(effetClient.appeler(any(), any(), any()))
+				.thenReturn(new ResultatAppelEffet.RejetMetier(409, "DEJA_ANNULEE", "Annulée", Map.of()));
+
+		scheduler.reprendreIncertains();
+
+		assertThat(appelEffet.getStatut()).isEqualTo(StatutAppelEffet.REJETE);
+		assertThat(tache.getStatut()).isEqualTo(StatutTache.ANNULEE);
+		assertThat(instance.getStatut()).isEqualTo(StatutInstance.ANNULEE);
+	}
 }

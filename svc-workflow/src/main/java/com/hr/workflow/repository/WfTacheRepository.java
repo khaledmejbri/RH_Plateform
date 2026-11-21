@@ -44,6 +44,7 @@ public interface WfTacheRepository extends JpaRepository<WfTache, UUID> {
 			JOIN FETCH t.instance i
 			JOIN FETCH t.etapeExecution e
 			WHERE t.statut = com.hr.workflow.domain.StatutTache.A_TRAITER
+			  AND i.statut IN (com.hr.workflow.domain.StatutInstance.EN_COURS, com.hr.workflow.domain.StatutInstance.BLOQUEE)
 			  AND EXISTS (
 			    SELECT 1 FROM WfTacheCandidat c
 			    WHERE c.id.tacheId = t.id
@@ -55,6 +56,7 @@ public interface WfTacheRepository extends JpaRepository<WfTache, UUID> {
 			countQuery = """
 			SELECT COUNT(t) FROM WfTache t
 			WHERE t.statut = com.hr.workflow.domain.StatutTache.A_TRAITER
+			  AND t.instance.statut IN (com.hr.workflow.domain.StatutInstance.EN_COURS, com.hr.workflow.domain.StatutInstance.BLOQUEE)
 			  AND EXISTS (
 			    SELECT 1 FROM WfTacheCandidat c
 			    WHERE c.id.tacheId = t.id
@@ -87,6 +89,7 @@ public interface WfTacheRepository extends JpaRepository<WfTache, UUID> {
 	@Query("""
 			SELECT COUNT(t) FROM WfTache t
 			WHERE t.statut = com.hr.workflow.domain.StatutTache.A_TRAITER
+			  AND t.instance.statut IN (com.hr.workflow.domain.StatutInstance.EN_COURS, com.hr.workflow.domain.StatutInstance.BLOQUEE)
 			  AND EXISTS (
 			    SELECT 1 FROM WfTacheCandidat c
 			    WHERE c.id.tacheId = t.id
@@ -99,6 +102,7 @@ public interface WfTacheRepository extends JpaRepository<WfTache, UUID> {
 	@Query("""
 			SELECT COUNT(t) FROM WfTache t
 			WHERE t.statut = com.hr.workflow.domain.StatutTache.A_TRAITER
+			  AND t.instance.statut IN (com.hr.workflow.domain.StatutInstance.EN_COURS, com.hr.workflow.domain.StatutInstance.BLOQUEE)
 			  AND t.echeanceLe IS NOT NULL
 			  AND t.echeanceLe < :maintenant
 			  AND EXISTS (

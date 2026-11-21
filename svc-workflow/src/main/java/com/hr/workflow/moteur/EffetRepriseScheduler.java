@@ -235,7 +235,7 @@ public class EffetRepriseScheduler {
 			ae.setTermineLe(maintenant);
 			appelEffetRepository.save(ae);
 
-			if (t != null && t.getStatut() == StatutTache.RESERVEE) {
+			if (!inst.getStatut().estTerminale() && t != null && t.getStatut() == StatutTache.RESERVEE) {
 				String cleTache = item.tacheCleIdempotence() != null ? item.tacheCleIdempotence() : item.cleIdempotence();
 				applicationService.appliquerDansTransaction(
 						inst, t, cleTache, item.action(), item.commentaire(),
@@ -250,18 +250,18 @@ public class EffetRepriseScheduler {
 			ae.setReponse(rejet.corps());
 			ae.setTermineLe(maintenant);
 			appelEffetRepository.save(ae);
-			if (t != null && t.getStatut() == StatutTache.RESERVEE) {
+			if (!inst.getStatut().estTerminale() && t != null && t.getStatut() == StatutTache.RESERVEE) {
 				t.setStatut(StatutTache.A_TRAITER);
 				t.setCleIdempotence(null);
 				tacheRepository.save(t);
+				if (item.decideurCompteId() != null) {
+					outboxService.publierNotification(UUID.randomUUID(), item.decideurCompteId().toString(),
+							"WEBSOCKET", "WF_DECISION", "Décision refusée par le service métier",
+							rejet.message(), item.typeCatalogue().objetType(), item.objetId(), item.objetNumero());
+				}
+				enregistrerHistorique(inst.getId(), item.tacheId(), "EFFET_REJETE",
+						Map.of("effet", item.effet(), "code", rejet.code()), maintenant);
 			}
-			if (item.decideurCompteId() != null) {
-				outboxService.publierNotification(UUID.randomUUID(), item.decideurCompteId().toString(),
-						"WEBSOCKET", "WF_DECISION", "Décision refusée par le service métier",
-						rejet.message(), item.typeCatalogue().objetType(), item.objetId(), item.objetNumero());
-			}
-			enregistrerHistorique(inst.getId(), item.tacheId(), "EFFET_REJETE",
-					Map.of("effet", item.effet(), "code", rejet.code()), maintenant);
 			return;
 		}
 
@@ -271,6 +271,10 @@ public class EffetRepriseScheduler {
 			ae.setProchaineTentativeLe(null);
 			ae.setTermineLe(maintenant);
 			appelEffetRepository.save(ae);
+
+			if (inst.getStatut().estTerminale() || t == null || t.getStatut() != StatutTache.RESERVEE) {
+				return;
+			}
 
 			inst.setStatut(StatutInstance.ERREUR);
 			inst.setTermineLe(maintenant);
