@@ -24,7 +24,9 @@ import com.hr.workflow.repository.WfTacheCandidatRepository;
 import com.hr.workflow.repository.WfTacheRepository;
 import com.hr.workflow.web.WorkflowMetierException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -47,6 +49,7 @@ public class InstanceInterneService {
 	private final OutboxService outboxService;
 	private final DecisionService decisionService;
 	private final WorkflowUtilisateurService utilisateurService;
+	private final TransactionTemplate txReadOnly;
 	private final Clock clock;
 
 	public InstanceInterneService(
@@ -58,6 +61,7 @@ public class InstanceInterneService {
 			OutboxService outboxService,
 			DecisionService decisionService,
 			WorkflowUtilisateurService utilisateurService,
+			PlatformTransactionManager transactionManager,
 			Clock clock) {
 		this.instanceRepository = instanceRepository;
 		this.tacheRepository = tacheRepository;
@@ -67,6 +71,8 @@ public class InstanceInterneService {
 		this.outboxService = outboxService;
 		this.decisionService = decisionService;
 		this.utilisateurService = utilisateurService;
+		this.txReadOnly = new TransactionTemplate(transactionManager);
+		this.txReadOnly.setReadOnly(true);
 		this.clock = clock;
 	}
 
@@ -141,24 +147,30 @@ public class InstanceInterneService {
 
 	/** Complément fourni côté propriétaire : clôt la tâche {@code COMPLEMENT} ouverte et réactive l'étape (D-W10). */
 	public DecisionResponse complementFourni(UUID instanceId, ComplementFourniRequest req) {
-		WfTache tacheComp = tacheRepository.findByInstanceIdAndStatutIn(instanceId, List.of(StatutTache.A_TRAITER))
-				.stream()
-				.filter(t -> t.getType() == TypeTache.COMPLEMENT)
-				.findFirst()
-				.orElseThrow(() -> WorkflowMetierException.conflict("TACHE_DEJA_TRAITEE",
-						"Aucune tâche de complément ouverte sur cette instance."));
+		record InfoComplement(UUID tacheId, Long version, UUID demandeurCompteId, String demandeurNom) {}
+		InfoComplement info = txReadOnly.execute(status -> {
+			WfTache tacheComp = tacheRepository.findByInstanceIdAndStatutIn(instanceId, List.of(StatutTache.A_TRAITER))
+					.stream()
+					.filter(t -> t.getType() == TypeTache.COMPLEMENT)
+					.findFirst()
+					.orElseThrow(() -> WorkflowMetierException.conflict("TACHE_DEJA_TRAITEE",
+							"Aucune tâche de complément ouverte sur cette instance."));
+			WfInstance inst = tacheComp.getInstance();
+			return new InfoComplement(tacheComp.getId(), tacheComp.getVersion(),
+					inst.getDemandeurCompteId(), inst.getDemandeurNom());
+		});
 
 		UUID acteurCompteId = (req != null && req.acteur() != null && req.acteur().compteId() != null)
 				? req.acteur().compteId()
-				: tacheComp.getInstance().getDemandeurCompteId();
+				: info.demandeurCompteId();
 		String acteurNom = (req != null && req.acteur() != null && req.acteur().nom() != null)
 				? req.acteur().nom()
-				: tacheComp.getInstance().getDemandeurNom();
+				: info.demandeurNom();
 		String commentaire = req != null ? req.commentaire() : null;
 
-		DecisionRequest decReq = new DecisionRequest("FAIT", commentaire, tacheComp.getVersion(),
-				"comp-" + tacheComp.getId());
-		return decisionService.decider(tacheComp.getId(), decReq, acteurCompteId, acteurNom, true).reponse();
+		DecisionRequest decReq = new DecisionRequest("FAIT", commentaire, info.version(),
+				"comp-" + info.tacheId());
+		return decisionService.decider(info.tacheId(), decReq, acteurCompteId, acteurNom, true).reponse();
 	}
 
 	@Transactional(readOnly = true)
