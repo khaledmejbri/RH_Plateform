@@ -41,9 +41,27 @@ def chaines(valeur, cle=""):
         yield cle.lower(), valeur
 
 
+def appel_outil(evenement: dict):
+    """Partie de l'événement qui décrit l'appel d'outil. Antigravity l'envoie dans `toolCall` ; le reste
+    (dernier message de l'utilisateur, transcription…) ne doit jamais être analysé."""
+    for cle in ("toolCall", "tool_call", "toolInput", "tool_input"):
+        if isinstance(evenement.get(cle), dict):
+            return evenement[cle]
+    return {}
+
+
+def nom_outil(evenement: dict) -> str:
+    appel = appel_outil(evenement)
+    return str(evenement.get("toolName") or evenement.get("tool_name") or appel.get("name")
+               or appel.get("toolName") or appel.get("tool") or "").lower()
+
+
 def verdict(evenement: dict) -> str | None:
-    outil = str(evenement.get("toolName") or evenement.get("tool_name") or evenement.get("tool") or "").lower()
-    for cle, texte in chaines(evenement):
+    outil = nom_outil(evenement)
+    cible = appel_outil(evenement)
+    if "toolName" in evenement or "tool_name" in evenement:
+        cible = {"outil": outil, "entree": cible}
+    for cle, texte in chaines(cible):
         if cle in ("content", "contents", "code", "text", "newstring", "new_string", "replacement", "instruction",
                    "description", "codecontent", "replacementcontent", "targetcontent"):
             continue
@@ -61,14 +79,32 @@ def verdict(evenement: dict) -> str | None:
 
 
 def main() -> None:
+    evenement = {}
     try:
         sys.stdout.reconfigure(encoding="utf-8")
         evenement = json.loads(sys.stdin.read() or "{}")
         raison = verdict(evenement) if isinstance(evenement, dict) else None
     except Exception:  # un hook défaillant ne doit jamais bloquer le travail
         raison = None
-    print(json.dumps({"decision": "deny", "reason": "Bloqué par .agents/hooks/garde_secrets.py : " + raison}
-                     if raison else {}, ensure_ascii=False))
+    reponse = ({"decision": "deny", "reason": "Bloqué par .agents/hooks/garde_secrets.py : " + raison}
+               if raison else {"decision": "allow"})
+    journaliser(evenement, reponse["decision"])
+    print(json.dumps(reponse, ensure_ascii=False))
+
+
+def journaliser(evenement, decision: str) -> None:
+    """Diagnostic : outil, noms des champs reçus et décision (jamais les valeurs)."""
+    try:
+        import os
+        import tempfile
+        import time
+        dico = evenement if isinstance(evenement, dict) else {}
+        outil = nom_outil(dico) or "?"
+        champs_appel = sorted(appel_outil(dico))
+        with open(os.path.join(tempfile.gettempdir(), "sirh-hook.log"), "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} outil={outil} champs_appel={champs_appel} decision={decision}\n")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

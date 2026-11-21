@@ -27,9 +27,10 @@ from mcp.server.fastmcp import FastMCP
 
 RACINE = Path(__file__).resolve().parents[2]
 DEPLOY = RACINE / "deploy"
-OUTILS_RECETTE = RACINE / "recette" / "outils"
+DOSSIER_RECETTE = Path(os.environ.get("SIRH_RECETTE_DIR", str(RACINE / "recette")))
+OUTILS_RECETTE = DOSSIER_RECETTE / "outils"
 FICHIER_ADRESSE = OUTILS_RECETTE / "adresse_publique.txt"
-MESSAGE_CLIENT = RACINE / "recette" / "message_client.md"
+MESSAGE_CLIENT = DOSSIER_RECETTE / "message_client.md"
 JOURNAL_TUNNEL = Path(tempfile.gettempdir()) / "sirh-tunnel.log"
 CLOUDFLARED = Path(r"C:\Program Files (x86)\cloudflared\cloudflared.exe")
 DOCKER_DESKTOP = Path(r"C:\Program Files\Docker\Docker\Docker Desktop.exe")
