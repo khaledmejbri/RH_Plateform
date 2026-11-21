@@ -83,7 +83,9 @@ public class ChampsDecideurSolde {
 			DemandeAdministrativeRhResponse r = reponses.get(i);
 			r.setPeutAnnuler(moi != null && d.getDemandeur().getId().equals(moi)
 					&& (d.getStatut() == StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR
-					|| d.getStatut() == StatutDemandeAdministrativeRh.EN_VALIDATION_RRH));
+					|| d.getStatut() == StatutDemandeAdministrativeRh.EN_VALIDATION_RRH
+					|| d.getStatut() == StatutDemandeAdministrativeRh.EN_COURS
+					|| d.getStatut() == StatutDemandeAdministrativeRh.A_COMPLETER));
 			if (d.getTypeDemande() == TypeDemandeAdministrativeRh.CONGE) {
 				r.setPeutAnnulerApresApprobation(appelant.ecritureRh() && !d.getDemandeur().getId().equals(moi)
 						&& d.getStatut() == StatutDemandeAdministrativeRh.APPROUVEE && d.getPeriodeDebut() != null
@@ -108,7 +110,7 @@ public class ChampsDecideurSolde {
 			case EN_VALIDATION_SUPERIEUR -> moi != null && d.getValideurAttendu() != null
 					&& d.getValideurAttendu().getId().equals(moi);
 			case EN_VALIDATION_RRH -> appelant.ecritureRh();
-			default -> false;
+			case SOUMISE, EN_COURS, A_COMPLETER, APPROUVEE, REFUSEE, ANNULEE -> false;
 		};
 	}
 }

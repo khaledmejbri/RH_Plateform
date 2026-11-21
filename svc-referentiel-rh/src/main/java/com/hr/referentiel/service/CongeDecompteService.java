@@ -40,7 +40,8 @@ public class CongeDecompteService {
 	static final String CLE_DERNIER = "periode_dernier_jour";
 	static final Set<StatutDemandeAdministrativeRh> STATUTS_CHEVAUCHANTS = EnumSet.of(
 			StatutDemandeAdministrativeRh.SOUMISE, StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR,
-			StatutDemandeAdministrativeRh.EN_VALIDATION_RRH, StatutDemandeAdministrativeRh.APPROUVEE);
+			StatutDemandeAdministrativeRh.EN_VALIDATION_RRH, StatutDemandeAdministrativeRh.EN_COURS,
+			StatutDemandeAdministrativeRh.A_COMPLETER, StatutDemandeAdministrativeRh.APPROUVEE);
 	public static final String MENTION_ANTERIEURE = "Demande antérieure aux soldes : non décomptée";
 
 	private final JourFerieService jourFerieService;

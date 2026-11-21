@@ -100,6 +100,8 @@ public final class ValeursInitialesReferentiel {
 				"SOUMISE", "Soumise", "BLEU",
 				"EN_VALIDATION_SUPERIEUR", "En attente du responsable", "AMBRE",
 				"EN_VALIDATION_RRH", "En attente de validation RH", "AMBRE",
+				"EN_COURS", "En cours de validation", "AMBRE",
+				"A_COMPLETER", "À compléter", "ORANGE",
 				"APPROUVEE", "Approuvée", "VERT",
 				"REFUSEE", "Refusée", "ROUGE",
 				"ANNULEE", "Annulée", "NEUTRE");

@@ -28,9 +28,12 @@ import java.util.UUID;
 @Service
 public class SoldeCongeService {
 
-	/** Statuts d'une demande qui réserve des jours (D-S04). */
+	/** Statuts d'une demande qui réserve des jours (D-S04, D-W5-08). */
 	public static final Set<StatutDemandeAdministrativeRh> STATUTS_RESERVANTS = Set.of(
-			StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR, StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
+			StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR,
+			StatutDemandeAdministrativeRh.EN_VALIDATION_RRH,
+			StatutDemandeAdministrativeRh.EN_COURS,
+			StatutDemandeAdministrativeRh.A_COMPLETER);
 
 	private final SoldeCongeRepository soldeRepository;
 	private final MouvementSoldeCongeRepository mouvementRepository;
