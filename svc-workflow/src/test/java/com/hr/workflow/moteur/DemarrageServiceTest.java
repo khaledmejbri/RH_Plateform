@@ -284,4 +284,55 @@ class DemarrageServiceTest {
 				any(), any(), eq("CONGE"), any(), any());
 		verify(outboxService, never()).publierNotification(any(), eq("RH"), any(), any(), any(), any(), any(), any(), any());
 	}
+
+	@Test
+	void sousTypeEnBrouillonSeul_utiliseModeleGeneriquePublie() {
+		DemarrerInstanceRequest r = new DemarrerInstanceRequest(
+				"CONGE", "MALADIE", UUID.randomUUID(), "DEM-202611-0099",
+				UUID.randomUUID(), UUID.randomUUID(), "Sarra Khemiri", List.of(), Map.of());
+
+		WfActivation act = new WfActivation();
+		act.setMode(ModeActivation.MOTEUR);
+		when(activationRepository.findByObjetType("CONGE")).thenReturn(Optional.of(act));
+
+		WfModele modeleMaladie = new WfModele();
+		modeleMaladie.setId(UUID.randomUUID());
+		modeleMaladie.setCode("M01_CONGE_MALADIE");
+		when(modeleRepository.findActifParObjetTypeEtSousType("CONGE", "MALADIE")).thenReturn(Optional.of(modeleMaladie));
+		when(versionRepository.findByModeleIdAndStatut(modeleMaladie.getId(), StatutVersion.PUBLIEE)).thenReturn(Optional.empty());
+
+		WfModele modeleGenerique = new WfModele();
+		modeleGenerique.setId(UUID.randomUUID());
+		modeleGenerique.setCode("M01_CONGE");
+		when(modeleRepository.findActifParObjetTypeEtSousType("CONGE", null)).thenReturn(Optional.of(modeleGenerique));
+
+		EtapeDefinition e1 = new EtapeDefinition("E1", "Validation RH", "VALIDATION", null,
+				new IntervenantsDefinition("ROLE", Map.of("roles", List.of("RH")), "UN_SEUL"),
+				new RepliSiVideDefinition("PASSER", null), null, null, List.of("APPROUVER", "REFUSER"),
+				false, null, new DelaiDefinition(2, "JOURS_OUVRES", null), null,
+				new EcheanceDefinition("RIEN", null, null), null, null, null);
+		WfModeleVersion vGen = new WfModeleVersion();
+		vGen.setId(UUID.randomUUID());
+		vGen.setModele(modeleGenerique);
+		vGen.setNumero(1);
+		vGen.setStatut(StatutVersion.PUBLIEE);
+		vGen.setDefinition(codec.serialiser(new DefinitionWorkflow(1, "CONGE", null, List.of(e1))));
+		when(versionRepository.findByModeleIdAndStatut(modeleGenerique.getId(), StatutVersion.PUBLIEE)).thenReturn(Optional.of(vGen));
+		when(versionRepository.getReferenceById(vGen.getId())).thenReturn(vGen);
+
+		when(resolutionService.resoudre(any(), any(), any(), any(), any())).thenReturn(
+				new LotResolu(Map.of("E1", new ResultatRegleResolue(List.of(), true, false, "AUCUN")),
+						new ContexteDemandeur("COLLABORATEUR", "SERVICE", 12, false)));
+		when(referentielClient.calendrierSociete(any(), any())).thenReturn(CalendrierSocieteResponse.defaut());
+		when(instanceRepository.saveAndFlush(any(WfInstance.class))).thenAnswer(inv -> {
+			WfInstance i = inv.getArgument(0);
+			i.setId(UUID.randomUUID());
+			return i;
+		});
+
+		ResultatDemarrage res = service.demarrer("cle-gen", r);
+
+		assertThat(res.cree()).isTrue();
+		assertThat(res.reponse().statut()).isEqualTo(StatutInstance.APPROUVEE);
+	}
 }

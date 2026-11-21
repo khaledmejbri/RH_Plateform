@@ -170,18 +170,24 @@ public class DemarrageService {
 						"Le type " + req.objetType() + " n'est pas activé en mode MOTEUR.");
 			}
 
+			record ModeleEtVersion(WfModele modele, WfModeleVersion version) {}
 			String sousType = req.sousType() != null && !req.sousType().isBlank() ? req.sousType().trim() : null;
-			Optional<WfModele> modeleOpt = sousType != null
-					? modeleRepository.findActifParObjetTypeEtSousType(req.objetType(), sousType)
-							.or(() -> modeleRepository.findActifParObjetTypeEtSousType(req.objetType(), null))
-					: modeleRepository.findActifParObjetTypeEtSousType(req.objetType(), null);
+			Optional<ModeleEtVersion> choix = Optional.empty();
+			if (sousType != null) {
+				choix = modeleRepository.findActifParObjetTypeEtSousType(req.objetType(), sousType)
+						.flatMap(m -> versionRepository.findByModeleIdAndStatut(m.getId(), StatutVersion.PUBLIEE)
+								.map(v -> new ModeleEtVersion(m, v)));
+			}
+			if (choix.isEmpty()) {
+				choix = modeleRepository.findActifParObjetTypeEtSousType(req.objetType(), null)
+						.flatMap(m -> versionRepository.findByModeleIdAndStatut(m.getId(), StatutVersion.PUBLIEE)
+								.map(v -> new ModeleEtVersion(m, v)));
+			}
 
-			WfModele modele = modeleOpt.orElseThrow(() -> WorkflowMetierException.unprocessable("WORKFLOW_ABSENT",
+			ModeleEtVersion mv = choix.orElseThrow(() -> WorkflowMetierException.unprocessable("WORKFLOW_ABSENT",
 					"Ce type de demande n'est pas ouvert dans votre société."));
-
-			WfModeleVersion versionPubliee = versionRepository.findByModeleIdAndStatut(modele.getId(), StatutVersion.PUBLIEE)
-					.orElseThrow(() -> WorkflowMetierException.unprocessable("WORKFLOW_ABSENT",
-							"Ce type de demande n'est pas ouvert dans votre société."));
+			WfModele modele = mv.modele();
+			WfModeleVersion versionPubliee = mv.version();
 
 			DefinitionWorkflow def = codec.deserialiser(versionPubliee.getDefinition());
 			return new Preparation(null, versionPubliee.getId(), modele.getCode(), versionPubliee.getNumero(), def);
