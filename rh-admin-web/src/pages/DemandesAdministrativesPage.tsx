@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   getDemandeAdministrativeHistorique,
   getDemandeAdministrativeSuivi,
@@ -27,6 +28,7 @@ import { libelle, libelleConnu } from '../utils/libelles';
 import { optionsFiltre } from '../utils/parametresStore';
 import { commentaireLisible, contenuLignes, intituleDemande, periodeDemande } from '../utils/demandes';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
+import { statutObjetFinal } from '../workflow/libelles';
 
 /** Par défaut la RH arrive sur sa file : demandes en attente de décision RH (§ 6.1). */
 type StatutFilter = string;
@@ -272,6 +274,12 @@ export default function DemandesAdministrativesPage() {
                   <th scope="col">Créée le</th>
                   <th scope="col">Type</th>
                   <th scope="col">Statut</th>
+                  {affichees.some((x) => x.workflow_mode === 'MOTEUR') ? (
+                    <>
+                      <th scope="col">Étape en cours</th>
+                      <th scope="col">Échéance</th>
+                    </>
+                  ) : null}
                   <th scope="col">Période</th>
                   <th scope="col">Jours décomptés</th>
                   <th scope="col">Demandeur</th>
@@ -297,6 +305,16 @@ export default function DemandesAdministrativesPage() {
                       <td data-label="Statut">
                         <StatusBadge referentiel="STATUT_DEMANDE" statut={d.statut} />
                       </td>
+                      {affichees.some((x) => x.workflow_mode === 'MOTEUR') ? (
+                        <>
+                          <td data-label="Étape en cours" className="cell-meta">
+                            {d.workflow_mode === 'MOTEUR' ? (d.etape_courante_libelle ?? '—') : '—'}
+                          </td>
+                          <td data-label="Échéance" className="cell-meta">
+                            {d.workflow_mode === 'MOTEUR' && d.echeance_le ? formatDateHeure(d.echeance_le) : '—'}
+                          </td>
+                        </>
+                      ) : null}
                       <td data-label="Période" className="cell-meta">{periodeDemande(d)}</td>
                       <td data-label="Jours décomptés" className="cell-meta">{d.type_demande === 'CONGE' ? joursDecomptes(d) : '—'}</td>
                       <td data-label="Demandeur">
@@ -309,10 +327,20 @@ export default function DemandesAdministrativesPage() {
                         </span>
                       </td>
                       <td data-label="Actions" style={{ textAlign: 'right' }}>
-                        <button type="button" className="btn btn--sm btn--secondary" onClick={() => void openDetail(d)}>
-                          {!lectureSeule && d.statut === 'EN_VALIDATION_RRH' ? 'Traiter' : 'Voir le détail'}
-                          <Icon name="chevronRight" size={14} />
-                        </button>
+                        {d.workflow_mode === 'MOTEUR' && !statutObjetFinal(d.statut) ? (
+                          <Link
+                            to={`/app/taches?objet_type=${encodeURIComponent(d.type_demande)}&objet_id=${encodeURIComponent(d.identifiant)}`}
+                            className="btn btn--sm btn--secondary"
+                          >
+                            Voir dans Mes tâches
+                            <Icon name="chevronRight" size={14} />
+                          </Link>
+                        ) : (
+                          <button type="button" className="btn btn--sm btn--secondary" onClick={() => void openDetail(d)}>
+                            {!lectureSeule && d.statut === 'EN_VALIDATION_RRH' ? 'Traiter' : 'Voir le détail'}
+                            <Icon name="chevronRight" size={14} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

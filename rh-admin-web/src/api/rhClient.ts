@@ -272,6 +272,11 @@ export type DemandeAdministrative = {
   solde_disponible_demandeur?: number;
   solde_reserve_autres_demandes?: number;
   solde_apres_demande?: number;
+  /** Champs workflow (lot W5 / D-W7-09) : absents en mode hérité antérieur. */
+  workflow_mode?: string;
+  workflow_instance_id?: string | null;
+  etape_courante_libelle?: string | null;
+  echeance_le?: string | null;
 };
 
 export type DemandeAdministrativeSuivi = {
@@ -315,6 +320,10 @@ export type DemandeFormation = {
   statut: 'EN_VALIDATION_RRH' | 'INTEGREE_PLAN' | 'REFUSEE' | 'ANNULEE';
   commentaire_rh?: string;
   cree_le: string;
+  workflow_mode?: string;
+  workflow_instance_id?: string | null;
+  etape_courante_libelle?: string | null;
+  echeance_le?: string | null;
 };
 
 export type DemandeDocument = {
@@ -338,6 +347,10 @@ export type DemandeDocument = {
   justification_derogation_fifo?: string;
   derogation_fifo_par?: string;
   cree_le: string;
+  workflow_mode?: string;
+  workflow_instance_id?: string | null;
+  etape_courante_libelle?: string | null;
+  echeance_le?: string | null;
 };
 
 /** Code d'un profil d'accès (référentiel PROFIL_ACCES, lot 3). */

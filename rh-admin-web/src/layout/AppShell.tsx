@@ -6,6 +6,9 @@ import NotificationBell from './NotificationBell';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { DetailProvider } from '../detail/DetailProvider';
 import { demarrerParametres, rafraichirParametres, useParametres } from '../utils/parametresStore';
+import { getCompteurMesTaches, type CompteurTaches } from '../api/workflowApi';
+import { EVENEMENT_RAFRAICHIR_TACHES } from '../workflow/evenements';
+import { GardeNavigationProvider, useGardeNavigation } from '../workflow/gardeNavigation';
 
 type Icone = ComponentType<{ className?: string }>;
 
@@ -27,6 +30,7 @@ type Menu =
 /** Menu par ordre d'usage (D-N03). */
 const MENU: Menu[] = [
   { kind: 'lien', id: 'accueil', to: '/app/accueil', label: 'Accueil', icon: IconHome },
+  { kind: 'lien', id: 'taches', to: '/app/taches', label: 'Mes tâches', icon: IconCheckSquare },
   {
     kind: 'groupe', id: 'pointage', label: 'Pointage', icon: IconQr, enfants: [
       { id: 'pointages', to: '/app/pointage?onglet=pointages', label: 'Pointages' },
@@ -50,6 +54,9 @@ const MENU: Menu[] = [
   {
     kind: 'groupe', id: 'parametrage', label: 'Paramétrage', icon: IconBuilding, enfants: [
       { id: 'parametres', to: '/app/parametres', label: 'Paramètres' },
+      { id: 'societe', to: '/app/parametres/societe', label: 'Société' },
+      { id: 'fonctions', to: '/app/parametres/fonctions', label: 'Fonctions' },
+      { id: 'workflows', to: '/app/parametres/workflows', label: 'Workflows' },
       { id: 'structure', to: '/app/structure', label: 'Structure RH', writeOnly: true },
       { id: 'organisation', to: '/app/unites', label: 'Unités', writeOnly: true },
     ],
@@ -81,7 +88,11 @@ export function entreeActive(pathname: string, search: string): string {
   if (p.startsWith('/app/plaintes')) return 'plaintes';
   if (p.startsWith('/app/structure')) return 'structure';
   if (p.startsWith('/app/unites')) return 'organisation';
+  if (p.startsWith('/app/parametres/societe')) return 'societe';
+  if (p.startsWith('/app/parametres/fonctions')) return 'fonctions';
+  if (p.startsWith('/app/parametres/workflows')) return 'workflows';
   if (p.startsWith('/app/parametres')) return 'parametres';
+  if (p.startsWith('/app/taches')) return 'taches';
   if (p.startsWith('/app/accueil')) return 'accueil';
   return '';
 }
@@ -98,6 +109,15 @@ function libelleEntree(id: string): string | undefined {
 }
 
 export default function AppShell() {
+  return (
+    <GardeNavigationProvider>
+      <AppShellContenu />
+    </GardeNavigationProvider>
+  );
+}
+
+function AppShellContenu() {
+  const garde = useGardeNavigation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -110,6 +130,23 @@ export default function AppShell() {
 
   // Libellés paramétrés (lot 3) : chargés à la connexion, revalidés toutes les 60 s.
   useEffect(() => demarrerParametres(), []);
+
+  // Pastille « Mes tâches » (D-W7-02) : compteur rechargé à l'ouverture, toutes les 60 s et sur événement WF_*.
+  const [compteurTaches, setCompteurTaches] = useState<CompteurTaches>({ a_traiter: 0, en_retard: 0 });
+  useEffect(() => {
+    const rafraichir = () => {
+      getCompteurMesTaches()
+        .then((c) => setCompteurTaches(c))
+        .catch(() => undefined);
+    };
+    rafraichir();
+    const timer = window.setInterval(rafraichir, 60_000);
+    window.addEventListener(EVENEMENT_RAFRAICHIR_TACHES, rafraichir);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener(EVENEMENT_RAFRAICHIR_TACHES, rafraichir);
+    };
+  }, []);
   // Les pages qui lisent le contexte du routeur se rendent de nouveau quand un libellé change.
   const contexteRoute = useMemo(
     () => ({ lectureSeule: direction, parametresVersion: parametres.version }),
@@ -152,7 +189,8 @@ export default function AppShell() {
     return () => document.removeEventListener('keydown', onKey);
   }, [sidebarOpen]);
 
-  function logout() {
+  async function logout() {
+    if (!(await garde.confirmerSortie())) return;
     clearToken();
     navigate('/login', { replace: true });
   }
@@ -163,10 +201,33 @@ export default function AppShell() {
       to={e.to}
       aria-current={actif === e.id ? 'page' : undefined}
       className={`shell__nav-item${actif === e.id ? ' shell__nav-item--active' : ''}`}
-      onClick={() => setSidebarOpen(false)}
+      onClick={(ev) => {
+        // Garde de sortie : modifications non enregistrées (éditeur de workflow).
+        const modifie = ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button !== 0;
+        if (garde.estActive() && !modifie) {
+          ev.preventDefault();
+          void garde.confirmerSortie().then((ok) => {
+            if (ok) {
+              setSidebarOpen(false);
+              navigate(e.to);
+            }
+          });
+          return;
+        }
+        setSidebarOpen(false);
+      }}
     >
       {Ic ? <Ic className="shell__nav-icon" /> : null}
       <span className="shell__nav-label">{e.label}</span>
+      {e.id === 'taches' && compteurTaches.a_traiter > 0 ? (
+        <span
+          className={`status ${compteurTaches.en_retard > 0 ? 'status--danger' : 'status--info'}`}
+          style={{ marginLeft: 'auto', padding: '1px 7px', fontSize: '0.75rem' }}
+          aria-label={`${compteurTaches.a_traiter} tâche${compteurTaches.a_traiter > 1 ? 's' : ''} à traiter${compteurTaches.en_retard > 0 ? `, dont ${compteurTaches.en_retard} en retard` : ''}`}
+        >
+          {compteurTaches.a_traiter > 99 ? '99+' : compteurTaches.a_traiter}
+        </span>
+      ) : null}
     </Link>
   );
 
@@ -230,7 +291,7 @@ export default function AppShell() {
             </h1>
             <div className="shell__header-actions">
               <NotificationBell />
-              <button type="button" className="btn btn--ghost" onClick={logout}>
+              <button type="button" className="btn btn--ghost" onClick={() => void logout()}>
                 Déconnexion
               </button>
             </div>
@@ -290,4 +351,7 @@ function IconStar({ className }: { className?: string }) {
 }
 function IconQr({ className }: { className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 2h2v2h-2v-2zm4-2h2v6h-6v-2h2v-2h2v-2zm-4 4h2v2h-2v-2z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+function IconCheckSquare({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }

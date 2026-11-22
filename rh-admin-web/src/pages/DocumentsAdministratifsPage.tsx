@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   getDocumentsFileAttente,
   getUnites,
@@ -19,6 +20,7 @@ import { formatDateHeure, formatPersonne } from '../utils/format';
 import { libelle } from '../utils/libelles';
 import { libelleReferentiel, optionsFiltre } from '../utils/parametresStore';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
+import { statutObjetFinal } from '../workflow/libelles';
 
 const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', type: '', statut: '' };
 
@@ -242,6 +244,12 @@ export default function DocumentsAdministratifsPage() {
                   <th scope="col">Demandeur</th>
                   <th scope="col">Type de document</th>
                   <th scope="col">Statut</th>
+                  {affichees.some((x) => x.workflow_mode === 'MOTEUR') ? (
+                    <>
+                      <th scope="col">Étape en cours</th>
+                      <th scope="col">Échéance</th>
+                    </>
+                  ) : null}
                   <th scope="col">Délai (h)</th>
                   <th scope="col">Retard</th>
                   <th scope="col"><span className="sr-only">Actions</span></th>
@@ -269,6 +277,16 @@ export default function DocumentsAdministratifsPage() {
                       <td data-label="Demandeur"><LienPersonne id={d.demandeur_identifiant} nom={d.demandeur_nom} matricule={d.demandeur_matricule} /></td>
                       <td data-label="Type"><Chip tone="info" icon="file">{libelleTypeDocument(d.type_document)}</Chip></td>
                       <td data-label="Statut"><StatusBadge referentiel="STATUT_DOCUMENT" statut={d.statut} label={docStatusLabel(d.statut)} /></td>
+                      {affichees.some((x) => x.workflow_mode === 'MOTEUR') ? (
+                        <>
+                          <td data-label="Étape en cours" className="cell-meta">
+                            {d.workflow_mode === 'MOTEUR' ? (d.etape_courante_libelle ?? '—') : '—'}
+                          </td>
+                          <td data-label="Échéance" className="cell-meta">
+                            {d.workflow_mode === 'MOTEUR' && d.echeance_le ? formatDateHeure(d.echeance_le) : '—'}
+                          </td>
+                        </>
+                      ) : null}
                       <td data-label="SLA" className="cell-meta">{d.delai_sla_heures} h</td>
                       <td data-label="Retard">
                         {d.en_retard
@@ -276,10 +294,20 @@ export default function DocumentsAdministratifsPage() {
                           : <span className="cell-meta">—</span>}
                       </td>
                       <td data-label="Action" style={{ textAlign: 'right' }}>
-                        <button type="button" className="btn btn--sm btn--secondary" onClick={() => openInfo(d)}>
-                          Voir le détail
-                          <Icon name="chevronRight" size={14} />
-                        </button>
+                        {d.workflow_mode === 'MOTEUR' && !statutObjetFinal(d.statut) ? (
+                          <Link
+                            to={`/app/taches?objet_type=DOCUMENT&objet_id=${encodeURIComponent(d.identifiant)}`}
+                            className="btn btn--sm btn--secondary"
+                          >
+                            Voir dans Mes tâches
+                            <Icon name="chevronRight" size={14} />
+                          </Link>
+                        ) : (
+                          <button type="button" className="btn btn--sm btn--secondary" onClick={() => openInfo(d)}>
+                            Voir le détail
+                            <Icon name="chevronRight" size={14} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

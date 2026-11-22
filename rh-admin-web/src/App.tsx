@@ -19,6 +19,11 @@ import PointageSitesPage from './pages/PointageSitesPage';
 import HeuresSupPage from './pages/HeuresSupPage';
 import BornePage from './pages/BornePage';
 import ParametresPage from './pages/ParametresPage';
+import SocieteParametresPage from './pages/parametres/SocieteParametresPage';
+import FonctionsPage from './pages/parametres/FonctionsPage';
+import WorkflowsListePage from './pages/workflow/WorkflowsListePage';
+import WorkflowEditeurPage from './pages/workflow/WorkflowEditeurPage';
+import MesTachesPage from './pages/workflow/MesTachesPage';
 import SoldesCongePage from './pages/SoldesCongePage';
 import ImportPage from './pages/imports/ImportPage';
 import FichePage from './detail/FichePage';
@@ -32,6 +37,7 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/app/accueil" element={<HomePage />} />
+          <Route path="/app/taches" element={<MesTachesPage />} />
           <Route path="/app/acces-refuse" element={<AccesRefusePage />} />
           <Route path="/app/demandes-administratives" element={<DemandesAdministrativesPage />} />
           <Route path="/app/demandes-administratives/:id" element={<FichePage type="demande" />} />
@@ -55,6 +61,10 @@ export default function App() {
           <Route path="/app/heures-sup" element={<HeuresSupPage />} />
           <Route path="/app/heures-sup/:id" element={<FichePage type="heures-sup" />} />
           <Route path="/app/parametres" element={<ParametresPage />} />
+          <Route path="/app/parametres/societe" element={<SocieteParametresPage />} />
+          <Route path="/app/parametres/fonctions" element={<FonctionsPage />} />
+          <Route path="/app/parametres/workflows" element={<WorkflowsListePage />} />
+          <Route path="/app/parametres/workflows/:id" element={<WorkflowEditeurPage />} />
           <Route element={<RequireWriteAccess />}>
             <Route path="/app/collaborateurs/import" element={<ImportPage type="COLLABORATEURS" />} />
             <Route path="/app/conges/soldes/import" element={<ImportPage type="SOLDES" />} />
