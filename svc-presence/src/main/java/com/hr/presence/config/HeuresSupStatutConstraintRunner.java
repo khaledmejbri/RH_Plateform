@@ -19,6 +19,8 @@ public class HeuresSupStatutConstraintRunner implements ApplicationRunner {
 
 	static final String TABLE = "presence_heures_sup_demande";
 	static final String CONSTRAINT = "presence_heures_sup_demande_statut_check";
+	static final String CONSTRAINT_WF_MODE = "presence_heures_sup_demande_workflow_mode_check";
+	static final String CONSTRAINT_WF_ETAT = "presence_heures_sup_demande_workflow_etat_check";
 
 	private final JdbcTemplate jdbcTemplate;
 
@@ -31,13 +33,26 @@ public class HeuresSupStatutConstraintRunner implements ApplicationRunner {
 		String valeurs = Arrays.stream(StatutHeuresSup.values())
 				.map(s -> "'" + s.name() + "'")
 				.collect(Collectors.joining(", "));
+		alignerContrainte(CONSTRAINT, "statut IN (" + valeurs + ")");
 		try {
-			jdbcTemplate.execute("ALTER TABLE " + TABLE + " DROP CONSTRAINT IF EXISTS " + CONSTRAINT);
-			jdbcTemplate.execute("ALTER TABLE " + TABLE + " ADD CONSTRAINT " + CONSTRAINT
-					+ " CHECK (statut IN (" + valeurs + "))");
-			log.info("Contrainte {} alignée sur l'enum ({})", CONSTRAINT, valeurs);
+			jdbcTemplate.execute("UPDATE " + TABLE + " SET workflow_mode = 'HERITE' WHERE workflow_mode IS NULL");
+			jdbcTemplate.execute("UPDATE " + TABLE + " SET workflow_tentatives = 0 WHERE workflow_tentatives IS NULL");
 		} catch (Exception e) {
-			log.warn("Impossible d'aligner la contrainte {} : {}", CONSTRAINT, e.getMessage());
+			log.warn("Impossible d'initialiser les valeurs par défaut workflow sur {} : {}", TABLE, e.getMessage());
+		}
+		alignerContrainte(CONSTRAINT_WF_MODE, "workflow_mode IN ('HERITE', 'MOTEUR')");
+		alignerContrainte(CONSTRAINT_WF_ETAT,
+				"workflow_etat IS NULL OR workflow_etat IN ('A_DEMARRER', 'DEMARRE', 'ECHEC')");
+	}
+
+	private void alignerContrainte(String contrainte, String expression) {
+		try {
+			jdbcTemplate.execute("ALTER TABLE " + TABLE + " DROP CONSTRAINT IF EXISTS " + contrainte);
+			jdbcTemplate.execute("ALTER TABLE " + TABLE + " ADD CONSTRAINT " + contrainte
+					+ " CHECK (" + expression + ")");
+			log.info("Contrainte {} alignée sur {}", contrainte, TABLE);
+		} catch (Exception e) {
+			log.warn("Impossible d'aligner la contrainte {} : {}", contrainte, e.getMessage());
 		}
 	}
 }

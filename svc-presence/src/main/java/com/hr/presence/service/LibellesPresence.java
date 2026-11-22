@@ -51,6 +51,7 @@ public final class LibellesPresence {
 	public static String statutDemande(StatutDemandeManuelle statut) {
 		return switch (statut) {
 			case EN_ATTENTE -> "En attente";
+			case EN_COURS -> "En cours de validation";
 			case VALIDEE -> "Validée";
 			case REFUSEE -> "Refusée";
 			case EXPIREE -> "Expirée";

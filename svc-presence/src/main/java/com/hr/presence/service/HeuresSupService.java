@@ -1,5 +1,8 @@
 package com.hr.presence.service;
 
+import com.hr.presence.client.PresenceWorkflowMoteurClient;
+import com.hr.presence.client.PresenceWorkflowMoteurClient.ActeurInterne;
+import com.hr.presence.client.PresenceWorkflowMoteurClient.IssueAnnulation;
 import com.hr.presence.client.ReferentielClient;
 import com.hr.presence.client.ReferentielClient.CollaborateurResolu;
 import com.hr.presence.client.ReferentielClient.ValideurPointage;
@@ -26,12 +29,16 @@ import com.hr.presence.service.FenetreHoraireService.Fenetre;
 import com.hr.presence.service.FenetreHoraireService.Horaire;
 import com.hr.presence.web.PresenceMetierException;
 import jakarta.persistence.criteria.Predicate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.DayOfWeek;
@@ -65,7 +72,11 @@ public class HeuresSupService {
 	private final HeuresSupNotifier notifier;
 	private final HeuresSupReponseMapper mapper;
 	private final Clock clock;
+	private final PresenceWorkflowMoteurClient workflowMoteurClient;
+	private final TransactionTemplate txLecture;
+	private final TransactionTemplate txEcriture;
 
+	/** Constructeur historique conservé pour les tests existants. */
 	public HeuresSupService(
 			PresenceHeuresSupDemandeRepository demandeRepository,
 			PresenceHeuresSupBeneficiaireRepository beneficiaireRepository,
@@ -79,6 +90,26 @@ public class HeuresSupService {
 			HeuresSupNotifier notifier,
 			HeuresSupReponseMapper mapper,
 			Clock clock) {
+		this(demandeRepository, beneficiaireRepository, jourRepository, siteRepository, fenetreService,
+				calculService, referentielClient, accessService, acteurResolver, notifier, mapper, clock, null, null);
+	}
+
+	@Autowired
+	public HeuresSupService(
+			PresenceHeuresSupDemandeRepository demandeRepository,
+			PresenceHeuresSupBeneficiaireRepository beneficiaireRepository,
+			PresenceHeuresSupJourRepository jourRepository,
+			PresenceSiteRepository siteRepository,
+			FenetreHoraireService fenetreService,
+			CalculHeuresSupService calculService,
+			ReferentielClient referentielClient,
+			PresenceAccessService accessService,
+			ActeurResolver acteurResolver,
+			HeuresSupNotifier notifier,
+			HeuresSupReponseMapper mapper,
+			Clock clock,
+			PresenceWorkflowMoteurClient workflowMoteurClient,
+			PlatformTransactionManager txManager) {
 		this.demandeRepository = demandeRepository;
 		this.beneficiaireRepository = beneficiaireRepository;
 		this.jourRepository = jourRepository;
@@ -91,6 +122,16 @@ public class HeuresSupService {
 		this.notifier = notifier;
 		this.mapper = mapper;
 		this.clock = clock;
+		this.workflowMoteurClient = workflowMoteurClient;
+		if (txManager != null) {
+			this.txLecture = new TransactionTemplate(txManager);
+			this.txLecture.setReadOnly(true);
+			this.txEcriture = new TransactionTemplate(txManager);
+			this.txEcriture.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+		} else {
+			this.txLecture = null;
+			this.txEcriture = null;
+		}
 	}
 
 	// ---- Décisions RH / ADMIN ----------------------------------------------------------------------------------
@@ -101,6 +142,7 @@ public class HeuresSupService {
 		List<PresenceHeuresSupBeneficiaire> beneficiaires = beneficiaireRepository.findByDemandeId(d.getId());
 		Acteur decideur = acteurResolver.avecFiche();
 		interdireAutoValidation(d, beneficiaires, decideur);
+		verifierPasSousWorkflow(d);
 		expirerSiEchue(d);
 		exigerStatut(d, StatutHeuresSup.EN_ATTENTE);
 
@@ -123,6 +165,7 @@ public class HeuresSupService {
 		List<PresenceHeuresSupBeneficiaire> beneficiaires = beneficiaireRepository.findByDemandeId(d.getId());
 		Acteur decideur = acteurResolver.avecFiche();
 		interdireAutoValidation(d, beneficiaires, decideur);
+		verifierPasSousWorkflow(d);
 		expirerSiEchue(d);
 		exigerStatut(d, StatutHeuresSup.EN_ATTENTE);
 
@@ -144,8 +187,9 @@ public class HeuresSupService {
 		PresenceHeuresSupDemande d = charger(id);
 		List<PresenceHeuresSupBeneficiaire> beneficiaires = beneficiaireRepository.findByDemandeId(d.getId());
 		Acteur auteur = acteurResolver.avecFiche();
-		// Ordre : 404, puis 403 (concerné par la demande), puis 409 (expirée, statut, plage commencée)
+		// Ordre : 404, puis 403 (concerné par la demande), puis 409 (sous workflow, expirée, statut, plage commencée)
 		interdireAutoValidation(d, beneficiaires, auteur);
+		verifierPasSousWorkflow(d);
 		expirerSiEchue(d);
 		exigerStatut(d, StatutHeuresSup.VALIDEE);
 		if (d.getDebutPlageTs() != null && !d.getDebutPlageTs().isAfter(clock.instant())) {
@@ -162,35 +206,91 @@ public class HeuresSupService {
 
 	// ---- Annulation par le demandeur (mobile) ------------------------------------------------------------------
 
-	/** Le demandeur annule sa demande EN_ATTENTE ; aucune notification. Pas le demandeur, ou VALIDEE : 403. */
-	@Transactional(noRollbackFor = PresenceMetierException.class)
+	/**
+	 * Le demandeur annule sa demande en cours (HERITE : EN_ATTENTE ; MOTEUR : EN_COURS).
+	 * En mode MOTEUR, l'appel HTTP vers {@code svc-workflow} est exécuté strictement hors transaction.
+	 */
 	public DemandeHeuresSupResponse annulerParDemandeur(UUID id) {
-		PresenceHeuresSupDemande d = charger(id);
+		PresenceHeuresSupDemande apercu = executerLecture(() -> charger(id));
 		String compte = accessService.currentCompteId();
-		if (compte == null || !compte.equals(d.getDemandeurCompteId())) {
+		if (compte == null || !compte.equals(apercu.getDemandeurCompteId())) {
 			throw new SecurityException("Cette demande ne vous appartient pas");
 		}
-		if (d.getStatut() == StatutHeuresSup.VALIDEE) {
+		if (apercu.getStatut() == StatutHeuresSup.VALIDEE) {
 			throw new SecurityException("Une demande validée ne peut être annulée que par les RH");
 		}
-		expirerSiEchue(d);
-		exigerStatut(d, StatutHeuresSup.EN_ATTENTE);
-		marquerAnnulee(d, acteurResolver.depuisJwt(), null);
-		PresenceHeuresSupDemande saved = demandeRepository.save(d);
-		jourRepository.deleteByDemandeId(saved.getId());
-		return mapper.versReponse(saved);
+
+		if (PresenceWorkflowActivationService.MODE_MOTEUR.equals(apercu.getWorkflowMode())) {
+			if (apercu.getStatut() != StatutHeuresSup.EN_COURS) {
+				exigerStatut(apercu, StatutHeuresSup.EN_COURS);
+			}
+			Acteur auteur = acteurResolver.depuisJwt();
+			if (apercu.getWorkflowInstanceId() != null && workflowMoteurClient != null) {
+				ActeurInterne acteur = new ActeurInterne(
+						parseUuid(auteur.compteId()), parseUuid(auteur.ficheId()), auteur.libelle());
+				IssueAnnulation issue = workflowMoteurClient.annuler(
+						apercu.getWorkflowInstanceId(), "Annulée par le demandeur", acteur);
+				if (issue == IssueAnnulation.INDISPONIBLE) {
+					throw PresenceMetierException.indisponible("WORKFLOW_INDISPONIBLE",
+							"Le moteur de workflow est momentanément indisponible");
+				}
+				if (issue == IssueAnnulation.INSTANCE_TERMINEE) {
+					throw PresenceMetierException.conflict("STATUT_INCOMPATIBLE",
+							"Cette demande est déjà terminée côté workflow");
+				}
+			}
+			return executerEcriture(() -> {
+				PresenceHeuresSupDemande d = charger(id);
+				if (d.getStatut() == StatutHeuresSup.EN_COURS) {
+					marquerAnnulee(d, auteur, null);
+					d.setEtapeCouranteLibelle(null);
+					d.setEcheanceLe(null);
+					PresenceHeuresSupDemande saved = demandeRepository.save(d);
+					jourRepository.deleteByDemandeId(saved.getId());
+					return mapper.versReponse(saved);
+				}
+				if (d.getStatut() == StatutHeuresSup.ANNULEE) {
+					return mapper.versReponse(d);
+				}
+				exigerStatut(d, StatutHeuresSup.EN_COURS);
+				return null;
+			});
+		}
+
+		record IssueHerite(boolean expiree, DemandeHeuresSupResponse reponse) {
+		}
+		IssueHerite issue = executerEcriture(() -> {
+			PresenceHeuresSupDemande d = charger(id);
+			if (estEchue(d)) {
+				passerEnExpiree(d);
+				return new IssueHerite(true, null);
+			}
+			exigerStatut(d, StatutHeuresSup.EN_ATTENTE);
+			marquerAnnulee(d, acteurResolver.depuisJwt(), null);
+			PresenceHeuresSupDemande saved = demandeRepository.save(d);
+			jourRepository.deleteByDemandeId(saved.getId());
+			return new IssueHerite(false, mapper.versReponse(saved));
+		});
+		if (issue.expiree()) {
+			throw PresenceMetierException.conflict("STATUT_INCOMPATIBLE",
+					"La demande a expiré : la fenêtre de pointage est ouverte");
+		}
+		return issue.reponse();
 	}
 
 	// ---- Expiration (D-P13.d) ----------------------------------------------------------------------------------
 
-	/** Identifiants des demandes EN_ATTENTE dont la fenêtre du premier jour est ouverte. */
+	/** Identifiants des demandes EN_ATTENTE (héritées) dont la fenêtre du premier jour est ouverte. */
 	@Transactional(readOnly = true)
 	public List<UUID> idsAExpirer() {
 		return demandeRepository.findByStatutAndDebutPlageTsLessThanEqual(StatutHeuresSup.EN_ATTENTE, clock.instant())
-				.stream().map(PresenceHeuresSupDemande::getId).toList();
+				.stream()
+				.filter(d -> !PresenceWorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode()))
+				.map(PresenceHeuresSupDemande::getId)
+				.toList();
 	}
 
-	/** Une transaction par demande ; idempotent (une demande déjà décidée n'est pas touchée). */
+	/** Une transaction par demande ; idempotent (une demande déjà décidée ou MOTEUR n'est pas touchée). */
 	@Transactional
 	public void expirer(UUID id) {
 		demandeRepository.findById(id).ifPresent(d -> {
@@ -201,7 +301,9 @@ public class HeuresSupService {
 	}
 
 	private boolean estEchue(PresenceHeuresSupDemande d) {
-		return d.getStatut() == StatutHeuresSup.EN_ATTENTE && d.getDebutPlageTs() != null
+		return !PresenceWorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode())
+				&& d.getStatut() == StatutHeuresSup.EN_ATTENTE
+				&& d.getDebutPlageTs() != null
 				&& !d.getDebutPlageTs().isAfter(clock.instant());
 	}
 
@@ -392,6 +494,32 @@ public class HeuresSupService {
 	private PresenceHeuresSupDemande charger(UUID id) {
 		return demandeRepository.findById(id)
 				.orElseThrow(() -> PresenceMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable"));
+	}
+
+	private static void verifierPasSousWorkflow(PresenceHeuresSupDemande d) {
+		if (PresenceWorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode())) {
+			throw PresenceMetierException.conflict(
+					"DEMANDE_SOUS_WORKFLOW", "Cette demande se traite depuis Mes tâches.");
+		}
+	}
+
+	private <T> T executerLecture(java.util.function.Supplier<T> action) {
+		return txLecture != null ? txLecture.execute(status -> action.get()) : action.get();
+	}
+
+	private <T> T executerEcriture(java.util.function.Supplier<T> action) {
+		return txEcriture != null ? txEcriture.execute(status -> action.get()) : action.get();
+	}
+
+	private static UUID parseUuid(String s) {
+		if (s == null || s.isBlank()) {
+			return null;
+		}
+		try {
+			return UUID.fromString(s.trim());
+		} catch (IllegalArgumentException e) {
+			return null;
+		}
 	}
 
 	private static void exigerStatut(PresenceHeuresSupDemande d, StatutHeuresSup attendu) {

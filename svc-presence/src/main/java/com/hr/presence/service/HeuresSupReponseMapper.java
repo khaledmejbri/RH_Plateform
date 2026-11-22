@@ -72,6 +72,7 @@ public class HeuresSupReponseMapper {
 				d.getOuvertureAvantMinutes(), d.getOuvertureApresMinutes(), d.getDebutPlageTs(),
 				d.getMotif(), d.getDemandeurNom(), benefs, d.isCreeeValidee(),
 				d.getDecideParNom(), d.getDecideLe(), d.getMotifRefus(),
-				d.getAnnuleParNom(), d.getAnnuleLe(), d.getMotifAnnulation(), d.getCreeLe());
+				d.getAnnuleParNom(), d.getAnnuleLe(), d.getMotifAnnulation(), d.getCreeLe(),
+				d.getWorkflowMode(), d.getWorkflowInstanceId(), d.getEtapeCouranteLibelle(), d.getEcheanceLe());
 	}
 }

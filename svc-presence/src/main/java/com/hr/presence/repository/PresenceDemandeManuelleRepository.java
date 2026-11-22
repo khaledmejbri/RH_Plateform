@@ -43,10 +43,19 @@ public interface PresenceDemandeManuelleRepository extends JpaRepository<Presenc
 	@Query("select d from PresenceDemandeManuelle d where d.id = :id")
 	java.util.Optional<PresenceDemandeManuelle> findByIdPourDecision(@Param("id") UUID id);
 
-	/** Identifiants des demandes en attente dont l'échéance est atteinte (planificateur d'expiration). */
+	/** Identifiants des demandes en attente (héritées) dont l'échéance est atteinte (planificateur d'expiration). */
 	@Query("select d.id from PresenceDemandeManuelle d where d.statut = com.hr.presence.domain.StatutDemandeManuelle.EN_ATTENTE "
+			+ "and (d.workflowMode is null or d.workflowMode <> 'MOTEUR') "
 			+ "and d.echeance is not null and d.echeance <= :maintenant")
 	List<UUID> idsEchues(@Param("maintenant") Instant maintenant);
+
+	/** Lot de demandes manuelles MOTEUR en attente de démarrage (W6, verrou non bloquant). */
+	@Query(value = "SELECT id FROM presence_demande_manuelle "
+			+ "WHERE workflow_mode = 'MOTEUR' "
+			+ "AND workflow_etat = 'A_DEMARRER' AND statut = 'EN_COURS' "
+			+ "ORDER BY cree_le ASC LIMIT :limite FOR UPDATE SKIP LOCKED",
+			nativeQuery = true)
+	List<UUID> findIdsADemarrerPourReprise(@Param("limite") int limite);
 
 	/** Demandes en attente sans échéance : à reprendre au démarrage (D-P26.a). */
 	List<PresenceDemandeManuelle> findByStatutAndEcheanceIsNull(StatutDemandeManuelle statut);

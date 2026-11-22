@@ -57,8 +57,32 @@ public record DemandeManuelleResponse(
 		@JsonProperty("seuil_mois") Integer seuilMois,
 		/** Refus de pointage du jour (Tunis) de la tentative : compteur D-P20, calculé à la lecture. */
 		@JsonProperty("refus_du_jour") Long refusDuJour,
-		@JsonProperty("commentaire_valideur") String commentaireValideur
+		@JsonProperty("commentaire_valideur") String commentaireValideur,
+		// ---- Intégration moteur de workflow (lot W6) ----
+		@JsonProperty("workflow_mode") String workflowMode,
+		@JsonProperty("workflow_instance_id") UUID workflowInstanceId,
+		@JsonProperty("etape_courante_libelle") String etapeCouranteLibelle,
+		@JsonProperty("echeance_le") Instant echeanceLe
 ) {
+
+	/** Forme historique (avant W6) : les champs workflow restent nuls. */
+	public DemandeManuelleResponse(UUID id, String numero, StatutDemandeManuelle statut, PointageType type,
+			Instant heureDeclaree, String justification, String collaborateurId, String collaborateurNom,
+			String collaborateurMatricule, UUID siteId, UUID pointageRejeteId, String motifRejetInitial,
+			String valideurNom, boolean validationParRh, String decidePar, Instant decideLe, String motifRefus,
+			UUID pointageId, Instant creeLe, Long manuelsDuMois, Boolean alerteSeuil,
+			String statutLibelle, String refusStatut, String refusStatutLibelle,
+			Double distanceMetres, Double precisionMetres, Integer rayonMetres,
+			String modeQr, String modeQrLibelle, Long delaiDemandeMinutes, Instant echeance,
+			Long delaiDecisionMinutes, Integer plafondMetres, Boolean reprise, Boolean avecSignal,
+			List<Signal> signaux, Integer seuilMois, Long refusDuJour, String commentaireValideur) {
+		this(id, numero, statut, type, heureDeclaree, justification, collaborateurId, collaborateurNom,
+				collaborateurMatricule, siteId, pointageRejeteId, motifRejetInitial, valideurNom, validationParRh,
+				decidePar, decideLe, motifRefus, pointageId, creeLe, manuelsDuMois, alerteSeuil,
+				statutLibelle, refusStatut, refusStatutLibelle, distanceMetres, precisionMetres, rayonMetres,
+				modeQr, modeQrLibelle, delaiDemandeMinutes, echeance, delaiDecisionMinutes, plafondMetres, reprise,
+				avecSignal, signaux, seuilMois, refusDuJour, commentaireValideur, null, null, null, null);
+	}
 
 	/** Forme historique (avant D-P21 à D-P26) : les champs de sécurisation restent nuls. */
 	public DemandeManuelleResponse(UUID id, String numero, StatutDemandeManuelle statut, PointageType type,
@@ -69,7 +93,8 @@ public record DemandeManuelleResponse(
 		this(id, numero, statut, type, heureDeclaree, justification, collaborateurId, collaborateurNom,
 				collaborateurMatricule, siteId, pointageRejeteId, motifRejetInitial, valideurNom, validationParRh,
 				decidePar, decideLe, motifRefus, pointageId, creeLe, manuelsDuMois, alerteSeuil,
-				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+				null, null, null, null, null);
 	}
 
 	/** Signal de vigilance : code stable et libellé rédigé par le serveur. */

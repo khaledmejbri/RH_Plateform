@@ -41,7 +41,12 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 	private static final Logger log = LoggerFactory.getLogger(ParametresAmorceRunner.class);
 
 	private static final Map<String, String> LIBELLES_STATUTS = Map.of(
-			"EN_ATTENTE", "En attente", "VALIDEE", "Validée", "REFUSEE", "Refusée", "ANNULEE", "Annulée", "EXPIREE", "Expirée");
+			"EN_ATTENTE", "En attente",
+			"EN_COURS", "En cours de validation",
+			"VALIDEE", "Validée",
+			"REFUSEE", "Refusée",
+			"ANNULEE", "Annulée",
+			"EXPIREE", "Expirée");
 
 	private final PresenceParametreValeurRepository valeurRepository;
 	private final PresenceParametresRepository parametresRepository;
@@ -204,7 +209,7 @@ public class ParametresAmorceRunner implements ApplicationRunner {
 		return switch (code) {
 			case "VALIDEE" -> "VERT";
 			case "REFUSEE" -> "ROUGE";
-			case "EN_ATTENTE", "EXPIREE" -> "AMBRE";
+			case "EN_ATTENTE", "EN_COURS", "EXPIREE" -> "AMBRE";
 			default -> "NEUTRE";
 		};
 	}

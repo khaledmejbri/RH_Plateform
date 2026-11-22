@@ -102,7 +102,11 @@ public class DemandeManuelleReponseMapper {
 				signaux,
 				decideur ? seuil : null,
 				refusDuJour,
-				decideur ? d.getCommentaireValideur() : null);
+				decideur ? d.getCommentaireValideur() : null,
+				d.getWorkflowMode(),
+				d.getWorkflowInstanceId(),
+				d.getEtapeCouranteLibelle(),
+				d.getEcheanceLe());
 	}
 
 	/** Pointages manuels validés dans le mois civil (Tunis) de la référence (alerte RH D-P04, signal D-P24.a). */
