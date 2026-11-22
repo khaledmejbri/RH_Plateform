@@ -348,4 +348,61 @@ class EffetRepriseSchedulerTest {
 		assertThat(appelEffet.getStatut()).isEqualTo(StatutAppelEffet.APPLIQUE);
 		assertThat(instance.getStatut()).isEqualTo(StatutInstance.APPROUVEE);
 	}
+
+	@Test
+	void dW4_04_reprise200_expirerEtAnnulerSysteme_finalisentInstanceEtTacheExpiree() {
+		// 1. Reprise EXPIRER
+		tache.setDecision(null);
+		tache.setDecideParCompteId(null);
+		tache.setDecideParCollaborateurId(null);
+		tache.setDecideParNom("Système");
+		tache.setCommentaire("Délai de décision dépassé");
+		appelEffet.setEffet("EXPIRER");
+		when(effetClient.appeler(any(), any(), any())).thenReturn(new ResultatAppelEffet.Succes(Map.of("ok", true)));
+
+		int n = scheduler.reprendreIncertains();
+
+		assertThat(n).isEqualTo(1);
+		assertThat(appelEffet.getStatut()).isEqualTo(StatutAppelEffet.APPLIQUE);
+		assertThat(tache.getStatut()).isEqualTo(StatutTache.EXPIREE);
+		assertThat(instance.getStatut()).isEqualTo(StatutInstance.EXPIREE);
+		assertThat(instance.getResultatMotif()).isEqualTo("Délai de décision dépassé");
+
+		// 2. Reprise ANNULER (COMPLEMENT expiré)
+		instance.setStatut(StatutInstance.EN_COURS);
+		instance.setTermineLe(null);
+		etapeExec.setStatut(StatutEtapeExecution.ACTIVE);
+		tache.setType(TypeTache.COMPLEMENT);
+		tache.setStatut(StatutTache.RESERVEE);
+		tache.setCommentaire("Complément non fourni dans le délai");
+		appelEffet.setStatut(StatutAppelEffet.INCERTAIN);
+		appelEffet.setEffet("ANNULER");
+
+		scheduler.reprendreIncertains();
+
+		assertThat(tache.getStatut()).isEqualTo(StatutTache.EXPIREE);
+		assertThat(instance.getStatut()).isEqualTo(StatutInstance.ANNULEE);
+	}
+
+	@Test
+	void dW4_04_reprise422_actionSystemeQ4_bloqueInstanceEtNotifieRhAdmin() {
+		tache.setDecision(null);
+		tache.setDecideParCompteId(null);
+		tache.setDecideParCollaborateurId(null);
+		tache.setDecideParNom("Système");
+		appelEffet.setEffet("EXPIRER");
+		UUID rhCompte = UUID.randomUUID();
+		when(resolutionService.resoudreComptesRoles(any(), eq(List.of("RH", "ADMIN")))).thenReturn(List.of(rhCompte));
+		when(effetClient.appeler(any(), any(), any()))
+				.thenReturn(new ResultatAppelEffet.RejetMetier(422, "EFFET_REFUSE", "Rejet métier", Map.of()));
+
+		scheduler.reprendreIncertains();
+
+		assertThat(appelEffet.getStatut()).isEqualTo(StatutAppelEffet.REJETE);
+		assertThat(instance.getStatut()).isEqualTo(StatutInstance.BLOQUEE);
+		assertThat(tache.getStatut()).isEqualTo(StatutTache.A_TRAITER);
+		assertThat(tache.getEcheanceTraiteeLe()).isEqualTo(maintenant);
+		verify(outboxService).publierNotification(any(), eq(rhCompte.toString()), eq("WEBSOCKET"),
+				eq("WF_BLOQUEE"), eq("Workflow bloqué"), any(), eq("CONGE"), any(), any());
+	}
 }

@@ -11,8 +11,11 @@ import com.hr.workflow.definition.EtapeDefinition;
 import com.hr.workflow.domain.TypeTache;
 import com.hr.workflow.moteur.AvancementService.EtapeInformation;
 import com.hr.workflow.moteur.AvancementService.PlanAvancement;
+import com.hr.workflow.moteur.DelegationResolutionService.CandidatSupplementaire;
+import com.hr.workflow.moteur.PlanificationEcheanceService.PlanificationTache;
 import com.hr.workflow.moteur.ResolutionIntervenantsService.LotResolu;
 import com.hr.workflow.moteur.ResolutionIntervenantsService.RegleAResoudre;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -36,6 +39,7 @@ public class PreparationDecisionService {
 	private final ResolutionIntervenantsService resolutionService;
 	private final WorkflowReferentielClient referentielClient;
 	private final PlanificationEcheanceService planificationEcheanceService;
+	private final DelegationResolutionService delegationResolutionService;
 	private final AvancementService avancementService;
 	private final Clock clock;
 
@@ -46,25 +50,45 @@ public class PreparationDecisionService {
 			PlanificationEcheanceService planificationEcheanceService,
 			AvancementService avancementService,
 			Clock clock) {
+		this(catalogue, resolutionService, referentielClient, planificationEcheanceService,
+				null, avancementService, clock);
+	}
+
+	@Autowired
+	public PreparationDecisionService(
+			CatalogueTypesObjet catalogue,
+			ResolutionIntervenantsService resolutionService,
+			WorkflowReferentielClient referentielClient,
+			PlanificationEcheanceService planificationEcheanceService,
+			DelegationResolutionService delegationResolutionService,
+			AvancementService avancementService,
+			Clock clock) {
 		this.catalogue = catalogue;
 		this.resolutionService = resolutionService;
 		this.referentielClient = referentielClient;
 		this.planificationEcheanceService = planificationEcheanceService;
+		this.delegationResolutionService = delegationResolutionService;
 		this.avancementService = avancementService;
 		this.clock = clock;
 	}
 
 	public record PlanExecutionDecision(
 			PlanAvancement plan,
-			Instant echeanceSuivante,
+			PlanificationTache planificationSuivante,
 			PlanAvancement planReactivation,
 			Map<String, List<UUID>> comptesInfos,
 			List<UUID> comptesNotifActivation,
 			List<UUID> comptesNotifFin,
-			List<UUID> comptesBloquee
+			List<UUID> comptesBloquee,
+			List<List<CandidatSupplementaire>> deleguesParTache
 	) {
+		public Instant echeanceSuivante() {
+			return planificationSuivante != null ? planificationSuivante.echeanceLe() : null;
+		}
+
 		public static PlanExecutionDecision vide() {
-			return new PlanExecutionDecision(null, null, null, Map.of(), List.of(), List.of(), List.of());
+			return new PlanExecutionDecision(null, PlanificationTache.VIDE, null,
+					Map.of(), List.of(), List.of(), List.of(), List.of());
 		}
 	}
 
@@ -91,7 +115,8 @@ public class PreparationDecisionService {
 		if ("RENVOYER".equals(action)) {
 			CalendrierSocieteResponse calendrier = referentielClient.calendrierSociete(aujourdhui, aujourdhui.plusDays(30));
 			Instant echeanceComplement = planificationEcheanceService.calculerEcheanceComplement(maintenant, calendrier);
-			return new PlanExecutionDecision(null, echeanceComplement, null, Map.of(), List.of(), List.of(), List.of());
+			return new PlanExecutionDecision(null, new PlanificationTache(echeanceComplement, null, null),
+					null, Map.of(), List.of(), List.of(), List.of(), List.of());
 		}
 
 		if (typeTache == TypeTache.COMPLEMENT) {
@@ -100,8 +125,8 @@ public class PreparationDecisionService {
 			LotResolu lot = resolutionService.resoudre(aujourdhui, demandeurCollaborateurId, beneficiaires, exclure, regles);
 			PlanAvancement planReactiv = avancementService.calculerReactivation(
 					definition, etapeCode, vars, typesVars, lot.resultats());
-			return completerPlan(planReactiv, null, demandeurCollaborateurId, demandeurCompteId,
-					maintenant, aujourdhui, vars, List.of(), true);
+			return completerPlan(planReactiv, null, objetType, demandeurCollaborateurId, demandeurCompteId,
+					beneficiaires, maintenant, aujourdhui, vars, List.of(), true);
 		}
 
 		if (!termineEtape) {
@@ -124,21 +149,24 @@ public class PreparationDecisionService {
 		PlanAvancement plan = avancementService.calculerApresEtape(
 				definition, etapeCode, resultatEtape, vars, typesVars, lot.resultats());
 
-		return completerPlan(plan, etapeDef, demandeurCollaborateurId, demandeurCompteId,
-				maintenant, aujourdhui, vars, candidatsEtapeTerminee, false);
+		return completerPlan(plan, etapeDef, objetType, demandeurCollaborateurId, demandeurCompteId,
+				beneficiaires, maintenant, aujourdhui, vars, candidatsEtapeTerminee, false);
 	}
 
 	private PlanExecutionDecision completerPlan(
 			PlanAvancement plan,
 			EtapeDefinition etapeTermineeDef,
+			String objetType,
 			UUID demandeurCollaborateurId,
 			UUID demandeurCompteId,
+			List<UUID> beneficiaires,
 			Instant maintenant,
 			LocalDate aujourdhui,
 			Map<String, Object> vars,
 			List<IntervenantResolu> candidatsEtapeTerminee,
 			boolean estReactivation) {
-		Instant echeanceSuivante = null;
+		PlanificationTache planifSuivante = PlanificationTache.VIDE;
+		List<List<CandidatSupplementaire>> deleguesParTache = List.of();
 		List<UUID> comptesNotifActivation = List.of();
 		List<UUID> comptesBloquee = List.of();
 		Map<String, List<UUID>> comptesInfos = Map.of();
@@ -146,15 +174,29 @@ public class PreparationDecisionService {
 
 		if (plan.etapeSuivante() != null && !plan.etapeSuivante().bloquee()) {
 			CalendrierSocieteResponse calendrier = referentielClient.calendrierSociete(aujourdhui, aujourdhui.plusDays(60));
-			echeanceSuivante = planificationEcheanceService.calculerEcheance(
-					maintenant, plan.etapeSuivante().etape().delai(), calendrier, vars);
-			if (plan.etapeSuivante().etape().notifications() != null
-					&& plan.etapeSuivante().etape().notifications().aLActivation() != null
-					&& !plan.etapeSuivante().etape().notifications().aLActivation().isEmpty()) {
-				List<IntervenantResolu> tousCandidats = plan.etapeSuivante().taches().stream()
-						.flatMap(t -> t.candidats().stream()).toList();
+			EtapeDefinition etapeSuivDef = plan.etapeSuivante().etape();
+			planifSuivante = planificationEcheanceService.calculerPlanification(
+					maintenant, etapeSuivDef.delai(), etapeSuivDef.relances(), etapeSuivDef.aEcheance(),
+					calendrier, vars);
+			if (delegationResolutionService != null) {
+				LocalDate aujourdhuiSociete = LocalDate.now(
+						clock.withZone(PlanificationEcheanceService.parserFuseau(calendrier.fuseau())));
+				deleguesParTache = delegationResolutionService.resoudreDeleguesPourTaches(
+						aujourdhuiSociete, objetType, demandeurCollaborateurId, beneficiaires,
+						plan.etapeSuivante().taches(), calendrier.delegationAutoConges());
+			}
+			if (etapeSuivDef.notifications() != null
+					&& etapeSuivDef.notifications().aLActivation() != null
+					&& !etapeSuivDef.notifications().aLActivation().isEmpty()) {
+				List<IntervenantResolu> tousCandidats = new ArrayList<>();
+				plan.etapeSuivante().taches().forEach(t -> tousCandidats.addAll(t.candidats()));
+				for (List<CandidatSupplementaire> ds : deleguesParTache) {
+					for (CandidatSupplementaire d : ds) {
+						tousCandidats.add(new IntervenantResolu(d.collaborateurId(), d.compteId(), d.nom(), null));
+					}
+				}
 				comptesNotifActivation = resolutionService.resoudreComptesPublics(
-						aujourdhui, plan.etapeSuivante().etape().notifications().aLActivation(),
+						aujourdhui, etapeSuivDef.notifications().aLActivation(),
 						demandeurCollaborateurId, demandeurCompteId, tousCandidats);
 			}
 		} else if (plan.etapeSuivante() != null && plan.etapeSuivante().bloquee()) {
@@ -182,8 +224,10 @@ public class PreparationDecisionService {
 		}
 
 		return estReactivation
-				? new PlanExecutionDecision(null, echeanceSuivante, plan, comptesInfos, comptesNotifActivation, comptesNotifFin, comptesBloquee)
-				: new PlanExecutionDecision(plan, echeanceSuivante, null, comptesInfos, comptesNotifActivation, comptesNotifFin, comptesBloquee);
+				? new PlanExecutionDecision(null, planifSuivante, plan, comptesInfos, comptesNotifActivation,
+						comptesNotifFin, comptesBloquee, deleguesParTache)
+				: new PlanExecutionDecision(plan, planifSuivante, null, comptesInfos, comptesNotifActivation,
+						comptesNotifFin, comptesBloquee, deleguesParTache);
 	}
 
 	private Map<String, TypeVariable> typesVariablesPour(String objetType) {

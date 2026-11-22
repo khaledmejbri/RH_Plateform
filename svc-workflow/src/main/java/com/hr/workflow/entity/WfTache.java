@@ -76,6 +76,9 @@ public class WfTache {
 	@Column(name = "escalade_le")
 	private Instant escaladeLe;
 
+	@Column(name = "echeance_traitee_le")
+	private Instant echeanceTraiteeLe;
+
 	@Enumerated(EnumType.STRING)
 	@Column(name = "decision", length = 12)
 	private DecisionTache decision;

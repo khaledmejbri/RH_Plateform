@@ -2,11 +2,13 @@ package com.hr.workflow.web;
 
 import com.hr.workflow.WorkflowApplication;
 import com.hr.workflow.domain.OrigineCandidat;
+import com.hr.workflow.domain.OrigineDelegation;
 import com.hr.workflow.domain.StatutEtapeExecution;
 import com.hr.workflow.domain.StatutInstance;
 import com.hr.workflow.domain.StatutTache;
 import com.hr.workflow.domain.StatutVersion;
 import com.hr.workflow.domain.TypeTache;
+import com.hr.workflow.entity.WfDelegation;
 import com.hr.workflow.entity.WfEtapeExecution;
 import com.hr.workflow.entity.WfInstance;
 import com.hr.workflow.entity.WfModele;
@@ -14,6 +16,7 @@ import com.hr.workflow.entity.WfModeleVersion;
 import com.hr.workflow.entity.WfTache;
 import com.hr.workflow.entity.WfTacheCandidat;
 import com.hr.workflow.entity.WfTacheCandidatId;
+import com.hr.workflow.repository.WfDelegationRepository;
 import com.hr.workflow.repository.WfEtapeExecutionRepository;
 import com.hr.workflow.repository.WfInstanceRepository;
 import com.hr.workflow.repository.WfModeleRepository;
@@ -44,17 +47,19 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Test anti-IDOR réel (§ 9.10, CA-08.3, revue W3 n°12) sur les vrais services et PostgreSQL {@code workflow_db_test} :
+ * Test anti-IDOR réel (§ 9.10, CA-08.3, D-W4-12, revue W3 n°12) sur les vrais services et PostgreSQL {@code workflow_db_test} :
  * un tiers reçoit 404 avec le même code et le même message qu'un UUID inexistant.
  */
 @SpringBootTest(classes = WorkflowApplication.class, webEnvironment = SpringBootTest.WebEnvironment.MOCK)
@@ -63,6 +68,8 @@ class SecuriteAntiIdorIT {
 
 	private static final String DB_URL = "jdbc:postgresql://localhost:5444/workflow_db_test";
 	private static final String DB_USER = "postgres";
+	private static final UUID TIERS_AVEC_FICHE_COMPTE_ID = UUID.randomUUID();
+	private static final UUID TIERS_AVEC_FICHE_COLLAB_ID = UUID.randomUUID();
 
 	private static HttpServer fakeServer;
 	private static int fakePort;
@@ -75,6 +82,7 @@ class SecuriteAntiIdorIT {
 	@Autowired private WfEtapeExecutionRepository etapeExecutionRepository;
 	@Autowired private WfTacheRepository tacheRepository;
 	@Autowired private WfTacheCandidatRepository candidatRepository;
+	@Autowired private WfDelegationRepository delegationRepository;
 	@MockitoBean private org.springframework.security.oauth2.jwt.JwtDecoder jwtDecoder;
 
 	private static String dbPassword() {
@@ -94,6 +102,18 @@ class SecuriteAntiIdorIT {
 		fakeServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		fakePort = fakeServer.getAddress().getPort();
 		fakeServer.createContext("/internal/referentiel/v1/collaborateurs/par-compte/", exchange -> {
+			String uri = exchange.getRequestURI().getPath();
+			if (uri.endsWith("/" + TIERS_AVEC_FICHE_COMPTE_ID)) {
+				byte[] resp = ("{\"id\":\"" + TIERS_AVEC_FICHE_COLLAB_ID + "\",\"compte_id\":\""
+						+ TIERS_AVEC_FICHE_COMPTE_ID + "\",\"nom\":\"Tiers Test\",\"matricule\":\"T-1\",\"statut\":\"ACTIF\"}")
+						.getBytes(StandardCharsets.UTF_8);
+				exchange.getResponseHeaders().add("Content-Type", "application/json");
+				exchange.sendResponseHeaders(200, resp.length);
+				try (OutputStream os = exchange.getResponseBody()) {
+					os.write(resp);
+				}
+				return;
+			}
 			byte[] resp = "{\"detail\":\"absent\"}".getBytes(StandardCharsets.UTF_8);
 			exchange.sendResponseHeaders(404, resp.length);
 			try (OutputStream os = exchange.getResponseBody()) {
@@ -200,6 +220,29 @@ class SecuriteAntiIdorIT {
 		verifier404Identique(
 				mockMvc.perform(get("/api/rh/v1/workflow/objets/CONGE/" + objetIdExistant + "/suivi").with(jwtTiers)).andExpect(status().isNotFound()).andReturn(),
 				mockMvc.perform(get("/api/rh/v1/workflow/objets/CONGE/" + inexistant + "/suivi").with(jwtTiers)).andExpect(status().isNotFound()).andReturn());
+
+		// 5. DELETE /delegations/moi/{id} (tiers avec fiche collaborateur distincte du délégant -> 404 identique)
+		WfDelegation del = new WfDelegation();
+		del.setDelegantCollaborateurId(UUID.randomUUID());
+		del.setDelegantNom("Délégant");
+		del.setDelegueCollaborateurId(TIERS_AVEC_FICHE_COLLAB_ID);
+		del.setDelegueCompteId(TIERS_AVEC_FICHE_COMPTE_ID);
+		del.setDelegueNom("Tiers Test");
+		del.setDu(LocalDate.now());
+		del.setAu(LocalDate.now().plusDays(3));
+		del.setOrigine(OrigineDelegation.MANUELLE);
+		del.setCreeeLe(maintenant);
+		del = delegationRepository.saveAndFlush(del);
+
+		var jwtTiersAvecFiche = jwt().jwt(j -> j.subject("tiers-fiche")
+						.claim("identifiant_utilisateur", TIERS_AVEC_FICHE_COMPTE_ID.toString()))
+				.authorities(new SimpleGrantedAuthority("ROLE_USER"));
+		verifier404Identique(
+				mockMvc.perform(delete("/api/rh/v1/workflow/delegations/moi/" + del.getId()).with(jwtTiersAvecFiche))
+						.andExpect(status().isNotFound()).andReturn(),
+				mockMvc.perform(delete("/api/rh/v1/workflow/delegations/moi/" + inexistant).with(jwtTiersAvecFiche))
+						.andExpect(status().isNotFound()).andReturn());
+		assertThat(delegationRepository.findById(del.getId()).orElseThrow().getAnnuleeLe()).isNull();
 	}
 
 	private void verifier404Identique(MvcResult resTiers, MvcResult resInexistant) throws Exception {

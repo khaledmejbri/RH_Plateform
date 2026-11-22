@@ -37,6 +37,9 @@ public class WfTacheCandidat {
 	@Column(name = "pour_collaborateur_id")
 	private UUID pourCollaborateurId;
 
+	@Column(name = "pour_nom", length = 160)
+	private String pourNom;
+
 	@Column(name = "delegation_id")
 	private UUID delegationId;
 

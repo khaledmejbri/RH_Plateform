@@ -25,6 +25,8 @@ import com.hr.workflow.moteur.AvancementService.EtapeInformation;
 import com.hr.workflow.moteur.AvancementService.EtapeSautee;
 import com.hr.workflow.moteur.AvancementService.PlanAvancement;
 import com.hr.workflow.moteur.AvancementService.TacheACreer;
+import com.hr.workflow.moteur.DelegationResolutionService.CandidatSupplementaire;
+import com.hr.workflow.moteur.PlanificationEcheanceService.PlanificationTache;
 import com.hr.workflow.moteur.PreparationDecisionService.PlanExecutionDecision;
 import com.hr.workflow.repository.WfEtapeExecutionRepository;
 import com.hr.workflow.repository.WfHistoriqueRepository;
@@ -38,9 +40,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -163,7 +168,7 @@ public class ApplicationDecisionService {
 				instanceRepository.save(inst);
 
 				etapeCouranteDto = creerTachesEtNotificationsEtape(
-						inst, ee, activee, exec.echeanceSuivante(), typeCatalogue,
+						inst, ee, activee, exec.planificationSuivante(), exec.deleguesParTache(), typeCatalogue,
 						exec.comptesNotifActivation(), exec.comptesBloquee(), evId, maintenant,
 						"Complément fourni");
 			} else {
@@ -206,6 +211,128 @@ public class ApplicationDecisionService {
 		t.setReponseDecision(versMap(reponse));
 		tacheRepository.save(t);
 		return reponse;
+	}
+
+	/**
+	 * Finalise une expiration de tâche ({@code EXPIRER}) ou une expiration de tâche {@code COMPLEMENT}
+	 * ({@code ANNULER}, CA-13.4) après validation de l'effet chez le propriétaire (D-W4-03, D-W4-04).
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void finaliserExpirationOuAnnulationDansTx(
+			WfInstance inst,
+			WfTache t,
+			boolean estComplement,
+			String motif,
+			TypeObjetCatalogue typeCatalogue,
+			Instant maintenant) {
+		t.setStatut(StatutTache.EXPIREE);
+		t.setEcheanceTraiteeLe(maintenant);
+		tacheRepository.save(t);
+
+		for (WfTache autre : tacheRepository.findByInstanceIdAndStatutIn(
+				inst.getId(), List.of(StatutTache.A_TRAITER, StatutTache.RESERVEE))) {
+			if (!autre.getId().equals(t.getId())) {
+				autre.setStatut(StatutTache.ANNULEE);
+				tacheRepository.save(autre);
+			}
+		}
+
+		WfEtapeExecution ee = t.getEtapeExecution();
+		if (ee != null && ee.getStatut() == StatutEtapeExecution.ACTIVE) {
+			ee.setStatut(StatutEtapeExecution.TERMINEE);
+			ee.setResultat(ResultatEtapeExecution.EXPIREE);
+			ee.setTermineeLe(maintenant);
+			etapeExecutionRepository.save(ee);
+		}
+
+		inst.setStatut(estComplement ? StatutInstance.ANNULEE : StatutInstance.EXPIREE);
+		inst.setEtapeCouranteCode(null);
+		inst.setTermineLe(maintenant);
+		inst.setResultatMotif(motif);
+		instanceRepository.save(inst);
+
+		String typeEvenement = estComplement ? "COMPLEMENT_EXPIRE" : "TACHE_EXPIREE";
+		enregistrerHistorique(inst.getId(), t.getId(), typeEvenement, null, "Système", null,
+				Map.of("motif", motif), maintenant);
+		enregistrerHistorique(inst.getId(), t.getId(), "INSTANCE_TERMINEE", null, "Système", null,
+				Map.of("statut", inst.getStatut().name()), maintenant);
+
+		UUID evId = UUID.randomUUID();
+		String typeLibelle = typeCatalogue != null ? typeCatalogue.libelle() : inst.getObjetType();
+		if (estComplement) {
+			if (inst.getDemandeurCompteId() != null) {
+				String texte = TextesNotificationWorkflow.complementExpire(
+						typeLibelle, inst.getDemandeurNom(), inst.getObjetNumero());
+				outboxService.publierNotification(evId, inst.getDemandeurCompteId().toString(), "WEBSOCKET",
+						"WF_FIN", "Demande annulée", texte,
+						inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+			}
+		} else {
+			String texte = TextesNotificationWorkflow.expiree(
+					typeLibelle, inst.getDemandeurNom(), inst.getObjetNumero());
+			Set<UUID> destinataires = new HashSet<>();
+			if (inst.getDemandeurCompteId() != null) {
+				destinataires.add(inst.getDemandeurCompteId());
+			}
+			for (WfTacheCandidat c : candidatRepository.findByIdTacheIdAndRetireLeIsNull(t.getId())) {
+				if (c.getCompteId() != null) {
+					destinataires.add(c.getCompteId());
+				}
+			}
+			for (UUID compteId : destinataires) {
+				outboxService.publierNotification(evId, compteId.toString(), "WEBSOCKET",
+						"WF_FIN", "Demande expirée", texte,
+						inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+			}
+		}
+		outboxService.publierEvenementWorkflow(evId, "INSTANCE_TERMINEE", inst, null, null, null);
+	}
+
+	/**
+	 * Bloque l'instance lorsqu'une action automatique d'échéance échoue avec un rejet métier 422/409 (Q4, D-W4-03, D-W4-04).
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void bloquerSurRejetSystemeDansTx(
+			WfInstance inst,
+			WfTache t,
+			String effet,
+			String codeRejet,
+			String messageRejet,
+			List<UUID> comptesRhAdmin,
+			TypeObjetCatalogue typeCatalogue,
+			String etapeLibelle,
+			Instant maintenant) {
+		inst.setStatut(StatutInstance.BLOQUEE);
+		instanceRepository.save(inst);
+
+		t.setStatut(StatutTache.A_TRAITER);
+		t.setEcheanceTraiteeLe(maintenant);
+		t.setCleIdempotence(null);
+		tacheRepository.save(t);
+
+		Map<String, Object> details = new HashMap<>();
+		details.put("effet", effet != null ? effet : "");
+		details.put("code", codeRejet != null ? codeRejet : "");
+		if (messageRejet != null) {
+			details.put("message", messageRejet);
+		}
+		enregistrerHistorique(inst.getId(), t.getId(), "EFFET_REJETE", null, "Système", null, details, maintenant);
+
+		String typeLibelle = typeCatalogue != null ? typeCatalogue.libelle() : inst.getObjetType();
+		String libEtape = (etapeLibelle != null && !etapeLibelle.isBlank()) ? etapeLibelle : t.getLibelle();
+		String texteBloque = TextesNotificationWorkflow.bloquee(
+				libEtape, typeLibelle, inst.getDemandeurNom(), inst.getObjetNumero());
+		UUID evId = UUID.randomUUID();
+		if (comptesRhAdmin != null) {
+			for (UUID compteId : new HashSet<>(comptesRhAdmin)) {
+				if (compteId != null) {
+					outboxService.publierNotification(evId, compteId.toString(), "WEBSOCKET", "WF_BLOQUEE",
+							"Workflow bloqué", texteBloque, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+				}
+			}
+		}
+		outboxService.publierEvenementWorkflow(
+				evId, "INSTANCE_BLOQUEE", inst, inst.getEtapeCouranteCode(), libEtape, t.getEcheanceLe());
 	}
 
 	private EtapeCouranteDto appliquerPlanApresEtape(
@@ -313,7 +440,7 @@ public class ApplicationDecisionService {
 		}
 
 		return creerTachesEtNotificationsEtape(
-				inst, eSuiv, activee, exec.echeanceSuivante(), typeCatalogue,
+				inst, eSuiv, activee, exec.planificationSuivante(), exec.deleguesParTache(), typeCatalogue,
 				exec.comptesNotifActivation(), exec.comptesBloquee(), evId, maintenant,
 				"Demande à traiter");
 	}
@@ -322,7 +449,8 @@ public class ApplicationDecisionService {
 			WfInstance inst,
 			WfEtapeExecution ee,
 			EtapeActivee activee,
-			Instant echeanceSuivante,
+			PlanificationTache planifSuivante,
+			List<List<CandidatSupplementaire>> deleguesParTache,
 			TypeObjetCatalogue typeCatalogue,
 			List<UUID> comptesNotifActivation,
 			List<UUID> comptesBloquee,
@@ -332,8 +460,13 @@ public class ApplicationDecisionService {
 		EtapeDefinition etapeDef = activee.etape();
 		String canal = etapeDef.notifications() != null && etapeDef.notifications().canal() != null
 				? etapeDef.notifications().canal() : "WEBSOCKET";
+		Instant echeanceSuivante = planifSuivante != null ? planifSuivante.echeanceLe() : null;
+		Instant prochaineRelance = planifSuivante != null ? planifSuivante.prochaineRelanceLe() : null;
+		Instant escaladeAFaire = planifSuivante != null ? planifSuivante.escaladeAFaireLe() : null;
 
-		for (TacheACreer tc : activee.taches()) {
+		List<TacheACreer> taches = activee.taches();
+		for (int i = 0; i < taches.size(); i++) {
+			TacheACreer tc = taches.get(i);
 			WfTache nt = new WfTache();
 			nt.setInstance(inst);
 			nt.setEtapeExecution(ee);
@@ -343,9 +476,15 @@ public class ApplicationDecisionService {
 			nt.setStatut(StatutTache.A_TRAITER);
 			nt.setObligatoire(tc.obligatoire());
 			nt.setEcheanceLe(echeanceSuivante);
+			nt.setProchaineRelanceLe(prochaineRelance);
+			nt.setEscaladeAFaireLe(escaladeAFaire);
 			nt = tacheRepository.saveAndFlush(nt);
 
+			Set<UUID> ajoutes = new HashSet<>();
 			for (IntervenantResolu cand : tc.candidats()) {
+				if (cand.collaborateurId() == null || !ajoutes.add(cand.collaborateurId())) {
+					continue;
+				}
 				WfTacheCandidat c = new WfTacheCandidat();
 				c.setId(new WfTacheCandidatId(nt.getId(), cand.collaborateurId()));
 				c.setCompteId(cand.compteId());
@@ -358,6 +497,43 @@ public class ApplicationDecisionService {
 						typeCatalogue.libelle(), inst.getDemandeurNom(), tc.libelle(), echeanceSuivante, inst.getObjetNumero());
 				outboxService.publierNotification(evId, cand.compteId().toString(), canal, "WF_TACHE_CREEE",
 						sujetTacheCreee, texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+			}
+
+			List<CandidatSupplementaire> delegues = (deleguesParTache != null && i < deleguesParTache.size())
+					? deleguesParTache.get(i) : List.of();
+			for (CandidatSupplementaire ds : delegues) {
+				if (ds.collaborateurId() == null || !ajoutes.add(ds.collaborateurId())) {
+					continue;
+				}
+				WfTacheCandidat c = new WfTacheCandidat();
+				c.setId(new WfTacheCandidatId(nt.getId(), ds.collaborateurId()));
+				c.setCompteId(ds.compteId());
+				c.setNom(ds.nom());
+				c.setOrigine(ds.origine());
+				c.setPourCollaborateurId(ds.pourCollaborateurId());
+				c.setPourNom(ds.pourNom());
+				c.setDelegationId(ds.delegationId());
+				c.setAjouteLe(maintenant);
+				candidatRepository.save(c);
+
+				Map<String, Object> detailsDel = new HashMap<>();
+				detailsDel.put("origine", ds.origine().name());
+				detailsDel.put("delegue_id", ds.collaborateurId().toString());
+				if (ds.pourCollaborateurId() != null) {
+					detailsDel.put("delegant_id", ds.pourCollaborateurId().toString());
+				}
+				if (ds.delegationId() != null) {
+					detailsDel.put("delegation_id", ds.delegationId().toString());
+				}
+				enregistrerHistorique(inst.getId(), nt.getId(), "DELEGATION_APPLIQUEE",
+						null, "Système", ds.pourNom(), detailsDel, maintenant);
+
+				if (ds.compteId() != null) {
+					String texte = TextesNotificationWorkflow.tacheCreee(
+							typeCatalogue.libelle(), inst.getDemandeurNom(), tc.libelle(), echeanceSuivante, inst.getObjetNumero());
+					outboxService.publierNotification(evId, ds.compteId().toString(), canal, "WF_TACHE_CREEE",
+							sujetTacheCreee, texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+				}
 			}
 		}
 

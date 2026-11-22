@@ -187,7 +187,8 @@ public class WorkflowUtilisateurService {
 					inst.getObjetType(), objetLibelle, inst.getObjetNumero(), inst.getObjetId(),
 					inst.getDemandeurNom(), tache.getEcheanceLe(), enRetard,
 					cand != null ? cand.getOrigine() : OrigineCandidat.TITULAIRE,
-					tache.getPourNom(), actions, tache.getVersion(), extraireResume(inst.getVariables()));
+					cand != null && cand.getPourNom() != null ? cand.getPourNom() : tache.getPourNom(),
+					actions, tache.getVersion(), extraireResume(inst.getVariables()));
 		}).toList();
 
 		return new PageResponse<>(items, resultat.getNumber(), resultat.getSize(), resultat.getTotalElements());

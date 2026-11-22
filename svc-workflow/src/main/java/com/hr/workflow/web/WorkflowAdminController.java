@@ -3,6 +3,7 @@ package com.hr.workflow.web;
 import com.hr.workflow.catalogue.CatalogueTypesObjet;
 import com.hr.workflow.client.WorkflowReferentielClient;
 import com.hr.workflow.config.WorkflowSecurityExpressions;
+import com.hr.workflow.domain.StatutInstance;
 import com.hr.workflow.dto.AdminWorkflowDtos.ActionVersionRequest;
 import com.hr.workflow.dto.AdminWorkflowDtos.ActivationResponse;
 import com.hr.workflow.dto.AdminWorkflowDtos.ComparaisonVersionsResponse;
@@ -19,10 +20,21 @@ import com.hr.workflow.dto.AdminWorkflowDtos.SimulerVersionRequest;
 import com.hr.workflow.dto.AdminWorkflowDtos.ValidationResponse;
 import com.hr.workflow.dto.AdminWorkflowDtos.VersionDetailResponse;
 import com.hr.workflow.dto.AdminWorkflowDtos.VersionResumeResponse;
+import com.hr.workflow.dto.DelegationDtos.CreerDelegationAdminRequest;
+import com.hr.workflow.dto.DelegationDtos.DelegationResponse;
+import com.hr.workflow.dto.DelegationDtos.ReaffecterTacheRequest;
+import com.hr.workflow.dto.SupervisionDtos.IndicateursWorkflowResponse;
+import com.hr.workflow.dto.SupervisionDtos.InstanceDetailAdminResponse;
+import com.hr.workflow.dto.SupervisionDtos.InstanceResumeResponse;
+import com.hr.workflow.dto.SupervisionDtos.ReaffecterTacheResponse;
 import com.hr.workflow.service.ActivationService;
+import com.hr.workflow.service.DelegationService;
 import com.hr.workflow.service.ModeleVersionService;
+import com.hr.workflow.service.ReaffectationService;
 import com.hr.workflow.service.SimulationService;
+import com.hr.workflow.service.SupervisionService;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -37,12 +49,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * Endpoints d'administration du moteur de workflow pour le lot W3 (§ 9.7.2).
+ * Endpoints d'administration du moteur de workflow (lots W3 et W4, § 9.7.2).
  */
 @RestController
 @RequestMapping("/api/rh/v1/admin/workflow")
@@ -52,6 +65,9 @@ public class WorkflowAdminController {
 	private final ActivationService activationService;
 	private final ModeleVersionService modeleVersionService;
 	private final SimulationService simulationService;
+	private final SupervisionService supervisionService;
+	private final ReaffectationService reaffectationService;
+	private final DelegationService delegationService;
 	private final WorkflowReferentielClient referentielClient;
 
 	public WorkflowAdminController(
@@ -59,11 +75,17 @@ public class WorkflowAdminController {
 			ActivationService activationService,
 			ModeleVersionService modeleVersionService,
 			SimulationService simulationService,
+			SupervisionService supervisionService,
+			ReaffectationService reaffectationService,
+			DelegationService delegationService,
 			WorkflowReferentielClient referentielClient) {
 		this.catalogue = catalogue;
 		this.activationService = activationService;
 		this.modeleVersionService = modeleVersionService;
 		this.simulationService = simulationService;
+		this.supervisionService = supervisionService;
+		this.reaffectationService = reaffectationService;
+		this.delegationService = delegationService;
 		this.referentielClient = referentielClient;
 	}
 
@@ -222,5 +244,74 @@ public class WorkflowAdminController {
 			@RequestParam(name = "page", defaultValue = "0") int page,
 			@RequestParam(name = "taille", defaultValue = "20") int taille) {
 		return modeleVersionService.listerJournal(id, page, taille);
+	}
+
+	// ─── Supervision, réaffectation et délégations (lot W4) ──────────────────
+
+	@GetMapping("/instances")
+	@PreAuthorize(WorkflowSecurityExpressions.BACKOFFICE_LECTURE)
+	public PageResponse<InstanceResumeResponse> listerInstances(
+			@RequestParam(name = "objet_type", required = false) String objetType,
+			@RequestParam(name = "statut", required = false) StatutInstance statut,
+			@RequestParam(name = "etape", required = false) String etape,
+			@RequestParam(name = "en_retard", required = false) Boolean enRetard,
+			@RequestParam(name = "demandeur_id", required = false) UUID demandeurId,
+			@RequestParam(name = "intervenant_id", required = false) UUID intervenantId,
+			@RequestParam(name = "du", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+			@RequestParam(name = "au", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au,
+			@RequestParam(name = "page", defaultValue = "0") int page,
+			@RequestParam(name = "taille", defaultValue = "20") int taille) {
+		return supervisionService.listerInstances(
+				objetType, statut, etape, enRetard, demandeurId, intervenantId, du, au, page, taille);
+	}
+
+	@GetMapping("/instances/{id}")
+	@PreAuthorize(WorkflowSecurityExpressions.BACKOFFICE_LECTURE)
+	public InstanceDetailAdminResponse detailInstance(@PathVariable("id") UUID id) {
+		return supervisionService.detailInstance(id);
+	}
+
+	@GetMapping("/indicateurs")
+	@PreAuthorize(WorkflowSecurityExpressions.BACKOFFICE_LECTURE)
+	public IndicateursWorkflowResponse indicateurs(
+			@RequestParam(name = "du", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+			@RequestParam(name = "au", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au) {
+		return supervisionService.indicateurs(du, au);
+	}
+
+	@PostMapping("/taches/{id}/reaffecter")
+	@PreAuthorize(WorkflowSecurityExpressions.BACKOFFICE_ECRITURE)
+	public ReaffecterTacheResponse reaffecterTache(
+			@PathVariable("id") UUID id,
+			@Valid @RequestBody ReaffecterTacheRequest req,
+			Authentication auth) {
+		return reaffectationService.reaffecter(id, req, IdentiteJwt.compteId(auth), auteurNom(auth));
+	}
+
+	@GetMapping("/delegations")
+	@PreAuthorize(WorkflowSecurityExpressions.BACKOFFICE_LECTURE)
+	public PageResponse<DelegationResponse> listerDelegations(
+			@RequestParam(name = "actives", required = false) Boolean actives,
+			@RequestParam(name = "delegant_id", required = false) UUID delegantId,
+			@RequestParam(name = "delegue_id", required = false) UUID delegueId,
+			@RequestParam(name = "page", defaultValue = "0") int page,
+			@RequestParam(name = "taille", defaultValue = "20") int taille) {
+		return delegationService.listerAdmin(actives, delegantId, delegueId, page, taille);
+	}
+
+	@PostMapping("/delegations")
+	@ResponseStatus(HttpStatus.CREATED)
+	@PreAuthorize(WorkflowSecurityExpressions.BACKOFFICE_ECRITURE)
+	public DelegationResponse creerDelegation(
+			@Valid @RequestBody CreerDelegationAdminRequest req,
+			Authentication auth) {
+		return delegationService.creerAdmin(req, IdentiteJwt.compteId(auth));
+	}
+
+	@DeleteMapping("/delegations/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	@PreAuthorize(WorkflowSecurityExpressions.BACKOFFICE_ECRITURE)
+	public void annulerDelegation(@PathVariable("id") UUID id, Authentication auth) {
+		delegationService.annulerAdmin(id, IdentiteJwt.compteId(auth));
 	}
 }

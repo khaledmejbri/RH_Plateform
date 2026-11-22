@@ -557,7 +557,7 @@ public class DecisionService {
 				candActif.map(c -> c.getId().getCollaborateurId()).orElse(null),
 				candActif.map(WfTacheCandidat::getNom).orElse(null),
 				candActif.map(WfTacheCandidat::getPourCollaborateurId).orElse(null),
-				null,
+				candActif.map(WfTacheCandidat::getPourNom).orElse(null),
 				candActif.isPresent(),
 				autreObligatoireOuverte,
 				null
