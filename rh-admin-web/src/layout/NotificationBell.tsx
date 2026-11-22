@@ -11,6 +11,7 @@ import { useDetail } from '../detail/contexte';
 import { formatDateHeure } from '../utils/format';
 import { EVENEMENT_RAFRAICHIR_TACHES } from '../workflow/evenements';
 import { useGardeNavigation } from '../workflow/gardeNavigation';
+import { routeNotificationWorkflow } from '../workflow/supervision';
 
 /** Même origine que la page (ws/wss), surchargeable par VITE_WS_URL. */
 function resolveBrokerUrl(): string {
@@ -24,9 +25,6 @@ function texteDe(n: NotificationDto): string {
   const c = n.contenu ?? '';
   return parseContenuNotification(c)?.texte ?? c;
 }
-
-/** Seuls ces événements ouvrent « Mes tâches » ; les autres notifications WF_* ouvrent l'objet concerné. */
-const EVENEMENTS_VERS_TACHES: ReadonlySet<string> = new Set(['WF_TACHE_CREEE', 'WF_BLOQUEE']);
 
 function badge(n: number): string {
   return n > 99 ? '99+' : String(n);
@@ -125,14 +123,11 @@ export default function NotificationBell() {
       setNonLues((x) => Math.max(0, x - 1));
       try { await marquerNotificationLue(n.id); } catch { rafraichirCompteur(); }
     }
-    if (typeof n.evenement === 'string' && EVENEMENTS_VERS_TACHES.has(n.evenement)) {
+    const cibleWorkflow = routeNotificationWorkflow(n);
+    if (cibleWorkflow) {
       if (!(await garde.confirmerSortie())) return;
       setOuvert(false);
-      const q = new URLSearchParams();
-      if (n.objet_type) q.set('objet_type', n.objet_type);
-      if (n.objet_id) q.set('objet_id', n.objet_id);
-      const qs = q.toString();
-      navigate(`/app/taches${qs ? `?${qs}` : ''}`);
+      navigate(cibleWorkflow);
       return;
     }
     const type = typeDepuisNotification(n.objet_type);

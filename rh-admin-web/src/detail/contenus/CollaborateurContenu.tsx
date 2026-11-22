@@ -22,6 +22,7 @@ import { peutVoirPlaintes, useTitre } from '../contexte';
 import { useChargement } from '../useChargement';
 import ChampsPersoCarte from './ChampsPersoCarte';
 import CongesOnglet from './CongesOnglet';
+import DelegationsOnglet from './DelegationsOnglet';
 import { Cartes, Champ, Champs, periode31, Section, Tableau, titreOnglet } from './commun';
 import type { PersonneResume, UniteResume } from '../../api/detailApi';
 
@@ -40,6 +41,7 @@ export default function CollaborateurContenu({ id, onglet, onOnglet }: Props) {
     { id: 'formations', label: 'Formations' },
     ...(plaintes ? [{ id: 'plaintes', label: 'Plaintes' }] : []),
     { id: 'hierarchie', label: 'Hiérarchie' },
+    { id: 'delegations', label: 'Délégations' },
   ];
   const actif = titreOnglet(defs.map((d) => d.id), onglet);
 
@@ -109,6 +111,7 @@ export default function CollaborateurContenu({ id, onglet, onOnglet }: Props) {
       {actif === 'hierarchie' && (
         <Charge etat={hier.etat} recharger={hier.recharger}>{(h) => <OngletHierarchie h={h} />}</Charge>
       )}
+      {actif === 'delegations' && <DelegationsOnglet id={id} />}
     </Onglets>
     </>
   );
