@@ -90,5 +90,6 @@ class ApiConstants {
 
   static String get presenceMobile => '$prefixRh/mobile/presence';
   static String get presenceAdmin => '$prefixRh/admin/presence';
+  static String get workflow => '$prefixRh/workflow';
 }
 

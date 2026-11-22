@@ -42,6 +42,44 @@ String formatDateHeureIso(Object? brut) {
   return d == null ? kValeurAbsente : formatDateHeure(d);
 }
 
+/// Analyse une date ISO vers l'heure fixe d'`Africa/Tunis` (UTC+1) lorsque l'horodatage
+/// porte un fuseau (`Z` ou `+hh:mm`). Les dates naïves sans fuseau conservent leurs composantes.
+DateTime? analyserDateTunis(Object? brut) {
+  if (brut == null) return null;
+  if (brut is DateTime) return enHeureTunis(brut);
+  final s = brut.toString().trim();
+  if (s.isEmpty) return null;
+  final d = DateTime.tryParse(s);
+  if (d == null) return null;
+  return d.isUtc ? enHeureTunis(d) : d;
+}
+
+/// Convertit un [DateTime] UTC en composantes locales `Africa/Tunis` (UTC+1 fixe).
+/// Un [DateTime] local déjà construit en horloge locale est conservé tel quel sauf si UTC.
+DateTime enHeureTunis(DateTime d) {
+  if (!d.isUtc) return d;
+  final t = d.add(const Duration(hours: 1));
+  return DateTime(t.year, t.month, t.day, t.hour, t.minute, t.second, t.millisecond, t.microsecond);
+}
+
+/// Date du jour à Tunis (`Africa/Tunis`, UTC+1 fixe), ramenée à minuit.
+DateTime aujourdhuiTunis([DateTime? maintenant]) {
+  final base = (maintenant ?? DateTime.now()).toUtc().add(const Duration(hours: 1));
+  return DateTime(base.year, base.month, base.day);
+}
+
+/// Date ISO vers `jj/mm/aaaa` en heure `Africa/Tunis` ; [kValeurAbsente] si absente ou illisible.
+String formatDateTunisIso(Object? brut) {
+  final d = analyserDateTunis(brut);
+  return d == null ? kValeurAbsente : formatDate(d);
+}
+
+/// Date-heure ISO vers `jj/mm/aaaa hh:mm` en heure `Africa/Tunis` ; [kValeurAbsente] si absente.
+String formatDateHeureTunisIso(Object? brut) {
+  final d = analyserDateTunis(brut);
+  return d == null ? kValeurAbsente : formatDateHeure(d);
+}
+
 /// Nombre de jours calendaires d'une période, bornes comprises (>= 1).
 int nombreJoursPeriode(DateTime debut, DateTime fin) {
   final a = DateTime.utc(debut.year, debut.month, debut.day);
