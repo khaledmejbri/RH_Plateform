@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import {
   deleteOrganigrammeManager,
-  getCollaborateursPage,
   getOrganigramme,
+  getTousCollaborateurs,
   nomCollaborateur,
   postOrganigrammeManager,
   postOrganigrammeNoeud,
@@ -16,124 +17,33 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { useDialogA11y } from '../components/useDialogA11y';
 import { Icon } from '../components/ui';
 import { correspond, pluriel, useFiltresUrl } from '../utils/filtres';
+import {
+  collectDescendantIds,
+  collectSearchMatchIds,
+  construireIndexNoeuds,
+  findNoeud,
+  findPathIds,
+  flattenNoeuds,
+  matchesSearch,
+  NIVEAU_DG,
+  NIVEAU_DIRECTION,
+  niveauType,
+  normaliserVueOrganigramme,
+  peutRattacher,
+  sansResponsable,
+  TYPES_NOEUD,
+  typesCreables,
+  type VueOrganigramme,
+} from '../utils/organigramme';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
+import OrganigrammeListeVue from './OrganigrammeListeVue';
 
 type ModalKind = 'creer' | 'editer' | 'manager' | 'rattacher' | 'confirm-retrait' | null;
 
-/** D-H04 : catalogue fermé, du plus haut au plus bas niveau (même ordre que le serveur). */
-const TYPES_NOEUD = ['Direction Générale', 'Direction', 'Département', 'Service'] as const;
-const NIVEAU_DG = 0;
-const NIVEAU_DIRECTION = 1;
 const SUCCESS_DISMISS_MS = 4000;
 /** Arbre replié à l'ouverture : la Direction générale et ses directions seulement (ORG-4). */
 const COLLAPSE_DEPTH_DEFAULT = 1;
 const DND_MIME = 'application/x-sirh-noeud';
-
-function normaliserType(t: string): string {
-  return t.normalize('NFD').replace(/\p{M}/gu, '').replace(/[\s_-]/g, '').toLowerCase();
-}
-
-/** Niveau du type (0 = Direction Générale … 3 = Service), -1 si type non reconnu. */
-function niveauType(t: string | null | undefined): number {
-  if (!t) return -1;
-  const cle = normaliserType(t);
-  return TYPES_NOEUD.findIndex((x) => normaliserType(x) === cle);
-}
-
-/** Types qu'on peut créer sous `parent` (ou sans nœud sélectionné). La DG seulement si elle n'existe pas encore. */
-function typesCreables(parent: OrganigrammeNoeud | null, dgExiste: boolean): string[] {
-  if (!parent) {
-    // Une direction est rattachée d'office à la DG : il faut donc que la DG existe.
-    return TYPES_NOEUD.filter((_, i) => (i === NIVEAU_DG ? !dgExiste : i !== NIVEAU_DIRECTION || dgExiste));
-  }
-  const niveau = niveauType(parent.type_noeud);
-  if (niveau < 0) return [];
-  return TYPES_NOEUD.filter((_, i) => i > niveau && (i !== NIVEAU_DIRECTION || niveau === NIVEAU_DG));
-}
-
-/** Même règle que le serveur : parent de niveau strictement supérieur ; une direction uniquement sous la DG. */
-function peutRattacher(noeud: OrganigrammeNoeud, parent: OrganigrammeNoeud | null): boolean {
-  const n = niveauType(noeud.type_noeud);
-  if (n < 0) return false;
-  if (!parent) return n > NIVEAU_DIRECTION;
-  if (n === NIVEAU_DG) return false;
-  const p = niveauType(parent.type_noeud);
-  if (p < 0 || p >= n) return false;
-  return n !== NIVEAU_DIRECTION || p === NIVEAU_DG;
-}
-
-function flattenNoeuds(racines: OrganigrammeNoeud[]): OrganigrammeNoeud[] {
-  const out: OrganigrammeNoeud[] = [];
-  const walk = (n: OrganigrammeNoeud) => {
-    out.push(n);
-    n.enfants.forEach(walk);
-  };
-  racines.forEach(walk);
-  return out;
-}
-
-function collectDescendantIds(noeud: OrganigrammeNoeud): Set<string> {
-  const ids = new Set<string>();
-  const walk = (n: OrganigrammeNoeud) => {
-    ids.add(n.identifiant);
-    n.enfants.forEach(walk);
-  };
-  walk(noeud);
-  return ids;
-}
-
-function findNoeud(racines: OrganigrammeNoeud[], id: string): OrganigrammeNoeud | null {
-  for (const n of flattenNoeuds(racines)) {
-    if (n.identifiant === id) return n;
-  }
-  return null;
-}
-
-function findPathIds(racines: OrganigrammeNoeud[], targetId: string): string[] {
-  const path: string[] = [];
-  const walk = (nodes: OrganigrammeNoeud[], trail: string[]): boolean => {
-    for (const n of nodes) {
-      const next = [...trail, n.identifiant];
-      if (n.identifiant === targetId) {
-        path.push(...next);
-        return true;
-      }
-      if (walk(n.enfants, next)) return true;
-    }
-    return false;
-  };
-  walk(racines, []);
-  return path;
-}
-
-/** Recherche d'une unité, d'un responsable ou d'un membre (sans accents, tous les mots). */
-function matchesSearch(n: OrganigrammeNoeud, q: string): boolean {
-  if (!q.trim()) return true;
-  return correspond(
-    [
-      n.libelle,
-      n.code,
-      n.type_noeud,
-      n.titre_poste,
-      n.manager ? `${n.manager.prenom} ${n.manager.nom}` : '',
-      n.manager?.matricule,
-      ...(n.membres ?? []).map((m) => `${m.prenom} ${m.nom} ${m.matricule}`),
-    ],
-    q,
-  );
-}
-
-function collectSearchMatchIds(racines: OrganigrammeNoeud[], q: string): Set<string> {
-  const ids = new Set<string>();
-  if (!q) return ids;
-  for (const n of flattenNoeuds(racines)) {
-    if (matchesSearch(n, q)) {
-      findPathIds(racines, n.identifiant).forEach((id) => ids.add(id));
-      ids.add(n.identifiant);
-    }
-  }
-  return ids;
-}
 
 function initials(prenom: string, nom: string): string {
   const a = prenom.trim().charAt(0);
@@ -143,10 +53,6 @@ function initials(prenom: string, nom: string): string {
 
 function libelleCollaborateurs(n: number): string {
   return n <= 1 ? `${n} collaborateur` : `${n} collaborateurs`;
-}
-
-function sansResponsable(n: OrganigrammeNoeud): boolean {
-  return n.actif && !n.manager;
 }
 
 function writeForbiddenMessage(e: unknown): string {
@@ -508,12 +414,15 @@ export default function OrganigrammePage() {
   const [selected, setSelected] = useState<OrganigrammeNoeud | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
   const [parentPourCreation, setParentPourCreation] = useState<OrganigrammeNoeud | null>(null);
+  const [parentIdPourCreation, setParentIdPourCreation] = useState('');
   const [collaborateurs, setCollaborateurs] = useState<CollaborateurRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [moving, setMoving] = useState(false);
-  const filtresOrg = useFiltresUrl({ q: '' });
+  const filtresOrg = useFiltresUrl({ q: '', vue: 'arbre' });
   const search = filtresOrg.valeurs.q;
+  const vue = normaliserVueOrganigramme(filtresOrg.valeurs.vue);
   const setSearch = (v: string) => filtresOrg.definir({ q: v });
+  const setVue = (v: VueOrganigramme) => filtresOrg.definir({ vue: v });
   const [inclureInactifs, setInclureInactifs] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [aideOpen, setAideOpen] = useState(false);
@@ -534,6 +443,11 @@ export default function OrganigrammePage() {
   const [dragged, setDragged] = useState<OrganigrammeNoeud | null>(null);
 
   const tousNoeuds = useMemo(() => flattenNoeuds(racines), [racines]);
+  const indexNoeuds = useMemo(() => construireIndexNoeuds(tousNoeuds), [tousNoeuds]);
+  const collaborateursActifs = useMemo(
+    () => collaborateurs.filter((c) => c.statut === 'ACTIF').length,
+    [collaborateurs],
+  );
   const dgExiste = useMemo(() => racines.some((n) => niveauType(n.type_noeud) === NIVEAU_DG), [racines]);
   /** D-H04 : à droite l'arbre sous la DG ; à gauche les départements / services sans parent, à glisser. */
   const arbre = useMemo(() => racines.filter((n) => niveauType(n.type_noeud) === NIVEAU_DG), [racines]);
@@ -581,12 +495,12 @@ export default function OrganigrammePage() {
       setErr(null);
       if (!opts?.silent) setLoading(true);
       try {
-        const [org, page] = await Promise.all([
+        const [org, collabs] = await Promise.all([
           getOrganigramme(inclureInactifs),
-          getCollaborateursPage(0, 200),
+          getTousCollaborateurs(),
         ]);
         setRacines(org.racines);
-        setCollaborateurs(page.contenu);
+        setCollaborateurs(collabs);
         initExpanded(org.racines, idToKeep);
         if (idToKeep) {
           const flat = flattenNoeuds(org.racines);
@@ -693,16 +607,13 @@ export default function OrganigrammePage() {
     const types = typesCreables(parent, dgExiste);
     if (types.length === 0) return;
     setParentPourCreation(parent);
+    setParentIdPourCreation(parent?.identifiant ?? '');
     setCode('');
     setLibelle('');
     setTypeNoeud(types[0]);
     setTitrePoste('');
     setActif(true);
     setModal('creer');
-  }
-
-  function openAjouter() {
-    openCreer(selected);
   }
 
   /** Clic sur la carte déjà sélectionnée = désélection (création libre, sans parent). */
@@ -749,16 +660,17 @@ export default function OrganigrammePage() {
     setSaving(true);
     setErr(null);
     try {
+      const parentFinal = parentPourCreation?.identifiant || parentIdPourCreation || undefined;
       const created = await postOrganigrammeNoeud({
         code: code.trim(),
         libelle: libelle.trim(),
         type_noeud: typeNoeud.trim(),
         titre_poste: titrePoste.trim() || undefined,
-        parent_identifiant: parentPourCreation?.identifiant,
+        parent_identifiant: parentFinal,
         actif,
       });
       setModal(null);
-      const aRattacherApres = !parentPourCreation && niveauType(typeNoeud) > NIVEAU_DIRECTION;
+      const aRattacherApres = !parentFinal && niveauType(typeNoeud) > NIVEAU_DIRECTION;
       showSuccess(
         aRattacherApres
           ? `${typeNoeud} « ${libelle.trim()} » créé(e) : glissez-le(la) dans l’organigramme pour le(la) rattacher.`
@@ -893,7 +805,7 @@ export default function OrganigrammePage() {
               <span className="muted small" role="status" aria-live="polite">
                 {nbTrouves === 0 ? 'Aucun résultat pour ces filtres' : pluriel(nbTrouves, 'résultat')}
               </span>
-              <button type="button" className="btn btn--ghost btn--sm" onClick={filtresOrg.reinitialiser}>
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => setSearch('')}>
                 Réinitialiser
               </button>
             </>
@@ -910,17 +822,21 @@ export default function OrganigrammePage() {
             <button
               type="button"
               className="btn btn--primary"
-              onClick={openAjouter}
-              disabled={saving || moving || typesCreables(selected, dgExiste).length === 0}
+              onClick={() => openCreer(vue === 'liste' ? null : selected)}
+              disabled={
+                saving ||
+                moving ||
+                typesCreables(vue === 'liste' ? null : selected, dgExiste).length === 0
+              }
               title={
-                selected
+                vue !== 'liste' && selected
                   ? typesCreables(selected, dgExiste).length === 0
                     ? `Un élément de type « ${libelleTypeNoeud(selected.type_noeud)} » ne contient pas de sous-élément`
                     : `Créer sous « ${selected.libelle} » : ${typesCreables(selected, dgExiste).join(', ')}`
-                  : 'Créer une direction (rattachée à la DG), un département ou un service à rattacher'
+                  : 'Créer une direction (rattachée à la DG), un département ou un service'
               }
             >
-              {selected ? `+ Ajouter sous « ${selected.libelle} »` : '+ Ajouter'}
+              {vue !== 'liste' && selected ? `+ Ajouter sous « ${selected.libelle} »` : '+ Ajouter'}
             </button>
           ) : null}
         </div>
@@ -954,12 +870,36 @@ export default function OrganigrammePage() {
       )}
 
       <div className="org-toolbar" role="toolbar" aria-label="Navigation organigramme">
-        <button type="button" className="btn btn--ghost btn--sm" onClick={expandAll} disabled={loading}>
-          Tout développer
-        </button>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={collapseAll} disabled={loading}>
-          Tout replier
-        </button>
+        <div className="tabs org-view-switch" role="tablist" aria-label="Mode d’affichage">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={vue === 'arbre'}
+            className={`tab${vue === 'arbre' ? ' tab--active' : ''}`}
+            onClick={() => setVue('arbre')}
+          >
+            Arbre
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={vue === 'liste'}
+            className={`tab${vue === 'liste' ? ' tab--active' : ''}`}
+            onClick={() => setVue('liste')}
+          >
+            Liste
+          </button>
+        </div>
+        {vue === 'arbre' ? (
+          <>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={expandAll} disabled={loading}>
+              Tout développer
+            </button>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={collapseAll} disabled={loading}>
+              Tout replier
+            </button>
+          </>
+        ) : null}
         <label className="org-toolbar__check">
           <input
             type="checkbox"
@@ -998,7 +938,29 @@ export default function OrganigrammePage() {
         ) : null}
       </div>
 
-      <div className={`org-layout${!loading && aRattacher.length > 0 ? ' org-layout--split' : ''}`}>
+      {vue === 'liste' ? (
+        <OrganigrammeListeVue
+          tousNoeuds={tousNoeuds}
+          indexNoeuds={indexNoeuds}
+          collaborateursActifs={collaborateursActifs}
+          loading={loading}
+          err={err}
+          searchQuery={search}
+          lectureSeule={lectureSeule}
+          saving={saving}
+          moving={moving}
+          dgExiste={dgExiste}
+          selectedId={selected?.identifiant ?? null}
+          onReload={() => void reload(selected?.identifiant ?? null)}
+          onResetSearch={() => setSearch('')}
+          onOpenCreer={openCreer}
+          onSelect={selectionner}
+          onOpenManager={openManager}
+          onOpenEditer={openEditer}
+          onOpenRattacher={openRattacher}
+        />
+      ) : (
+        <div className={`org-layout${!loading && aRattacher.length > 0 ? ' org-layout--split' : ''}`}>
         {!loading && aRattacher.length > 0 ? (
           <section className="org-unassigned" aria-labelledby="org-unassigned-title">
             <h3 id="org-unassigned-title" className="org-unassigned__title">
@@ -1236,7 +1198,8 @@ export default function OrganigrammePage() {
             </p>
           )}
         </aside>
-      </div>
+        </div>
+      )}
 
       {modal === 'creer' && (
         <Modal
@@ -1251,7 +1214,20 @@ export default function OrganigrammePage() {
           <div className="form-grid">
             <div className="form-group">
               <label htmlFor="org-type">Type</label>
-              <select id="org-type" value={typeNoeud} onChange={(e) => setTypeNoeud(e.target.value)}>
+              <select
+                id="org-type"
+                value={typeNoeud}
+                onChange={(e) => {
+                  const nv = e.target.value;
+                  setTypeNoeud(nv);
+                  if (!parentPourCreation) {
+                    const p = parentIdPourCreation ? indexNoeuds.get(parentIdPourCreation) ?? null : null;
+                    if (!p || niveauType(nv) <= NIVEAU_DIRECTION || !peutRattacher({ type_noeud: nv }, p)) {
+                      setParentIdPourCreation('');
+                    }
+                  }
+                }}
+              >
                 {typesCreables(parentPourCreation, dgExiste).map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -1287,19 +1263,39 @@ export default function OrganigrammePage() {
               />
             </div>
             <div className="form-group full-width">
-              <label>Parent</label>
-              <input
-                readOnly
-                value={
-                  parentPourCreation
-                    ? `${libelleTypeNoeud(parentPourCreation.type_noeud)} · ${parentPourCreation.libelle}`
-                    : niveauType(typeNoeud) === NIVEAU_DIRECTION
-                      ? `Direction Générale (rattachement automatique)`
-                      : niveauType(typeNoeud) === NIVEAU_DG
-                        ? '— Sommet de la hiérarchie —'
-                        : '— À rattacher : à glisser ensuite dans l’organigramme —'
-                }
-              />
+              {parentPourCreation || niveauType(typeNoeud) <= NIVEAU_DIRECTION ? (
+                <>
+                  <label>Parent</label>
+                  <input
+                    readOnly
+                    value={
+                      parentPourCreation
+                        ? `${libelleTypeNoeud(parentPourCreation.type_noeud)} · ${parentPourCreation.libelle}`
+                        : niveauType(typeNoeud) === NIVEAU_DIRECTION
+                          ? 'Direction Générale (rattachement automatique)'
+                          : '— Sommet de la hiérarchie —'
+                    }
+                  />
+                </>
+              ) : (
+                <>
+                  <label htmlFor="org-parent-select">Parent (optionnel)</label>
+                  <select
+                    id="org-parent-select"
+                    value={parentIdPourCreation}
+                    onChange={(e) => setParentIdPourCreation(e.target.value)}
+                  >
+                    <option value="">— À rattacher (aucun parent) —</option>
+                    {tousNoeuds
+                      .filter((n) => peutRattacher({ type_noeud: typeNoeud }, n))
+                      .map((n) => (
+                        <option key={n.identifiant} value={n.identifiant}>
+                          {libelleTypeNoeud(n.type_noeud)} · {n.libelle}
+                        </option>
+                      ))}
+                  </select>
+                </>
+              )}
             </div>
             <div className="form-group checkbox-group">
               <label>
@@ -1432,7 +1428,12 @@ export default function OrganigrammePage() {
               />
             </div>
             <div className="form-group full-width">
-              <label htmlFor="org-manager-select">Collaborateur</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <label htmlFor="org-manager-select" style={{ margin: 0 }}>Collaborateur</label>
+                <Link to="/app/collaborateurs" className="btn btn--ghost btn--sm">
+                  Créer une fiche
+                </Link>
+              </div>
               <select
                 id="org-manager-select"
                 value={managerId}

@@ -230,7 +230,7 @@ export default function FonctionsPage() {
     <div className="page">
       <PageHeader
         title="Fonctions transverses"
-        lead="Fonctions métier (ex. Gestionnaire paie, DAF, Juriste) utilisables comme intervenants dans les workflows."
+        lead="Rôles transverses (ex. gestionnaire paie) attribués à des personnes, quelle que soit leur unité. Ils servent de destinataires dans les workflows. L'arbre des directions, départements et services se gère dans l'Organigramme."
         actions={
           !lectureSeule ? (
             <button type="button" className="btn btn--primary" onClick={ouvrirCreation}>

@@ -10,8 +10,6 @@ import DemandesAdministrativesPage from './pages/DemandesAdministrativesPage';
 import DocumentsAdministratifsPage from './pages/DocumentsAdministratifsPage';
 import FormationsPage from './pages/FormationsPage';
 import CollaborateursPage from './pages/CollaborateursPage';
-import UnitesOrganisationPage from './pages/UnitesOrganisationPage';
-import StructureOrganisationPage from './pages/StructureOrganisationPage';
 import OrganigrammePage from './pages/OrganigrammePage';
 import EvaluationsPage from './pages/EvaluationsPage';
 import AlerteEcartDetailPage from './pages/AlerteEcartDetailPage';
@@ -51,6 +49,8 @@ export default function App() {
           <Route path="/app/collaborateurs/:id" element={<FichePage type="collaborateur" />} />
           <Route path="/app/organisation/unites/:id" element={<FichePage type="unite" />} />
           <Route path="/app/organigramme" element={<OrganigrammePage />} />
+          <Route path="/app/structure" element={<Navigate to="/app/organigramme?vue=liste" replace />} />
+          <Route path="/app/unites" element={<Navigate to="/app/organigramme?vue=liste" replace />} />
           <Route path="/app/evaluations" element={<EvaluationsPage />} />
           <Route path="/app/evaluations/alertes-ecart/:id" element={<AlerteEcartDetailPage />} />
           <Route path="/app/evaluations/campagnes/:id" element={<FichePage type="campagne" />} />
@@ -70,8 +70,6 @@ export default function App() {
             <Route path="/app/conges/soldes/import" element={<ImportPage type="SOLDES" />} />
             <Route path="/app/plaintes" element={<PlaintesSuiviPage />} />
             <Route path="/app/plaintes/:id" element={<FichePage type="plainte" />} />
-            <Route path="/app/unites" element={<UnitesOrganisationPage />} />
-            <Route path="/app/structure" element={<StructureOrganisationPage />} />
           </Route>
         </Route>
       </Route>
