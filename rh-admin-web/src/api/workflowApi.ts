@@ -355,6 +355,146 @@ export type ResultatDecision =
     }
   | { statut: 202; reponse: { statut: string } };
 
+// ─── Types Supervision, Réaffectation et Délégations (lot W4 / W7b) ─────────
+
+export type InstanceResume = {
+  id: string;
+  objet_type: string;
+  objet_libelle: string;
+  objet_numero: string | null;
+  objet_id: string;
+  modele_code: string;
+  demandeur_id: string;
+  demandeur_nom: string;
+  statut: string;
+  etape_courante_code: string | null;
+  etape_courante_libelle: string | null;
+  echeance_le: string | null;
+  en_retard: boolean;
+  demarre_le: string;
+  termine_le: string | null;
+};
+
+export type CandidatAdmin = {
+  collaborateur_id: string;
+  compte_id: string | null;
+  nom: string;
+  origine: string;
+  pour_collaborateur_id: string | null;
+  pour_nom: string | null;
+  ajoute_le: string | null;
+  retire_le: string | null;
+};
+
+export type EtapeExecutionAdmin = {
+  id: string;
+  etape_code: string;
+  libelle: string;
+  ordre: number;
+  statut: string;
+  raison_saut: string | null;
+  resultat: string | null;
+  nb_renvois: number;
+  active_le: string | null;
+  terminee_le: string | null;
+};
+
+export type TacheAdmin = {
+  id: string;
+  etape_execution_id: string;
+  code_tache: string;
+  type: string;
+  statut: string;
+  libelle: string;
+  obligatoire: boolean;
+  echeance_le: string | null;
+  prochaine_relance_le: string | null;
+  en_retard: boolean;
+  nb_relances: number;
+  escalade_a_faire_le: string | null;
+  escalade_le: string | null;
+  version: number;
+  decision: string | null;
+  decideur_nom: string | null;
+  decide_le: string | null;
+  pour_nom: string | null;
+  commentaire: string | null;
+  candidats: CandidatAdmin[];
+};
+
+export type HistoriqueAdmin = {
+  id: string;
+  tache_id: string | null;
+  type_evenement: string;
+  acteur_compte_id: string | null;
+  acteur_nom: string | null;
+  pour_nom: string | null;
+  details: Record<string, unknown> | null;
+  horodatage: string;
+};
+
+export type InstanceDetailAdmin = {
+  id: string;
+  objet_type: string;
+  objet_libelle: string;
+  objet_numero: string | null;
+  objet_id: string;
+  modele_code: string;
+  modele_version_numero: number;
+  demandeur_id: string;
+  demandeur_nom: string;
+  statut: string;
+  etape_courante_code: string | null;
+  etape_courante_libelle: string | null;
+  demarre_le: string;
+  termine_le: string | null;
+  resultat_motif: string | null;
+  variables: Record<string, unknown> | null;
+  etapes: EtapeExecutionAdmin[];
+  taches: TacheAdmin[];
+  historique: HistoriqueAdmin[];
+};
+
+export type ReaffecterTacheResponse = {
+  tache_id: string;
+  instance_id: string;
+  statut_instance: string;
+  echeance_le: string | null;
+  version: number;
+  candidats: CandidatAdmin[];
+};
+
+export type IndicateurEtape = {
+  modele_code: string;
+  etape_code: string;
+  libelle: string;
+  delai_moyen_heures: number;
+  nb: number;
+};
+
+export type IndicateursWorkflow = {
+  en_cours: number;
+  en_retard: number;
+  bloquees: number;
+  par_etape: IndicateurEtape[];
+};
+
+export type DelegationAdmin = {
+  id: string;
+  delegant_id: string;
+  delegant_nom: string;
+  delegue_id: string;
+  delegue_nom: string;
+  du: string;
+  au: string;
+  objet_types: string[] | null;
+  motif: string | null;
+  origine: string;
+  active: boolean;
+  creee_le: string;
+  annulee_le: string | null;
+};
+
 // ─── Erreur typée (D-W7-03) ──────────────────────────────────────────────────
 
 export class WorkflowApiError extends Error {
@@ -665,4 +805,90 @@ export function getSuiviObjetWorkflow(objetType: string, objetId: string): Promi
   return appeler<SuiviInstance>(
     `${USER}/objets/${encodeURIComponent(objetType)}/${encodeURIComponent(objetId)}/suivi`,
   );
+}
+
+// ─── Endpoints Supervision, Réaffectation et Délégations (W7b) ───────────────
+
+export function getInstancesWorkflow(params: {
+  objet_type?: string;
+  statut?: string;
+  etape?: string;
+  en_retard?: boolean;
+  demandeur_id?: string;
+  intervenant_id?: string;
+  du?: string;
+  au?: string;
+  page?: number;
+  taille?: number;
+} = {}): Promise<PageWorkflow<InstanceResume>> {
+  const q = new URLSearchParams();
+  if (params.objet_type) q.set('objet_type', params.objet_type);
+  if (params.statut) q.set('statut', params.statut);
+  if (params.etape) q.set('etape', params.etape);
+  if (params.en_retard !== undefined) q.set('en_retard', String(params.en_retard));
+  if (params.demandeur_id) q.set('demandeur_id', params.demandeur_id);
+  if (params.intervenant_id) q.set('intervenant_id', params.intervenant_id);
+  if (params.du) q.set('du', params.du);
+  if (params.au) q.set('au', params.au);
+  q.set('page', String(params.page ?? 0));
+  q.set('taille', String(params.taille ?? 20));
+  return appeler<PageWorkflow<InstanceResume>>(`${ADMIN}/instances?${q}`);
+}
+
+export function getInstanceDetailWorkflow(id: string): Promise<InstanceDetailAdmin> {
+  return appeler<InstanceDetailAdmin>(`${ADMIN}/instances/${encodeURIComponent(id)}`);
+}
+
+export function reaffecterTacheWorkflow(
+  tacheId: string,
+  corps: { collaborateur_ids: string[]; motif: string; version: number },
+): Promise<ReaffecterTacheResponse> {
+  return appeler<ReaffecterTacheResponse>(`${ADMIN}/taches/${encodeURIComponent(tacheId)}/reaffecter`, {
+    method: 'POST',
+    ...jsonBody(corps),
+  });
+}
+
+export function getIndicateursWorkflow(du?: string, au?: string): Promise<IndicateursWorkflow> {
+  const q = new URLSearchParams();
+  if (du) q.set('du', du);
+  if (au) q.set('au', au);
+  const qs = q.toString();
+  return appeler<IndicateursWorkflow>(`${ADMIN}/indicateurs${qs ? `?${qs}` : ''}`);
+}
+
+export function getDelegationsAdmin(params: {
+  actives?: boolean;
+  delegant_id?: string;
+  delegue_id?: string;
+  page?: number;
+  taille?: number;
+} = {}): Promise<PageWorkflow<DelegationAdmin>> {
+  const q = new URLSearchParams();
+  if (params.actives !== undefined) q.set('actives', String(params.actives));
+  if (params.delegant_id) q.set('delegant_id', params.delegant_id);
+  if (params.delegue_id) q.set('delegue_id', params.delegue_id);
+  q.set('page', String(params.page ?? 0));
+  q.set('taille', String(params.taille ?? 20));
+  return appeler<PageWorkflow<DelegationAdmin>>(`${ADMIN}/delegations?${q}`);
+}
+
+export function creerDelegationAdmin(corps: {
+  delegant_id: string;
+  delegue_id: string;
+  du: string;
+  au: string;
+  objet_types?: string[] | null;
+  motif?: string | null;
+}): Promise<DelegationAdmin> {
+  return appeler<DelegationAdmin>(`${ADMIN}/delegations`, {
+    method: 'POST',
+    ...jsonBody(corps),
+  });
+}
+
+export function annulerDelegationAdmin(id: string): Promise<void> {
+  return appeler<void>(`${ADMIN}/delegations/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
 }
