@@ -13,17 +13,6 @@ import '../data/workflow_models.dart';
 import '../data/workflow_repository.dart';
 import '../providers/workflow_providers.dart';
 
-const List<String> _typesObjetDelegables = [
-  'CONGE',
-  'AUTORISATION_SORTIE',
-  'ORDRE_MISSION',
-  'DOCUMENT',
-  'FORMATION',
-  'POINTAGE_MANUEL',
-  'HEURES_SUP',
-  'PLAINTE',
-];
-
 /// Écran « Mes délégations » (`/delegations`) : données / reçues, création et annulation.
 class MesDelegationsScreen extends ConsumerStatefulWidget {
   const MesDelegationsScreen({super.key});
@@ -635,7 +624,7 @@ class _FeuilleCreationDelegationState extends ConsumerState<_FeuilleCreationDele
               spacing: 6,
               runSpacing: 4,
               children: [
-                for (final code in _typesObjetDelegables)
+                for (final code in typesObjetDelegables)
                   FilterChip(
                     label: Text(libelleObjetType(code)),
                     selected: _typesSelectionnes.contains(code),

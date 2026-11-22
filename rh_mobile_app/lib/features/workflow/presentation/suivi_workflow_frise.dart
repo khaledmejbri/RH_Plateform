@@ -47,7 +47,9 @@ class SuiviWorkflowFrise extends StatelessWidget {
               ),
             ],
           ),
-          if (courante != null && courante.libelle.isNotEmpty) ...[
+          if ((suivi.statut == 'EN_COURS' || suivi.statut == 'BLOQUEE') &&
+              courante != null &&
+              courante.libelle.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(
               width: double.infinity,

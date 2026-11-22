@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:rh_mobile_app/core/format/formats.dart';
 import 'package:rh_mobile_app/features/organigramme/data/organigramme_models.dart';
+import 'package:rh_mobile_app/features/workflow/data/workflow_labels.dart';
 import 'package:rh_mobile_app/features/workflow/data/workflow_models.dart';
 
 void main() {
@@ -20,7 +21,7 @@ void main() {
             'objet_id': 'o1',
             'demandeur_nom': 'Sarra Khemiri',
             'en_retard': true,
-            'origine': 'DELEGATION',
+            'origine': 'DELEGUE',
             'pour_nom': 'Omar Belhadj',
             'actions_permises': ['APPROUVER', 'REFUSER'],
             'version': 3,
@@ -99,14 +100,14 @@ void main() {
         objetLibelle: 'Congé annuel',
         objetId: 'o2',
         enRetard: false,
-        origine: 'DELEGATION',
+        origine: 'DELEGUE',
         pourNom: 'Ali Mansouri',
         actionsPermises: ['FAIT'],
         version: 2,
         resume: {},
       );
       final fusionne = detail.avecMetaListe(listeItem);
-      expect(fusionne.origine, 'DELEGATION');
+      expect(fusionne.origine, 'DELEGUE');
       expect(fusionne.pourNom, 'Ali Mansouri');
     });
   });
@@ -257,6 +258,51 @@ void main() {
     test('formatDateHeureTunisIso convertit un instant UTC en UTC+1', () {
       expect(formatDateHeureTunisIso('2026-11-25T10:30:00Z'), '25/11/2026 11:30');
       expect(formatDateHeureTunisIso('2026-11-25T10:30:00+02:00'), '25/11/2026 09:30');
+    });
+  });
+
+  group('Libellés workflow alignés serveur (OrigineCandidat, OrigineDelegation, catalogue)', () {
+    test('toutes les valeurs OrigineCandidat et OrigineDelegation ont un libellé français reconnu', () {
+      final originesCandidat = [
+        'TITULAIRE',
+        'DELEGUE',
+        'DELEGUE_AUTO',
+        'ESCALADE',
+        'REAFFECTATION',
+      ];
+      expect(libelleOrigineCandidat('TITULAIRE'), 'Titulaire');
+      expect(libelleOrigineCandidat('DELEGUE'), 'Délégué');
+      expect(libelleOrigineCandidat('DELEGUE_AUTO'), 'Délégué automatique');
+      expect(libelleOrigineCandidat('ESCALADE'), 'Escalade');
+      expect(libelleOrigineCandidat('REAFFECTATION'), 'Réaffectation');
+      for (final o in originesCandidat) {
+        expect(libelleOrigineCandidat(o), isNot('Valeur non reconnue'));
+      }
+
+      expect(libelleOrigineDelegation('MANUELLE'), 'Manuelle');
+      expect(libelleOrigineDelegation('AUTO_CONGE'), 'Automatique (congé)');
+      expect(libelleOrigineDelegation('MANUELLE'), isNot('Valeur non reconnue'));
+      expect(libelleOrigineDelegation('AUTO_CONGE'), isNot('Valeur non reconnue'));
+    });
+
+    test('typesObjetDelegables exclut PLAINTE et couvre uniquement les 7 types du catalogue', () {
+      expect(typesObjetDelegables, hasLength(7));
+      expect(typesObjetDelegables, isNot(contains('PLAINTE')));
+      expect(
+        typesObjetDelegables,
+        containsAll([
+          'CONGE',
+          'AUTORISATION_SORTIE',
+          'ORDRE_MISSION',
+          'DOCUMENT',
+          'FORMATION',
+          'POINTAGE_MANUEL',
+          'HEURES_SUP',
+        ]),
+      );
+      for (final t in typesObjetDelegables) {
+        expect(libelleObjetType(t), isNot('Valeur non reconnue'));
+      }
     });
   });
 }

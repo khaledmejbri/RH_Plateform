@@ -244,10 +244,10 @@ class _EnteteTacheCard extends StatelessWidget {
             ),
           ] else if (detail.origine != null &&
               detail.origine!.isNotEmpty &&
-              detail.origine != 'NOMINATIF') ...[
+              detail.origine != 'TITULAIRE') ...[
             const SizedBox(height: 4),
             Text(
-              'Origine : ${libelleOrigineTache(detail.origine)}',
+              'Origine : ${libelleOrigineCandidat(detail.origine)}',
               style: text.bodySmall?.copyWith(color: AppTheme.primaryDark),
             ),
           ],

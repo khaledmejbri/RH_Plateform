@@ -166,7 +166,7 @@ void main() {
           du: '2026-11-21',
           au: '2026-11-25',
           objetTypes: [],
-          origine: 'CONGE',
+          origine: 'AUTO_CONGE',
           active: true,
         ),
       ],
@@ -190,6 +190,8 @@ void main() {
     await tester.tap(find.text('Reçues'));
     await tester.pumpAndSettle();
     expect(find.text('Délégant : Ali Mansouri'), findsOneWidget);
+    expect(find.text('Origine : Automatique (congé)'), findsOneWidget);
+    expect(find.textContaining('Valeur non reconnue'), findsNothing);
   });
 
   testWidgets('création : exclut soi-même, recherche organigramme, période 90 j et 409',
@@ -238,6 +240,8 @@ void main() {
     // Soi-même (« Omar Belhadj ») ne doit pas apparaître dans la liste des délégués
     expect(find.text('Omar Belhadj'), findsNothing);
     expect(find.text('Nadia Ayari'), findsOneWidget);
+    // PLAINTE hors catalogue serveur ne doit pas être proposé
+    expect(find.text('Plainte / réclamation'), findsNothing);
 
     await tester.enterText(find.byKey(const Key('delegation-recherche')), 'Nadia');
     await tester.pump();

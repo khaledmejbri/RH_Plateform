@@ -365,10 +365,10 @@ class _TacheCard extends StatelessWidget {
                     ],
                   ),
                 ),
-              ] else if (item.origine != null && item.origine!.isNotEmpty && item.origine != 'NOMINATIF') ...[
+              ] else if (item.origine != null && item.origine!.isNotEmpty && item.origine != 'TITULAIRE') ...[
                 const SizedBox(height: 4),
                 Text(
-                  libelleOrigineTache(item.origine),
+                  libelleOrigineCandidat(item.origine),
                   style: text.bodySmall?.copyWith(color: AppTheme.primaryDark),
                 ),
               ],

@@ -46,7 +46,7 @@ TacheListeItem _tache({
     demandeurNom: 'Sarra Khemiri',
     echeanceLe: '2026-11-28T10:00:00Z',
     enRetard: enRetard,
-    origine: pourNom != null ? 'DELEGATION' : 'NOMINATIF',
+    origine: pourNom != null ? 'DELEGUE' : 'TITULAIRE',
     pourNom: pourNom,
     actionsPermises: const ['APPROUVER', 'REFUSER'],
     version: 1,
@@ -167,5 +167,26 @@ void main() {
 
     expect(appelsPages, [0, 1]);
     expect(find.text('Validation RH'), findsOneWidget);
+  });
+
+  testWidgets('tâche TITULAIRE sans pour_nom n’affiche jamais Valeur non reconnue',
+      (tester) async {
+    final repo = _FauxWorkflowRepo((statut, page, taille) async {
+      if (statut != 'A_TRAITER') {
+        return const PageResponse(elements: [], page: 0, taille: 20, total: 0);
+      }
+      return PageResponse(
+        elements: [_tache(id: 't-tit', etape: 'Validation manager')],
+        page: 0,
+        taille: 20,
+        total: 1,
+      );
+    });
+
+    await tester.pumpWidget(_app(repo));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Validation manager'), findsOneWidget);
+    expect(find.textContaining('Valeur non reconnue'), findsNothing);
   });
 }

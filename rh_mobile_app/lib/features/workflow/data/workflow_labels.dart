@@ -16,12 +16,12 @@ const Map<String, String> _actionsDecision = {
   'FAIT': 'Marquer comme fait',
 };
 
-const Map<String, String> _originesTache = {
-  'NOMINATIF': 'Affectée à vous',
-  'POOL': 'Équipe / rôle partagé',
-  'DELEGATION': 'Par délégation',
-  'REAFFECTATION': 'Réaffectée',
-  'ESCALADE': 'Escaladée',
+const Map<String, String> _originesCandidat = {
+  'TITULAIRE': 'Titulaire',
+  'DELEGUE': 'Délégué',
+  'DELEGUE_AUTO': 'Délégué automatique',
+  'ESCALADE': 'Escalade',
+  'REAFFECTATION': 'Réaffectation',
 };
 
 const Map<String, String> _statutsEtapeSuivi = {
@@ -107,8 +107,19 @@ const Map<String, String> _clesResume = {
   'affichage_beneficiaires': 'Bénéficiaires',
 };
 
+const List<String> typesObjetDelegables = [
+  'CONGE',
+  'AUTORISATION_SORTIE',
+  'ORDRE_MISSION',
+  'DOCUMENT',
+  'FORMATION',
+  'POINTAGE_MANUEL',
+  'HEURES_SUP',
+];
+
 String libelleActionDecision(String? code) => _lire(_actionsDecision, code);
-String libelleOrigineTache(String? code) => _lire(_originesTache, code);
+String libelleOrigineCandidat(String? code) => _lire(_originesCandidat, code);
+String libelleOrigineTache(String? code) => libelleOrigineCandidat(code);
 String libelleStatutEtapeSuivi(String? code) => _lire(_statutsEtapeSuivi, code);
 String libelleResultatEtape(String? code) => _lire(_resultatsEtape, code);
 String libelleRaisonSaut(String? code) => _lire(_raisonsSaut, code);
@@ -147,8 +158,7 @@ String libelleOrigineDelegation(String? origine) {
   switch (origine?.trim()) {
     case 'MANUELLE':
       return 'Manuelle';
-    case 'CONGE':
-    case 'AUTOMATIQUE_CONGE':
+    case 'AUTO_CONGE':
       return 'Automatique (congé)';
     case '':
     case null:

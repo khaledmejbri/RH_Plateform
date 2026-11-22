@@ -364,4 +364,48 @@ void main() {
     expect(find.text('Équipe Ressources humaines'), findsOneWidget);
     expect(find.textContaining('Candidat Secret'), findsNothing);
   });
+
+  testWidgets('tâche TITULAIRE n’affiche pas Valeur non reconnue et frise ANNULEE masque Étape en cours',
+      (tester) async {
+    final detailAnnulee = TacheDetail.fromJson({
+      'tache_id': 't1',
+      'instance_id': 'i1',
+      'type': 'VALIDATION',
+      'statut': 'TRAITEE',
+      'libelle': 'Validation manager',
+      'objet_type': 'ORDRE_MISSION',
+      'objet_libelle': 'Ordre de mission',
+      'objet_id': '00000000-0000-4000-8000-000000000001',
+      'en_retard': false,
+      'origine': 'TITULAIRE',
+      'actions_permises': const [],
+      'version': 2,
+      'resume': const {},
+      'suivi': {
+        'instance_id': 'i1',
+        'objet_type': 'ORDRE_MISSION',
+        'objet_id': '00000000-0000-4000-8000-000000000001',
+        'modele_version_numero': 1,
+        'statut': 'ANNULEE',
+        'etape_courante': {
+          'code': 'MGR',
+          'libelle': 'Validation manager',
+        },
+        'etapes': const [
+          {
+            'code': 'MGR',
+            'libelle': 'Validation manager',
+            'statut': 'ANNULEE',
+          },
+        ],
+      },
+    });
+    final repo = _FauxWorkflowRepo(detail: detailAnnulee);
+    await tester.pumpWidget(_app(repo));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Valeur non reconnue'), findsNothing);
+    expect(find.textContaining('Étape en cours'), findsNothing);
+    expect(find.text('Annulée'), findsAtLeastNWidgets(1));
+  });
 }
