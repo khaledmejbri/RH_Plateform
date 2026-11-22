@@ -11,12 +11,38 @@ final RegExp _uuid = RegExp(
 /// notifications), repli sur la déduction par mots-clés historique. L'identifiant doit être un UUID :
 /// sinon on retombe sur la liste du module, jamais sur un chemin construit à partir d'un texte libre.
 String? routePourNotification(AppNotification n) {
+  final ev = n.evenement?.trim().toUpperCase();
+  if (ev != null && ev.isNotEmpty) {
+    switch (ev) {
+      case 'WF_TACHE_CREEE':
+      case 'WF_RELANCE':
+      case 'WF_ESCALADE':
+      case 'WF_TACHE_A_TRAITER':
+        return '/taches';
+      case 'WF_DELEGATION':
+        return '/delegations';
+      case 'WF_BLOQUEE':
+        // Supervision back-office web uniquement (D-W8-07).
+        return null;
+      case 'WF_DECISION':
+      case 'WF_FIN':
+      case 'WF_INFORMATION':
+        return _routeParObjetType(n) ?? _routeHeritee(n);
+    }
+  }
+  return _routeParObjetType(n) ?? _routeHeritee(n);
+}
+
+String? _routeParObjetType(AppNotification n) {
   final type = n.objetType;
   if (type != null && type.isNotEmpty) {
     final id = n.objetId;
     final idValide = id != null && _uuid.hasMatch(id);
     switch (type) {
       case 'DEMANDE':
+      case 'CONGE':
+      case 'AUTORISATION_SORTIE':
+      case 'ORDRE_MISSION':
         return idValide ? '/demandes-admin/$id' : '/demandes-admin';
       case 'DOCUMENT':
         return idValide ? '/documents/$id' : '/documents';
@@ -41,7 +67,7 @@ String? routePourNotification(AppNotification n) {
         return null;
     }
   }
-  return _routeHeritee(n);
+  return null;
 }
 
 String? _routeHeritee(AppNotification n) {

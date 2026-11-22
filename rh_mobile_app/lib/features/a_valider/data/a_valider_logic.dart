@@ -1,8 +1,14 @@
 import 'package:dio/dio.dart';
 
-/// Compteur du hub « À valider » : demandes M01 en attente + pointages manuels en attente (ticket 2E).
-int compterAValider({required int demandes, required int pointagesManuels}) =>
-    (demandes < 0 ? 0 : demandes) + (pointagesManuels < 0 ? 0 : pointagesManuels);
+/// Compteur du hub « À valider » : demandes M01 en attente + pointages manuels + tâches MOTEUR.
+int compterAValider({
+  required int demandes,
+  required int pointagesManuels,
+  int taches = 0,
+}) =>
+    (demandes < 0 ? 0 : demandes) +
+    (pointagesManuels < 0 ? 0 : pointagesManuels) +
+    (taches < 0 ? 0 : taches);
 
 /// Exécute [chargement] ; un refus 403 (pas de file pour ce compte) compte pour une liste vide,
 /// toute autre erreur (réseau, serveur) est propagée pour afficher « Réessayer ».

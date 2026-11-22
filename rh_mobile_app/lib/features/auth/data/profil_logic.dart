@@ -1,8 +1,13 @@
 import '../../demandes_admin/data/demande_admin_models.dart';
 import '../../organigramme/data/organigramme_models.dart';
 
-/// Statuts M01 comptés dans « Demandes en cours » (D-T02.b), comme l'onglet « En cours » de « Mes demandes ».
-const statutsDemandeEnCours = {'EN_VALIDATION_SUPERIEUR', 'EN_VALIDATION_RRH'};
+/// Statuts M01 comptés dans « Demandes en cours » (D-T02.b), y compris le mode `MOTEUR`.
+const statutsDemandeEnCours = {
+  'EN_VALIDATION_SUPERIEUR',
+  'EN_VALIDATION_RRH',
+  'EN_COURS',
+  'A_COMPLETER',
+};
 
 int compterDemandesEnCours(Iterable<DemandeAdminItem> demandes) =>
     demandes.where((d) => statutsDemandeEnCours.contains(d.statut)).length;

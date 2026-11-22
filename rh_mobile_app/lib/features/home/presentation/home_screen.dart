@@ -14,6 +14,8 @@ import '../../../features/auth/providers/auth_notifier.dart';
 import '../../evaluations/data/evaluation_repository.dart';
 import '../../a_valider/providers/a_valider_providers.dart';
 import '../../dossier/providers/dossier_providers.dart';
+import '../../workflow/data/workflow_models.dart';
+import '../../workflow/providers/workflow_providers.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -482,6 +484,21 @@ class _DashboardPage extends ConsumerWidget {
               }),
             ),
 
+            // ── Carte mise en avant : Mes tâches workflow ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: _MesTachesCard(
+                  compteur: ref.watch(compteurTachesProvider).valueOrNull ?? const CompteurTaches(),
+                  onTap: () async {
+                    await context.push('/taches');
+                    ref.invalidate(compteurTachesProvider);
+                    ref.invalidate(aValiderProvider);
+                  },
+                ),
+              ),
+            ),
+
             // ── Section title ──
             SliverToBoxAdapter(
               child: Padding(
@@ -668,6 +685,14 @@ class _DashboardPage extends ConsumerWidget {
                     iconBg: AppTheme.successSurface,
                     iconColor: AppTheme.success,
                     onTap: () => context.push('/organigramme'),
+                  ),
+                  _ServiceCard(
+                    title: 'Mes délégations',
+                    subtitle: 'Confier mes tâches',
+                    icon: Icons.swap_horiz_rounded,
+                    iconBg: AppTheme.accentSurface,
+                    iconColor: AppTheme.accent,
+                    onTap: () => context.push('/delegations'),
                   ),
                 ],
               ),
@@ -1158,11 +1183,133 @@ class _ResumeMois {
         .where((d) => d.statut == 'APPROUVEE' && d.typeDemande != 'ORDRE_MISSION' && couvreLeMois(d))
         .length;
     final enCours = demandes
-        .where((d) => d.statut == 'EN_VALIDATION_SUPERIEUR' || d.statut == 'EN_VALIDATION_RRH' || d.statut == 'SOUMISE')
+        .where((d) =>
+            d.statut == 'EN_VALIDATION_SUPERIEUR' ||
+            d.statut == 'EN_VALIDATION_RRH' ||
+            d.statut == 'SOUMISE' ||
+            d.statut == 'EN_COURS' ||
+            d.statut == 'A_COMPLETER')
         .length;
     return _ResumeMois(
       absences == 0 ? 'Aucune absence approuvée' : '$absences absence${absences > 1 ? 's' : ''} approuvée${absences > 1 ? 's' : ''}',
       enCours == 0 ? 'Aucune demande en attente' : '$enCours demande${enCours > 1 ? 's' : ''} en cours de validation',
+    );
+  }
+}
+
+class _MesTachesCard extends StatelessWidget {
+  const _MesTachesCard({required this.compteur, required this.onTap});
+
+  final CompteurTaches compteur;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final aTraiter = compteur.aTraiter;
+    final enRetard = compteur.enRetard;
+
+    return Material(
+      color: AppTheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        key: const Key('home-mes-taches-card'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: enRetard > 0
+                  ? AppTheme.error.withValues(alpha: 0.45)
+                  : AppTheme.primary.withValues(alpha: 0.25),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.primarySurface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.assignment_turned_in_rounded,
+                  color: AppTheme.primaryDark,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Flexible(
+                          child: Text(
+                            'Mes tâches',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: aTraiter > 0 ? AppTheme.primary : AppTheme.surfaceMuted,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '$aTraiter',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: aTraiter > 0 ? Colors.white : AppTheme.textSecondary,
+                            ),
+                          ),
+                        ),
+                        if (enRetard > 0) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.errorSurface,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              '$enRetard en retard',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.errorDark,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      aTraiter == 0
+                          ? 'Aucune tâche à traiter pour le moment'
+                          : '$aTraiter tâche${aTraiter > 1 ? 's' : ''} en attente d’action',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: AppTheme.textTertiary),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
