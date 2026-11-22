@@ -104,6 +104,9 @@ public class WfTache {
 	@Column(name = "decide_le")
 	private Instant decideLe;
 
+	@Column(name = "reaffectee_le")
+	private Instant reaffecteeLe;
+
 	@Column(name = "cle_idempotence", length = 64)
 	private String cleIdempotence;
 

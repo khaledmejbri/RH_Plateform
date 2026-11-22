@@ -141,6 +141,7 @@ public interface WfTacheRepository extends JpaRepository<WfTache, UUID> {
 	@Query("""
 			SELECT t FROM WfTache t
 			JOIN FETCH t.instance i
+			JOIN FETCH i.modeleVersion
 			JOIN FETCH t.etapeExecution ee
 			WHERE t.statut = com.hr.workflow.domain.StatutTache.A_TRAITER
 			  AND t.type <> com.hr.workflow.domain.TypeTache.COMPLEMENT
@@ -158,6 +159,7 @@ public interface WfTacheRepository extends JpaRepository<WfTache, UUID> {
 	@Query("""
 			SELECT t FROM WfTache t
 			JOIN FETCH t.instance i
+			JOIN FETCH i.modeleVersion
 			JOIN FETCH t.etapeExecution ee
 			WHERE t.statut = com.hr.workflow.domain.StatutTache.A_TRAITER
 			  AND t.type <> com.hr.workflow.domain.TypeTache.COMPLEMENT
@@ -185,9 +187,9 @@ public interface WfTacheRepository extends JpaRepository<WfTache, UUID> {
 			WHERE t.statut = 'TRAITEE'
 			  AND t.decide_le IS NOT NULL
 			  AND t.decide_le >= :debut
-			  AND t.decide_le <= :fin
+			  AND t.decide_le < :finExclue
 			GROUP BY i.modele_code, ee.etape_code
 			ORDER BY i.modele_code ASC, ee.etape_code ASC
 			""", nativeQuery = true)
-	List<Object[]> calculerIndicateursParEtape(@Param("debut") Instant debut, @Param("fin") Instant fin);
+	List<Object[]> calculerIndicateursParEtape(@Param("debut") Instant debut, @Param("finExclue") Instant finExclue);
 }

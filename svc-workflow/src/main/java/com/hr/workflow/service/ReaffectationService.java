@@ -283,6 +283,10 @@ public class ReaffectationService {
 						evId, "TACHE_CREEE", inst, ctx.etapeCode(), etapeLib, t.getEcheanceLe());
 			}
 
+			Instant reaffecteeLe = (t.getReaffecteeLe() != null && !maintenant.isAfter(t.getReaffecteeLe()))
+					? t.getReaffecteeLe().plusNanos(1000)
+					: maintenant;
+			t.setReaffecteeLe(reaffecteeLe);
 			t = tacheRepository.saveAndFlush(t);
 
 			Map<String, Object> details = new HashMap<>();

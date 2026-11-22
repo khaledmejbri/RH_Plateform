@@ -334,15 +334,15 @@ public class SupervisionService {
 		Instant debut = du != null
 				? du.atStartOfDay(PlanificationEcheanceService.FUSEAU_DEFAUT).toInstant()
 				: maintenant.minus(30, ChronoUnit.DAYS);
-		Instant fin = au != null
-				? au.plusDays(1).atStartOfDay(PlanificationEcheanceService.FUSEAU_DEFAUT).toInstant().minusNanos(1)
-				: maintenant;
+		Instant finExclue = au != null
+				? au.plusDays(1).atStartOfDay(PlanificationEcheanceService.FUSEAU_DEFAUT).toInstant()
+				: maintenant.plus(1, ChronoUnit.SECONDS);
 
 		long enCours = instanceRepository.countByStatut(StatutInstance.EN_COURS);
 		long bloquees = instanceRepository.countByStatut(StatutInstance.BLOQUEE);
 		long enRetard = tacheRepository.countInstancesEnRetard(maintenant);
 
-		List<Object[]> rows = tacheRepository.calculerIndicateursParEtape(debut, fin);
+		List<Object[]> rows = tacheRepository.calculerIndicateursParEtape(debut, finExclue);
 		Map<String, Map<String, String>> libellesParModele = new HashMap<>();
 		List<IndicateurEtapeDto> parEtape = new ArrayList<>(rows.size());
 

@@ -14,6 +14,9 @@ import java.util.UUID;
 /** Repository de la table {@code wf_delegation} (D-W21, D-W4-05). */
 public interface WfDelegationRepository extends JpaRepository<WfDelegation, UUID>, JpaSpecificationExecutor<WfDelegation> {
 
+	@Query(value = "SELECT pg_advisory_xact_lock(hashtext('wf-del-' || CAST(:delegantId AS text)))", nativeQuery = true)
+	Object verrouillerDelegant(@Param("delegantId") UUID delegantId);
+
 	@Query("""
 			SELECT COUNT(d) > 0 FROM WfDelegation d
 			WHERE d.delegantCollaborateurId = :delegantId

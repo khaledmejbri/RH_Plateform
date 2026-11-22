@@ -267,4 +267,19 @@ class ReaffectationTest {
 				.hasFieldOrPropertyWithValue("httpStatus", 409)
 				.hasFieldOrPropertyWithValue("code", "TACHE_DEJA_TRAITEE");
 	}
+
+	@Test
+	void c2_reaffectationEnCours_poseReaffecteeLeAvantSaveAndFlush() {
+		instance.setStatut(StatutInstance.EN_COURS);
+		tache.setEcheanceLe(maintenant.plus(6, ChronoUnit.HOURS));
+		tache.setReaffecteeLe(null);
+
+		service.reaffecter(
+				tacheId,
+				new ReaffecterTacheRequest(List.of(drhCollabId), "Réaffectation charge équipe", 1L),
+				rhCompteId, "RH02");
+
+		assertThat(tache.getReaffecteeLe()).isEqualTo(maintenant);
+		verify(tacheRepository).saveAndFlush(argThat(saved -> maintenant.equals(saved.getReaffecteeLe())));
+	}
 }

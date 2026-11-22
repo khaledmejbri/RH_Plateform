@@ -5,6 +5,8 @@ import com.hr.workflow.catalogue.CatalogueTypesObjet.TypeObjetCatalogue;
 import com.hr.workflow.client.WorkflowReferentielClient;
 import com.hr.workflow.client.WorkflowReferentielClient.CalendrierSocieteResponse;
 import com.hr.workflow.client.WorkflowReferentielClient.CollaborateurResume;
+import com.hr.workflow.definition.DefinitionCodec;
+import com.hr.workflow.definition.DefinitionWorkflow;
 import com.hr.workflow.domain.OrigineCandidat;
 import com.hr.workflow.domain.OrigineDelegation;
 import com.hr.workflow.domain.StatutTache;
@@ -44,6 +46,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -61,6 +64,10 @@ import java.util.UUID;
 public class DelegationService {
 
 	private static final int DUREE_MAX_JOURS = 90;
+	private static final Comparator<WfTache> TRI_INSTANCE_TACHE = Comparator
+			.comparing((WfTache t) -> t.getInstance() != null ? t.getInstance().getId() : null,
+					Comparator.nullsLast(Comparator.naturalOrder()))
+			.thenComparing(WfTache::getId, Comparator.nullsLast(Comparator.naturalOrder()));
 
 	private final WfDelegationRepository delegationRepository;
 	private final WfTacheRepository tacheRepository;
@@ -69,6 +76,7 @@ public class DelegationService {
 	private final WfBeneficiaireRepository beneficiaireRepository;
 	private final WfHistoriqueRepository historiqueRepository;
 	private final CatalogueTypesObjet catalogue;
+	private final DefinitionCodec codec;
 	private final WorkflowReferentielClient referentielClient;
 	private final OutboxService outboxService;
 	private final TransactionTemplate txReadOnly;
@@ -83,6 +91,7 @@ public class DelegationService {
 			WfBeneficiaireRepository beneficiaireRepository,
 			WfHistoriqueRepository historiqueRepository,
 			CatalogueTypesObjet catalogue,
+			DefinitionCodec codec,
 			WorkflowReferentielClient referentielClient,
 			OutboxService outboxService,
 			PlatformTransactionManager transactionManager,
@@ -94,6 +103,7 @@ public class DelegationService {
 		this.beneficiaireRepository = beneficiaireRepository;
 		this.historiqueRepository = historiqueRepository;
 		this.catalogue = catalogue;
+		this.codec = codec;
 		this.referentielClient = referentielClient;
 		this.outboxService = outboxService;
 		this.txReadOnly = new TransactionTemplate(transactionManager);
@@ -240,6 +250,7 @@ public class DelegationService {
 			UUID creeParCompteId,
 			LocalDate aujourdhuiSociete) {
 		return txWrite.execute(status -> {
+			delegationRepository.verrouillerDelegant(delegant.id());
 			if (delegationRepository.existsChevauchement(delegant.id(), du, au)) {
 				throw WorkflowMetierException.conflict("DELEGATION_CHEVAUCHEMENT",
 						"Une délégation active chevauche déjà cette période pour ce délégant.");
@@ -279,7 +290,10 @@ public class DelegationService {
 	}
 
 	private void appliquerSurTachesOuvertes(WfDelegation del, Instant maintenant) {
-		List<WfTache> taches = tacheRepository.findTachesOuvertesPourTitulaire(del.getDelegantCollaborateurId());
+		List<WfTache> taches = tacheRepository.findTachesOuvertesPourTitulaire(del.getDelegantCollaborateurId()).stream()
+				.sorted(TRI_INSTANCE_TACHE)
+				.toList();
+		Map<UUID, DefinitionWorkflow> cacheDefinitions = new HashMap<>();
 		for (WfTache candTache : taches) {
 			if (!DelegationResolutionService.couvreObjetType(del, candTache.getInstance().getObjetType())) {
 				continue;
@@ -305,8 +319,26 @@ public class DelegationService {
 				continue;
 			}
 
+			// Retirer tout DELEGUE_AUTO actif pour ce délégant avant d'ajouter/réactiver le délégué manuel
+			List<WfTacheCandidat> candsTache = candidatRepository.findByIdTacheId(t.getId());
+			WfTacheCandidat existant = null;
+			for (WfTacheCandidat cand : candsTache) {
+				if (cand.getRetireLe() == null
+						&& cand.getOrigine() == OrigineCandidat.DELEGUE_AUTO
+						&& del.getDelegantCollaborateurId().equals(cand.getPourCollaborateurId())) {
+					cand.setRetireLe(maintenant);
+					if (!delegueId.equals(cand.getId().getCollaborateurId())) {
+						candidatRepository.save(cand);
+					}
+				}
+				if (delegueId.equals(cand.getId().getCollaborateurId())) {
+					existant = cand;
+				}
+			}
 			WfTacheCandidatId pk = new WfTacheCandidatId(t.getId(), delegueId);
-			WfTacheCandidat existant = candidatRepository.findById(pk).orElse(null);
+			if (existant == null && (candsTache == null || candsTache.isEmpty())) {
+				existant = candidatRepository.findById(pk).orElse(null);
+			}
 			if (existant != null && existant.getRetireLe() == null) {
 				// Déjà candidat actif sur cette tâche : ne pas dupliquer ni écraser un TITULAIRE
 				continue;
@@ -335,10 +367,11 @@ public class DelegationService {
 			if (del.getDelegueCompteId() != null) {
 				String typeLibelle = catalogue.findByObjetType(inst.getObjetType())
 						.map(TypeObjetCatalogue::libelle).orElse(inst.getObjetType());
+				String canal = resoudreCanalNotification(inst, t, cacheDefinitions);
 				String texte = TextesNotificationWorkflow.tacheCreee(
 						typeLibelle, inst.getDemandeurNom(), t.getLibelle(), t.getEcheanceLe(), inst.getObjetNumero());
 				outboxService.publierNotification(
-						UUID.randomUUID(), del.getDelegueCompteId().toString(), "WEBSOCKET", "WF_TACHE_CREEE",
+						UUID.randomUUID(), del.getDelegueCompteId().toString(), canal, "WF_TACHE_CREEE",
 						"Demande à traiter", texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
 			}
 		}
@@ -353,24 +386,58 @@ public class DelegationService {
 		d.setAnnuleeParCompteId(acteurCompteId);
 		delegationRepository.save(d);
 
+		record CandidatARetirer(WfTacheCandidatId pk, UUID instanceId, UUID tacheId) {}
 		List<WfTacheCandidat> actifs = candidatRepository.findActifsParDelegationSurTachesOuvertes(d.getId());
+		List<CandidatARetirer> tries = new ArrayList<>(actifs.size());
 		for (WfTacheCandidat cand : actifs) {
 			WfTache t = tacheRepository.findById(cand.getId().getTacheId()).orElse(null);
-			if (t == null) {
+			if (t == null || t.getInstance() == null) {
 				continue;
 			}
+			tries.add(new CandidatARetirer(cand.getId(), t.getInstance().getId(), t.getId()));
+		}
+		tries.sort(Comparator.comparing(CandidatARetirer::instanceId, Comparator.nullsLast(Comparator.naturalOrder()))
+				.thenComparing(CandidatARetirer::tacheId, Comparator.nullsLast(Comparator.naturalOrder()))
+				.thenComparing(item -> item.pk().getCollaborateurId(), Comparator.nullsLast(Comparator.naturalOrder())));
+
+		for (CandidatARetirer item : tries) {
 			// Ordre strict des verrous : wf_instance puis wf_tache
-			instanceRepository.findByIdForUpdate(t.getInstance().getId());
-			WfTache tLock = tacheRepository.findByIdForUpdate(t.getId()).orElse(null);
+			instanceRepository.findByIdForUpdate(item.instanceId());
+			WfTache tLock = tacheRepository.findByIdForUpdate(item.tacheId()).orElse(null);
 			if (tLock == null || tLock.getStatut() != StatutTache.A_TRAITER) {
 				continue;
 			}
-			WfTacheCandidat cLock = candidatRepository.findById(cand.getId()).orElse(null);
+			WfTacheCandidat cLock = candidatRepository.findById(item.pk()).orElse(null);
 			if (cLock != null && cLock.getRetireLe() == null) {
 				cLock.setRetireLe(maintenant);
 				candidatRepository.save(cLock);
 			}
 		}
+	}
+
+	private String resoudreCanalNotification(WfInstance inst, WfTache t, Map<UUID, DefinitionWorkflow> cacheDefinitions) {
+		if (inst == null || t == null || inst.getModeleVersion() == null
+				|| inst.getModeleVersion().getDefinition() == null || t.getEtapeExecution() == null) {
+			return "WEBSOCKET";
+		}
+		String etapeCode = t.getEtapeExecution().getEtapeCode();
+		if (etapeCode == null) {
+			return "WEBSOCKET";
+		}
+		UUID versionId = inst.getModeleVersion().getId();
+		DefinitionWorkflow def = versionId != null
+				? cacheDefinitions.computeIfAbsent(versionId, id -> codec.deserialiser(inst.getModeleVersion().getDefinition()))
+				: codec.deserialiser(inst.getModeleVersion().getDefinition());
+		if (def == null || def.etapes() == null) {
+			return "WEBSOCKET";
+		}
+		return def.etapes().stream()
+				.filter(e -> etapeCode.equals(e.code()))
+				.findFirst()
+				.map(e -> e.notifications() != null && e.notifications().canal() != null
+						&& !e.notifications().canal().isBlank()
+						? e.notifications().canal() : "WEBSOCKET")
+				.orElse("WEBSOCKET");
 	}
 
 	private LocalDate aujourdhuiSociete() {

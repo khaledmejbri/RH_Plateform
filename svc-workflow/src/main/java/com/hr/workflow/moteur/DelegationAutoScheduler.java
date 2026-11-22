@@ -7,6 +7,8 @@ import com.hr.workflow.client.WorkflowReferentielClient;
 import com.hr.workflow.client.WorkflowReferentielClient.AbsenceCollaborateur;
 import com.hr.workflow.client.WorkflowReferentielClient.CalendrierSocieteResponse;
 import com.hr.workflow.client.WorkflowReferentielClient.IntervenantResolu;
+import com.hr.workflow.definition.DefinitionCodec;
+import com.hr.workflow.definition.DefinitionWorkflow;
 import com.hr.workflow.domain.OrigineCandidat;
 import com.hr.workflow.domain.StatutTache;
 import com.hr.workflow.entity.WfDelegation;
@@ -33,12 +35,13 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -50,6 +53,10 @@ import java.util.stream.Collectors;
 public class DelegationAutoScheduler {
 
 	private static final Logger log = LoggerFactory.getLogger(DelegationAutoScheduler.class);
+	private static final Comparator<WfTache> TRI_INSTANCE_TACHE = Comparator
+			.comparing((WfTache t) -> t.getInstance() != null ? t.getInstance().getId() : null,
+					Comparator.nullsLast(Comparator.naturalOrder()))
+			.thenComparing(WfTache::getId, Comparator.nullsLast(Comparator.naturalOrder()));
 
 	private final WfDelegationRepository delegationRepository;
 	private final WfTacheRepository tacheRepository;
@@ -58,6 +65,7 @@ public class DelegationAutoScheduler {
 	private final WfBeneficiaireRepository beneficiaireRepository;
 	private final WfHistoriqueRepository historiqueRepository;
 	private final CatalogueTypesObjet catalogue;
+	private final DefinitionCodec codec;
 	private final WorkflowReferentielClient referentielClient;
 	private final DelegationResolutionService delegationResolutionService;
 	private final OutboxService outboxService;
@@ -74,6 +82,7 @@ public class DelegationAutoScheduler {
 			WfBeneficiaireRepository beneficiaireRepository,
 			WfHistoriqueRepository historiqueRepository,
 			CatalogueTypesObjet catalogue,
+			DefinitionCodec codec,
 			WorkflowReferentielClient referentielClient,
 			DelegationResolutionService delegationResolutionService,
 			OutboxService outboxService,
@@ -87,6 +96,7 @@ public class DelegationAutoScheduler {
 		this.beneficiaireRepository = beneficiaireRepository;
 		this.historiqueRepository = historiqueRepository;
 		this.catalogue = catalogue;
+		this.codec = codec;
 		this.referentielClient = referentielClient;
 		this.delegationResolutionService = delegationResolutionService;
 		this.outboxService = outboxService;
@@ -154,19 +164,29 @@ public class DelegationAutoScheduler {
 		if (candidats == null || candidats.isEmpty()) {
 			return 0;
 		}
-		Instant maintenant = clock.instant();
-		int count = 0;
+		record CandidatARetirer(WfTacheCandidatId pk, UUID instanceId, UUID tacheId) {}
+		List<CandidatARetirer> tries = new ArrayList<>(candidats.size());
 		for (WfTacheCandidat c : candidats) {
 			WfTache t = tacheRepository.findById(c.getId().getTacheId()).orElse(null);
-			if (t == null) {
+			if (t == null || t.getInstance() == null) {
 				continue;
 			}
-			instanceRepository.findByIdForUpdate(t.getInstance().getId());
-			WfTache tLock = tacheRepository.findByIdForUpdate(t.getId()).orElse(null);
+			tries.add(new CandidatARetirer(c.getId(), t.getInstance().getId(), t.getId()));
+		}
+		tries.sort(Comparator.comparing(CandidatARetirer::instanceId, Comparator.nullsLast(Comparator.naturalOrder()))
+				.thenComparing(CandidatARetirer::tacheId, Comparator.nullsLast(Comparator.naturalOrder()))
+				.thenComparing(item -> item.pk().getCollaborateurId(), Comparator.nullsLast(Comparator.naturalOrder())));
+
+		Instant maintenant = clock.instant();
+		int count = 0;
+		for (CandidatARetirer item : tries) {
+			// Ordre strict des verrous : wf_instance puis wf_tache
+			instanceRepository.findByIdForUpdate(item.instanceId());
+			WfTache tLock = tacheRepository.findByIdForUpdate(item.tacheId()).orElse(null);
 			if (tLock == null || tLock.getStatut() != StatutTache.A_TRAITER) {
 				continue;
 			}
-			WfTacheCandidat cLock = candidatRepository.findById(c.getId()).orElse(null);
+			WfTacheCandidat cLock = candidatRepository.findById(item.pk()).orElse(null);
 			if (cLock != null && cLock.getRetireLe() == null) {
 				cLock.setRetireLe(maintenant);
 				candidatRepository.save(cLock);
@@ -184,7 +204,9 @@ public class DelegationAutoScheduler {
 		Map<UUID, List<WfDelegation>> parDelegant = actives.stream()
 				.collect(Collectors.groupingBy(WfDelegation::getDelegantCollaborateurId));
 
-		List<WfTache> taches = tacheRepository.findTachesOuvertesAvecInstance();
+		List<WfTache> taches = tacheRepository.findTachesOuvertesAvecInstance().stream()
+				.sorted(TRI_INSTANCE_TACHE)
+				.toList();
 		if (taches.isEmpty()) {
 			return 0;
 		}
@@ -192,6 +214,7 @@ public class DelegationAutoScheduler {
 		Map<UUID, List<WfTacheCandidat>> candsParTache = candidatRepository.findByIdTacheIdIn(tacheIds).stream()
 				.collect(Collectors.groupingBy(c -> c.getId().getTacheId()));
 
+		Map<UUID, DefinitionWorkflow> cacheDefinitions = new HashMap<>();
 		Instant maintenant = clock.instant();
 		int count = 0;
 
@@ -266,10 +289,11 @@ public class DelegationAutoScheduler {
 
 					String typeLibelle = catalogue.findByObjetType(inst.getObjetType())
 							.map(TypeObjetCatalogue::libelle).orElse(inst.getObjetType());
+					String canal = resoudreCanalNotification(inst, tLock, cacheDefinitions);
 					String texte = TextesNotificationWorkflow.tacheCreee(
 							typeLibelle, inst.getDemandeurNom(), tLock.getLibelle(), tLock.getEcheanceLe(), inst.getObjetNumero());
 					outboxService.publierNotification(
-							UUID.randomUUID(), del.getDelegueCompteId().toString(), "WEBSOCKET", "WF_TACHE_CREEE",
+							UUID.randomUUID(), del.getDelegueCompteId().toString(), canal, "WF_TACHE_CREEE",
 							"Demande à traiter", texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
 					break;
 				}
@@ -286,13 +310,10 @@ public class DelegationAutoScheduler {
 				.filter(java.util.Objects::nonNull)
 				.collect(Collectors.toSet());
 
-		record TacheSnapshot(
-				UUID tacheId,
+		record RetraitAuto(
+				WfTacheCandidatId pk,
 				UUID instanceId,
-				String objetType,
-				UUID demandeurCollabId,
-				List<UUID> beneficiaires,
-				List<WfTacheCandidat> candidats
+				UUID tacheId
 		) {}
 		record AjoutAutoAResoudre(
 				UUID tacheId,
@@ -300,10 +321,11 @@ public class DelegationAutoScheduler {
 				UUID titulaireId,
 				String titulaireNom,
 				UUID demandeurCollabId,
-				List<UUID> beneficiaires
+				List<UUID> beneficiaires,
+				String canal
 		) {}
 		record EtatSnapshot(
-				List<WfTacheCandidatId> aRetirer,
+				List<RetraitAuto> aRetirer,
 				List<AjoutAutoAResoudre> aAjouter
 		) {}
 
@@ -325,7 +347,8 @@ public class DelegationAutoScheduler {
 			Map<UUID, List<WfDelegation>> manuellesParDelegant = manuelles.stream()
 					.collect(Collectors.groupingBy(WfDelegation::getDelegantCollaborateurId));
 
-			List<WfTacheCandidatId> aRetirer = new ArrayList<>();
+			Map<UUID, DefinitionWorkflow> cacheDefinitions = new HashMap<>();
+			List<RetraitAuto> aRetirer = new ArrayList<>();
 			List<AjoutAutoAResoudre> aAjouter = new ArrayList<>();
 
 			for (WfTache t : taches) {
@@ -342,12 +365,13 @@ public class DelegationAutoScheduler {
 					boolean toujoursAbsent = pourId != null && absentsIds.contains(pourId);
 					boolean aManuelle = pourId != null && aDelegationManuelleCouvrante(manuellesParDelegant.get(pourId), inst.getObjetType());
 					if (!toujoursAbsent || aManuelle) {
-						aRetirer.add(c.getId());
+						aRetirer.add(new RetraitAuto(c.getId(), inst.getId(), t.getId()));
 					} else {
 						titulairesCouvertAuto.add(pourId);
 					}
 				}
 
+				String canal = null;
 				for (WfTacheCandidat c : cands) {
 					if (c.getRetireLe() != null || c.getOrigine() != OrigineCandidat.TITULAIRE) {
 						continue;
@@ -362,9 +386,12 @@ public class DelegationAutoScheduler {
 					if (titulairesCouvertAuto.contains(titulaireId)) {
 						continue;
 					}
+					if (canal == null) {
+						canal = resoudreCanalNotification(inst, t, cacheDefinitions);
+					}
 					aAjouter.add(new AjoutAutoAResoudre(
 							t.getId(), inst.getId(), titulaireId, c.getNom(),
-							inst.getDemandeurCollaborateurId(), benefs));
+							inst.getDemandeurCollaborateurId(), benefs, canal));
 				}
 			}
 			return new EtatSnapshot(aRetirer, aAjouter);
@@ -377,9 +404,7 @@ public class DelegationAutoScheduler {
 		// Hors transaction : résolution des remplaçants pour les titulaires nouvellement absents
 		record CleResolution(UUID titulaireId, UUID demandeurId, Set<UUID> benefs) {}
 		Map<CleResolution, List<IntervenantResolu>> cacheRemplacants = new HashMap<>();
-		Map<UUID, List<IntervenantResolu>> remplacantsParTacheEtTitulaire = new LinkedHashMap<>();
 
-		// Clé composite par index de AjoutAutoAResoudre
 		List<List<IntervenantResolu>> resolutions = new ArrayList<>(etat.aAjouter().size());
 		for (AjoutAutoAResoudre ajout : etat.aAjouter()) {
 			CleResolution cle = new CleResolution(
@@ -390,40 +415,61 @@ public class DelegationAutoScheduler {
 			resolutions.add(remps);
 		}
 
-		// Transaction courte : appliquer retraits et ajouts sous verrou (wf_instance puis wf_tache)
+		record CleTache(UUID instanceId, UUID tacheId) implements Comparable<CleTache> {
+			@Override
+			public int compareTo(CleTache o) {
+				int cmp = this.instanceId.compareTo(o.instanceId);
+				return cmp != 0 ? cmp : this.tacheId.compareTo(o.tacheId);
+			}
+		}
+		record AjoutResolu(AjoutAutoAResoudre ajout, List<IntervenantResolu> remps) {}
+		record OperationsTache(List<WfTacheCandidatId> retraits, List<AjoutResolu> ajouts) {}
+
+		TreeMap<CleTache, OperationsTache> opsParTache = new TreeMap<>();
+		for (RetraitAuto r : etat.aRetirer()) {
+			opsParTache.computeIfAbsent(new CleTache(r.instanceId(), r.tacheId()),
+					k -> new OperationsTache(new ArrayList<>(), new ArrayList<>())).retraits().add(r.pk());
+		}
+		for (int i = 0; i < etat.aAjouter().size(); i++) {
+			List<IntervenantResolu> remps = resolutions.get(i);
+			if (remps == null || remps.isEmpty()) {
+				continue;
+			}
+			AjoutAutoAResoudre ajout = etat.aAjouter().get(i);
+			opsParTache.computeIfAbsent(new CleTache(ajout.instanceId(), ajout.tacheId()),
+					k -> new OperationsTache(new ArrayList<>(), new ArrayList<>())).ajouts().add(new AjoutResolu(ajout, remps));
+		}
+
+		if (opsParTache.isEmpty()) {
+			return 0;
+		}
+
+		// Transaction courte : appliquer retraits et ajouts sous verrou (wf_instance puis wf_tache) triés par (instanceId, tacheId)
 		Integer count = txWrite.execute(status -> {
 			Instant maintenant = clock.instant();
 			int nb = 0;
 
-			for (WfTacheCandidatId pk : etat.aRetirer()) {
-				WfTache t = tacheRepository.findById(pk.getTacheId()).orElse(null);
-				if (t == null) {
-					continue;
-				}
-				instanceRepository.findByIdForUpdate(t.getInstance().getId());
-				WfTache tLock = tacheRepository.findByIdForUpdate(t.getId()).orElse(null);
-				if (tLock == null || tLock.getStatut() != StatutTache.A_TRAITER) {
-					continue;
-				}
-				WfTacheCandidat cLock = candidatRepository.findById(pk).orElse(null);
-				if (cLock != null && cLock.getRetireLe() == null && cLock.getOrigine() == OrigineCandidat.DELEGUE_AUTO) {
-					cLock.setRetireLe(maintenant);
-					candidatRepository.save(cLock);
-					nb++;
-				}
-			}
+			for (Map.Entry<CleTache, OperationsTache> entry : opsParTache.entrySet()) {
+				CleTache cle = entry.getKey();
+				OperationsTache ops = entry.getValue();
 
-			for (int i = 0; i < etat.aAjouter().size(); i++) {
-				AjoutAutoAResoudre ajout = etat.aAjouter().get(i);
-				List<IntervenantResolu> remps = resolutions.get(i);
-				if (remps == null || remps.isEmpty()) {
-					continue;
-				}
-
-				WfInstance inst = instanceRepository.findByIdForUpdate(ajout.instanceId()).orElse(null);
-				WfTache tLock = tacheRepository.findByIdForUpdate(ajout.tacheId()).orElse(null);
+				WfInstance inst = instanceRepository.findByIdForUpdate(cle.instanceId()).orElse(null);
+				WfTache tLock = tacheRepository.findByIdForUpdate(cle.tacheId()).orElse(null);
 				if (inst == null || tLock == null || inst.getStatut().estTerminale()
 						|| tLock.getStatut() != StatutTache.A_TRAITER) {
+					continue;
+				}
+
+				for (WfTacheCandidatId pk : ops.retraits()) {
+					WfTacheCandidat cLock = candidatRepository.findById(pk).orElse(null);
+					if (cLock != null && cLock.getRetireLe() == null && cLock.getOrigine() == OrigineCandidat.DELEGUE_AUTO) {
+						cLock.setRetireLe(maintenant);
+						candidatRepository.save(cLock);
+						nb++;
+					}
+				}
+
+				if (ops.ajouts().isEmpty()) {
 					continue;
 				}
 
@@ -432,52 +478,80 @@ public class DelegationAutoScheduler {
 				Map<UUID, WfTacheCandidat> existants = candidatRepository.findByIdTacheId(tLock.getId()).stream()
 						.collect(Collectors.toMap(c -> c.getId().getCollaborateurId(), c -> c, (a, b) -> a));
 
-				for (IntervenantResolu remp : remps) {
-					if (remp.collaborateurId() == null || remp.compteId() == null) {
-						continue;
-					}
-					if (remp.collaborateurId().equals(inst.getDemandeurCollaborateurId())
-							|| benefs.contains(remp.collaborateurId())
-							|| remp.collaborateurId().equals(ajout.titulaireId())) {
-						continue;
-					}
-					WfTacheCandidat ex = existants.get(remp.collaborateurId());
-					if (ex != null && ex.getRetireLe() == null) {
-						continue;
-					}
-					WfTacheCandidat cible = ex != null ? ex : new WfTacheCandidat();
-					cible.setId(new WfTacheCandidatId(tLock.getId(), remp.collaborateurId()));
-					cible.setCompteId(remp.compteId());
-					cible.setNom(remp.nom());
-					cible.setOrigine(OrigineCandidat.DELEGUE_AUTO);
-					cible.setPourCollaborateurId(ajout.titulaireId());
-					cible.setPourNom(ajout.titulaireNom());
-					cible.setDelegationId(null);
-					cible.setAjouteLe(maintenant);
-					cible.setRetireLe(null);
-					candidatRepository.save(cible);
-					existants.put(remp.collaborateurId(), cible);
-					nb++;
+				for (AjoutResolu ar : ops.ajouts()) {
+					AjoutAutoAResoudre ajout = ar.ajout();
+					for (IntervenantResolu remp : ar.remps()) {
+						if (remp.collaborateurId() == null || remp.compteId() == null) {
+							continue;
+						}
+						if (remp.collaborateurId().equals(inst.getDemandeurCollaborateurId())
+								|| benefs.contains(remp.collaborateurId())
+								|| remp.collaborateurId().equals(ajout.titulaireId())) {
+							continue;
+						}
+						WfTacheCandidat ex = existants.get(remp.collaborateurId());
+						if (ex != null && ex.getRetireLe() == null) {
+							continue;
+						}
+						WfTacheCandidat cible = ex != null ? ex : new WfTacheCandidat();
+						cible.setId(new WfTacheCandidatId(tLock.getId(), remp.collaborateurId()));
+						cible.setCompteId(remp.compteId());
+						cible.setNom(remp.nom());
+						cible.setOrigine(OrigineCandidat.DELEGUE_AUTO);
+						cible.setPourCollaborateurId(ajout.titulaireId());
+						cible.setPourNom(ajout.titulaireNom());
+						cible.setDelegationId(null);
+						cible.setAjouteLe(maintenant);
+						cible.setRetireLe(null);
+						candidatRepository.save(cible);
+						existants.put(remp.collaborateurId(), cible);
+						nb++;
 
-					Map<String, Object> details = new HashMap<>();
-					details.put("origine", OrigineCandidat.DELEGUE_AUTO.name());
-					details.put("delegant_id", ajout.titulaireId().toString());
-					details.put("delegue_id", remp.collaborateurId().toString());
-					enregistrerHistorique(inst.getId(), tLock.getId(), "DELEGATION_APPLIQUEE",
-							ajout.titulaireNom(), details, maintenant);
+						Map<String, Object> details = new HashMap<>();
+						details.put("origine", OrigineCandidat.DELEGUE_AUTO.name());
+						details.put("delegant_id", ajout.titulaireId().toString());
+						details.put("delegue_id", remp.collaborateurId().toString());
+						enregistrerHistorique(inst.getId(), tLock.getId(), "DELEGATION_APPLIQUEE",
+								ajout.titulaireNom(), details, maintenant);
 
-					String typeLibelle = catalogue.findByObjetType(inst.getObjetType())
-							.map(TypeObjetCatalogue::libelle).orElse(inst.getObjetType());
-					String texte = TextesNotificationWorkflow.tacheCreee(
-							typeLibelle, inst.getDemandeurNom(), tLock.getLibelle(), tLock.getEcheanceLe(), inst.getObjetNumero());
-					outboxService.publierNotification(
-							UUID.randomUUID(), remp.compteId().toString(), "WEBSOCKET", "WF_TACHE_CREEE",
-							"Demande à traiter", texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+						String typeLibelle = catalogue.findByObjetType(inst.getObjetType())
+								.map(TypeObjetCatalogue::libelle).orElse(inst.getObjetType());
+						String texte = TextesNotificationWorkflow.tacheCreee(
+								typeLibelle, inst.getDemandeurNom(), tLock.getLibelle(), tLock.getEcheanceLe(), inst.getObjetNumero());
+						outboxService.publierNotification(
+								UUID.randomUUID(), remp.compteId().toString(), ajout.canal(), "WF_TACHE_CREEE",
+								"Demande à traiter", texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+					}
 				}
 			}
 			return nb;
 		});
 		return count != null ? count : 0;
+	}
+
+	private String resoudreCanalNotification(WfInstance inst, WfTache t, Map<UUID, DefinitionWorkflow> cacheDefinitions) {
+		if (inst == null || t == null || inst.getModeleVersion() == null
+				|| inst.getModeleVersion().getDefinition() == null || t.getEtapeExecution() == null) {
+			return "WEBSOCKET";
+		}
+		String etapeCode = t.getEtapeExecution().getEtapeCode();
+		if (etapeCode == null) {
+			return "WEBSOCKET";
+		}
+		UUID versionId = inst.getModeleVersion().getId();
+		DefinitionWorkflow def = versionId != null
+				? cacheDefinitions.computeIfAbsent(versionId, id -> codec.deserialiser(inst.getModeleVersion().getDefinition()))
+				: codec.deserialiser(inst.getModeleVersion().getDefinition());
+		if (def == null || def.etapes() == null) {
+			return "WEBSOCKET";
+		}
+		return def.etapes().stream()
+				.filter(e -> etapeCode.equals(e.code()))
+				.findFirst()
+				.map(e -> e.notifications() != null && e.notifications().canal() != null
+						&& !e.notifications().canal().isBlank()
+						? e.notifications().canal() : "WEBSOCKET")
+				.orElse("WEBSOCKET");
 	}
 
 	private static boolean aDelegationManuelleCouvrante(List<WfDelegation> manuelles, String objetType) {

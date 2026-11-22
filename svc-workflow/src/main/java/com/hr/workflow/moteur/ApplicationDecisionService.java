@@ -307,6 +307,9 @@ public class ApplicationDecisionService {
 
 		t.setStatut(StatutTache.A_TRAITER);
 		t.setEcheanceTraiteeLe(maintenant);
+		t.setDecision(null);
+		t.setCommentaire(null);
+		t.setDecideParNom(null);
 		t.setCleIdempotence(null);
 		tacheRepository.save(t);
 

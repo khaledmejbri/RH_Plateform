@@ -7,6 +7,14 @@ import com.hr.workflow.client.WorkflowReferentielClient.AbsenceCollaborateur;
 import com.hr.workflow.client.WorkflowReferentielClient.CalendrierSocieteResponse;
 import com.hr.workflow.client.WorkflowReferentielClient.CollaborateurResume;
 import com.hr.workflow.client.WorkflowReferentielClient.IntervenantResolu;
+import com.hr.workflow.definition.DefinitionCodec;
+import com.hr.workflow.definition.DefinitionWorkflow;
+import com.hr.workflow.definition.DelaiDefinition;
+import com.hr.workflow.definition.EcheanceDefinition;
+import com.hr.workflow.definition.EtapeDefinition;
+import com.hr.workflow.definition.EtapeDefinition.NotificationsEtapeDefinition;
+import com.hr.workflow.definition.EtapeDefinition.RepliSiVideDefinition;
+import com.hr.workflow.definition.IntervenantsDefinition;
 import com.hr.workflow.domain.OrigineCandidat;
 import com.hr.workflow.domain.OrigineDelegation;
 import com.hr.workflow.domain.StatutInstance;
@@ -16,7 +24,9 @@ import com.hr.workflow.dto.DelegationDtos.CreerDelegationAdminRequest;
 import com.hr.workflow.dto.DelegationDtos.CreerDelegationMoiRequest;
 import com.hr.workflow.dto.DelegationDtos.DelegationResponse;
 import com.hr.workflow.entity.WfDelegation;
+import com.hr.workflow.entity.WfEtapeExecution;
 import com.hr.workflow.entity.WfInstance;
+import com.hr.workflow.entity.WfModeleVersion;
 import com.hr.workflow.entity.WfTache;
 import com.hr.workflow.entity.WfTacheCandidat;
 import com.hr.workflow.entity.WfTacheCandidatId;
@@ -39,6 +49,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
@@ -65,6 +76,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -90,6 +102,7 @@ class DelegationServiceTest {
 	@Mock private PlatformTransactionManager txManager;
 
 	private final CatalogueTypesObjet catalogue = new CatalogueTypesObjet();
+	private final DefinitionCodec codec = new DefinitionCodec();
 	// 2026-11-20T09:00:00Z -> 10:00 Africa/Tunis, date locale 2026-11-20
 	private final Instant maintenant = Instant.parse("2026-11-20T09:00:00Z");
 	private final LocalDate aujourdhui = LocalDate.of(2026, 11, 20);
@@ -111,13 +124,13 @@ class DelegationServiceTest {
 
 		delegationService = new DelegationService(
 				delegationRepository, tacheRepository, instanceRepository, candidatRepository,
-				beneficiaireRepository, historiqueRepository, catalogue, referentielClient,
+				beneficiaireRepository, historiqueRepository, catalogue, codec, referentielClient,
 				outboxService, txManager, clock);
 		resolutionDelegationService = new DelegationResolutionService(
 				delegationRepository, referentielClient, resolutionService, txManager);
 		autoScheduler = new DelegationAutoScheduler(
 				delegationRepository, tacheRepository, instanceRepository, candidatRepository,
-				beneficiaireRepository, historiqueRepository, catalogue, referentielClient,
+				beneficiaireRepository, historiqueRepository, catalogue, codec, referentielClient,
 				resolutionDelegationService, outboxService, verrouPlanificateur, txManager, clock);
 
 		delegantCollabId = UUID.randomUUID();
@@ -531,6 +544,250 @@ class DelegationServiceTest {
 				new CreerDelegationMoiRequest(delegueCollabId, aujourdhui, aujourdhui.plusDays(3), null, "Chaîne interdite"));
 
 		verify(candidatRepository, never()).save(any());
+	}
+
+	@Test
+	void c1_creationManuelleActive_retireDelegueAutoImmediatement_memePersonneEtPersonneDifferente() {
+		// Tâche 1 : DELEGUE_AUTO est la même personne que le délégué manuel (delegueCollabId)
+		WfInstance inst1 = nouvelleInstance("CONGE", tiersCollabId);
+		WfTache t1 = nouvelleTache(inst1);
+		WfTacheCandidat tit1 = nouveauCandidat(t1.getId(), delegantCollabId, delegantCompteId, "Amel Chef", OrigineCandidat.TITULAIRE);
+		WfTacheCandidat autoMemePersonne = nouveauCandidat(t1.getId(), delegueCollabId, delegueCompteId, "Sami Délégué", OrigineCandidat.DELEGUE_AUTO);
+		autoMemePersonne.setPourCollaborateurId(delegantCollabId);
+		autoMemePersonne.setPourNom("Amel Chef");
+
+		// Tâche 2 : DELEGUE_AUTO est une personne différente (autoAutreId) pour le même délégant
+		WfInstance inst2 = nouvelleInstance("CONGE", tiersCollabId);
+		WfTache t2 = nouvelleTache(inst2);
+		WfTacheCandidat tit2 = nouveauCandidat(t2.getId(), delegantCollabId, delegantCompteId, "Amel Chef", OrigineCandidat.TITULAIRE);
+		UUID autreAutoId = UUID.randomUUID();
+		UUID autreAutoCompteId = UUID.randomUUID();
+		WfTacheCandidat autoAutre = nouveauCandidat(t2.getId(), autreAutoId, autreAutoCompteId, "Directeur Auto", OrigineCandidat.DELEGUE_AUTO);
+		autoAutre.setPourCollaborateurId(delegantCollabId);
+		autoAutre.setPourNom("Amel Chef");
+
+		when(tacheRepository.findTachesOuvertesPourTitulaire(delegantCollabId)).thenReturn(List.of(t1, t2));
+		when(instanceRepository.findByIdForUpdate(inst1.getId())).thenReturn(Optional.of(inst1));
+		when(tacheRepository.findByIdForUpdate(t1.getId())).thenReturn(Optional.of(t1));
+		when(candidatRepository.findById(new WfTacheCandidatId(t1.getId(), delegantCollabId))).thenReturn(Optional.of(tit1));
+		when(candidatRepository.findByIdTacheId(t1.getId())).thenReturn(List.of(tit1, autoMemePersonne));
+
+		when(instanceRepository.findByIdForUpdate(inst2.getId())).thenReturn(Optional.of(inst2));
+		when(tacheRepository.findByIdForUpdate(t2.getId())).thenReturn(Optional.of(t2));
+		when(candidatRepository.findById(new WfTacheCandidatId(t2.getId(), delegantCollabId))).thenReturn(Optional.of(tit2));
+		when(candidatRepository.findByIdTacheId(t2.getId())).thenReturn(List.of(tit2, autoAutre));
+
+		DelegationResponse rep = delegationService.creerMoi(delegantCompteId,
+				new CreerDelegationMoiRequest(delegueCollabId, aujourdhui, aujourdhui.plusDays(4), List.of("CONGE"), "Relais immédiat"));
+
+		// Cas 1 (même personne) : réactivée en DELEGUE avec delegationId non null et retireLe == null
+		assertThat(autoMemePersonne.getOrigine()).isEqualTo(OrigineCandidat.DELEGUE);
+		assertThat(autoMemePersonne.getDelegationId()).isEqualTo(rep.id());
+		assertThat(autoMemePersonne.getRetireLe()).isNull();
+		verify(candidatRepository).save(autoMemePersonne);
+
+		// Cas 2 (personne différente) : ancien DELEGUE_AUTO immédiatement retiré + nouveau DELEGUE ajouté
+		assertThat(autoAutre.getRetireLe()).isEqualTo(maintenant);
+		verify(candidatRepository).save(autoAutre);
+		verify(candidatRepository).save(argThat(c ->
+				c.getId().equals(new WfTacheCandidatId(t2.getId(), delegueCollabId))
+						&& c.getOrigine() == OrigineCandidat.DELEGUE
+						&& rep.id().equals(c.getDelegationId())
+						&& c.getRetireLe() == null));
+
+		// Vérifier que le scheduler nocturne à 00:30 ne retire pas la ligne convertie en DELEGUE
+		when(candidatRepository.findCandidatsDeleguesExpiresSurTachesOuvertes(aujourdhui)).thenReturn(List.of());
+		WfDelegation delActive = new WfDelegation();
+		delActive.setId(rep.id());
+		delActive.setDelegantCollaborateurId(delegantCollabId);
+		delActive.setDelegantNom("Amel Chef");
+		delActive.setDelegueCollaborateurId(delegueCollabId);
+		delActive.setDelegueCompteId(delegueCompteId);
+		delActive.setDelegueNom("Sami Délégué");
+		delActive.setDu(aujourdhui);
+		delActive.setAu(aujourdhui.plusDays(4));
+		when(delegationRepository.findActivesALaDate(aujourdhui)).thenReturn(List.of(delActive));
+		when(tacheRepository.findTachesOuvertesAvecInstance()).thenReturn(List.of(t1));
+		when(candidatRepository.findByIdTacheIdIn(List.of(t1.getId()))).thenReturn(List.of(tit1, autoMemePersonne));
+		when(beneficiaireRepository.findByIdInstanceIdIn(List.of(inst1.getId()))).thenReturn(List.of());
+		when(referentielClient.absences(aujourdhui)).thenReturn(List.of(
+				new AbsenceCollaborateur(delegantCollabId, delegantCompteId, "Amel Chef", "M-01", aujourdhui, aujourdhui, "ANNUEL")));
+
+		autoScheduler.synchroniserDelegationsDuJour();
+		assertThat(autoMemePersonne.getRetireLe()).isNull();
+	}
+
+	@Test
+	void c6_verrouConsultatifAvantChevauchement_etTriParInstanceIdEtTacheIdAvantVerrouiller() {
+		// 1. Verrou consultatif posé avant existsChevauchement
+		UUID u1 = UUID.randomUUID();
+		UUID u2 = UUID.randomUUID();
+		UUID instPetitId = u1.compareTo(u2) <= 0 ? u1 : u2;
+		UUID instGrandId = u1.compareTo(u2) <= 0 ? u2 : u1;
+		if (instPetitId.equals(instGrandId)) {
+			instGrandId = UUID.randomUUID();
+			if (instPetitId.compareTo(instGrandId) > 0) {
+				UUID tmp = instPetitId;
+				instPetitId = instGrandId;
+				instGrandId = tmp;
+			}
+		}
+		WfInstance instPetit = nouvelleInstance("CONGE", tiersCollabId);
+		instPetit.setId(instPetitId);
+		WfInstance instGrand = nouvelleInstance("CONGE", tiersCollabId);
+		instGrand.setId(instGrandId);
+		WfTache tPetit = nouvelleTache(instPetit);
+		WfTache tGrand = nouvelleTache(instGrand);
+		WfTacheCandidat titPetit = nouveauCandidat(tPetit.getId(), delegantCollabId, delegantCompteId, "Amel Chef", OrigineCandidat.TITULAIRE);
+		WfTacheCandidat titGrand = nouveauCandidat(tGrand.getId(), delegantCollabId, delegantCompteId, "Amel Chef", OrigineCandidat.TITULAIRE);
+
+		// Retour volontairement inversé : instGrand puis instPetit
+		when(tacheRepository.findTachesOuvertesPourTitulaire(delegantCollabId)).thenReturn(List.of(tGrand, tPetit));
+		when(instanceRepository.findByIdForUpdate(instPetitId)).thenReturn(Optional.of(instPetit));
+		when(instanceRepository.findByIdForUpdate(instGrandId)).thenReturn(Optional.of(instGrand));
+		when(tacheRepository.findByIdForUpdate(tPetit.getId())).thenReturn(Optional.of(tPetit));
+		when(tacheRepository.findByIdForUpdate(tGrand.getId())).thenReturn(Optional.of(tGrand));
+		when(candidatRepository.findById(new WfTacheCandidatId(tPetit.getId(), delegantCollabId))).thenReturn(Optional.of(titPetit));
+		when(candidatRepository.findById(new WfTacheCandidatId(tGrand.getId(), delegantCollabId))).thenReturn(Optional.of(titGrand));
+		when(candidatRepository.findById(new WfTacheCandidatId(tPetit.getId(), delegueCollabId))).thenReturn(Optional.empty());
+		when(candidatRepository.findById(new WfTacheCandidatId(tGrand.getId(), delegueCollabId))).thenReturn(Optional.empty());
+
+		DelegationResponse rep = delegationService.creerMoi(delegantCompteId,
+				new CreerDelegationMoiRequest(delegueCollabId, aujourdhui, aujourdhui.plusDays(2), null, null));
+
+		InOrder ordreCreation = inOrder(delegationRepository, instanceRepository);
+		ordreCreation.verify(delegationRepository).verrouillerDelegant(delegantCollabId);
+		ordreCreation.verify(delegationRepository).existsChevauchement(delegantCollabId, aujourdhui, aujourdhui.plusDays(2));
+		ordreCreation.verify(instanceRepository).findByIdForUpdate(instPetitId);
+		ordreCreation.verify(instanceRepository).findByIdForUpdate(instGrandId);
+
+		// 2. Annulation : candidats en ordre inversé -> verrouillés par (instanceId, tacheId) croissant
+		WfDelegation del = new WfDelegation();
+		del.setId(rep.id());
+		del.setDelegantCollaborateurId(delegantCollabId);
+		WfTacheCandidat cGrand = nouveauCandidat(tGrand.getId(), delegueCollabId, delegueCompteId, "Sami", OrigineCandidat.DELEGUE);
+		WfTacheCandidat cPetit = nouveauCandidat(tPetit.getId(), delegueCollabId, delegueCompteId, "Sami", OrigineCandidat.DELEGUE);
+		when(delegationRepository.findById(rep.id())).thenReturn(Optional.of(del));
+		when(candidatRepository.findActifsParDelegationSurTachesOuvertes(rep.id())).thenReturn(List.of(cGrand, cPetit));
+		when(tacheRepository.findById(tGrand.getId())).thenReturn(Optional.of(tGrand));
+		when(tacheRepository.findById(tPetit.getId())).thenReturn(Optional.of(tPetit));
+		when(candidatRepository.findById(cPetit.getId())).thenReturn(Optional.of(cPetit));
+		when(candidatRepository.findById(cGrand.getId())).thenReturn(Optional.of(cGrand));
+
+		delegationService.annulerMoi(rep.id(), delegantCompteId);
+		InOrder ordreAnnulation = inOrder(instanceRepository);
+		ordreAnnulation.verify(instanceRepository).findByIdForUpdate(instPetitId);
+		ordreAnnulation.verify(instanceRepository).findByIdForUpdate(instGrandId);
+
+		// 3. Scheduler (synchroniserDeleguesConges : retrait sur instGrand + ajout sur instPetit) -> instPetit d'abord
+		WfTacheCandidat autoGrand = nouveauCandidat(tGrand.getId(), UUID.randomUUID(), UUID.randomUUID(), "Auto", OrigineCandidat.DELEGUE_AUTO);
+		autoGrand.setPourCollaborateurId(tiersCollabId);
+		when(candidatRepository.findCandidatsDeleguesExpiresSurTachesOuvertes(aujourdhui)).thenReturn(List.of());
+		when(delegationRepository.findActivesALaDate(aujourdhui)).thenReturn(List.of());
+		when(tacheRepository.findTachesOuvertesAvecInstance()).thenReturn(List.of(tGrand, tPetit));
+		when(candidatRepository.findByIdTacheIdIn(any())).thenReturn(List.of(autoGrand, titPetit));
+		when(beneficiaireRepository.findByIdInstanceIdIn(any())).thenReturn(List.of());
+		when(referentielClient.absences(aujourdhui)).thenReturn(List.of(
+				new AbsenceCollaborateur(delegantCollabId, delegantCompteId, "Amel Chef", "M-01", aujourdhui, aujourdhui, "ANNUEL")));
+		UUID rempId = UUID.randomUUID();
+		when(resolutionService.resoudre(eq(aujourdhui), eq(delegantCollabId), any(), any(), any()))
+				.thenReturn(new LotResolu(Map.of("delegation_auto", new ResultatRegleResolue(
+						List.of(new IntervenantResolu(rempId, UUID.randomUUID(), "Remplaçant", "N+1")),
+						false, false, null)), null));
+		when(candidatRepository.findByIdTacheId(tPetit.getId())).thenReturn(List.of(titPetit));
+		when(candidatRepository.findById(autoGrand.getId())).thenReturn(Optional.of(autoGrand));
+
+		autoScheduler.synchroniserDelegationsDuJour();
+		InOrder ordreScheduler = inOrder(instanceRepository);
+		ordreScheduler.verify(instanceRepository).findByIdForUpdate(instPetitId);
+		ordreScheduler.verify(instanceRepository).findByIdForUpdate(instGrandId);
+	}
+
+	@Test
+	void c7_notificationsDelegation_lisentCanalEtape_sinonWebsocket() {
+		EtapeDefinition etapeBoth = new EtapeDefinition("VALID_MGR", "Validation Manager", "VALIDATION", null,
+				new IntervenantsDefinition("MANAGER_NOEUD", Map.of(), "UN_SEUL"),
+				new RepliSiVideDefinition("BLOQUER", null), null, null, List.of("APPROUVER", "REFUSER"),
+				false, null, new DelaiDefinition(24, "HEURES", null), null,
+				new EcheanceDefinition("RIEN", null, null), null, null,
+				new NotificationsEtapeDefinition(null, null, "BOTH"));
+		WfModeleVersion version = new WfModeleVersion();
+		version.setId(UUID.randomUUID());
+		version.setNumero(1);
+		version.setDefinition(codec.serialiser(new DefinitionWorkflow(1, "CONGE", null, List.of(etapeBoth))));
+
+		WfInstance inst = nouvelleInstance("CONGE", tiersCollabId);
+		inst.setModeleVersion(version);
+		WfEtapeExecution ee = new WfEtapeExecution();
+		ee.setId(UUID.randomUUID());
+		ee.setInstance(inst);
+		ee.setEtapeCode("VALID_MGR");
+		WfTache t = nouvelleTache(inst);
+		t.setEtapeExecution(ee);
+		WfTacheCandidat titulaire = nouveauCandidat(t.getId(), delegantCollabId, delegantCompteId, "Amel Chef", OrigineCandidat.TITULAIRE);
+
+		when(tacheRepository.findTachesOuvertesPourTitulaire(delegantCollabId)).thenReturn(List.of(t));
+		when(instanceRepository.findByIdForUpdate(inst.getId())).thenReturn(Optional.of(inst));
+		when(tacheRepository.findByIdForUpdate(t.getId())).thenReturn(Optional.of(t));
+		when(candidatRepository.findById(new WfTacheCandidatId(t.getId(), delegantCollabId))).thenReturn(Optional.of(titulaire));
+		when(candidatRepository.findByIdTacheId(t.getId())).thenReturn(List.of(titulaire));
+
+		// 1. Application immédiate dans DelegationService -> canal BOTH pour WF_TACHE_CREEE
+		delegationService.creerMoi(delegantCompteId,
+				new CreerDelegationMoiRequest(delegueCollabId, aujourdhui, aujourdhui.plusDays(2), null, null));
+		verify(outboxService).publierNotification(any(), eq(delegueCompteId.toString()), eq("BOTH"),
+				eq("WF_TACHE_CREEE"), any(), any(), eq("CONGE"), any(), any());
+
+		// 2. DelegationAutoScheduler : délégation manuelle active -> canal BOTH
+		WfDelegation delManuelle = new WfDelegation();
+		delManuelle.setId(UUID.randomUUID());
+		delManuelle.setDelegantCollaborateurId(delegantCollabId);
+		delManuelle.setDelegantNom("Amel Chef");
+		delManuelle.setDelegueCollaborateurId(delegueCollabId);
+		delManuelle.setDelegueCompteId(delegueCompteId);
+		delManuelle.setDelegueNom("Sami Délégué");
+		delManuelle.setDu(aujourdhui);
+		delManuelle.setAu(aujourdhui.plusDays(2));
+
+		when(candidatRepository.findCandidatsDeleguesExpiresSurTachesOuvertes(aujourdhui)).thenReturn(List.of());
+		when(delegationRepository.findActivesALaDate(aujourdhui)).thenReturn(List.of(delManuelle));
+		when(beneficiaireRepository.findByIdInstanceId(inst.getId())).thenReturn(List.of());
+
+		// Et délégation auto congé sur une 2e tâche -> canal BOTH aussi
+		WfInstance instAuto = nouvelleInstance("CONGE", tiersCollabId);
+		instAuto.setModeleVersion(version);
+		WfEtapeExecution eeAuto = new WfEtapeExecution();
+		eeAuto.setId(UUID.randomUUID());
+		eeAuto.setInstance(instAuto);
+		eeAuto.setEtapeCode("VALID_MGR");
+		WfTache tAuto = nouvelleTache(instAuto);
+		tAuto.setEtapeExecution(eeAuto);
+		UUID titAutoId = UUID.randomUUID();
+		UUID titAutoCompte = UUID.randomUUID();
+		WfTacheCandidat titAuto = nouveauCandidat(tAuto.getId(), titAutoId, titAutoCompte, "Karim Absent", OrigineCandidat.TITULAIRE);
+		UUID rempId = UUID.randomUUID();
+		UUID rempCompteId = UUID.randomUUID();
+
+		when(tacheRepository.findTachesOuvertesAvecInstance()).thenReturn(List.of(t, tAuto));
+		when(candidatRepository.findByIdTacheIdIn(any())).thenReturn(List.of(titulaire, titAuto));
+		when(instanceRepository.findByIdForUpdate(instAuto.getId())).thenReturn(Optional.of(instAuto));
+		when(tacheRepository.findByIdForUpdate(tAuto.getId())).thenReturn(Optional.of(tAuto));
+		when(candidatRepository.findByIdTacheId(tAuto.getId())).thenReturn(List.of(titAuto));
+		when(beneficiaireRepository.findByIdInstanceIdIn(any())).thenReturn(List.of());
+		when(beneficiaireRepository.findByIdInstanceId(instAuto.getId())).thenReturn(List.of());
+		when(referentielClient.absences(aujourdhui)).thenReturn(List.of(
+				new AbsenceCollaborateur(titAutoId, titAutoCompte, "Karim Absent", "M-10", aujourdhui, aujourdhui, "ANNUEL")));
+		when(resolutionService.resoudre(eq(aujourdhui), eq(titAutoId), any(), any(), any()))
+				.thenReturn(new LotResolu(Map.of("delegation_auto", new ResultatRegleResolue(
+						List.of(new IntervenantResolu(rempId, rempCompteId, "Directeur Remp", "N+1")),
+						false, false, null)), null));
+
+		autoScheduler.synchroniserDelegationsDuJour();
+
+		verify(outboxService, org.mockito.Mockito.times(2)).publierNotification(
+				any(), eq(delegueCompteId.toString()), eq("BOTH"), eq("WF_TACHE_CREEE"), any(), any(), eq("CONGE"), any(), any());
+		verify(outboxService).publierNotification(
+				any(), eq(rempCompteId.toString()), eq("BOTH"), eq("WF_TACHE_CREEE"), any(), any(), eq("CONGE"), any(), any());
 	}
 
 	private WfInstance nouvelleInstance(String objetType, UUID demandeurCollab) {

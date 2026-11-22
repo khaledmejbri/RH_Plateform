@@ -7,6 +7,7 @@ import com.hr.workflow.client.WorkflowReferentielClient.CalendrierSocieteRespons
 import com.hr.workflow.client.WorkflowReferentielClient.IntervenantResolu;
 import com.hr.workflow.definition.DefinitionCodec;
 import com.hr.workflow.definition.DefinitionWorkflow;
+import com.hr.workflow.definition.DefinitionWorkflow.OptionsWorkflow;
 import com.hr.workflow.definition.DelaiDefinition;
 import com.hr.workflow.definition.EcheanceDefinition;
 import com.hr.workflow.definition.EcheanceDefinition.ApresEcheance;
@@ -49,6 +50,7 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -402,9 +404,101 @@ class EcheanceSchedulerTest {
 		assertThat(instance.getStatut()).isEqualTo(StatutInstance.BLOQUEE);
 		assertThat(tache.getStatut()).isEqualTo(StatutTache.A_TRAITER);
 		assertThat(tache.getEcheanceTraiteeLe()).isEqualTo(maintenant);
+		assertThat(tache.getDecision()).isNull();
+		assertThat(tache.getCommentaire()).isNull();
+		assertThat(tache.getDecideParNom()).isNull();
 		assertThat(tache.getCleIdempotence()).isNull();
 		verify(outboxService).publierNotification(any(), eq(rhCompte.toString()), eq("WEBSOCKET"),
 				eq("WF_BLOQUEE"), eq("Workflow bloqué"), any(), eq("CONGE"), any(), any());
 		verify(historiqueRepository).save(argThat(h -> "EFFET_REJETE".equals(h.getTypeEvenement())));
+	}
+
+	@Test
+	void c4_escalade_utiliseFuseauSocieteEtExclutApprobateursPrecedentsSiSeparationDesTaches() {
+		// 23:30 UTC le 20/11 -> 00:30 Africa/Tunis le 21/11
+		Instant tardUtc = Instant.parse("2026-11-20T23:30:00Z");
+		Clock clockTard = Clock.fixed(tardUtc, ZoneOffset.UTC);
+		PreparationDecisionService prep = new PreparationDecisionService(
+				catalogue, resolutionService, referentielClient, planifService, avancementService, clockTard);
+		ApplicationDecisionService app = new ApplicationDecisionService(
+				instanceRepository, tacheRepository, candidatRepository, etapeExecutionRepository,
+				historiqueRepository, outboxService, clockTard);
+		EcheanceScheduler schedTard = new EcheanceScheduler(
+				tacheRepository, instanceRepository, candidatRepository, beneficiaireRepository,
+				historiqueRepository, appelEffetRepository, catalogue, codec, planifService,
+				resolutionService, prep, app, referentielClient, effetClient, outboxService,
+				verrouPlanificateur, txManager, clockTard);
+
+		EtapeDefinition etape = new EtapeDefinition("VALID_RH", "Validation RH", "VALIDATION", null,
+				new IntervenantsDefinition("ROLE", Map.of("roles", List.of("RH")), "UN_SEUL"),
+				new RepliSiVideDefinition("BLOQUER", null), null, null, List.of("APPROUVER", "REFUSER"),
+				false, null, new DelaiDefinition(24, "HEURES", null), null,
+				new EcheanceDefinition("ESCALADER", new ApresEcheance(4, "HEURES"),
+						new IntervenantsDefinition("ROLE", Map.of("roles", List.of("RH")), "UN_SEUL")),
+				null, null, null);
+		WfModeleVersion version = new WfModeleVersion();
+		version.setId(UUID.randomUUID());
+		version.setNumero(1);
+		version.setDefinition(codec.serialiser(new DefinitionWorkflow(1, "CONGE", new OptionsWorkflow(true), List.of(etape))));
+		instance.setModeleVersion(version);
+
+		UUID approbateurPrecedent = UUID.randomUUID();
+		when(tacheRepository.findApprobateursCollaborateurIds(instanceId)).thenReturn(List.of(approbateurPrecedent));
+		tache.setEcheanceLe(tardUtc.minus(5, ChronoUnit.HOURS));
+		tache.setEcheanceTraiteeLe(tardUtc.minus(4, ChronoUnit.HOURS));
+		tache.setEscaladeAFaireLe(tardUtc.minus(1, ChronoUnit.MINUTES));
+
+		when(resolutionService.resoudre(eq(LocalDate.of(2026, 11, 21)), eq(demandeurCollabId), any(), eq(List.of(approbateurPrecedent)), any()))
+				.thenReturn(new LotResolu(Map.of("escalade", new ResultatRegleResolue(
+						List.of(new IntervenantResolu(UUID.randomUUID(), UUID.randomUUID(), "Autre RH", "RH")),
+						false, false, null)), null));
+
+		int traites = schedTard.traiterEcheances();
+		assertThat(traites).isEqualTo(1);
+		verify(resolutionService).resoudre(
+				eq(LocalDate.of(2026, 11, 21)),
+				eq(demandeurCollabId),
+				any(),
+				eq(List.of(approbateurPrecedent)),
+				any());
+	}
+
+	@Test
+	void c5_marquerEcheanceEscaladeDejaTraitee_retourneZero_etTypeInconnuExpireSansNpe() {
+		// 1. Tâche dont l'échéance et l'escalade ont déjà été traitées entre lecture et écriture -> 0 traité
+		configurerDefinition("CONGE", new EcheanceDefinition("ESCALADER", new ApresEcheance(4, "HEURES"),
+				new IntervenantsDefinition("ROLE", Map.of("roles", List.of("RH")), "UN_SEUL")), null);
+		WfTache tacheSnapshot = new WfTache();
+		tacheSnapshot.setId(tacheId);
+		tacheSnapshot.setInstance(instance);
+		tacheSnapshot.setEtapeExecution(etapeExec);
+		tacheSnapshot.setType(TypeTache.VALIDATION);
+		tacheSnapshot.setLibelle("Validation RH");
+		tacheSnapshot.setStatut(StatutTache.A_TRAITER);
+		tacheSnapshot.setEcheanceLe(maintenant.minus(1, ChronoUnit.HOURS));
+		tacheSnapshot.setEcheanceTraiteeLe(null);
+		tacheSnapshot.setEscaladeAFaireLe(maintenant.plus(3, ChronoUnit.HOURS));
+
+		tache.setEcheanceLe(maintenant.minus(1, ChronoUnit.HOURS));
+		tache.setEcheanceTraiteeLe(maintenant.minus(30, ChronoUnit.MINUTES));
+		tache.setEscaladeAFaireLe(maintenant.plus(3, ChronoUnit.HOURS));
+
+		when(tacheRepository.findByIdAvecDetails(tacheId)).thenReturn(Optional.of(tacheSnapshot));
+		when(tacheRepository.findByIdForUpdate(tacheId)).thenReturn(Optional.of(tache));
+
+		int traitesDejaTraite = scheduler.traiterEcheances();
+		assertThat(traitesDejaTraite).isZero();
+
+		// 2. Type inconnu du catalogue lors de l'expiration -> expire sans NPE ni appel HTTP
+		configurerDefinition("OBJET_HISTORIQUE_INCONNU", new EcheanceDefinition("EXPIRER", null, null), null);
+		tache.setEcheanceTraiteeLe(null);
+		tache.setEscaladeAFaireLe(null);
+		when(tacheRepository.findByIdAvecDetails(tacheId)).thenReturn(Optional.of(tache));
+
+		int traitesInconnu = scheduler.traiterEcheances();
+		assertThat(traitesInconnu).isEqualTo(1);
+		assertThat(tache.getStatut()).isEqualTo(StatutTache.EXPIREE);
+		assertThat(instance.getStatut()).isEqualTo(StatutInstance.EXPIREE);
+		verify(effetClient, never()).appeler(any(), any(), any());
 	}
 }

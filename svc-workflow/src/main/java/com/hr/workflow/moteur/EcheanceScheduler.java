@@ -48,6 +48,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -228,9 +229,9 @@ public class EcheanceScheduler {
 		// 3. Échéance atteinte pour RIEN ou ESCALADER
 		if (echeanceDue) {
 			if ("ESCALADER".equals(actionEcheance)) {
-				Instant escaladePlanifiee = marquerEcheanceEscalade(ctx, maintenant);
-				modifie = true;
-				if (escaladePlanifiee != null && !escaladePlanifiee.isAfter(maintenant) && ctx.escaladeLe() == null) {
+				ResultatMarquageEscalade res = marquerEcheanceEscalade(ctx, maintenant);
+				modifie |= res.modifie();
+				if (res.escaladePlanifiee() != null && !res.escaladePlanifiee().isAfter(maintenant) && ctx.escaladeLe() == null) {
 					escaladeDue = true;
 				}
 			} else {
@@ -347,7 +348,10 @@ public class EcheanceScheduler {
 		return Boolean.TRUE.equals(ok);
 	}
 
-	private Instant marquerEcheanceEscalade(ContexteTacheDue ctx, Instant maintenant) {
+	private record ResultatMarquageEscalade(boolean modifie, Instant escaladePlanifiee) {
+	}
+
+	private ResultatMarquageEscalade marquerEcheanceEscalade(ContexteTacheDue ctx, Instant maintenant) {
 		Instant escaladeCalculee = ctx.escaladeAFaireLe();
 		if (escaladeCalculee == null && ctx.etapeDef() != null) {
 			LocalDate ref = LocalDate.now(clock);
@@ -356,23 +360,29 @@ public class EcheanceScheduler {
 					ctx.echeanceLe(), ctx.etapeDef().aEcheance(), cal);
 		}
 		final Instant escaladeFinale = escaladeCalculee;
-		return txWrite.execute(status -> {
+		ResultatMarquageEscalade res = txWrite.execute(status -> {
 			WfInstance inst = instanceRepository.findByIdForUpdate(ctx.instanceId()).orElse(null);
 			WfTache t = tacheRepository.findByIdForUpdate(ctx.tacheId()).orElse(null);
 			if (inst == null || t == null || inst.getStatut().estTerminale() || t.getStatut() != StatutTache.A_TRAITER) {
-				return null;
+				return new ResultatMarquageEscalade(false, null);
 			}
+			boolean modifie = false;
 			if (t.getEcheanceTraiteeLe() == null) {
 				t.setEcheanceTraiteeLe(maintenant);
 				enregistrerHistorique(inst.getId(), t.getId(), "ECHEANCE_ATTEINTE",
 						Map.of("action", "ESCALADER"), maintenant);
+				modifie = true;
 			}
 			if (t.getEscaladeAFaireLe() == null && escaladeFinale != null) {
 				t.setEscaladeAFaireLe(escaladeFinale);
+				modifie = true;
 			}
-			tacheRepository.save(t);
-			return t.getEscaladeAFaireLe();
+			if (modifie) {
+				tacheRepository.save(t);
+			}
+			return new ResultatMarquageEscalade(modifie, t.getEscaladeAFaireLe());
 		});
+		return res != null ? res : new ResultatMarquageEscalade(false, null);
 	}
 
 	private boolean executerEscalade(ContexteTacheDue ctx, Instant maintenant) {
@@ -381,6 +391,14 @@ public class EcheanceScheduler {
 				? ctx.etapeDef().aEcheance().intervenants()
 				: new IntervenantsDefinition("ROLE", Map.of("roles", List.of("RH", "ADMIN")), "UN_SEUL");
 
+		LocalDate ref = LocalDate.now(clock);
+		CalendrierSocieteResponse cal = referentielClient.calendrierSociete(ref, ref);
+		ZoneId fuseau = PlanificationEcheanceService.parserFuseau(cal != null ? cal.fuseau() : null);
+		LocalDate aujourdhui = LocalDate.now(clock.withZone(fuseau));
+		List<UUID> exclure = (ctx.definition() != null && ctx.definition().separationDesTaches()
+				&& ctx.approbateursPrecedents() != null)
+				? ctx.approbateursPrecedents() : List.of();
+
 		// Résolution hors transaction + repli ROLE [RH, ADMIN] (D-W20) + invariant I1
 		RegleAResoudre regle = new RegleAResoudre(
 				"escalade",
@@ -388,7 +406,7 @@ public class EcheanceScheduler {
 				new RepliSiVideDefinition("ROLE", List.of("RH", "ADMIN")),
 				true);
 		LotResolu lot = resolutionService.resoudre(
-				LocalDate.now(clock), ctx.demandeurCollabId(), ctx.beneficiaires(), List.of(), List.of(regle));
+				aujourdhui, ctx.demandeurCollabId(), ctx.beneficiaires(), exclure, List.of(regle));
 		ResultatRegleResolue res = lot != null && lot.resultats() != null ? lot.resultats().get("escalade") : null;
 		List<IntervenantResolu> candidats = (res != null && !res.bloquer() && res.candidats() != null)
 				? res.candidats() : List.of();
@@ -469,7 +487,7 @@ public class EcheanceScheduler {
 		String motif = estComplement ? MOTIF_COMPLEMENT_EXPIRE : MOTIF_EXPIRATION;
 		String cleEffet = "echeance:" + ctx.tacheId() + ":" + effet;
 
-		boolean sansEffetChezProprietaire = ctx.typeCatalogue() != null && !ctx.typeCatalogue().supporteEffet(effet);
+		boolean sansEffetChezProprietaire = ctx.typeCatalogue() == null || !ctx.typeCatalogue().supporteEffet(effet);
 		if (sansEffetChezProprietaire) {
 			Boolean ok = txWrite.execute(status -> {
 				WfInstance inst = instanceRepository.findByIdForUpdate(ctx.instanceId()).orElse(null);

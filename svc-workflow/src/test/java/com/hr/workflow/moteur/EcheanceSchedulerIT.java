@@ -361,6 +361,10 @@ class EcheanceSchedulerIT {
 		assertThat(instQ4Relue.getStatut()).isEqualTo(StatutInstance.BLOQUEE);
 		assertThat(tQ4Relue.getStatut()).isEqualTo(StatutTache.A_TRAITER);
 		assertThat(tQ4Relue.getEcheanceTraiteeLe()).isNotNull();
+		assertThat(tQ4Relue.getDecision()).isNull();
+		assertThat(tQ4Relue.getCommentaire()).isNull();
+		assertThat(tQ4Relue.getDecideParNom()).isNull();
+		assertThat(tQ4Relue.getCleIdempotence()).isNull();
 
 		WfTache tRienRelue = tacheRepository.findById(tRien.getId()).orElseThrow();
 		assertThat(tRienRelue.getStatut()).isEqualTo(StatutTache.A_TRAITER);
@@ -393,9 +397,11 @@ class EcheanceSchedulerIT {
 		WfModele modele = modeleRepository.findByCode(modeleCode).orElseThrow();
 		DefinitionCodec codec = new DefinitionCodec();
 		DefinitionWorkflow def = new DefinitionWorkflow(1, objetType, null, List.of(etape));
+		int nextNumero = versionRepository.findTopByModeleIdOrderByNumeroDesc(modele.getId())
+				.map(top -> top.getNumero() + 1).orElse(2000);
 		WfModeleVersion v = new WfModeleVersion();
 		v.setModele(modele);
-		v.setNumero(2000 + Math.abs(UUID.randomUUID().hashCode() % 100000));
+		v.setNumero(nextNumero);
 		v.setStatut(StatutVersion.RETIREE);
 		v.setDefinition(codec.serialiser(def));
 		v.setFormatDefinition(1);

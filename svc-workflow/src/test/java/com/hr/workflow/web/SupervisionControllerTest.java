@@ -13,7 +13,9 @@ import com.hr.workflow.definition.EcheanceDefinition;
 import com.hr.workflow.definition.EtapeDefinition;
 import com.hr.workflow.definition.EtapeDefinition.RepliSiVideDefinition;
 import com.hr.workflow.definition.IntervenantsDefinition;
+import com.hr.workflow.domain.DecisionTache;
 import com.hr.workflow.domain.OrigineCandidat;
+import com.hr.workflow.domain.OrigineDelegation;
 import com.hr.workflow.domain.StatutEtapeExecution;
 import com.hr.workflow.domain.StatutInstance;
 import com.hr.workflow.domain.StatutTache;
@@ -30,6 +32,7 @@ import com.hr.workflow.dto.SupervisionDtos.InstanceDetailAdminResponse;
 import com.hr.workflow.dto.SupervisionDtos.InstanceResumeResponse;
 import com.hr.workflow.dto.SupervisionDtos.ReaffecterTacheResponse;
 import com.hr.workflow.dto.WorkflowMoteurDtos.DecisionRequest;
+import com.hr.workflow.entity.WfDelegation;
 import com.hr.workflow.entity.WfEtapeExecution;
 import com.hr.workflow.entity.WfInstance;
 import com.hr.workflow.entity.WfModele;
@@ -39,6 +42,7 @@ import com.hr.workflow.entity.WfTacheCandidat;
 import com.hr.workflow.entity.WfTacheCandidatId;
 import com.hr.workflow.moteur.DecisionService;
 import com.hr.workflow.moteur.PlanificationEcheanceService;
+import com.hr.workflow.repository.WfDelegationRepository;
 import com.hr.workflow.repository.WfEtapeExecutionRepository;
 import com.hr.workflow.repository.WfInstanceRepository;
 import com.hr.workflow.repository.WfModeleRepository;
@@ -80,6 +84,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -113,6 +122,7 @@ class SupervisionControllerTest {
 	@Autowired private WfEtapeExecutionRepository etapeExecutionRepository;
 	@Autowired private WfTacheRepository tacheRepository;
 	@Autowired private WfTacheCandidatRepository candidatRepository;
+	@Autowired private WfDelegationRepository delegationRepository;
 	@Autowired private WorkflowUtilisateurService utilisateurService;
 	@Autowired private DecisionService decisionService;
 
@@ -521,6 +531,269 @@ class SupervisionControllerTest {
 				.andExpect(status().isNoContent());
 	}
 
+	@Test
+	void c2_postgresql_reaffectationEnCours_incrementeVersion_etSecondeAvecAncienneVersionRecoit409() throws Exception {
+		WfModeleVersion versionConge = creerVersion("M01_CONGE", "CONGE", "VALID_RH", "Validation RH");
+		Instant now = Instant.now();
+		WfInstance instEnCours = creerInstance(versionConge, "CONGE", StatutInstance.EN_COURS, "VALID_RH",
+				UUID.randomUUID(), "Demandeur Actif", now, null);
+		WfEtapeExecution ee = creerEtapeActive(instEnCours, "VALID_RH", now);
+		WfTache t = creerTache(instEnCours, ee, "VALID_RH", "Validation RH", now.plus(24, ChronoUnit.HOURS));
+		creerCandidat(t, UUID.randomUUID(), UUID.randomUUID(), "RH Init", OrigineCandidat.TITULAIRE, null, now);
+		Long versionInit = t.getVersion();
+
+		UUID rhCompte = UUID.randomUUID();
+		UUID rhCollab = UUID.randomUUID();
+		UUID drh1Collab = UUID.randomUUID();
+		UUID drh2Collab = UUID.randomUUID();
+		lenient().when(referentielClient.collaborateurParCompte(rhCompte))
+				.thenReturn(Optional.of(new CollaborateurResume(rhCollab, rhCompte, "Nadia RH", "M-RH", "ACTIF")));
+		lenient().when(referentielClient.collaborateurParId(drh1Collab))
+				.thenReturn(Optional.of(new CollaborateurResume(drh1Collab, UUID.randomUUID(), "DRH 1", "M-1", "ACTIF")));
+		lenient().when(referentielClient.collaborateurParId(drh2Collab))
+				.thenReturn(Optional.of(new CollaborateurResume(drh2Collab, UUID.randomUUID(), "DRH 2", "M-2", "ACTIF")));
+
+		JwtRequestPostProcessor rhJwt = jeton(rhCompte, "Nadia RH", "ROLE_RH");
+
+		// 1. Première réaffectation sur tâche EN_COURS -> 200 et @Version incrémentée
+		String body1 = jsonMapper.writeValueAsString(
+				new ReaffecterTacheRequest(List.of(drh1Collab), "Réaffectation charge RH", versionInit));
+		MvcResult res1 = mockMvc.perform(post("/api/rh/v1/admin/workflow/taches/{id}/reaffecter", t.getId())
+				.contentType(MediaType.APPLICATION_JSON).content(body1).with(rhJwt))
+				.andExpect(status().isOk())
+				.andReturn();
+		ReaffecterTacheResponse rep1 = jsonMapper.readValue(
+				res1.getResponse().getContentAsString(), ReaffecterTacheResponse.class);
+		assertThat(rep1.statutInstance()).isEqualTo(StatutInstance.EN_COURS);
+		assertThat(rep1.version()).isEqualTo(versionInit + 1);
+
+		WfTache tRelue = tacheRepository.findById(t.getId()).orElseThrow();
+		assertThat(tRelue.getVersion()).isEqualTo(versionInit + 1);
+		assertThat(tRelue.getReaffecteeLe()).isNotNull();
+
+		// 2. Seconde réaffectation avec l'ancienne version -> 409 MODIFIE_ENTRE_TEMPS
+		String body2 = jsonMapper.writeValueAsString(
+				new ReaffecterTacheRequest(List.of(drh2Collab), "Écrasement concurrent", versionInit));
+		mockMvc.perform(post("/api/rh/v1/admin/workflow/taches/{id}/reaffecter", t.getId())
+				.contentType(MediaType.APPLICATION_JSON).content(body2).with(rhJwt))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("MODIFIE_ENTRE_TEMPS"));
+	}
+
+	@Test
+	void c6_postgresql_concurrenceCreationDelegationMemeDelegant_unSuccesUnConflit409() throws Exception {
+		UUID delegantCollab = UUID.randomUUID();
+		UUID delegantCompte = UUID.randomUUID();
+		UUID delegue1Collab = UUID.randomUUID();
+		UUID delegue2Collab = UUID.randomUUID();
+		lenient().when(referentielClient.collaborateurParCompte(delegantCompte))
+				.thenReturn(Optional.of(new CollaborateurResume(delegantCollab, delegantCompte, "Chef Concurrent", "M-C", "ACTIF")));
+		lenient().when(referentielClient.collaborateurParId(delegue1Collab))
+				.thenReturn(Optional.of(new CollaborateurResume(delegue1Collab, UUID.randomUUID(), "Délégué 1", "M-D1", "ACTIF")));
+		lenient().when(referentielClient.collaborateurParId(delegue2Collab))
+				.thenReturn(Optional.of(new CollaborateurResume(delegue2Collab, UUID.randomUUID(), "Délégué 2", "M-D2", "ACTIF")));
+
+		LocalDate auj = LocalDate.now(PlanificationEcheanceService.FUSEAU_DEFAUT);
+		JwtRequestPostProcessor delegantJwt = jeton(delegantCompte, "Chef Concurrent", "ROLE_USER");
+		String body1 = jsonMapper.writeValueAsString(
+				new CreerDelegationMoiRequest(delegue1Collab, auj, auj.plusDays(4), List.of("CONGE"), "Concurrent 1"));
+		String body2 = jsonMapper.writeValueAsString(
+				new CreerDelegationMoiRequest(delegue2Collab, auj.plusDays(1), auj.plusDays(5), List.of("ORDRE_MISSION"), "Concurrent 2"));
+
+		CountDownLatch pret = new CountDownLatch(2);
+		CountDownLatch depart = new CountDownLatch(1);
+		ExecutorService pool = Executors.newFixedThreadPool(2);
+		Callable<Integer> tache1 = () -> {
+			pret.countDown();
+			depart.await();
+			return mockMvc.perform(post("/api/rh/v1/workflow/delegations/moi")
+					.contentType(MediaType.APPLICATION_JSON).content(body1).with(delegantJwt))
+					.andReturn().getResponse().getStatus();
+		};
+		Callable<Integer> tache2 = () -> {
+			pret.countDown();
+			depart.await();
+			return mockMvc.perform(post("/api/rh/v1/workflow/delegations/moi")
+					.contentType(MediaType.APPLICATION_JSON).content(body2).with(delegantJwt))
+					.andReturn().getResponse().getStatus();
+		};
+		Future<Integer> f1 = pool.submit(tache1);
+		Future<Integer> f2 = pool.submit(tache2);
+		pret.await();
+		depart.countDown();
+
+		List<Integer> statuts = List.of(f1.get(), f2.get());
+		pool.shutdown();
+		assertThat(statuts).containsExactlyInAnyOrder(201, 409);
+	}
+
+	@Test
+	void c8_postgresql_indicateursBorneHauteStricte() throws Exception {
+		String stepUnique = "IND_BORNE_" + UUID.randomUUID().toString().substring(0, 8);
+		WfModeleVersion version = creerVersion("M01_CONGE", "CONGE", stepUnique, "Étape Borne");
+		LocalDate auj = LocalDate.now(PlanificationEcheanceService.FUSEAU_DEFAUT);
+		Instant finExclue = auj.plusDays(1).atStartOfDay(PlanificationEcheanceService.FUSEAU_DEFAUT).toInstant();
+
+		// 1. Décidée à 23:59:59.999999 (microsecondes avant minuit le jour `au`) -> incluse
+		WfInstance instIn = creerInstance(version, "CONGE", StatutInstance.APPROUVEE, null,
+				UUID.randomUUID(), "Dem In", finExclue.minus(3, ChronoUnit.HOURS), finExclue.minusNanos(1000));
+		WfEtapeExecution eeIn = creerEtapeActive(instIn, stepUnique, finExclue.minus(2, ChronoUnit.HOURS));
+		WfTache tIn = creerTache(instIn, eeIn, stepUnique, "Étape Borne", finExclue.plus(4, ChronoUnit.HOURS));
+		tIn.setStatut(StatutTache.TRAITEE);
+		tIn.setDecision(DecisionTache.APPROUVEE);
+		tIn.setDecideLe(finExclue.minusNanos(1000));
+		tacheRepository.saveAndFlush(tIn);
+
+		// 2. Décidée exactement à 00:00:00 le jour `au + 1` (finExclue) -> exclue
+		WfInstance instOut = creerInstance(version, "CONGE", StatutInstance.APPROUVEE, null,
+				UUID.randomUUID(), "Dem Out", finExclue.minus(12, ChronoUnit.HOURS), finExclue);
+		WfEtapeExecution eeOut = creerEtapeActive(instOut, stepUnique, finExclue.minus(10, ChronoUnit.HOURS));
+		WfTache tOut = creerTache(instOut, eeOut, stepUnique, "Étape Borne", finExclue.plus(4, ChronoUnit.HOURS));
+		tOut.setStatut(StatutTache.TRAITEE);
+		tOut.setDecision(DecisionTache.APPROUVEE);
+		tOut.setDecideLe(finExclue);
+		tacheRepository.saveAndFlush(tOut);
+
+		MvcResult res = mockMvc.perform(get("/api/rh/v1/admin/workflow/indicateurs")
+				.queryParam("du", auj.toString())
+				.queryParam("au", auj.toString())
+				.with(jeton(UUID.randomUUID(), "RH Ind", "ROLE_RH")))
+				.andExpect(status().isOk())
+				.andReturn();
+		IndicateursWorkflowResponse ind = jsonMapper.readValue(
+				res.getResponse().getContentAsString(), IndicateursWorkflowResponse.class);
+		IndicateurEtapeDto dto = ind.parEtape().stream()
+				.filter(e -> stepUnique.equals(e.etapeCode()))
+				.findFirst().orElseThrow();
+		assertThat(dto.nb()).isEqualTo(1);
+		assertThat(dto.delaiMoyenHeures()).isBetween(new BigDecimal("1.95"), new BigDecimal("2.05"));
+	}
+
+	@Test
+	void c9_postgresql_filtresDelegationsMoiEtAdmin() throws Exception {
+		UUID collabA = UUID.randomUUID();
+		UUID compteA = UUID.randomUUID();
+		UUID collabB = UUID.randomUUID();
+		UUID compteB = UUID.randomUUID();
+		UUID collabC = UUID.randomUUID();
+		UUID compteC = UUID.randomUUID();
+
+		lenient().when(referentielClient.collaborateurParCompte(compteA))
+				.thenReturn(Optional.of(new CollaborateurResume(collabA, compteA, "Collab A", "M-A", "ACTIF")));
+		lenient().when(referentielClient.collaborateurParId(collabA))
+				.thenReturn(Optional.of(new CollaborateurResume(collabA, compteA, "Collab A", "M-A", "ACTIF")));
+		lenient().when(referentielClient.collaborateurParId(collabB))
+				.thenReturn(Optional.of(new CollaborateurResume(collabB, compteB, "Collab B", "M-B", "ACTIF")));
+		lenient().when(referentielClient.collaborateurParId(collabC))
+				.thenReturn(Optional.of(new CollaborateurResume(collabC, compteC, "Collab C", "M-C", "ACTIF")));
+
+		LocalDate auj = LocalDate.now(PlanificationEcheanceService.FUSEAU_DEFAUT);
+		JwtRequestPostProcessor jwtA = jeton(compteA, "Collab A", "ROLE_USER");
+		JwtRequestPostProcessor jwtRh = jeton(UUID.randomUUID(), "RH Admin", "ROLE_RH");
+
+		// del1 : collabA -> collabB (active aujourd'hui)
+		DelegationResponse del1 = jsonMapper.readValue(mockMvc.perform(post("/api/rh/v1/workflow/delegations/moi")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(jsonMapper.writeValueAsString(
+						new CreerDelegationMoiRequest(collabB, auj, auj.plusDays(3), null, "Active sortante")))
+				.with(jwtA))
+				.andExpect(status().isCreated())
+				.andReturn().getResponse().getContentAsString(), DelegationResponse.class);
+
+		// del2 : collabC -> collabA (active aujourd'hui, collabA est DELEGUE)
+		DelegationResponse del2 = jsonMapper.readValue(mockMvc.perform(post("/api/rh/v1/admin/workflow/delegations")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(jsonMapper.writeValueAsString(
+						new CreerDelegationAdminRequest(collabC, collabA, auj, auj.plusDays(4), null, "Active entrante")))
+				.with(jwtRh))
+				.andExpect(status().isCreated())
+				.andReturn().getResponse().getContentAsString(), DelegationResponse.class);
+
+		// del3 : collabA -> collabC puis annulée (actives = false)
+		DelegationResponse del3 = jsonMapper.readValue(mockMvc.perform(post("/api/rh/v1/workflow/delegations/moi")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(jsonMapper.writeValueAsString(
+						new CreerDelegationMoiRequest(collabC, auj.plusDays(10), auj.plusDays(12), null, "Annulée")))
+				.with(jwtA))
+				.andExpect(status().isCreated())
+				.andReturn().getResponse().getContentAsString(), DelegationResponse.class);
+		mockMvc.perform(delete("/api/rh/v1/workflow/delegations/moi/{id}", del3.id()).with(jwtA))
+				.andExpect(status().isNoContent());
+
+		// del4 : collabB -> collabA expirée dans le passé (actives = false)
+		WfDelegation entiteExpiree = new WfDelegation();
+		entiteExpiree.setDelegantCollaborateurId(collabB);
+		entiteExpiree.setDelegantNom("Collab B");
+		entiteExpiree.setDelegueCollaborateurId(collabA);
+		entiteExpiree.setDelegueCompteId(compteA);
+		entiteExpiree.setDelegueNom("Collab A");
+		entiteExpiree.setDu(auj.minusDays(10));
+		entiteExpiree.setAu(auj.minusDays(2));
+		entiteExpiree.setOrigine(OrigineDelegation.MANUELLE);
+		entiteExpiree.setCreeeLe(Instant.now().minus(10, ChronoUnit.DAYS));
+		UUID del4Id = delegationRepository.saveAndFlush(entiteExpiree).getId();
+
+		// 1. /delegations/moi : role=DELEGANT|DELEGUE|TOUS & actives=true|false
+		assertThat(lireListeDelegations(mockMvc.perform(get("/api/rh/v1/workflow/delegations/moi")
+				.queryParam("role", "DELEGANT").queryParam("actives", "true").with(jwtA))
+				.andExpect(status().isOk()).andReturn()))
+				.extracting(DelegationResponse::id).containsExactly(del1.id());
+		assertThat(lireListeDelegations(mockMvc.perform(get("/api/rh/v1/workflow/delegations/moi")
+				.queryParam("role", "DELEGANT").queryParam("actives", "false").with(jwtA))
+				.andExpect(status().isOk()).andReturn()))
+				.extracting(DelegationResponse::id).containsExactly(del3.id());
+
+		assertThat(lireListeDelegations(mockMvc.perform(get("/api/rh/v1/workflow/delegations/moi")
+				.queryParam("role", "DELEGUE").queryParam("actives", "true").with(jwtA))
+				.andExpect(status().isOk()).andReturn()))
+				.extracting(DelegationResponse::id).containsExactly(del2.id());
+		assertThat(lireListeDelegations(mockMvc.perform(get("/api/rh/v1/workflow/delegations/moi")
+				.queryParam("role", "DELEGUE").queryParam("actives", "false").with(jwtA))
+				.andExpect(status().isOk()).andReturn()))
+				.extracting(DelegationResponse::id).containsExactly(del4Id);
+
+		assertThat(lireListeDelegations(mockMvc.perform(get("/api/rh/v1/workflow/delegations/moi")
+				.queryParam("role", "TOUS").queryParam("actives", "true").with(jwtA))
+				.andExpect(status().isOk()).andReturn()))
+				.extracting(DelegationResponse::id).containsExactlyInAnyOrder(del1.id(), del2.id());
+		assertThat(lireListeDelegations(mockMvc.perform(get("/api/rh/v1/workflow/delegations/moi")
+				.queryParam("role", "TOUS").queryParam("actives", "false").with(jwtA))
+				.andExpect(status().isOk()).andReturn()))
+				.extracting(DelegationResponse::id).containsExactlyInAnyOrder(del3.id(), del4Id);
+
+		// 2. /admin/workflow/delegations : delegant_id, delegue_id, actives=true|false
+		assertThat(lirePageDelegations(mockMvc.perform(get("/api/rh/v1/admin/workflow/delegations")
+				.queryParam("delegant_id", collabA.toString()).queryParam("actives", "true").with(jwtRh))
+				.andExpect(status().isOk()).andReturn()).elements())
+				.extracting(DelegationResponse::id).containsExactly(del1.id());
+		assertThat(lirePageDelegations(mockMvc.perform(get("/api/rh/v1/admin/workflow/delegations")
+				.queryParam("delegant_id", collabA.toString()).queryParam("actives", "false").with(jwtRh))
+				.andExpect(status().isOk()).andReturn()).elements())
+				.extracting(DelegationResponse::id).containsExactly(del3.id());
+
+		assertThat(lirePageDelegations(mockMvc.perform(get("/api/rh/v1/admin/workflow/delegations")
+				.queryParam("delegue_id", collabA.toString()).queryParam("actives", "true").with(jwtRh))
+				.andExpect(status().isOk()).andReturn()).elements())
+				.extracting(DelegationResponse::id).containsExactly(del2.id());
+		assertThat(lirePageDelegations(mockMvc.perform(get("/api/rh/v1/admin/workflow/delegations")
+				.queryParam("delegue_id", collabA.toString()).queryParam("actives", "false").with(jwtRh))
+				.andExpect(status().isOk()).andReturn()).elements())
+				.extracting(DelegationResponse::id).containsExactly(del4Id);
+
+		assertThat(lirePageDelegations(mockMvc.perform(get("/api/rh/v1/admin/workflow/delegations")
+				.queryParam("delegant_id", collabA.toString())
+				.queryParam("delegue_id", collabB.toString())
+				.queryParam("actives", "true").with(jwtRh))
+				.andExpect(status().isOk()).andReturn()).elements())
+				.extracting(DelegationResponse::id).containsExactly(del1.id());
+		assertThat(lirePageDelegations(mockMvc.perform(get("/api/rh/v1/admin/workflow/delegations")
+				.queryParam("delegant_id", collabA.toString())
+				.queryParam("delegue_id", collabB.toString())
+				.queryParam("actives", "false").with(jwtRh))
+				.andExpect(status().isOk()).andReturn()).elements())
+				.isEmpty();
+	}
+
 	private JwtRequestPostProcessor jeton(UUID compteId, String nom, String role) {
 		return jwt().jwt(j -> j
 				.subject(compteId.toString())
@@ -534,6 +807,16 @@ class SupervisionControllerTest {
 				new TypeReference<PageResponse<InstanceResumeResponse>>() {});
 	}
 
+	private List<DelegationResponse> lireListeDelegations(MvcResult res) throws Exception {
+		return jsonMapper.readValue(res.getResponse().getContentAsString(),
+				new TypeReference<List<DelegationResponse>>() {});
+	}
+
+	private PageResponse<DelegationResponse> lirePageDelegations(MvcResult res) throws Exception {
+		return jsonMapper.readValue(res.getResponse().getContentAsString(),
+				new TypeReference<PageResponse<DelegationResponse>>() {});
+	}
+
 	private WfModeleVersion creerVersion(String modeleCode, String objetType, String etapeCode, String etapeLibelle) {
 		WfModele modele = modeleRepository.findByCode(modeleCode).orElseThrow();
 		EtapeDefinition etape = new EtapeDefinition(etapeCode, etapeLibelle, "VALIDATION", null,
@@ -543,9 +826,11 @@ class SupervisionControllerTest {
 				new EcheanceDefinition("RIEN", null, null), null, null, null);
 		DefinitionCodec codec = new DefinitionCodec();
 		DefinitionWorkflow def = new DefinitionWorkflow(1, objetType, null, List.of(etape));
+		int nextNumero = versionRepository.findTopByModeleIdOrderByNumeroDesc(modele.getId())
+				.map(top -> top.getNumero() + 1).orElse(3000);
 		WfModeleVersion v = new WfModeleVersion();
 		v.setModele(modele);
-		v.setNumero(3000 + Math.abs(UUID.randomUUID().hashCode() % 100000));
+		v.setNumero(nextNumero);
 		v.setStatut(StatutVersion.RETIREE);
 		v.setDefinition(codec.serialiser(def));
 		v.setFormatDefinition(1);
