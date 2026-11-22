@@ -28,7 +28,7 @@ type Menu =
   | { kind: 'groupe'; id: string; label: string; icon: Icone; enfants: Entree[] };
 
 /** Menu par ordre d'usage (D-N03). */
-const MENU: Menu[] = [
+export const MENU: Menu[] = [
   { kind: 'lien', id: 'accueil', to: '/app/accueil', label: 'Accueil', icon: IconHome },
   { kind: 'lien', id: 'taches', to: '/app/taches', label: 'Mes tâches', icon: IconCheckSquare },
   {
@@ -57,8 +57,7 @@ const MENU: Menu[] = [
       { id: 'societe', to: '/app/parametres/societe', label: 'Société' },
       { id: 'fonctions', to: '/app/parametres/fonctions', label: 'Fonctions' },
       { id: 'workflows', to: '/app/parametres/workflows', label: 'Workflows' },
-      { id: 'structure', to: '/app/structure', label: 'Structure RH', writeOnly: true },
-      { id: 'organisation', to: '/app/unites', label: 'Unités', writeOnly: true },
+      { id: 'organigramme-param', to: '/app/organigramme', label: 'Organigramme' },
     ],
   },
   { kind: 'lien', id: 'formations', to: '/app/formations', label: 'Formations', icon: IconSchool },
@@ -86,8 +85,6 @@ export function entreeActive(pathname: string, search: string): string {
   if (p.startsWith('/app/documents-administratifs')) return 'documents';
   if (p.startsWith('/app/evaluations')) return 'evaluations';
   if (p.startsWith('/app/plaintes')) return 'plaintes';
-  if (p.startsWith('/app/structure')) return 'structure';
-  if (p.startsWith('/app/unites')) return 'organisation';
   if (p.startsWith('/app/parametres/societe')) return 'societe';
   if (p.startsWith('/app/parametres/fonctions')) return 'fonctions';
   if (p.startsWith('/app/parametres/workflows')) return 'workflows';
@@ -195,12 +192,14 @@ function AppShellContenu() {
     navigate('/login', { replace: true });
   }
 
-  const lien = (e: Entree, Ic?: Icone) => (
-    <Link
-      key={e.id}
-      to={e.to}
-      aria-current={actif === e.id ? 'page' : undefined}
-      className={`shell__nav-item${actif === e.id ? ' shell__nav-item--active' : ''}`}
+  const lien = (e: Entree, Ic?: Icone) => {
+    const estActif = actif === e.id || (actif === 'organigramme' && e.id === 'organigramme-param');
+    return (
+      <Link
+        key={e.id}
+        to={e.to}
+        aria-current={actif === e.id ? 'page' : undefined}
+        className={`shell__nav-item${estActif ? ' shell__nav-item--active' : ''}`}
       onClick={(ev) => {
         // Garde de sortie : modifications non enregistrées (éditeur de workflow).
         const modifie = ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button !== 0;
@@ -229,7 +228,8 @@ function AppShellContenu() {
         </span>
       ) : null}
     </Link>
-  );
+    );
+  };
 
   return (
     <DetailProvider>
