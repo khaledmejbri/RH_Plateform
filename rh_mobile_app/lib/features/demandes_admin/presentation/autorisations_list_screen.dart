@@ -66,7 +66,9 @@ class _AutorisationsListScreenState
               .where((i) =>
                   i.statut == 'EN_VALIDATION_SUPERIEUR' ||
                   i.statut == 'EN_VALIDATION_RRH' ||
-                  i.statut == 'SOUMISE')
+                  i.statut == 'SOUMISE' ||
+                  i.statut == 'EN_COURS' ||
+                  i.statut == 'A_COMPLETER')
               .toList();
           final approuvees = items
               .where((i) => i.statut == 'APPROUVEE')
@@ -248,6 +250,8 @@ class _AutorisationCard extends StatelessWidget {
       case 'EN_VALIDATION_SUPERIEUR':
       case 'EN_VALIDATION_RRH':
       case 'SOUMISE':
+      case 'EN_COURS':
+      case 'A_COMPLETER':
         return AppTheme.warning;
       default:
         return AppTheme.textSecondary;

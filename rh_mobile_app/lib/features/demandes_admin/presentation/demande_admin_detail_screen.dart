@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/format/formats.dart';
 import '../../../core/libelles/libelles.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/widgets/confirmation_action.dart';
+import '../../workflow/presentation/suivi_workflow_frise.dart';
 import '../data/demande_admin_errors.dart';
 import '../data/demande_admin_models.dart';
 import '../data/demande_admin_repository.dart';
@@ -73,13 +75,21 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                 final annuleeRh = item.annuleeApresApprobation;
                 final bool enAttente = statut == 'SOUMISE' ||
                     statut == 'EN_VALIDATION_SUPERIEUR' ||
-                    statut == 'EN_VALIDATION_RRH';
+                    statut == 'EN_VALIDATION_RRH' ||
+                    statut == 'EN_COURS' ||
+                    statut == 'A_COMPLETER';
                 final valideur = (j['valideur_attendu_nom_complet']?.toString() ?? '').trim();
                 String statusDescription = 'Votre demande a été enregistrée.';
-                if (enAttente) {
-                  statusDescription = statut == 'EN_VALIDATION_SUPERIEUR' && valideur.isNotEmpty
-                      ? 'Votre demande est en attente de validation par $valideur.'
-                      : 'Votre demande est en cours de validation.';
+                if (statut == 'A_COMPLETER') {
+                  statusDescription = 'Un complément d’information est demandé. Répondez depuis Mes tâches.';
+                } else if (enAttente) {
+                  if (item.estModeMoteur && (item.etapeCouranteLibelle ?? '').trim().isNotEmpty) {
+                    statusDescription = 'Étape en cours : ${item.etapeCouranteLibelle!.trim()}.';
+                  } else {
+                    statusDescription = statut == 'EN_VALIDATION_SUPERIEUR' && valideur.isNotEmpty
+                        ? 'Votre demande est en attente de validation par $valideur.'
+                        : 'Votre demande est en cours de validation.';
+                  }
                 } else if (approuvee) {
                   statusDescription = 'Votre demande a été approuvée.';
                 } else if (refusee) {
@@ -234,6 +244,22 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                       const SizedBox(height: 16),
                       const _MentionContacterRh(),
                     ],
+                    if (item.estModeMoteur) ...[
+                      const SizedBox(height: 16),
+                      SuiviWorkflowObjetSection(
+                        objetType: item.typeDemande,
+                        objetId: item.id,
+                      ),
+                    ],
+                    if (statut == 'A_COMPLETER') ...[
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () => context.push('/taches'),
+                        icon: const Icon(Icons.edit_note_rounded),
+                        label: const Text('Compléter depuis Mes tâches'),
+                        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                      ),
+                    ],
                     if (enAttente && item.peutAnnuler) ...[
                       const SizedBox(height: 16),
                       OutlinedButton.icon(
@@ -285,31 +311,46 @@ class DemandeAdminDetailScreen extends ConsumerWidget {
                 );
               },
             ),
-            suivi.when(
+            detail.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text(rhErrorMessage(e))),
-              data: (s) => ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: s.etapes.length,
-                itemBuilder: (context, i) {
-                  final e = s.etapes[i];
-                  final scheme = Theme.of(context).colorScheme;
-                  final icon = e.terminee
-                      ? Icons.check_circle_rounded
-                      : e.enCours
-                          ? Icons.radio_button_checked_rounded
-                          : Icons.radio_button_off_rounded;
-                  final color = e.terminee
-                      ? scheme.tertiary
-                      : e.enCours
-                          ? scheme.primary
-                          : scheme.outline;
-                  return ListTile(
-                    leading: Icon(icon, color: color),
-                    title: Text(e.libelleAffiche),
+              data: (j) {
+                if (j['workflow_mode'] == 'MOTEUR') {
+                  final typeObj = j['type_demande']?.toString() ?? 'CONGE';
+                  return ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      SuiviWorkflowObjetSection(objetType: typeObj, objetId: id),
+                    ],
                   );
-                },
-              ),
+                }
+                return suivi.when(
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Center(child: Text(rhErrorMessage(e))),
+                  data: (s) => ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: s.etapes.length,
+                    itemBuilder: (context, i) {
+                      final e = s.etapes[i];
+                      final scheme = Theme.of(context).colorScheme;
+                      final icon = e.terminee
+                          ? Icons.check_circle_rounded
+                          : e.enCours
+                              ? Icons.radio_button_checked_rounded
+                              : Icons.radio_button_off_rounded;
+                      final color = e.terminee
+                          ? scheme.tertiary
+                          : e.enCours
+                              ? scheme.primary
+                              : scheme.outline;
+                      return ListTile(
+                        leading: Icon(icon, color: color),
+                        title: Text(e.libelleAffiche),
+                      );
+                    },
+                  ),
+                );
+              },
             ),
             // Historique tab
             Consumer(

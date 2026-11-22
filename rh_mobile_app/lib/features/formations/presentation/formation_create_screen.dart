@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/collaborateur_notifier.dart';
+import '../../workflow/data/workflow_models.dart';
+import '../../workflow/providers/workflow_providers.dart';
 import '../data/formation_models.dart';
 import '../data/formation_repository.dart';
 import 'formations_list_screen.dart';
@@ -106,6 +108,8 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
     final user = ref.watch(collaborateurNotifierProvider).valueOrNull;
     final isChef = user?.isChefDept == true;
     final isRo = user?.isRo == true;
+    final ouverts = ref.watch(typesOuvertsProvider).valueOrNull;
+    final typeOuvert = estTypeOuvert(ouverts, 'FORMATION');
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -126,20 +130,40 @@ class _FormationCreateScreenState extends ConsumerState<FormationCreateScreen> {
                       top: BorderSide(color: AppTheme.border, width: 0.5),
                     ),
                   ),
-                  child: FilledButton.icon(
-                    onPressed: _loading ? null : () => _submit(isChef, isRo),
-                    icon:
-                        _loading
-                            ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                            : const Icon(Icons.send_rounded),
-                    label: const Text('Envoyer au RH'),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!typeOuvert) ...[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.warningSurface,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Text(
+                            'Les demandes de formation sont temporairement fermées.',
+                            style: TextStyle(color: AppTheme.warning, fontWeight: FontWeight.w600, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                      FilledButton.icon(
+                        onPressed: (_loading || !typeOuvert) ? null : () => _submit(isChef, isRo),
+                        icon:
+                            _loading
+                                ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                : const Icon(Icons.send_rounded),
+                        label: const Text('Envoyer au RH'),
+                      ),
+                    ],
                   ),
                 ),
               ),

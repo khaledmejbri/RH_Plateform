@@ -201,6 +201,7 @@ class _DemandeCardState extends ConsumerState<_DemandeCard> {
     final (fond, texte) = switch (d.statut) {
       'VALIDEE' => (AppTheme.successSurface, AppTheme.success),
       'REFUSEE' || 'EXPIREE' => (AppTheme.errorSurface, AppTheme.errorDark),
+      'ANNULEE' => (AppTheme.surfaceMuted, AppTheme.textSecondary),
       _ => (AppTheme.warningSurface, AppTheme.warning),
     };
     return Container(
@@ -256,14 +257,20 @@ class _DemandeCardState extends ConsumerState<_DemandeCard> {
           const SizedBox(height: 6),
           if (!widget.vueResponsable)
             Text(
-              d.enAttente
-                  ? 'En attente de validation par ${d.valideurLibelle}.'
-                  : d.expiree
-                      ? 'Demande expirée : elle ne peut plus être validée ni refusée.'
-                      : (d.validee ? 'Validée par ${d.decidePar ?? d.valideurLibelle}.' : 'Refusée par ${d.decidePar ?? d.valideurLibelle} : ${d.motifRefus ?? ''}'),
+              d.estModeMoteur && (d.enCours || d.enAttente)
+                  ? 'En cours de validation (circuit paramétré${d.etapeCouranteLibelle != null ? ' — ${d.etapeCouranteLibelle}' : ''}).'
+                  : d.enAttente || d.enCours
+                      ? 'En attente de validation par ${d.valideurLibelle}.'
+                      : d.expiree
+                          ? 'Demande expirée : elle ne peut plus être validée ni refusée.'
+                          : d.annulee
+                              ? 'Demande annulée.'
+                              : (d.validee
+                                  ? 'Validée par ${d.decidePar ?? d.valideurLibelle}.'
+                                  : 'Refusée par ${d.decidePar ?? d.valideurLibelle} : ${d.motifRefus ?? ''}'),
               style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
-          if (widget.vueResponsable && d.enAttente) ...[
+          if (widget.vueResponsable && d.enAttente && !d.estModeMoteur) ...[
             const SizedBox(height: 12),
             Row(
               children: [

@@ -13,6 +13,10 @@ class DocumentDemandeItem {
     this.numero,
     this.typeLibelleApi,
     this.statutLibelleApi,
+    this.workflowMode,
+    this.workflowInstanceId,
+    this.etapeCouranteLibelle,
+    this.echeanceLe,
   });
 
   final String id;
@@ -31,6 +35,12 @@ class DocumentDemandeItem {
   /// reste lisible. À défaut, le référentiel chargé ; sinon « Valeur non reconnue ».
   final String? typeLibelleApi;
   final String? statutLibelleApi;
+  final String? workflowMode;
+  final String? workflowInstanceId;
+  final String? etapeCouranteLibelle;
+  final String? echeanceLe;
+
+  bool get estModeMoteur => workflowMode == 'MOTEUR';
 
   String get typeLibelle => Libelles.avecRepli(typeLibelleApi, typeDocument, Libelles.typeDocument);
   String get statutLibelle => Libelles.avecRepli(statutLibelleApi, statut, Libelles.statutDocument);
@@ -50,6 +60,10 @@ class DocumentDemandeItem {
       numero: j['numero'] as String?,
       typeLibelleApi: j['type_document_libelle'] as String?,
       statutLibelleApi: j['statut_libelle'] as String?,
+      workflowMode: j['workflow_mode'] as String?,
+      workflowInstanceId: j['workflow_instance_id']?.toString(),
+      etapeCouranteLibelle: j['etape_courante_libelle'] as String?,
+      echeanceLe: j['echeance_le'] as String?,
     );
   }
 }

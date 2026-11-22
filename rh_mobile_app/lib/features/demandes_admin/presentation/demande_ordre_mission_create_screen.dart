@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/format/formats.dart';
 
+import '../../workflow/data/workflow_models.dart';
+import '../../workflow/providers/workflow_providers.dart';
 import '../data/demande_admin_errors.dart';
 import '../data/demande_admin_repository.dart';
 import 'demandes_admin_list_screen.dart';
@@ -93,6 +95,8 @@ class _DemandeOrdreMissionCreateScreenState
 
   @override
   Widget build(BuildContext context) {
+    final ouverts = ref.watch(typesOuvertsProvider).valueOrNull;
+    final typeOuvert = estTypeOuvert(ouverts, 'ORDRE_MISSION');
     final nbJours = (_dateDebut != null && _dateFin != null && !_dateFin!.isBefore(_dateDebut!))
         ? _dateFin!.difference(_dateDebut!).inDays + 1
         : null;
@@ -108,6 +112,20 @@ class _DemandeOrdreMissionCreateScreenState
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          if (!typeOuvert) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: AppTheme.warningSurface,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'Ce type de demande est temporairement fermé.',
+                style: TextStyle(color: AppTheme.warning, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
           _label('Lieu de la mission'),
           const SizedBox(height: 8),
           _champTexte(_lieuController, 'Ville, site, organisme…', Icons.place_outlined, maxLines: 1),
@@ -154,7 +172,7 @@ class _DemandeOrdreMissionCreateScreenState
           SizedBox(
             height: 56,
             child: FilledButton(
-              onPressed: _loading ? null : _submit,
+              onPressed: (_loading || !typeOuvert) ? null : _submit,
               style: FilledButton.styleFrom(
                 backgroundColor: _violet,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/format/formats.dart';
 import '../data/demande_admin_models.dart';
@@ -272,28 +273,37 @@ class _DemandeCard extends ConsumerWidget {
           const Divider(height: 1, color: AppTheme.border),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _ActionButton(
-                    label: 'Refuser',
-                    icon: Icons.close_rounded,
-                    color: AppTheme.error,
-                    onTap: () => _showRefusDialog(context, ref),
+            child: item.estModeMoteur
+                ? SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => context.push('/taches'),
+                      icon: const Icon(Icons.assignment_turned_in_outlined, size: 18),
+                      label: const Text('Voir dans Mes tâches'),
+                    ),
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: _ActionButton(
+                          label: 'Refuser',
+                          icon: Icons.close_rounded,
+                          color: AppTheme.error,
+                          onTap: () => _showRefusDialog(context, ref),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _ActionButton(
+                          label: 'Valider',
+                          icon: Icons.check_rounded,
+                          color: AppTheme.success,
+                          filled: true,
+                          onTap: () => _confirmerValidation(context, ref),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _ActionButton(
-                    label: 'Valider',
-                    icon: Icons.check_rounded,
-                    color: AppTheme.success,
-                    filled: true,
-                    onTap: () => _confirmerValidation(context, ref),
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),

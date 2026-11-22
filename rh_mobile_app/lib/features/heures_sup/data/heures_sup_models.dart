@@ -6,6 +6,7 @@ import '../../pointage/data/fenetre_du_jour.dart';
 /// Statuts d'une demande d'heures sup.
 abstract final class StatutHeuresSup {
   static const enAttente = 'EN_ATTENTE';
+  static const enCours = 'EN_COURS';
   static const validee = 'VALIDEE';
   static const refusee = 'REFUSEE';
   static const annulee = 'ANNULEE';
@@ -13,6 +14,7 @@ abstract final class StatutHeuresSup {
 
   static String libelle(String statut) => switch (statut) {
         enAttente => 'En attente',
+        enCours => 'En cours de validation',
         validee => 'Validée',
         refusee => 'Refusée',
         annulee => 'Annulée',
@@ -201,6 +203,10 @@ class DemandeHeuresSup {
   final String? motifRefus;
   final String? annulePar;
   final String? motifAnnulation;
+  final String? workflowMode;
+  final String? workflowInstanceId;
+  final String? etapeCouranteLibelle;
+  final String? echeanceLe;
 
   const DemandeHeuresSup({
     required this.id,
@@ -219,6 +225,10 @@ class DemandeHeuresSup {
     this.motifRefus,
     this.annulePar,
     this.motifAnnulation,
+    this.workflowMode,
+    this.workflowInstanceId,
+    this.etapeCouranteLibelle,
+    this.echeanceLe,
   });
 
   factory DemandeHeuresSup.fromJson(Map<String, dynamic> json) {
@@ -247,10 +257,16 @@ class DemandeHeuresSup {
       motifRefus: json['motif_refus']?.toString(),
       annulePar: json['annule_par']?.toString(),
       motifAnnulation: json['motif_annulation']?.toString(),
+      workflowMode: json['workflow_mode']?.toString(),
+      workflowInstanceId: json['workflow_instance_id']?.toString(),
+      etapeCouranteLibelle: json['etape_courante_libelle']?.toString(),
+      echeanceLe: json['echeance_le']?.toString(),
     );
   }
 
+  bool get estModeMoteur => workflowMode == 'MOTEUR';
   bool get enAttente => statut == StatutHeuresSup.enAttente;
+  bool get enCours => statut == StatutHeuresSup.enCours;
   bool get validee => statut == StatutHeuresSup.validee;
   String get statutLibelle => StatutHeuresSup.libelle(statut);
 

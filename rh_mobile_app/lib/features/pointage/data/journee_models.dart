@@ -233,6 +233,7 @@ class DemandeManuelleDetail {
     );
   }
 
-  /// « Omar Belhadj » ou « les RH » (valideur absent = RH, D-H03).
-  String get valideurAffiche => valideurNom ?? demande.valideurLibelle;
+  /// « Omar Belhadj », « les RH » (valideur absent = RH, D-H03) ou « Circuit paramétré » (MOTEUR).
+  String get valideurAffiche =>
+      demande.estModeMoteur ? 'Circuit paramétré' : (valideurNom ?? demande.valideurLibelle);
 }

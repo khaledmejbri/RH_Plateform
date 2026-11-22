@@ -220,6 +220,8 @@ class _FormationCard extends StatelessWidget {
       'INTEGREE_PLAN' => (libelle, AppTheme.successSurface, AppTheme.success),
       'REFUSEE' => (libelle, AppTheme.errorSurface, AppTheme.errorDark),
       'ANNULEE' => (libelle, AppTheme.surfaceMuted, AppTheme.textSecondary),
+      'A_COMPLETER' => (libelle, AppTheme.warningSurface, AppTheme.warning),
+      'EN_COURS' => (libelle, AppTheme.primarySurface, AppTheme.primaryDark),
       _ => (libelle, AppTheme.primarySurface, AppTheme.primaryDark),
     };
   }

@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../workflow/data/workflow_models.dart';
+import '../../workflow/providers/workflow_providers.dart';
 import '../data/document_repository.dart';
 import 'documents_list_screen.dart';
 import 'package:rh_mobile_app/core/theme/app_theme.dart';
@@ -201,6 +203,7 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
   @override
   Widget build(BuildContext context) {
     final typesAsync = ref.watch(typesDocumentActifsProvider);
+    final ouverts = ref.watch(typesOuvertsProvider).valueOrNull;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -216,30 +219,37 @@ class _DocumentCreateScreenState extends ConsumerState<DocumentCreateScreen> {
           e,
           onRetry: () => ref.invalidate(typesDocumentActifsProvider),
         ),
-        data: (types) => types.isEmpty
-            ? Column(
-                children: [
-                  const Expanded(
-                    child: RhEmptyState(
-                      icon: Icons.folder_off_outlined,
-                      title: 'Aucun type de document disponible',
-                      message: 'Contactez la RH : aucun document n’est ouvert à la demande.',
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: FilledButton(
-                        onPressed: null,
-                        child: Text('Envoyer la demande'),
+        data: (types) {
+          final typesFiltres = ouverts == null
+              ? types
+              : types
+                  .where((t) => estTypeOuvert(ouverts, 'DOCUMENT', sousType: t.code))
+                  .toList();
+          return typesFiltres.isEmpty
+              ? Column(
+                  children: [
+                    const Expanded(
+                      child: RhEmptyState(
+                        icon: Icons.folder_off_outlined,
+                        title: 'Aucun type de document disponible',
+                        message: 'Contactez la RH : aucun document n’est ouvert à la demande.',
                       ),
                     ),
-                  ),
-                ],
-              )
-            : _formulaire(types),
+                    const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: FilledButton(
+                          onPressed: null,
+                          child: Text('Envoyer la demande'),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : _formulaire(typesFiltres);
+        },
       ),
     );
   }

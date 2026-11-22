@@ -360,11 +360,23 @@ class DemandeManuelle {
     this.refusDuJour,
     this.commentaireValideur,
     this.delaiDecisionMinutes,
+    this.workflowMode,
+    this.workflowInstanceId,
+    this.etapeCouranteLibelle,
+    this.echeanceLe,
   });
 
+  final String? workflowMode;
+  final String? workflowInstanceId;
+  final String? etapeCouranteLibelle;
+  final String? echeanceLe;
+
+  bool get estModeMoteur => workflowMode == 'MOTEUR';
   bool get enAttente => statut == 'EN_ATTENTE';
+  bool get enCours => statut == 'EN_COURS';
   bool get validee => statut == 'VALIDEE';
   bool get expiree => statut == 'EXPIREE';
+  bool get annulee => statut == 'ANNULEE';
 
   /// Vrai si le serveur déclare un signal (`avec_signal`) ou en liste au moins un.
   bool get avecSignal => avecSignalServeur ?? signaux.isNotEmpty;
@@ -374,18 +386,22 @@ class DemandeManuelle {
     if (l != null && !Libelles.ressembleAUnCode(l)) return l;
     return switch (statut) {
       'EN_ATTENTE' => 'En attente',
+      'EN_COURS' => 'En cours de validation',
       'VALIDEE' => 'Validée',
       'REFUSEE' => 'Refusée',
       'EXPIREE' => 'Expirée',
+      'ANNULEE' => 'Annulée',
       _ => Libelles.valeurNonReconnue,
     };
   }
 
   String get typeLibelle => type == 'SORTIE' ? 'Sortie' : 'Entrée';
 
-  /// « Omar Belhadj » ou « les RH » quand aucun responsable n'est trouvé (D-H03).
+  /// « Omar Belhadj » ou « les RH » quand aucun responsable n'est trouvé (D-H03), ou circuit paramétré.
   String get valideurLibelle =>
-      validationParRh || valideurNom == null ? 'les RH' : valideurNom!;
+      estModeMoteur
+          ? 'Circuit paramétré'
+          : (validationParRh || valideurNom == null ? 'les RH' : valideurNom!);
 
   factory DemandeManuelle.fromJson(Map<String, dynamic> json) {
     final brutSignaux = json['signaux'];
@@ -422,6 +438,10 @@ class DemandeManuelle {
       refusDuJour: _parseInt(json['refus_du_jour']),
       commentaireValideur: _texteNonVide(json['commentaire_valideur']),
       delaiDecisionMinutes: _parseInt(json['delai_decision_minutes']),
+      workflowMode: _texteNonVide(json['workflow_mode']),
+      workflowInstanceId: _texteNonVide(json['workflow_instance_id']),
+      etapeCouranteLibelle: _texteNonVide(json['etape_courante_libelle']),
+      echeanceLe: _texteNonVide(json['echeance_le']),
     );
   }
 }
