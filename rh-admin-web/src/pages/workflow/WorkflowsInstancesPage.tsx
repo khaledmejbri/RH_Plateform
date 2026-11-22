@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getToken } from '../../api/auth';
 import { getTousCollaborateurs, type CollaborateurRow } from '../../api/rhClient';
 import {
@@ -36,13 +36,41 @@ const FILTRES_DEFAUT = {
   page: '0',
 };
 
-export default function WorkflowsInstancesPage() {
+type Props = {
+  initialIndicateurs?: IndicateursWorkflow | null;
+  initialDonnees?: PageWorkflow<InstanceResume> | null;
+  initialCatalogue?: CatalogueWorkflow | null;
+};
+
+export default function WorkflowsInstancesPage({
+  initialIndicateurs = null,
+  initialDonnees = null,
+  initialCatalogue = null,
+}: Props = {}) {
   const lectureSeule = !canWriteBackoffice(getToken());
   const filtres = useFiltresUrl(FILTRES_DEFAUT);
   const f = filtres.valeurs;
   const page = Math.max(0, Number(f.page) || 0);
 
-  const [catalogue, setCatalogue] = useState<CatalogueWorkflow | null>(null);
+  const monteRef = useRef(true);
+  const catReqIdRef = useRef(0);
+  const indReqIdRef = useRef(0);
+  const instReqIdRef = useRef(0);
+  const etapeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    monteRef.current = true;
+    return () => {
+      monteRef.current = false;
+      if (etapeTimerRef.current !== null) {
+        window.clearTimeout(etapeTimerRef.current);
+        etapeTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const [catalogue, setCatalogue] = useState<CatalogueWorkflow | null>(initialCatalogue);
+  const [catalogueErreur, setCatalogueErreur] = useState<string | null>(null);
   const [collaborateurs, setCollaborateurs] = useState<CollaborateurRow[]>([]);
   const [collabChargement, setCollabChargement] = useState(true);
 
@@ -50,30 +78,63 @@ export default function WorkflowsInstancesPage() {
   useEffect(() => {
     setEtapeSaisie(f.etape);
   }, [f.etape]);
+
   useEffect(() => {
+    if (etapeTimerRef.current !== null) {
+      window.clearTimeout(etapeTimerRef.current);
+      etapeTimerRef.current = null;
+    }
     if (etapeSaisie === f.etape) return undefined;
-    const t = window.setTimeout(() => filtres.definir({ etape: etapeSaisie, page: '0' }), 350);
-    return () => window.clearTimeout(t);
+    etapeTimerRef.current = window.setTimeout(() => {
+      etapeTimerRef.current = null;
+      filtres.definir({ etape: etapeSaisie, page: '0' });
+    }, 350);
+    return () => {
+      if (etapeTimerRef.current !== null) {
+        window.clearTimeout(etapeTimerRef.current);
+        etapeTimerRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [etapeSaisie]);
 
+  const reinitialiserFiltres = useCallback(() => {
+    if (etapeTimerRef.current !== null) {
+      window.clearTimeout(etapeTimerRef.current);
+      etapeTimerRef.current = null;
+    }
+    setEtapeSaisie('');
+    filtres.reinitialiser();
+  }, [filtres]);
+
   // Période par défaut des indicateurs « Délais moyens par étape » (30 derniers jours)
   const [periodeInd, setPeriodeInd] = useState(() => periodeParDefaut30Jours());
-  const [indicateurs, setIndicateurs] = useState<IndicateursWorkflow | null>(null);
-  const [indChargement, setIndChargement] = useState(true);
+  const [indicateurs, setIndicateurs] = useState<IndicateursWorkflow | null>(initialIndicateurs);
+  const [indChargement, setIndChargement] = useState(initialIndicateurs === null);
   const [indErreur, setIndErreur] = useState<string | null>(null);
 
-  const [donnees, setDonnees] = useState<PageWorkflow<InstanceResume> | null>(null);
-  const [chargement, setChargement] = useState(true);
+  const [donnees, setDonnees] = useState<PageWorkflow<InstanceResume> | null>(initialDonnees);
+  const [chargement, setChargement] = useState(initialDonnees === null);
   const [erreur, setErreur] = useState<string | null>(null);
 
   const [instanceOuverteId, setInstanceOuverteId] = useState<string | null>(null);
 
+  const chargerCatalogue = useCallback(async () => {
+    const reqId = ++catReqIdRef.current;
+    setCatalogueErreur(null);
+    try {
+      const c = await getCatalogueWorkflow();
+      if (!monteRef.current || reqId !== catReqIdRef.current) return;
+      setCatalogue(c);
+    } catch {
+      if (!monteRef.current || reqId !== catReqIdRef.current) return;
+      setCatalogueErreur('Le catalogue des types d’objet est momentanément indisponible.');
+    }
+  }, []);
+
   useEffect(() => {
     let annule = false;
-    void getCatalogueWorkflow()
-      .then((c) => { if (!annule) setCatalogue(c); })
-      .catch(() => undefined);
+    void chargerCatalogue();
     setCollabChargement(true);
     void getTousCollaborateurs()
       .then((list) => { if (!annule) setCollaborateurs(list); })
@@ -82,18 +143,22 @@ export default function WorkflowsInstancesPage() {
     return () => {
       annule = true;
     };
-  }, []);
+  }, [chargerCatalogue]);
 
   const chargerIndicateurs = useCallback(async () => {
+    const reqId = ++indReqIdRef.current;
     setIndChargement(true);
     setIndErreur(null);
     try {
       const res = await getIndicateursWorkflow(periodeInd.du || undefined, periodeInd.au || undefined);
+      if (!monteRef.current || reqId !== indReqIdRef.current) return;
       setIndicateurs(res);
     } catch (e) {
+      if (!monteRef.current || reqId !== indReqIdRef.current) return;
+      setIndicateurs(null);
       setIndErreur(messageErreurWorkflow(e));
     } finally {
-      setIndChargement(false);
+      if (monteRef.current && reqId === indReqIdRef.current) setIndChargement(false);
     }
   }, [periodeInd.du, periodeInd.au]);
 
@@ -102,6 +167,7 @@ export default function WorkflowsInstancesPage() {
   }, [chargerIndicateurs]);
 
   const chargerInstances = useCallback(async () => {
+    const reqId = ++instReqIdRef.current;
     setChargement(true);
     setErreur(null);
     try {
@@ -117,11 +183,14 @@ export default function WorkflowsInstancesPage() {
         page,
         taille: TAILLE_PAGE,
       });
+      if (!monteRef.current || reqId !== instReqIdRef.current) return;
       setDonnees(res);
     } catch (e) {
+      if (!monteRef.current || reqId !== instReqIdRef.current) return;
+      setDonnees(null);
       setErreur(messageErreurWorkflow(e));
     } finally {
-      setChargement(false);
+      if (monteRef.current && reqId === instReqIdRef.current) setChargement(false);
     }
   }, [f.objet_type, f.statut, f.etape, f.en_retard, f.demandeur_id, f.intervenant_id, f.du, f.au, page]);
 
@@ -162,6 +231,8 @@ export default function WorkflowsInstancesPage() {
 
   const elements = donnees?.elements ?? [];
   const totalPages = donnees ? Math.max(1, Math.ceil(donnees.total / donnees.taille)) : 1;
+  const kpiValeur = (v: number | undefined) =>
+    indChargement && !indicateurs ? '…' : indicateurs ? (v ?? 0) : TIRET;
 
   return (
     <div className="page">
@@ -169,6 +240,15 @@ export default function WorkflowsInstancesPage() {
         title="Workflows en cours"
         lead="Supervision des circuits de validation, suivi des délais et réaffectation des tâches bloquées."
       />
+
+      {catalogueErreur ? (
+        <div className="alert alert--warning" role="status" style={{ marginBottom: 12 }}>
+          <span>{catalogueErreur}</span>
+          <button type="button" className="btn btn--secondary btn--sm" onClick={() => void chargerCatalogue()}>
+            Réessayer
+          </button>
+        </div>
+      ) : null}
 
       {/* Indicateurs temps réel (indépendants de du/au) */}
       <section aria-label="Indicateurs temps réel" style={{ marginBottom: 20 }}>
@@ -198,7 +278,7 @@ export default function WorkflowsInstancesPage() {
               borderColor: f.statut === 'EN_COURS' && !f.en_retard ? 'var(--color-primary)' : undefined,
             }}
           >
-            <div className="stat-card__value">{indChargement && !indicateurs ? '…' : indicateurs?.en_cours ?? 0}</div>
+            <div className="stat-card__value">{kpiValeur(indicateurs?.en_cours)}</div>
             <div className="stat-card__title">En cours</div>
             <div className="stat-card__subtitle">Temps réel · Cliquer pour filtrer</div>
           </button>
@@ -215,7 +295,7 @@ export default function WorkflowsInstancesPage() {
             }}
           >
             <div className="stat-card__value" style={{ color: (indicateurs?.en_retard ?? 0) > 0 ? 'var(--color-warning)' : undefined }}>
-              {indChargement && !indicateurs ? '…' : indicateurs?.en_retard ?? 0}
+              {kpiValeur(indicateurs?.en_retard)}
             </div>
             <div className="stat-card__title">En retard</div>
             <div className="stat-card__subtitle">Temps réel · Échéance dépassée</div>
@@ -233,7 +313,7 @@ export default function WorkflowsInstancesPage() {
             }}
           >
             <div className="stat-card__value" style={{ color: (indicateurs?.bloquees ?? 0) > 0 ? 'var(--color-destructive)' : undefined }}>
-              {indChargement && !indicateurs ? '…' : indicateurs?.bloquees ?? 0}
+              {kpiValeur(indicateurs?.bloquees)}
             </div>
             <div className="stat-card__title">Bloquées</div>
             <div className="stat-card__subtitle">Temps réel · Intervention RH requise</div>
@@ -276,6 +356,8 @@ export default function WorkflowsInstancesPage() {
 
           {indChargement && !indicateurs ? (
             <LoadingState label="Calcul des délais…" />
+          ) : indErreur ? (
+            <p className="detail-vide">Délais indisponibles suite à l’erreur ci-dessus.</p>
           ) : !indicateurs || indicateurs.par_etape.length === 0 ? (
             <p className="detail-vide">Aucune tâche traitée sur la période sélectionnée.</p>
           ) : (
@@ -316,7 +398,7 @@ export default function WorkflowsInstancesPage() {
         nbResultats={elements.length}
         nbTotal={donnees?.total}
         nbActifs={nbActifs}
-        onReinitialiser={filtres.reinitialiser}
+        onReinitialiser={reinitialiserFiltres}
       >
         <ChampSelect
           id="inst-objet-type"
@@ -396,7 +478,7 @@ export default function WorkflowsInstancesPage() {
 
       {!chargement && !erreur && elements.length === 0 ? (
         nbActifs > 0 ? (
-          <AucunResultat onReinitialiser={filtres.reinitialiser} />
+          <AucunResultat onReinitialiser={reinitialiserFiltres} />
         ) : (
           <EmptyState title="Aucune instance de workflow">
             Les demandes lancées sur un circuit paramétré apparaîtront ici.
@@ -404,7 +486,7 @@ export default function WorkflowsInstancesPage() {
         )
       ) : null}
 
-      {!chargement && elements.length > 0 ? (
+      {!chargement && !erreur && elements.length > 0 ? (
         <div className="card">
           <div className="table-wrap">
             <table className="data-table">

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CollaborateurRow } from '../../api/rhClient';
 import {
   creerDelegationAdmin,
@@ -40,6 +40,7 @@ export default function DelegationFormCard({
   const aujourdhui = jourIso();
   const [delegantId, setDelegantId] = useState(delegantIdInitial);
   const [delegueId, setDelegueId] = useState('');
+  const [delegueResetKey, setDelegueResetKey] = useState(0);
   const [du, setDu] = useState(aujourdhui);
   const [au, setAu] = useState('');
   const [modeTypes, setModeTypes] = useState<'TOUS' | 'LISTE'>('TOUS');
@@ -49,6 +50,13 @@ export default function DelegationFormCard({
   const [envoi, setEnvoi] = useState(false);
   const [erreurServeur, setErreurServeur] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ValidationDelegation['erreurs']>({});
+  const monteRef = useRef(true);
+  useEffect(() => {
+    monteRef.current = true;
+    return () => {
+      monteRef.current = false;
+    };
+  }, []);
 
   const delegantsEligibles = useMemo(
     () =>
@@ -101,12 +109,14 @@ export default function DelegationFormCard({
         objet_types: modeTypes === 'TOUS' ? null : typesChoisis,
         motif: motif.trim() || null,
       });
+      if (!monteRef.current) return;
       onCree(cree);
     } catch (err) {
+      if (!monteRef.current) return;
       // Conserve l'ensemble de la saisie (409 DELEGATION_CHEVAUCHEMENT / 422 DELEGATION_INVALIDE).
       setErreurServeur(messageErreurWorkflow(err));
     } finally {
-      setEnvoi(false);
+      if (monteRef.current) setEnvoi(false);
     }
   }
 
@@ -122,9 +132,14 @@ export default function DelegationFormCard({
             libelle="Délégant (titulaire)"
             collaborateurs={delegantsEligibles}
             chargement={collabChargement}
+            disabled={envoi}
             valeur={delegantId}
             onChange={(v) => {
               setDelegantId(v);
+              if (v && v === delegueId) {
+                setDelegueId('');
+                setDelegueResetKey((k) => k + 1);
+              }
               setErreursChamps((prev) => ({ ...prev, delegant_id: undefined }));
             }}
           />
@@ -133,10 +148,12 @@ export default function DelegationFormCard({
 
         <div>
           <FiltreCollaborateur
+            key={delegueResetKey}
             id={`${idPrefixe}-delegue`}
             libelle="Délégué (remplaçant)"
             collaborateurs={deleguesEligibles}
             chargement={collabChargement}
+            disabled={envoi}
             valeur={delegueId}
             onChange={(v) => {
               setDelegueId(v);

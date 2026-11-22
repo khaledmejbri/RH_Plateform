@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getToken } from '../../api/auth';
 import { getTousCollaborateurs, type CollaborateurRow } from '../../api/rhClient';
 import {
-  annulerDelegationAdmin,
-  executerPourConfirmation,
   getCatalogueWorkflow,
   getDelegationsAdmin,
   messageErreurWorkflow,
@@ -16,17 +14,9 @@ import BarreFiltres, { AucunResultat, ChampSelect } from '../../components/Barre
 import { useConfirm } from '../../components/ConfirmDialog';
 import FiltreCollaborateur from '../../components/FiltreCollaborateur';
 import { EmptyState, ErrorAlert, LoadingState, PageHeader } from '../../components/ui';
-import DetailLink from '../../detail/DetailLink';
 import { useFiltresUrl } from '../../utils/filtres';
-import { formatDateHeure, formatPeriode, TIRET } from '../../utils/format';
-import { libelleOrigineDelegation } from '../../workflow/libelles';
-import {
-  formatObjetTypesDelegation,
-  libelleStatutDelegation,
-  statutDelegation,
-  toneStatutDelegation,
-} from '../../workflow/supervision';
 import DelegationFormCard from './DelegationFormCard';
+import DelegationsTableau, { confirmerAnnulationDelegation } from './DelegationsTableau';
 
 const TAILLE_PAGE = 20;
 
@@ -42,28 +32,59 @@ const OPTIONS_ACTIVES = [
   { valeur: 'false', libelle: 'Expirées et annulées' },
 ];
 
-export default function DelegationsPage() {
+type Props = {
+  initialDonnees?: PageWorkflow<DelegationAdmin> | null;
+  initialCatalogue?: CatalogueWorkflow | null;
+};
+
+export default function DelegationsPage({
+  initialDonnees = null,
+  initialCatalogue = null,
+}: Props = {}) {
   const lectureSeule = !canWriteBackoffice(getToken());
   const confirm = useConfirm();
   const filtres = useFiltresUrl(FILTRES_DEFAUT);
   const f = filtres.valeurs;
   const page = Math.max(0, Number(f.page) || 0);
 
-  const [catalogue, setCatalogue] = useState<CatalogueWorkflow | null>(null);
+  const monteRef = useRef(true);
+  const catReqIdRef = useRef(0);
+  const reqIdRef = useRef(0);
+
+  useEffect(() => {
+    monteRef.current = true;
+    return () => {
+      monteRef.current = false;
+    };
+  }, []);
+
+  const [catalogue, setCatalogue] = useState<CatalogueWorkflow | null>(initialCatalogue);
+  const [catalogueErreur, setCatalogueErreur] = useState<string | null>(null);
   const [collaborateurs, setCollaborateurs] = useState<CollaborateurRow[]>([]);
   const [collabChargement, setCollabChargement] = useState(true);
 
-  const [donnees, setDonnees] = useState<PageWorkflow<DelegationAdmin> | null>(null);
-  const [chargement, setChargement] = useState(true);
+  const [donnees, setDonnees] = useState<PageWorkflow<DelegationAdmin> | null>(initialDonnees);
+  const [chargement, setChargement] = useState(initialDonnees === null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [formOuvert, setFormOuvert] = useState(false);
 
+  const chargerCatalogue = useCallback(async () => {
+    const reqId = ++catReqIdRef.current;
+    setCatalogueErreur(null);
+    try {
+      const c = await getCatalogueWorkflow();
+      if (!monteRef.current || reqId !== catReqIdRef.current) return;
+      setCatalogue(c);
+    } catch {
+      if (!monteRef.current || reqId !== catReqIdRef.current) return;
+      setCatalogueErreur('Le catalogue des types d’objet est momentanément indisponible.');
+    }
+  }, []);
+
   useEffect(() => {
     let annule = false;
-    void getCatalogueWorkflow()
-      .then((c) => { if (!annule) setCatalogue(c); })
-      .catch(() => undefined);
+    void chargerCatalogue();
     setCollabChargement(true);
     void getTousCollaborateurs()
       .then((list) => { if (!annule) setCollaborateurs(list); })
@@ -72,9 +93,10 @@ export default function DelegationsPage() {
     return () => {
       annule = true;
     };
-  }, []);
+  }, [chargerCatalogue]);
 
   const charger = useCallback(async () => {
+    const reqId = ++reqIdRef.current;
     setChargement(true);
     setErreur(null);
     try {
@@ -86,11 +108,14 @@ export default function DelegationsPage() {
         page,
         taille: TAILLE_PAGE,
       });
+      if (!monteRef.current || reqId !== reqIdRef.current) return;
       setDonnees(res);
     } catch (e) {
+      if (!monteRef.current || reqId !== reqIdRef.current) return;
+      setDonnees(null);
       setErreur(messageErreurWorkflow(e));
     } finally {
-      setChargement(false);
+      if (monteRef.current && reqId === reqIdRef.current) setChargement(false);
     }
   }, [f.actives, f.delegant_id, f.delegue_id, page]);
 
@@ -101,13 +126,8 @@ export default function DelegationsPage() {
   async function demanderAnnulation(d: DelegationAdmin) {
     if (lectureSeule) return;
     setMessage(null);
-    const ok = await confirm({
-      title: 'Annuler cette délégation ?',
-      message: `La délégation de ${d.delegant_nom} vers ${d.delegue_nom} (${formatPeriode(d.du, d.au)}) sera annulée et retirée des tâches ouvertes concernées.`,
-      confirmLabel: 'Annuler la délégation',
-      danger: true,
-      envoyer: () => executerPourConfirmation(() => annulerDelegationAdmin(d.id)),
-    });
+    const ok = await confirmerAnnulationDelegation(confirm, d);
+    if (!monteRef.current) return;
     if (ok) {
       setMessage('Délégation annulée.');
       await charger();
@@ -138,6 +158,15 @@ export default function DelegationsPage() {
           ) : null
         }
       />
+
+      {catalogueErreur ? (
+        <div className="alert alert--warning" role="status" style={{ marginBottom: 12 }}>
+          <span>{catalogueErreur}</span>
+          <button type="button" className="btn btn--secondary btn--sm" onClick={() => void chargerCatalogue()}>
+            Réessayer
+          </button>
+        </div>
+      ) : null}
 
       {message ? (
         <div className="alert alert--success" role="status" style={{ marginBottom: 12 }}>
@@ -215,67 +244,15 @@ export default function DelegationsPage() {
         )
       ) : null}
 
-      {!chargement && elements.length > 0 ? (
+      {!chargement && !erreur && elements.length > 0 ? (
         <div className="card">
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th scope="col">Délégant</th>
-                  <th scope="col">Délégué</th>
-                  <th scope="col">Période</th>
-                  <th scope="col">Types couverts</th>
-                  <th scope="col">Origine</th>
-                  <th scope="col">Statut</th>
-                  <th scope="col">Motif</th>
-                  {!lectureSeule ? <th scope="col">Actions</th> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {elements.map((d) => {
-                  const st = statutDelegation(d);
-                  const annulable = !lectureSeule && (st === 'ACTIVE' || st === 'PLANIFIEE');
-                  return (
-                    <tr key={d.id}>
-                      <td>
-                        <DetailLink type="collaborateur" id={d.delegant_id} libelle={d.delegant_nom} />
-                      </td>
-                      <td>
-                        <DetailLink type="collaborateur" id={d.delegue_id} libelle={d.delegue_nom} />
-                      </td>
-                      <td>{formatPeriode(d.du, d.au)}</td>
-                      <td>{formatObjetTypesDelegation(d.objet_types, catalogue)}</td>
-                      <td>{libelleOrigineDelegation(d.origine)}</td>
-                      <td>
-                        <span className={`status status--${toneStatutDelegation(st)}`}>
-                          {libelleStatutDelegation(st)}
-                        </span>
-                        {d.annulee_le ? (
-                          <div className="small muted">Le {formatDateHeure(d.annulee_le)}</div>
-                        ) : null}
-                      </td>
-                      <td>{d.motif ?? TIRET}</td>
-                      {!lectureSeule ? (
-                        <td>
-                          {annulable ? (
-                            <button
-                              type="button"
-                              className="btn btn--ghost btn--sm"
-                              onClick={() => void demanderAnnulation(d)}
-                            >
-                              Annuler
-                            </button>
-                          ) : (
-                            TIRET
-                          )}
-                        </td>
-                      ) : null}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DelegationsTableau
+            elements={elements}
+            catalogue={catalogue}
+            lectureSeule={lectureSeule}
+            mode="ADMIN"
+            onAnnuler={(d) => void demanderAnnulation(d)}
+          />
 
           {totalPages > 1 ? (
             <div className="pager">

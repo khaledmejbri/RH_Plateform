@@ -1,4 +1,5 @@
 import type { CatalogueWorkflow, DelegationAdmin, HistoriqueAdmin } from '../api/workflowApi';
+import { humanizeCode } from '../utils/filtres';
 import { formatNombre, jourIso } from '../utils/format';
 import {
   libelleActionDecision,
@@ -284,6 +285,25 @@ export function formatEvenementHistorique(
   const titre = libelleEvenementHistorique(h.type_evenement);
   const detail = formatHistoriqueDetails(h, libellesEtapes);
   return detail ? `${titre} — ${detail}` : titre;
+}
+
+const LIBELLES_VARIABLES_AFFICHAGE: Readonly<Record<string, string>> = {
+  affichage_type: 'Type affiché',
+  affichage_periode: 'Période affichée',
+  affichage_duree: 'Durée affichée',
+  affichage_sla: 'Échéance réglementaire',
+  affichage_heure: 'Heure affichée',
+  affichage_signaux: 'Signaux de vigilance',
+  affichage_lieu: 'Lieu affiché',
+  affichage_organisme: 'Organisme affiché',
+};
+
+/** Libellé français d'une variable du dossier (catalogue prioritaire, puis clés `affichage_*`, puis humanisation). */
+export function libelleVariableDossier(
+  cle: string,
+  libellesCatalogue: ReadonlyMap<string, string> = new Map(),
+): string {
+  return libellesCatalogue.get(cle) ?? LIBELLES_VARIABLES_AFFICHAGE[cle] ?? (humanizeCode(cle) || cle);
 }
 
 /** Libellé des types d'objet couverts par une délégation (`null` / vide = tous). */

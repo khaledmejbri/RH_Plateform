@@ -18,6 +18,7 @@ export default function FiltreCollaborateur({
   valeur,
   onChange,
   chargement = false,
+  disabled = false,
   libelle = 'Collaborateur',
 }: {
   id: string;
@@ -25,11 +26,12 @@ export default function FiltreCollaborateur({
   valeur: string;
   onChange: (identifiant: string) => void;
   chargement?: boolean;
+  disabled?: boolean;
   libelle?: string;
 }) {
   const listeId = useId();
   const choisi = useMemo(() => collaborateurs.find((c) => c.identifiant === valeur) ?? null, [collaborateurs, valeur]);
-  const [saisie, setSaisie] = useState('');
+  const [saisie, setSaisie] = useState(() => (choisi ? libelleCollaborateur(choisi) : ''));
   const [ouvert, setOuvert] = useState(false);
   // Vrai quand c'est la frappe qui vient de désélectionner : on garde alors le texte saisi.
   const deselectionParSaisie = useRef(false);
@@ -49,6 +51,7 @@ export default function FiltreCollaborateur({
   }, [ouvert, saisie, collaborateurs, choisi]);
 
   function choisir(c: CollaborateurRow | null) {
+    if (disabled) return;
     onChange(c ? c.identifiant : '');
     setOuvert(false);
     setSaisie(c ? libelleCollaborateur(c) : '');
@@ -62,15 +65,17 @@ export default function FiltreCollaborateur({
         type="search"
         className="field-input"
         role="combobox"
-        aria-expanded={ouvert}
+        aria-expanded={ouvert && !disabled}
         aria-controls={listeId}
         aria-autocomplete="list"
         autoComplete="off"
+        disabled={disabled}
         placeholder={chargement ? 'Chargement…' : 'Nom ou matricule'}
         value={saisie}
-        onFocus={() => setOuvert(true)}
+        onFocus={() => { if (!disabled) setOuvert(true); }}
         onBlur={() => window.setTimeout(() => setOuvert(false), 150)}
         onChange={(e) => {
+          if (disabled) return;
           setSaisie(e.target.value);
           setOuvert(true);
           if (valeur) {
@@ -80,13 +85,13 @@ export default function FiltreCollaborateur({
         }}
         onKeyDown={(e) => {
           if (e.key === 'Escape') setOuvert(false);
-          if (e.key === 'Enter' && suggestions.length === 1) {
+          if (!disabled && e.key === 'Enter' && suggestions.length === 1) {
             e.preventDefault();
             choisir(suggestions[0]);
           }
         }}
       />
-      {ouvert ? (
+      {ouvert && !disabled ? (
         <ul id={listeId} className="filtre-collab__liste" role="listbox" aria-label="Collaborateurs correspondants">
           {suggestions.length === 0 ? (
             <li className="filtre-collab__vide muted small">Aucun collaborateur trouvé</li>

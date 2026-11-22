@@ -14,6 +14,7 @@ import {
   formatObjetTypesDelegation,
   formatOrigineCandidat,
   libelleStatutDelegation,
+  libelleVariableDossier,
   periodeParDefaut30Jours,
   routeNotificationWorkflow,
   statutDelegation,
@@ -184,6 +185,12 @@ describe('supervision — libellés et formatage', () => {
 
     const p = periodeParDefaut30Jours(new Date('2026-11-22T12:00:00Z'));
     expect(p).toEqual({ du: '2026-10-23', au: '2026-11-22' });
+
+    const libCat = new Map([['jours_decomptes', 'Jours décomptés']]);
+    expect(libelleVariableDossier('jours_decomptes', libCat)).toBe('Jours décomptés');
+    expect(libelleVariableDossier('affichage_periode', libCat)).toBe('Période affichée');
+    expect(libelleVariableDossier('affichage_sla', libCat)).toBe('Échéance réglementaire');
+    expect(libelleVariableDossier('champ_personnalise', libCat)).toBe('Champ personnalise');
   });
 });
 
