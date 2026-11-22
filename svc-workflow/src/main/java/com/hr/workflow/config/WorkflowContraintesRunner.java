@@ -102,8 +102,12 @@ public class WorkflowContraintesRunner implements ApplicationRunner {
 				+ "ON wf_historique (instance_id, horodatage)");
 		executerDdl("CREATE INDEX IF NOT EXISTS idx_wf_delegation_delegant_periode "
 				+ "ON wf_delegation (delegant_collaborateur_id, du, au)");
+		executerDdl("CREATE INDEX IF NOT EXISTS idx_wf_delegation_delegant_active "
+				+ "ON wf_delegation (delegant_collaborateur_id, annulee_le, du, au)");
 		executerDdl("CREATE INDEX IF NOT EXISTS idx_wf_delegation_delegue "
 				+ "ON wf_delegation (delegue_collaborateur_id)");
+		executerDdl("CREATE INDEX IF NOT EXISTS idx_wf_tache_scheduler "
+				+ "ON wf_tache (statut, prochaine_relance_le, echeance_le, escalade_a_faire_le)");
 		executerDdl("CREATE INDEX IF NOT EXISTS idx_wf_appel_effet_statut_prochaine "
 				+ "ON wf_appel_effet (statut, prochaine_tentative_le)");
 		executerDdl("CREATE INDEX IF NOT EXISTS idx_wf_outbox_non_publie "

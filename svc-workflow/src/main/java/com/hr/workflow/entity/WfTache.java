@@ -76,6 +76,9 @@ public class WfTache {
 	@Column(name = "escalade_le")
 	private Instant escaladeLe;
 
+	@Column(name = "echeance_traitee_le")
+	private Instant echeanceTraiteeLe;
+
 	@Enumerated(EnumType.STRING)
 	@Column(name = "decision", length = 12)
 	private DecisionTache decision;
@@ -100,6 +103,9 @@ public class WfTache {
 
 	@Column(name = "decide_le")
 	private Instant decideLe;
+
+	@Column(name = "reaffectee_le")
+	private Instant reaffecteeLe;
 
 	@Column(name = "cle_idempotence", length = 64)
 	private String cleIdempotence;

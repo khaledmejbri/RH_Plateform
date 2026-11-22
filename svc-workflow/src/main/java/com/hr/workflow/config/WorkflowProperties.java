@@ -15,6 +15,8 @@ public class WorkflowProperties {
 	private final Proprietaires proprietaires = new Proprietaires();
 	private final Outbox outbox = new Outbox();
 	private final Effets effets = new Effets();
+	private final Echeances echeances = new Echeances();
+	private final Delegations delegations = new Delegations();
 
 	public Referentiel getReferentiel() {
 		return referentiel;
@@ -30,6 +32,14 @@ public class WorkflowProperties {
 
 	public Effets getEffets() {
 		return effets;
+	}
+
+	public Echeances getEcheances() {
+		return echeances;
+	}
+
+	public Delegations getDelegations() {
+		return delegations;
 	}
 
 	public static class Referentiel {
@@ -159,6 +169,30 @@ public class WorkflowProperties {
 
 		public void setRepriseCron(String repriseCron) {
 			this.repriseCron = repriseCron;
+		}
+	}
+
+	public static class Echeances {
+		private String cron = "0 * * * * *";
+
+		public String getCron() {
+			return cron;
+		}
+
+		public void setCron(String cron) {
+			this.cron = cron;
+		}
+	}
+
+	public static class Delegations {
+		private String cron = "0 30 0 * * *";
+
+		public String getCron() {
+			return cron;
+		}
+
+		public void setCron(String cron) {
+			this.cron = cron;
 		}
 	}
 }

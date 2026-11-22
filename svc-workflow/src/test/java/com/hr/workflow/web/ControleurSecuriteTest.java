@@ -9,9 +9,12 @@ import com.hr.workflow.dto.WorkflowMoteurDtos.CompteurTachesResponse;
 import com.hr.workflow.moteur.DecisionService;
 import com.hr.workflow.moteur.DemarrageService;
 import com.hr.workflow.service.ActivationService;
+import com.hr.workflow.service.DelegationService;
 import com.hr.workflow.service.InstanceInterneService;
 import com.hr.workflow.service.ModeleVersionService;
+import com.hr.workflow.service.ReaffectationService;
 import com.hr.workflow.service.SimulationService;
+import com.hr.workflow.service.SupervisionService;
 import com.hr.workflow.service.WorkflowUtilisateurService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -67,6 +70,9 @@ class ControleurSecuriteTest {
 	@MockitoBean private ActivationService activationService;
 	@MockitoBean private ModeleVersionService modeleVersionService;
 	@MockitoBean private SimulationService simulationService;
+	@MockitoBean private SupervisionService supervisionService;
+	@MockitoBean private ReaffectationService reaffectationService;
+	@MockitoBean private DelegationService delegationService;
 	@MockitoBean private WorkflowUtilisateurService utilisateurService;
 	@MockitoBean private DecisionService decisionService;
 	@MockitoBean private DemarrageService demarrageService;
@@ -100,6 +106,10 @@ class ControleurSecuriteTest {
 						"{\"demandeur_id\":\"" + ID_TEST + "\",\"variables\":{}}", true, true, true, true},
 				new Object[]{HttpMethod.GET, "/api/rh/v1/admin/workflow/versions/" + ID_TEST + "/comparer/" + ID_TEST_2, null, true, true, true, true},
 				new Object[]{HttpMethod.GET, "/api/rh/v1/admin/workflow/modeles/" + ID_TEST + "/journal", null, true, true, true, true},
+				new Object[]{HttpMethod.GET, "/api/rh/v1/admin/workflow/instances", null, true, true, true, true},
+				new Object[]{HttpMethod.GET, "/api/rh/v1/admin/workflow/instances/" + ID_TEST, null, true, true, true, true},
+				new Object[]{HttpMethod.GET, "/api/rh/v1/admin/workflow/indicateurs", null, true, true, true, true},
+				new Object[]{HttpMethod.GET, "/api/rh/v1/admin/workflow/delegations", null, true, true, true, true},
 
 				// Admin écriture (RH, ADMIN -> OK ; DIRECTION, USER, PLATEFORME -> 403 ; SANS_JETON -> 401)
 				new Object[]{HttpMethod.PUT, "/api/rh/v1/admin/workflow/activations/CONGE", "{\"mode\":\"MOTEUR\",\"version\":0}", true, false, false, true},
@@ -112,6 +122,11 @@ class ControleurSecuriteTest {
 				new Object[]{HttpMethod.PUT, "/api/rh/v1/admin/workflow/versions/" + ID_TEST, "{\"definition\":{},\"version\":0}", true, false, false, true},
 				new Object[]{HttpMethod.POST, "/api/rh/v1/admin/workflow/versions/" + ID_TEST + "/publier", "{\"version\":0}", true, false, false, true},
 				new Object[]{HttpMethod.DELETE, "/api/rh/v1/admin/workflow/versions/" + ID_TEST, null, true, false, false, true},
+				new Object[]{HttpMethod.POST, "/api/rh/v1/admin/workflow/taches/" + ID_TEST + "/reaffecter",
+						"{\"collaborateur_ids\":[\"" + ID_TEST + "\"],\"motif\":\"Absence valideur\",\"version\":0}", true, false, false, true},
+				new Object[]{HttpMethod.POST, "/api/rh/v1/admin/workflow/delegations",
+						"{\"delegant_id\":\"" + ID_TEST + "\",\"delegue_id\":\"" + ID_TEST_2 + "\",\"du\":\"2026-11-25\",\"au\":\"2026-11-30\"}", true, false, false, true},
+				new Object[]{HttpMethod.DELETE, "/api/rh/v1/admin/workflow/delegations/" + ID_TEST, null, true, false, false, true},
 
 				// Routes utilisateur (USER, RH, ADMIN, DIRECTION -> OK ; PLATEFORME -> 403 ; SANS_JETON -> 401)
 				new Object[]{HttpMethod.GET, "/api/rh/v1/workflow/types-ouverts", null, true, true, true, false},
@@ -121,7 +136,11 @@ class ControleurSecuriteTest {
 				new Object[]{HttpMethod.POST, "/api/rh/v1/workflow/taches/" + ID_TEST + "/decision",
 						"{\"action\":\"APPROUVER\",\"version\":0,\"cle_idempotence\":\"c1\"}", true, true, true, false},
 				new Object[]{HttpMethod.GET, "/api/rh/v1/workflow/instances/" + ID_TEST + "/suivi", null, true, true, true, false},
-				new Object[]{HttpMethod.GET, "/api/rh/v1/workflow/objets/CONGE/" + ID_TEST + "/suivi", null, true, true, true, false}
+				new Object[]{HttpMethod.GET, "/api/rh/v1/workflow/objets/CONGE/" + ID_TEST + "/suivi", null, true, true, true, false},
+				new Object[]{HttpMethod.GET, "/api/rh/v1/workflow/delegations/moi", null, true, true, true, false},
+				new Object[]{HttpMethod.POST, "/api/rh/v1/workflow/delegations/moi",
+						"{\"delegue_id\":\"" + ID_TEST_2 + "\",\"du\":\"2026-11-25\",\"au\":\"2026-11-30\"}", true, true, true, false},
+				new Object[]{HttpMethod.DELETE, "/api/rh/v1/workflow/delegations/moi/" + ID_TEST, null, true, true, true, false}
 		);
 
 		List<Arguments> args = new ArrayList<>();
@@ -159,6 +178,11 @@ class ControleurSecuriteTest {
 				.thenReturn(new PageResponse<>(List.of(), 0, 20, 0));
 		lenient().when(modeleVersionService.listerJournal(any(), anyInt(), anyInt()))
 				.thenReturn(new PageResponse<>(List.of(), 0, 20, 0));
+		lenient().when(supervisionService.listerInstances(any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt()))
+				.thenReturn(new PageResponse<>(List.of(), 0, 20, 0));
+		lenient().when(delegationService.listerAdmin(any(), any(), any(), anyInt(), anyInt()))
+				.thenReturn(new PageResponse<>(List.of(), 0, 20, 0));
+		lenient().when(delegationService.listerMoi(any(), any(), any())).thenReturn(List.of());
 		lenient().when(utilisateurService.mesTaches(any(), any(), anyInt(), anyInt()))
 				.thenReturn(new PageResponse<>(List.of(), 0, 20, 0));
 		lenient().when(utilisateurService.compteurMesTaches(any())).thenReturn(new CompteurTachesResponse(0, 0));

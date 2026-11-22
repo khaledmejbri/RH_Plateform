@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
@@ -150,6 +151,28 @@ public class WorkflowReferentielClient {
 		}
 	}
 
+	/** Liste des collaborateurs en congé approuvé à la date donnée (D-W22). */
+	public List<AbsenceCollaborateur> absences(LocalDate date) {
+		return executerAvecCloison(() -> {
+			try {
+				List<AbsenceCollaborateur> rep = restClient.get()
+						.uri(uri -> uri.path("/internal/referentiel/v1/absences")
+								.queryParam("date", date)
+								.build())
+						.header(ENTETE_JETON, jetonInterne)
+						.retrieve()
+						.body(new ParameterizedTypeReference<List<AbsenceCollaborateur>>() {
+						});
+				return rep != null ? rep : List.of();
+			} catch (HttpClientErrorException.NotFound ex) {
+				log.debug("Endpoint absences absent (404) pour la date {}", date);
+				return List.of();
+			} catch (RestClientException ex) {
+				throw referentielIndisponible(ex.getMessage());
+			}
+		});
+	}
+
 	/** Marque une fonction comme utilisée lors de la publication d'une version (D-W3-05). */
 	public void marquerFonctionUtilisee(String codeFonction) {
 		executerAvecCloison(() -> {
@@ -270,6 +293,18 @@ public class WorkflowReferentielClient {
 			@JsonProperty("nom") String nom,
 			@JsonProperty("matricule") String matricule,
 			@JsonProperty("statut") String statut
+	) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record AbsenceCollaborateur(
+			@JsonProperty("collaborateur_id") UUID collaborateurId,
+			@JsonProperty("compte_id") UUID compteId,
+			@JsonProperty("nom") String nom,
+			@JsonProperty("matricule") String matricule,
+			@JsonProperty("date_debut") LocalDate dateDebut,
+			@JsonProperty("date_fin") LocalDate dateFin,
+			@JsonProperty("type_conge") String typeConge
 	) {
 	}
 }

@@ -202,10 +202,12 @@ public class EffetRepriseScheduler {
 							item.objetId(), item.effet(), acteur, item.commentaire(),
 							item.instanceId(), item.libelleTache()));
 
-			// 2b. HORS TRANSACTION : recalcul du plan si 200, ou résolution ADMIN si 24 h dépassées
+			// 2b. HORS TRANSACTION : recalcul du plan si 200 (hors EXPIRER/ANNULER), ou résolution RH/ADMIN / ADMIN
 			PlanExecutionDecision exec = null;
 			List<UUID> comptesAdmin = List.of();
-			if (res instanceof ResultatAppelEffet.Succes) {
+			List<UUID> comptesRhAdmin = List.of();
+			boolean estExpirationOuAnnulation = "EXPIRER".equals(item.effet()) || "ANNULER".equals(item.effet());
+			if (res instanceof ResultatAppelEffet.Succes && !estExpirationOuAnnulation) {
 				List<IntervenantResolu> cands = item.decideurCollabId() != null && item.decideurCompteId() != null
 						? List.of(new IntervenantResolu(item.decideurCollabId(), item.decideurCompteId(), item.decideurNom(), null))
 						: List.of();
@@ -215,6 +217,12 @@ public class EffetRepriseScheduler {
 						item.demandeurCollaborateurId(), item.demandeurCompteId(),
 						item.beneficiaires(), item.approbateursPrecedents(), item.decideurCollabId(),
 						true, cands);
+			} else if (res instanceof ResultatAppelEffet.RejetMetier && item.decideurCompteId() == null) {
+				try {
+					comptesRhAdmin = resolutionService.resoudreComptesRoles(LocalDate.now(clock), List.of("RH", "ADMIN"));
+				} catch (Exception ex) {
+					log.warn("Impossible de résoudre les comptes RH/ADMIN lors du blocage Q4 de {}", item.instanceId(), ex);
+				}
 			} else if (res instanceof ResultatAppelEffet.Incertain
 					&& Duration.between(item.creeLe(), clock.instant()).compareTo(DUREE_MAX_REPRISE) >= 0) {
 				try {
@@ -227,7 +235,9 @@ public class EffetRepriseScheduler {
 			// 3. Transaction courte : enregistrer l'issue
 			final PlanExecutionDecision finalExec = exec;
 			final List<UUID> finalComptesAdmin = comptesAdmin;
-			txTemplate.executeWithoutResult(status -> traiterIssueReprise(item, res, finalExec, finalComptesAdmin));
+			final List<UUID> finalComptesRhAdmin = comptesRhAdmin;
+			txTemplate.executeWithoutResult(status ->
+					traiterIssueReprise(item, res, finalExec, finalComptesAdmin, finalComptesRhAdmin));
 			traites++;
 		}
 		return traites;
@@ -237,7 +247,8 @@ public class EffetRepriseScheduler {
 			EffetARejouer item,
 			ResultatAppelEffet res,
 			PlanExecutionDecision exec,
-			List<UUID> comptesAdmin) {
+			List<UUID> comptesAdmin,
+			List<UUID> comptesRhAdmin) {
 		WfInstance inst = instanceRepository.findByIdForUpdate(item.instanceId()).orElse(null);
 		WfTache t = item.tacheId() != null ? tacheRepository.findByIdForUpdate(item.tacheId()).orElse(null) : null;
 		WfAppelEffet ae = appelEffetRepository.findById(item.appelEffetId()).orElse(null);
@@ -259,11 +270,23 @@ public class EffetRepriseScheduler {
 			appelEffetRepository.save(ae);
 
 			if (!inst.getStatut().estTerminale() && t != null && t.getStatut() == StatutTache.RESERVEE) {
-				String cleTache = item.tacheCleIdempotence() != null ? item.tacheCleIdempotence() : item.cleIdempotence();
-				applicationService.appliquerDansTransaction(
-						inst, t, cleTache, item.action(), item.commentaire(),
-						item.decideurCompteId(), item.decideurCollabId(), item.decideurNom(),
-						t.getPourCollaborateurId(), item.pourNom(), item.typeCatalogue(), item.etapeDef(), exec);
+				if ("EXPIRER".equals(item.effet()) || "ANNULER".equals(item.effet())) {
+					boolean estComplement = "ANNULER".equals(item.effet());
+					String motif = item.commentaire() != null && !item.commentaire().isBlank()
+							? item.commentaire()
+							: (estComplement ? "Complément non fourni dans le délai" : "Délai de décision dépassé");
+					applicationService.finaliserExpirationOuAnnulationDansTx(
+							inst, t, estComplement, motif, item.typeCatalogue(), maintenant);
+				} else {
+					if (item.decideurCompteId() == null) {
+						t.setEcheanceTraiteeLe(maintenant);
+					}
+					String cleTache = item.tacheCleIdempotence() != null ? item.tacheCleIdempotence() : item.cleIdempotence();
+					applicationService.appliquerDansTransaction(
+							inst, t, cleTache, item.action(), item.commentaire(),
+							item.decideurCompteId(), item.decideurCollabId(), item.decideurNom(),
+							t.getPourCollaborateurId(), item.pourNom(), item.typeCatalogue(), item.etapeDef(), exec);
+				}
 			}
 			return;
 		}
@@ -274,16 +297,22 @@ public class EffetRepriseScheduler {
 			ae.setTermineLe(maintenant);
 			appelEffetRepository.save(ae);
 			if (!inst.getStatut().estTerminale() && t != null && t.getStatut() == StatutTache.RESERVEE) {
-				t.setStatut(StatutTache.A_TRAITER);
-				t.setCleIdempotence(null);
-				tacheRepository.save(t);
-				if (item.decideurCompteId() != null) {
+				if (item.decideurCompteId() == null) {
+					// Q4 : action automatique d'échéance rejetée par le propriétaire -> BLOQUEE + RH/ADMIN notifiés
+					String libEtape = item.etapeDef() != null ? item.etapeDef().libelle() : item.libelleTache();
+					applicationService.bloquerSurRejetSystemeDansTx(
+							inst, t, item.effet(), rejet.code(), rejet.message(),
+							comptesRhAdmin, item.typeCatalogue(), libEtape, maintenant);
+				} else {
+					t.setStatut(StatutTache.A_TRAITER);
+					t.setCleIdempotence(null);
+					tacheRepository.save(t);
 					outboxService.publierNotification(UUID.randomUUID(), item.decideurCompteId().toString(),
 							"WEBSOCKET", "WF_DECISION", "Décision refusée par le service métier",
 							rejet.message(), item.typeCatalogue().objetType(), item.objetId(), item.objetNumero());
+					enregistrerHistorique(inst.getId(), item.tacheId(), "EFFET_REJETE",
+							Map.of("effet", item.effet(), "code", rejet.code()), maintenant);
 				}
-				enregistrerHistorique(inst.getId(), item.tacheId(), "EFFET_REJETE",
-						Map.of("effet", item.effet(), "code", rejet.code()), maintenant);
 			}
 			return;
 		}

@@ -1,6 +1,7 @@
 package com.hr.workflow.moteur;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
@@ -11,6 +12,7 @@ public final class TextesNotificationWorkflow {
 
 	private static final ZoneId FUSEAU_DEFAUT = ZoneId.of("Africa/Tunis");
 	private static final DateTimeFormatter FORMAT_DATE_HEURE = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+	private static final DateTimeFormatter FORMAT_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
 	private TextesNotificationWorkflow() {
 	}
@@ -54,6 +56,31 @@ public final class TextesNotificationWorkflow {
 
 	public static String information(String etape, String typeLibelle, String demandeur, String numero) {
 		return etape + " — Demande " + typeLibelle + " de " + demandeur + "." + suffixeNumero(numero);
+	}
+
+	public static String relance(String typeLibelle, String demandeur, Instant dateActivation, String numero) {
+		String dateStr = formaterInstant(dateActivation);
+		return "Rappel : la demande " + typeLibelle + " de " + demandeur + " attend votre décision"
+				+ (dateStr != null ? " depuis le " + dateStr : "") + "." + suffixeNumero(numero);
+	}
+
+	public static String escalade(String typeLibelle, String demandeur, String etape, String numero) {
+		return "Demande " + typeLibelle + " de " + demandeur + " en retard, transmise pour décision : "
+				+ etape + "." + suffixeNumero(numero);
+	}
+
+	public static String expiree(String typeLibelle, String demandeur, String numero) {
+		return "La demande " + typeLibelle + " de " + demandeur + " a expiré sans décision." + suffixeNumero(numero);
+	}
+
+	public static String complementExpire(String typeLibelle, String demandeur, String numero) {
+		return "La demande " + typeLibelle + " de " + demandeur + " a été annulée : complément non fourni dans le délai."
+				+ suffixeNumero(numero);
+	}
+
+	public static String delegationRecue(String delegantNom, LocalDate du, LocalDate au) {
+		return delegantNom + " vous délègue ses validations du " + FORMAT_DATE.format(du)
+				+ " au " + FORMAT_DATE.format(au) + ".";
 	}
 
 	private static String formaterInstant(Instant instant) {

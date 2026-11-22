@@ -1,8 +1,10 @@
 package com.hr.workflow.repository;
 
+import com.hr.workflow.domain.StatutInstance;
 import com.hr.workflow.entity.WfInstance;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -10,7 +12,9 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface WfInstanceRepository extends JpaRepository<WfInstance, UUID> {
+public interface WfInstanceRepository extends JpaRepository<WfInstance, UUID>, JpaSpecificationExecutor<WfInstance> {
+
+	long countByStatut(StatutInstance statut);
 
 	Optional<WfInstance> findByCleDemarrage(String cleDemarrage);
 

@@ -34,6 +34,8 @@ import com.hr.workflow.moteur.AvancementService.EtapeInformation;
 import com.hr.workflow.moteur.AvancementService.EtapeSautee;
 import com.hr.workflow.moteur.AvancementService.PlanAvancement;
 import com.hr.workflow.moteur.AvancementService.TacheACreer;
+import com.hr.workflow.moteur.DelegationResolutionService.CandidatSupplementaire;
+import com.hr.workflow.moteur.PlanificationEcheanceService.PlanificationTache;
 import com.hr.workflow.moteur.ResolutionIntervenantsService.LotResolu;
 import com.hr.workflow.moteur.ResolutionIntervenantsService.RegleAResoudre;
 import com.hr.workflow.repository.WfActivationRepository;
@@ -46,6 +48,7 @@ import com.hr.workflow.repository.WfModeleVersionRepository;
 import com.hr.workflow.repository.WfTacheCandidatRepository;
 import com.hr.workflow.repository.WfTacheRepository;
 import com.hr.workflow.web.WorkflowMetierException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -56,9 +59,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -83,6 +88,7 @@ public class DemarrageService {
 	private final ResolutionIntervenantsService resolutionService;
 	private final WorkflowReferentielClient referentielClient;
 	private final PlanificationEcheanceService planificationEcheanceService;
+	private final DelegationResolutionService delegationResolutionService;
 	private final AvancementService avancementService;
 	private final OutboxService outboxService;
 	private final TransactionTemplate txReadOnly;
@@ -108,6 +114,34 @@ public class DemarrageService {
 			OutboxService outboxService,
 			PlatformTransactionManager transactionManager,
 			Clock clock) {
+		this(activationRepository, modeleRepository, versionRepository, instanceRepository,
+				beneficiaireRepository, etapeExecutionRepository, tacheRepository, candidatRepository,
+				historiqueRepository, catalogue, codec, resolutionService, referentielClient,
+				planificationEcheanceService, null, avancementService, outboxService,
+				transactionManager, clock);
+	}
+
+	@Autowired
+	public DemarrageService(
+			WfActivationRepository activationRepository,
+			WfModeleRepository modeleRepository,
+			WfModeleVersionRepository versionRepository,
+			WfInstanceRepository instanceRepository,
+			WfBeneficiaireRepository beneficiaireRepository,
+			WfEtapeExecutionRepository etapeExecutionRepository,
+			WfTacheRepository tacheRepository,
+			WfTacheCandidatRepository candidatRepository,
+			WfHistoriqueRepository historiqueRepository,
+			CatalogueTypesObjet catalogue,
+			DefinitionCodec codec,
+			ResolutionIntervenantsService resolutionService,
+			WorkflowReferentielClient referentielClient,
+			PlanificationEcheanceService planificationEcheanceService,
+			DelegationResolutionService delegationResolutionService,
+			AvancementService avancementService,
+			OutboxService outboxService,
+			PlatformTransactionManager transactionManager,
+			Clock clock) {
 		this.activationRepository = activationRepository;
 		this.modeleRepository = modeleRepository;
 		this.versionRepository = versionRepository;
@@ -122,6 +156,7 @@ public class DemarrageService {
 		this.resolutionService = resolutionService;
 		this.referentielClient = referentielClient;
 		this.planificationEcheanceService = planificationEcheanceService;
+		this.delegationResolutionService = delegationResolutionService;
 		this.avancementService = avancementService;
 		this.outboxService = outboxService;
 		this.txReadOnly = new TransactionTemplate(transactionManager);
@@ -225,10 +260,21 @@ public class DemarrageService {
 		PlanAvancement plan = avancementService.calculerDepuisDebut(
 				prep.definition(), variables, typesVars, lot.resultats());
 
-		Instant echeanceEtape = (plan.etapeSuivante() != null && !plan.etapeSuivante().bloquee())
-				? planificationEcheanceService.calculerEcheance(
-						maintenant, plan.etapeSuivante().etape().delai(), calendrier, variables)
-				: null;
+		PlanificationTache planifEtape = PlanificationTache.VIDE;
+		List<List<CandidatSupplementaire>> deleguesParTache = List.of();
+		if (plan.etapeSuivante() != null && !plan.etapeSuivante().bloquee()) {
+			EtapeDefinition etapeSuivDef = plan.etapeSuivante().etape();
+			planifEtape = planificationEcheanceService.calculerPlanification(
+					maintenant, etapeSuivDef.delai(), etapeSuivDef.relances(), etapeSuivDef.aEcheance(),
+					calendrier, variables);
+			if (delegationResolutionService != null) {
+				LocalDate aujourdhuiSociete = LocalDate.now(
+						clock.withZone(PlanificationEcheanceService.parserFuseau(calendrier.fuseau())));
+				deleguesParTache = delegationResolutionService.resoudreDeleguesPourTaches(
+						aujourdhuiSociete, req.objetType(), req.demandeurCollaborateurId(), req.beneficiaires(),
+						plan.etapeSuivante().taches(), calendrier.delegationAutoConges());
+			}
+		}
 
 		// Résolution hors transaction des publics pour étapes INFORMATION et notifications additionnelles
 		Map<String, List<UUID>> comptesInfos = new HashMap<>();
@@ -242,20 +288,28 @@ public class DemarrageService {
 			comptesBloquee = resolutionService.resoudreComptesRoles(aujourdhui, List.of("RH", "ADMIN"));
 		} else if (plan.etapeSuivante() != null && plan.etapeSuivante().etape().notifications() != null
 				&& plan.etapeSuivante().etape().notifications().aLActivation() != null) {
-			List<IntervenantResolu> tousCandidats = plan.etapeSuivante().taches().stream()
-					.flatMap(t -> t.candidats().stream()).toList();
+			List<IntervenantResolu> tousCandidats = new ArrayList<>();
+			plan.etapeSuivante().taches().forEach(t -> tousCandidats.addAll(t.candidats()));
+			for (List<CandidatSupplementaire> ds : deleguesParTache) {
+				for (CandidatSupplementaire d : ds) {
+					tousCandidats.add(new IntervenantResolu(d.collaborateurId(), d.compteId(), d.nom(), null));
+				}
+			}
 			comptesNotifActivation = resolutionService.resoudreComptesPublics(
 					aujourdhui, plan.etapeSuivante().etape().notifications().aLActivation(),
 					req.demandeurCollaborateurId(), req.demandeurCompteId(), tousCandidats);
 		}
 
 		// Étape 4 (TRANSACTION COURTE) : persistance atomique + outbox, capture concurrence (§ 9.6.7)
+		final PlanificationTache finalPlanif = planifEtape;
+		final List<List<CandidatSupplementaire>> finalDeleguesParTache = deleguesParTache;
 		final List<UUID> finalComptesNotifActivation = comptesNotifActivation;
 		final List<UUID> finalComptesBloquee = comptesBloquee;
 		try {
 			DemarrerInstanceResponse rep = txWrite.execute(status -> persisterDemarrage(
 					cleDemarrage, req, typeCatalogue, prep.versionId(), prep.modeleCode(), prep.versionNumero(),
-					variables, plan, echeanceEtape, comptesInfos, finalComptesNotifActivation, finalComptesBloquee, maintenant));
+					variables, plan, finalPlanif, finalDeleguesParTache, comptesInfos, finalComptesNotifActivation,
+					finalComptesBloquee, maintenant));
 			return new ResultatDemarrage(true, rep);
 		} catch (DataIntegrityViolationException ex) {
 			// Concurrence § 9.6.7 : relire l'instance existante pour la même clé
@@ -277,7 +331,8 @@ public class DemarrageService {
 			int versionNumero,
 			Map<String, Object> variables,
 			PlanAvancement plan,
-			Instant echeanceEtape,
+			PlanificationTache planifEtape,
+			List<List<CandidatSupplementaire>> deleguesParTache,
 			Map<String, List<UUID>> comptesInfos,
 			List<UUID> comptesNotifActivation,
 			List<UUID> comptesBloquee,
@@ -376,8 +431,13 @@ public class DemarrageService {
 
 			UUID evTacheId = UUID.randomUUID();
 			String canal = etapeDef.notifications() != null ? etapeDef.notifications().canal() : "WEBSOCKET";
+			Instant echeanceEtape = planifEtape != null ? planifEtape.echeanceLe() : null;
+			Instant prochaineRelance = planifEtape != null ? planifEtape.prochaineRelanceLe() : null;
+			Instant escaladeAFaire = planifEtape != null ? planifEtape.escaladeAFaireLe() : null;
 
-			for (TacheACreer tc : activee.taches()) {
+			List<TacheACreer> taches = activee.taches();
+			for (int i = 0; i < taches.size(); i++) {
+				TacheACreer tc = taches.get(i);
 				WfTache tache = new WfTache();
 				tache.setInstance(inst);
 				tache.setEtapeExecution(ee);
@@ -387,9 +447,15 @@ public class DemarrageService {
 				tache.setStatut(StatutTache.A_TRAITER);
 				tache.setObligatoire(tc.obligatoire());
 				tache.setEcheanceLe(echeanceEtape);
+				tache.setProchaineRelanceLe(prochaineRelance);
+				tache.setEscaladeAFaireLe(escaladeAFaire);
 				tache = tacheRepository.saveAndFlush(tache);
 
+				Set<UUID> ajoutes = new HashSet<>();
 				for (IntervenantResolu cand : tc.candidats()) {
+					if (cand.collaborateurId() == null || !ajoutes.add(cand.collaborateurId())) {
+						continue;
+					}
 					WfTacheCandidat c = new WfTacheCandidat();
 					c.setId(new WfTacheCandidatId(tache.getId(), cand.collaborateurId()));
 					c.setCompteId(cand.compteId());
@@ -402,6 +468,43 @@ public class DemarrageService {
 							typeCatalogue.libelle(), req.demandeurNom(), tc.libelle(), echeanceEtape, req.objetNumero());
 					outboxService.publierNotification(evTacheId, cand.compteId().toString(), canal, "WF_TACHE_CREEE",
 							"Demande à traiter", texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+				}
+
+				List<CandidatSupplementaire> delegues = (deleguesParTache != null && i < deleguesParTache.size())
+						? deleguesParTache.get(i) : List.of();
+				for (CandidatSupplementaire ds : delegues) {
+					if (ds.collaborateurId() == null || !ajoutes.add(ds.collaborateurId())) {
+						continue;
+					}
+					WfTacheCandidat c = new WfTacheCandidat();
+					c.setId(new WfTacheCandidatId(tache.getId(), ds.collaborateurId()));
+					c.setCompteId(ds.compteId());
+					c.setNom(ds.nom());
+					c.setOrigine(ds.origine());
+					c.setPourCollaborateurId(ds.pourCollaborateurId());
+					c.setPourNom(ds.pourNom());
+					c.setDelegationId(ds.delegationId());
+					c.setAjouteLe(maintenant);
+					candidatRepository.save(c);
+
+					Map<String, Object> detailsDel = new HashMap<>();
+					detailsDel.put("origine", ds.origine().name());
+					detailsDel.put("delegue_id", ds.collaborateurId().toString());
+					if (ds.pourCollaborateurId() != null) {
+						detailsDel.put("delegant_id", ds.pourCollaborateurId().toString());
+					}
+					if (ds.delegationId() != null) {
+						detailsDel.put("delegation_id", ds.delegationId().toString());
+					}
+					enregistrerHistorique(inst.getId(), tache.getId(), "DELEGATION_APPLIQUEE",
+							null, "Système", ds.pourNom(), detailsDel, maintenant);
+
+					if (ds.compteId() != null) {
+						String texte = TextesNotificationWorkflow.tacheCreee(
+								typeCatalogue.libelle(), req.demandeurNom(), tc.libelle(), echeanceEtape, req.objetNumero());
+						outboxService.publierNotification(evTacheId, ds.compteId().toString(), canal, "WF_TACHE_CREEE",
+								"Demande à traiter", texte, inst.getObjetType(), inst.getObjetId(), inst.getObjetNumero());
+					}
 				}
 			}
 
