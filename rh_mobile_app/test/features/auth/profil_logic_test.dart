@@ -64,5 +64,13 @@ void main() {
     test('liste vide → 0 (jamais une valeur figée)', () {
       expect(compterDemandesEnCours(const []), 0);
     });
+    test('inclut les statuts MOTEUR EN_COURS et A_COMPLETER', () {
+      final n = compterDemandesEnCours([
+        demande('EN_COURS'),
+        demande('A_COMPLETER'),
+        demande('APPROUVEE'),
+      ]);
+      expect(n, 2);
+    });
   });
 }

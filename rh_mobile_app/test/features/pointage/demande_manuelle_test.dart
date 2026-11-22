@@ -34,4 +34,18 @@ void main() {
     expect(r.id, 'p1');
     expect(r.isRejet, isTrue);
   });
+
+  test('DemandeManuelle EN_COURS en mode MOTEUR affiche Circuit paramétré', () {
+    final d = DemandeManuelle.fromJson({
+      'id': 'd3',
+      'statut': 'EN_COURS',
+      'type': 'ENTREE',
+      'workflow_mode': 'MOTEUR',
+      'etape_courante_libelle': 'Validation manager',
+    });
+    expect(d.estModeMoteur, isTrue);
+    expect(d.enCours, isTrue);
+    expect(d.statutLibelle, 'En cours de validation');
+    expect(d.valideurLibelle, 'Circuit paramétré');
+  });
 }
