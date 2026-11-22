@@ -6,8 +6,11 @@ package com.hr.referentiel.domain;
 public enum StatutDocumentAdministratifDemandeRh {
 	EN_ATTENTE_FILE("En file d'attente"),
 	EN_TRAITEMENT_RH("En traitement par la RH"),
+	EN_COURS("En cours de validation"),
+	A_COMPLETER("À compléter"),
 	DISPONIBLE("Disponible"),
-	REJETEE("Refusée");
+	REJETEE("Refusée"),
+	ANNULEE("Annulée");
 
 	private final String libelle;
 

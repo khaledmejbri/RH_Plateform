@@ -1,10 +1,12 @@
 package com.hr.referentiel.service;
 
+import com.hr.referentiel.client.WorkflowMoteurClient;
 import com.hr.referentiel.domain.ActionWorkflowFormation;
 import com.hr.referentiel.domain.CibleDemandeFormationRh;
 import com.hr.referentiel.domain.OrigineDemandeFormationRh;
 import com.hr.referentiel.domain.StatutDemandeFormationRh;
 import com.hr.referentiel.dto.CollaborateurResponse;
+import com.hr.referentiel.dto.DemandeComplementRequest;
 import com.hr.referentiel.dto.DemandeFormationCreationRequest;
 import com.hr.referentiel.dto.DemandeFormationIntegrationRequest;
 import com.hr.referentiel.dto.DemandeFormationRhResponse;
@@ -22,15 +24,22 @@ import com.hr.referentiel.repository.DemandeFormationRhRepository;
 import com.hr.referentiel.repository.FormationWorkflowHistoryRepository;
 import com.hr.referentiel.repository.UniteOrganisationRepository;
 import com.hr.referentiel.web.ReferentielMetierException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,7 +53,14 @@ public class DemandeFormationRhService {
 	private final FormationWorkflowHistoryRepository workflowHistoryRepository;
 	private final NumeroLisibleService numeroLisibleService;
 	private final ParametreService parametreService;
+	private final WorkflowActivationService workflowActivationService;
+	private final WorkflowDemarrageService workflowDemarrageService;
+	private final WorkflowMoteurClient moteurClient;
+	private final WorkflowVariablesBuilder variablesBuilder;
+	private final TransactionTemplate txLecture;
+	private final TransactionTemplate txEcriture;
 
+	/** Constructeur historique conservé pour les tests existants. */
 	public DemandeFormationRhService(
 			DemandeFormationRhRepository demandeFormationRepository,
 			CollaborateurRepository collaborateurRepository,
@@ -54,6 +70,26 @@ public class DemandeFormationRhService {
 			FormationWorkflowHistoryRepository workflowHistoryRepository,
 			NumeroLisibleService numeroLisibleService,
 			ParametreService parametreService) {
+		this(demandeFormationRepository, collaborateurRepository, uniteRepository, collaborateurConnecteService,
+				notificationPublisher, workflowHistoryRepository, numeroLisibleService, parametreService,
+				null, null, null, null, null);
+	}
+
+	@Autowired
+	public DemandeFormationRhService(
+			DemandeFormationRhRepository demandeFormationRepository,
+			CollaborateurRepository collaborateurRepository,
+			UniteOrganisationRepository uniteRepository,
+			CollaborateurConnecteService collaborateurConnecteService,
+			RhNotificationPublisher notificationPublisher,
+			FormationWorkflowHistoryRepository workflowHistoryRepository,
+			NumeroLisibleService numeroLisibleService,
+			ParametreService parametreService,
+			WorkflowActivationService workflowActivationService,
+			WorkflowDemarrageService workflowDemarrageService,
+			WorkflowMoteurClient moteurClient,
+			WorkflowVariablesBuilder variablesBuilder,
+			PlatformTransactionManager txManager) {
 		this.demandeFormationRepository = demandeFormationRepository;
 		this.collaborateurRepository = collaborateurRepository;
 		this.uniteRepository = uniteRepository;
@@ -62,47 +98,86 @@ public class DemandeFormationRhService {
 		this.workflowHistoryRepository = workflowHistoryRepository;
 		this.numeroLisibleService = numeroLisibleService;
 		this.parametreService = parametreService;
+		this.workflowActivationService = workflowActivationService;
+		this.workflowDemarrageService = workflowDemarrageService;
+		this.moteurClient = moteurClient;
+		this.variablesBuilder = variablesBuilder;
+		if (txManager != null) {
+			this.txLecture = new TransactionTemplate(txManager);
+			this.txLecture.setReadOnly(true);
+			this.txEcriture = new TransactionTemplate(txManager);
+			this.txEcriture.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+		} else {
+			this.txLecture = null;
+			this.txEcriture = null;
+		}
 	}
 
-	@Transactional
 	public DemandeFormationRhResponse creer(DemandeFormationCreationRequest req, Jwt jwt) {
-		Collaborateur demandeur = exigerCollaborateurDetail(jwt);
-		validerDates(req);
+		boolean modeMoteur = workflowActivationService != null
+				&& WorkflowActivationService.MODE_MOTEUR.equals(workflowActivationService.mode("FORMATION"));
 
-		DemandeFormationRh demande = new DemandeFormationRh();
-		// D-L02 : numéro attribué dans la transaction de création, rang du mois de l'instant de création
-		Instant creation = Instant.now();
-		demande.setCreeLe(creation);
-		demande.setNumero(numeroLisibleService.attribuer(PrefixeNumero.FOR, creation));
-		demande.setDemandeur(demandeur);
-		demande.setTypeFormation(trim(req.getTypeFormation()));
-		demande.setOrganisme(trim(req.getOrganisme()));
-		demande.setDureeHeures(req.getDureeHeures());
-		demande.setCoutEstime(req.getCoutEstime());
-		demande.setObjectifsPedagogiques(trim(req.getObjectifsPedagogiques()));
-		demande.setJustification(trim(req.getJustification()));
-		demande.setDateSouhaiteeDebut(req.getDateSouhaiteeDebut());
-		demande.setDateSouhaiteeFin(req.getDateSouhaiteeFin());
-		appliquerCible(req, demandeur, demande);
+		DemandeFormationRh saved = executerEcriture(() -> {
+			Collaborateur demandeur = exigerCollaborateurDetail(jwt);
+			validerDates(req);
 
-		DemandeFormationRh saved = demandeFormationRepository.save(demande);
-		
-		// Enregistrer l'historique de workflow
-		enregistrerWorkflow(saved, ActionWorkflowFormation.CREATION_DEMANDE,
-				demandeur.getId(), demandeur.getPrenom() + " " + demandeur.getNom(),
-				"Demande de formation créée");
-		enregistrerWorkflow(saved, ActionWorkflowFormation.SOUMISE_A_RH,
-				demandeur.getId(), demandeur.getPrenom() + " " + demandeur.getNom(),
-				"Demande soumise au RH pour validation");
-		
-		// Notifier le RH et les collaborateurs cibles si RO
-		notificationPublisher.notifierDemandeFormationSoumise(saved.getDemandeur(), saved.getTypeFormation(), saved.getId(), saved.getNumero());
-		if (saved.getOrigine() == OrigineDemandeFormationRh.RESPONSABLE_OPERATIONNEL 
-				&& saved.getCollaborateursCibles() != null && !saved.getCollaborateursCibles().isEmpty()) {
-			notifierCollaborateursCibles(saved);
+			DemandeFormationRh demande = new DemandeFormationRh();
+			Instant creation = Instant.now();
+			demande.setCreeLe(creation);
+			demande.setNumero(numeroLisibleService.attribuer(PrefixeNumero.FOR, creation));
+			demande.setDemandeur(demandeur);
+			demande.setTypeFormation(trim(req.getTypeFormation()));
+			demande.setOrganisme(trim(req.getOrganisme()));
+			demande.setDureeHeures(req.getDureeHeures());
+			demande.setCoutEstime(req.getCoutEstime());
+			demande.setObjectifsPedagogiques(trim(req.getObjectifsPedagogiques()));
+			demande.setJustification(trim(req.getJustification()));
+			demande.setDateSouhaiteeDebut(req.getDateSouhaiteeDebut());
+			demande.setDateSouhaiteeFin(req.getDateSouhaiteeFin());
+			appliquerCible(req, demandeur, demande);
+
+			if (modeMoteur) {
+				demande.setStatut(StatutDemandeFormationRh.EN_COURS);
+				demande.setWorkflowMode(WorkflowActivationService.MODE_MOTEUR);
+				demande.setWorkflowEtat(WorkflowDemarrageService.ETAT_A_DEMARRER);
+			} else {
+				demande.setStatut(StatutDemandeFormationRh.EN_VALIDATION_RRH);
+				demande.setWorkflowMode(WorkflowActivationService.MODE_HERITE);
+				demande.setWorkflowEtat(null);
+			}
+
+			DemandeFormationRh enregistree = demandeFormationRepository.save(demande);
+
+			enregistrerWorkflow(enregistree, ActionWorkflowFormation.CREATION_DEMANDE,
+					demandeur.getId(), demandeur.getPrenom() + " " + demandeur.getNom(),
+					"Demande de formation créée");
+			if (!modeMoteur) {
+				enregistrerWorkflow(enregistree, ActionWorkflowFormation.SOUMISE_A_RH,
+						demandeur.getId(), demandeur.getPrenom() + " " + demandeur.getNom(),
+						"Demande soumise au RH pour validation");
+				notificationPublisher.notifierDemandeFormationSoumise(enregistree.getDemandeur(),
+						enregistree.getTypeFormation(), enregistree.getId(), enregistree.getNumero());
+				if (enregistree.getOrigine() == OrigineDemandeFormationRh.RESPONSABLE_OPERATIONNEL
+						&& enregistree.getCollaborateursCibles() != null
+						&& !enregistree.getCollaborateursCibles().isEmpty()) {
+					notifierCollaborateursCibles(enregistree);
+				}
+			}
+			return enregistree;
+		});
+
+		if (modeMoteur && workflowDemarrageService != null) {
+			final UUID demandeId = saved.getId();
+			final DemandeFormationRh fallback = saved;
+			workflowDemarrageService.demarrerFormation(demandeId);
+			return executerLecture(() -> {
+				DemandeFormationRh rechargee = demandeFormationRepository.findDetailById(demandeId)
+						.or(() -> demandeFormationRepository.findById(demandeId))
+						.orElse(fallback);
+				return toResponse(rechargee);
+			});
 		}
-		
-		return toResponse(saved);
+		return executerLecture(() -> toResponse(saved));
 	}
 
 	@Transactional(readOnly = true)
@@ -195,6 +270,7 @@ public class DemandeFormationRhService {
 	@Transactional
 	public DemandeFormationRhResponse integrerPlan(UUID id, DemandeFormationIntegrationRequest req, Jwt jwt) {
 		DemandeFormationRh demande = charger(id);
+		verifierPasSousWorkflow(demande);
 		verifierStatut(demande, StatutDemandeFormationRh.EN_VALIDATION_RRH,
 				"Cette demande de formation n'est pas en attente RH.");
 		demande.setStatut(StatutDemandeFormationRh.INTEGREE_PLAN);
@@ -215,6 +291,7 @@ public class DemandeFormationRhService {
 	@Transactional
 	public DemandeFormationRhResponse refuser(UUID id, DemandeRefusRequest req, Jwt jwt) {
 		DemandeFormationRh demande = charger(id);
+		verifierPasSousWorkflow(demande);
 		verifierStatut(demande, StatutDemandeFormationRh.EN_VALIDATION_RRH,
 				"Cette demande de formation n'est pas en attente RH.");
 		demande.setStatut(StatutDemandeFormationRh.REFUSEE);
@@ -231,24 +308,140 @@ public class DemandeFormationRhService {
 		return toResponse(demande);
 	}
 
-	@Transactional
 	public DemandeFormationRhResponse annuler(UUID id, Jwt jwt) {
-		DemandeFormationRh demande = charger(id);
-		Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
-		if (!demande.getDemandeur().getId().equals(c.getId())) {
-			throw new IllegalArgumentException("Seul le demandeur peut annuler sa demande de formation.");
+		record ContexteAnnulation(DemandeFormationRh demande, Collaborateur acteur) {
 		}
-		verifierStatut(demande, StatutDemandeFormationRh.EN_VALIDATION_RRH,
-				"Annulation possible uniquement avant traitement RH.");
-		demande.setStatut(StatutDemandeFormationRh.ANNULEE);
-		demandeFormationRepository.save(demande);
-		
-		// Enregistrer l'historique
-		enregistrerWorkflow(demande, ActionWorkflowFormation.ANNULATION_DEMANDEUR,
-				c.getId(), c.getPrenom() + " " + c.getNom(), "Annulée par le demandeur");
-		
-		notificationPublisher.notifierDemandeFormationAnnulee(demande.getDemandeur(), demande.getTypeFormation(), demande.getId(), demande.getNumero());
-		return toResponse(demande);
+		ContexteAnnulation ctx = executerLecture(() -> {
+			DemandeFormationRh d = charger(id);
+			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
+			if (!d.getDemandeur().getId().equals(c.getId())) {
+				throw new IllegalArgumentException("Seul le demandeur peut annuler sa demande de formation.");
+			}
+			return new ContexteAnnulation(d, c);
+		});
+
+		DemandeFormationRh demande = ctx.demande();
+		Collaborateur c = ctx.acteur();
+		if (WorkflowActivationService.MODE_MOTEUR.equals(demande.getWorkflowMode())) {
+			if (demande.getStatut() != StatutDemandeFormationRh.EN_COURS
+					&& demande.getStatut() != StatutDemandeFormationRh.A_COMPLETER) {
+				throw ReferentielMetierException.conflict("DEMANDE_DEJA_DECIDEE",
+						"Cette demande est déjà décidée. Statut actuel : « " + demande.getStatut().getLibelle() + " ».");
+			}
+			if (demande.getWorkflowInstanceId() != null && moteurClient != null) {
+				String nom = ((c.getPrenom() != null ? c.getPrenom() : "") + " "
+						+ (c.getNom() != null ? c.getNom() : "")).trim();
+				WorkflowMoteurClient.IssueAnnulation issue = moteurClient.annuler(
+						demande.getWorkflowInstanceId(),
+						"Annulée par le demandeur",
+						new WorkflowMoteurClient.ActeurInterne(c.getCompteUtilisateurId(), c.getId(), nom));
+				if (issue == WorkflowMoteurClient.IssueAnnulation.INDISPONIBLE) {
+					throw ReferentielMetierException.serviceUnavailable("SERVICE_INDISPONIBLE",
+							"Le moteur de workflow est momentanément indisponible.");
+				}
+				if (issue == WorkflowMoteurClient.IssueAnnulation.INSTANCE_TERMINEE) {
+					throw ReferentielMetierException.conflict("DEMANDE_DEJA_DECIDEE",
+							"Cette demande ne peut plus être annulée.");
+				}
+			}
+			return executerEcriture(() -> {
+				DemandeFormationRh d = demandeFormationRepository.findByIdForUpdate(id)
+						.or(() -> demandeFormationRepository.findDetailById(id))
+						.orElseThrow(() -> ReferentielMetierException.notFound(
+								"DEMANDE_INTROUVABLE", "Demande de formation introuvable."));
+				if (d.getStatut() == StatutDemandeFormationRh.EN_COURS
+						|| d.getStatut() == StatutDemandeFormationRh.A_COMPLETER) {
+					d.setStatut(StatutDemandeFormationRh.ANNULEE);
+					d.setWorkflowEtapeLibelle(null);
+					d.setWorkflowEcheanceLe(null);
+					demandeFormationRepository.save(d);
+					enregistrerWorkflow(d, ActionWorkflowFormation.ANNULATION_DEMANDEUR,
+							c.getId(), c.getPrenom() + " " + c.getNom(), "Annulée par le demandeur");
+				}
+				return toResponse(demandeFormationRepository.findDetailById(id).orElse(d));
+			});
+		}
+
+		return executerEcriture(() -> {
+			DemandeFormationRh d = charger(id);
+			verifierStatut(d, StatutDemandeFormationRh.EN_VALIDATION_RRH,
+					"Annulation possible uniquement avant traitement RH.");
+			d.setStatut(StatutDemandeFormationRh.ANNULEE);
+			demandeFormationRepository.save(d);
+
+			enregistrerWorkflow(d, ActionWorkflowFormation.ANNULATION_DEMANDEUR,
+					c.getId(), c.getPrenom() + " " + c.getNom(), "Annulée par le demandeur");
+
+			notificationPublisher.notifierDemandeFormationAnnulee(
+					d.getDemandeur(), d.getTypeFormation(), d.getId(), d.getNumero());
+			return toResponse(d);
+		});
+	}
+
+	/** Complément fourni par le demandeur (protocole hors-transaction D-W5-12 / D-W6-07). */
+	public DemandeFormationRhResponse fournirComplement(UUID id, DemandeComplementRequest req, Jwt jwt) {
+		if (txLecture == null || moteurClient == null) {
+			throw ReferentielMetierException.serviceUnavailable("SERVICE_INDISPONIBLE",
+					"Service de workflow non configuré.");
+		}
+		String commentaire = req.commentaire().trim();
+		record ContexteComplement(UUID instanceId, WorkflowMoteurClient.ActeurInterne acteur) {
+		}
+		ContexteComplement ctx = txLecture.execute(status -> {
+			DemandeFormationRh d = demandeFormationRepository.findByIdAvecDemandeur(id)
+					.or(() -> demandeFormationRepository.findDetailById(id))
+					.orElseThrow(() -> ReferentielMetierException.notFound(
+							"DEMANDE_INTROUVABLE", "Demande de formation introuvable."));
+			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
+			if (!d.getDemandeur().getId().equals(c.getId())) {
+				throw new AccessDeniedException("Seul le demandeur peut fournir un complément sur sa demande.");
+			}
+			if (!WorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode())
+					|| d.getStatut() != StatutDemandeFormationRh.A_COMPLETER
+					|| d.getWorkflowInstanceId() == null) {
+				throw ReferentielMetierException.conflict("ETAT_INCORRECT",
+						"Un complément ne peut être fourni que sur une demande en attente de complément.");
+			}
+			String nom = ((c.getPrenom() != null ? c.getPrenom() : "") + " "
+					+ (c.getNom() != null ? c.getNom() : "")).trim();
+			return new ContexteComplement(
+					d.getWorkflowInstanceId(),
+					new WorkflowMoteurClient.ActeurInterne(c.getCompteUtilisateurId(), c.getId(), nom));
+		});
+
+		WorkflowMoteurClient.IssueComplement issue = moteurClient.complementFourni(
+				ctx.instanceId(), ctx.acteur(), commentaire);
+		if (issue == WorkflowMoteurClient.IssueComplement.ETAT_INCORRECT) {
+			throw ReferentielMetierException.conflict("ETAT_INCORRECT",
+					"La demande n'est plus en attente de complément.");
+		}
+		if (issue == WorkflowMoteurClient.IssueComplement.INDISPONIBLE) {
+			throw ReferentielMetierException.serviceUnavailable("SERVICE_INDISPONIBLE",
+					"Envoi du complément momentanément impossible, réessayez dans quelques instants.");
+		}
+
+		record ResultatComplementTx(DemandeFormationRhResponse reponse, Map<String, Object> variables) {
+		}
+		ResultatComplementTx res = txEcriture.execute(status -> {
+			DemandeFormationRh d = demandeFormationRepository.findByIdForUpdate(id)
+					.orElseThrow(() -> ReferentielMetierException.notFound(
+							"DEMANDE_INTROUVABLE", "Demande de formation introuvable."));
+			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
+			if (d.getStatut() == StatutDemandeFormationRh.A_COMPLETER) {
+				d.setStatut(StatutDemandeFormationRh.EN_COURS);
+			}
+			demandeFormationRepository.save(d);
+			enregistrerWorkflow(d, ActionWorkflowFormation.COMPLEMENT_FOURNI,
+					c.getId(), (c.getPrenom() + " " + c.getNom()).trim(), commentaire);
+			DemandeFormationRh detail = demandeFormationRepository.findDetailById(id).orElse(d);
+			Map<String, Object> vars = variablesBuilder != null ? variablesBuilder.construireFormation(detail) : null;
+			return new ResultatComplementTx(toResponse(detail), vars);
+		});
+
+		if (res != null && res.variables() != null) {
+			moteurClient.majVariables(ctx.instanceId(), res.variables());
+		}
+		return res != null ? res.reponse() : null;
 	}
 
 	@Transactional(readOnly = true)
@@ -470,7 +663,26 @@ public class DemandeFormationRhService {
 		r.setCommentaireRh(demande.getCommentaireRh());
 		r.setCreeLe(demande.getCreeLe());
 		r.setModifieLe(demande.getModifieLe());
+		r.setWorkflowMode(demande.getWorkflowMode());
+		r.setWorkflowInstanceId(demande.getWorkflowInstanceId());
+		r.setEtapeCouranteLibelle(demande.getWorkflowEtapeLibelle());
+		r.setEcheanceLe(demande.getWorkflowEcheanceLe());
 		return r;
+	}
+
+	private static void verifierPasSousWorkflow(DemandeFormationRh d) {
+		if (WorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode())) {
+			throw ReferentielMetierException.conflict("DEMANDE_SOUS_WORKFLOW",
+					"Cette demande se traite depuis Mes tâches.");
+		}
+	}
+
+	private <T> T executerLecture(Supplier<T> action) {
+		return txLecture != null ? txLecture.execute(status -> action.get()) : action.get();
+	}
+
+	private <T> T executerEcriture(Supplier<T> action) {
+		return txEcriture != null ? txEcriture.execute(status -> action.get()) : action.get();
 	}
 
 	private UniteResponse toUniteResponse(UniteOrganisation u) {

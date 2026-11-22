@@ -40,4 +40,18 @@ public interface DemandeDocumentAdministratifRhRepository extends JpaRepository<
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select d from DemandeDocumentAdministratifRh d where d.statut = :statut order by d.creeLe asc")
 	List<DemandeDocumentAdministratifRh> findQueueForUpdate(@Param("statut") StatutDocumentAdministratifDemandeRh statut);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select d from DemandeDocumentAdministratifRh d where d.id = :id")
+	Optional<DemandeDocumentAdministratifRh> findByIdForUpdate(@Param("id") UUID id);
+
+	@Query("select d from DemandeDocumentAdministratifRh d join fetch d.demandeur where d.id = :id")
+	Optional<DemandeDocumentAdministratifRh> findByIdAvecDemandeur(@Param("id") UUID id);
+
+	@Query(value = "SELECT identifiant FROM rh_demande_document_administratif "
+			+ "WHERE societe_id = :societeId AND workflow_mode = 'MOTEUR' "
+			+ "AND workflow_etat = 'A_DEMARRER' AND statut <> 'ANNULEE' "
+			+ "ORDER BY cree_le ASC LIMIT :limite FOR UPDATE SKIP LOCKED",
+			nativeQuery = true)
+	List<UUID> findIdsADemarrerPourReprise(@Param("societeId") UUID societeId, @Param("limite") int limite);
 }

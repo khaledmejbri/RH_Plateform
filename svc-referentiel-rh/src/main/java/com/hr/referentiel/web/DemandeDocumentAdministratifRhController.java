@@ -134,4 +134,15 @@ public class DemandeDocumentAdministratifRhController {
 		return ResponseEntity.ok(demandeDocumentAdministratifRhService.obtenir(
 				identifiant, jwt, ReferentielApiSecurity.aAutoriteRh()));
 	}
+
+	/** Complément fourni par le demandeur sur une demande en attente de complément (W6). */
+	@PostMapping("/{identifiant}/complement")
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<DemandeDocumentAdministratifRhResponse> fournirComplement(
+			@PathVariable UUID identifiant,
+			@Valid @RequestBody DemandeComplementRequest requete,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(
+				demandeDocumentAdministratifRhService.fournirComplement(identifiant, requete, principal.getToken()));
+	}
 }

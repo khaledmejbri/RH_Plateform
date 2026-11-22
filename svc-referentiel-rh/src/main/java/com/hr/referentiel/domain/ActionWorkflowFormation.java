@@ -6,6 +6,8 @@ public enum ActionWorkflowFormation {
 	VALIDATION_RRH("Validée par la RH"),
 	REFUS_RRH("Refusée par la RH"),
 	INTEGRATION_PLAN("Intégrée au plan de formation"),
+	DEMANDE_COMPLEMENT("Complément demandé"),
+	COMPLEMENT_FOURNI("Complément fourni"),
 	ANNULATION_DEMANDEUR("Annulée par le demandeur"),
 	NOTIFICATION_ENVOYEE("Invitation envoyée"),
 	EVALUATION_CHAUDE_ENVOYEE("Évaluation à chaud envoyée"),

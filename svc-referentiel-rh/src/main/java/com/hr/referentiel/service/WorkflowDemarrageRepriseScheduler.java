@@ -63,6 +63,26 @@ public class WorkflowDemarrageRepriseScheduler {
 							log.warn("Reprise démarrage workflow échouée pour demandeId={} : {}", id, ex.getMessage());
 						}
 					}
+					List<UUID> docIds = demarrageService.selectionnerDocumentsADemarrer(TAILLE_LOT);
+					if (docIds != null) {
+						for (UUID id : docIds) {
+							try {
+								demarrageService.demarrerDocument(id);
+							} catch (RuntimeException ex) {
+								log.warn("Reprise démarrage DOCUMENT échouée pour demandeId={} : {}", id, ex.getMessage());
+							}
+						}
+					}
+					List<UUID> formIds = demarrageService.selectionnerFormationsADemarrer(TAILLE_LOT);
+					if (formIds != null) {
+						for (UUID id : formIds) {
+							try {
+								demarrageService.demarrerFormation(id);
+							} catch (RuntimeException ex) {
+								log.warn("Reprise démarrage FORMATION échouée pour demandeId={} : {}", id, ex.getMessage());
+							}
+						}
+					}
 				});
 			} catch (RuntimeException e) {
 				log.warn("Reprise démarrage workflow en échec pour societeId={} : {}", societeId, e.getMessage());

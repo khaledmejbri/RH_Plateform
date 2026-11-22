@@ -104,6 +104,18 @@ public class DemandeFormationRhResponse {
 	@JsonProperty("modifie_le")
 	private Instant modifieLe;
 
+	@JsonProperty("workflow_mode")
+	private String workflowMode;
+
+	@JsonProperty("workflow_instance_id")
+	private UUID workflowInstanceId;
+
+	@JsonProperty("etape_courante_libelle")
+	private String etapeCouranteLibelle;
+
+	@JsonProperty("echeance_le")
+	private Instant echeanceLe;
+
 	public String getNumero() {
 		return numero;
 	}
@@ -156,4 +168,12 @@ public class DemandeFormationRhResponse {
 	public void setCreeLe(Instant creeLe) { this.creeLe = creeLe; }
 	public Instant getModifieLe() { return modifieLe; }
 	public void setModifieLe(Instant modifieLe) { this.modifieLe = modifieLe; }
+	public String getWorkflowMode() { return workflowMode; }
+	public void setWorkflowMode(String workflowMode) { this.workflowMode = workflowMode; }
+	public UUID getWorkflowInstanceId() { return workflowInstanceId; }
+	public void setWorkflowInstanceId(UUID workflowInstanceId) { this.workflowInstanceId = workflowInstanceId; }
+	public String getEtapeCouranteLibelle() { return etapeCouranteLibelle; }
+	public void setEtapeCouranteLibelle(String etapeCouranteLibelle) { this.etapeCouranteLibelle = etapeCouranteLibelle; }
+	public Instant getEcheanceLe() { return echeanceLe; }
+	public void setEcheanceLe(Instant echeanceLe) { this.echeanceLe = echeanceLe; }
 }

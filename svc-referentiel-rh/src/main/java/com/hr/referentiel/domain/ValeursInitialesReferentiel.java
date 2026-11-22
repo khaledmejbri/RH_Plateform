@@ -113,8 +113,11 @@ public final class ValeursInitialesReferentiel {
 		comportement(v, "STATUT_DOCUMENT",
 				"EN_ATTENTE_FILE", "En file d'attente", "AMBRE",
 				"EN_TRAITEMENT_RH", "En traitement par la RH", "BLEU",
+				"EN_COURS", "En cours de validation", "AMBRE",
+				"A_COMPLETER", "À compléter", "ORANGE",
 				"DISPONIBLE", "Disponible", "VERT",
-				"REJETEE", "Refusée", "ROUGE");
+				"REJETEE", "Refusée", "ROUGE",
+				"ANNULEE", "Annulée", "NEUTRE");
 		comportement(v, "STATUT_PLAINTE",
 				"NOUVEAU", "Nouveau", "BLEU",
 				"EN_ANALYSE", "En analyse", "AMBRE",
@@ -123,6 +126,8 @@ public final class ValeursInitialesReferentiel {
 				"FERME", "Fermé", "NEUTRE");
 		comportement(v, "STATUT_FORMATION",
 				"EN_VALIDATION_RRH", "En attente de validation RH", "AMBRE",
+				"EN_COURS", "En cours de validation", "AMBRE",
+				"A_COMPLETER", "À compléter", "ORANGE",
 				"INTEGREE_PLAN", "Intégrée au plan", "VERT",
 				"REFUSEE", "Refusée", "ROUGE",
 				"ANNULEE", "Annulée", "NEUTRE");
