@@ -4,6 +4,8 @@ import {
   activerModeleWorkflow,
   creerModeleWorkflow,
   desactiverModeleWorkflow,
+  estConflitWorkflow,
+  executerPourConfirmation,
   getActivationsWorkflow,
   getCatalogueWorkflow,
   getModelesWorkflow,
@@ -18,6 +20,7 @@ import {
 import { useConfirm } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorAlert, LoadingState, PageHeader } from '../../components/ui';
 import { formatDateHeure } from '../../utils/format';
+import { libelleSousTypeModele } from '../../workflow/valeursListes';
 
 type ContexteRoute = { lectureSeule?: boolean };
 
@@ -85,6 +88,7 @@ export default function WorkflowsListePage() {
     if (lectureSeule) return;
     const cible: ModeActivation = a.mode === 'MOTEUR' ? 'HERITE' : 'MOTEUR';
     const libCible = cible === 'MOTEUR' ? 'Circuit paramétré' : 'Circuit standard';
+    let conflit = false;
     const ok = await confirm({
       title: `Basculer « ${a.libelle} » vers ${libCible} ?`,
       message:
@@ -92,13 +96,18 @@ export default function WorkflowsListePage() {
           ? 'Les nouvelles demandes de ce type suivront le modèle publié actif. Les demandes déjà en cours gardent leur circuit.'
           : 'Les nouvelles demandes de ce type reviendront au circuit standard. Les instances déjà démarrées dans le moteur continuent jusqu’à leur terme.',
       confirmLabel: `Passer en ${libCible}`,
-      envoyer: async () => {
-        await putActivationWorkflow(a.objet_type, cible, a.version);
+      envoyer: () => executerPourConfirmation(() => putActivationWorkflow(a.objet_type, cible, a.version)),
+      echecDefinitif: (e) => {
+        conflit = estConflitWorkflow(e);
+        return conflit;
       },
     });
     if (ok) {
       setMessage(`« ${a.libelle} » basculé en ${libCible}.`);
       await charger();
+    } else if (conflit) {
+      await charger();
+      setErreur('Ce réglage a été modifié entre-temps par un autre utilisateur : la liste a été rechargée.');
     }
   }
 
@@ -140,6 +149,7 @@ export default function WorkflowsListePage() {
 
   async function basculerActif(m: ModeleResume) {
     if (lectureSeule) return;
+    let conflit = false;
     const ok = await confirm({
       title: m.actif ? `Désactiver « ${m.libelle} » ?` : `Activer « ${m.libelle} » ?`,
       message: m.actif
@@ -147,31 +157,44 @@ export default function WorkflowsListePage() {
         : 'Ce modèle pourra être utilisé pour les nouvelles demandes de son type.',
       confirmLabel: m.actif ? 'Désactiver' : 'Activer',
       danger: m.actif,
-      envoyer: async () => {
-        if (m.actif) await desactiverModeleWorkflow(m.id, m.version);
-        else await activerModeleWorkflow(m.id, m.version);
+      envoyer: () =>
+        executerPourConfirmation(() =>
+          m.actif ? desactiverModeleWorkflow(m.id, m.version) : activerModeleWorkflow(m.id, m.version),
+        ),
+      echecDefinitif: (e) => {
+        conflit = estConflitWorkflow(e);
+        return conflit;
       },
     });
     if (ok) {
       setMessage(m.actif ? 'Modèle désactivé.' : 'Modèle activé.');
       await charger();
+    } else if (conflit) {
+      await charger();
+      setErreur('Ce modèle a été modifié entre-temps par un autre utilisateur : la liste a été rechargée.');
     }
   }
 
   async function supprimer(m: ModeleResume) {
     if (lectureSeule) return;
+    let conflit = false;
     const ok = await confirm({
       title: `Supprimer « ${m.libelle} » ?`,
       message: 'Ce modèle jamais publié et ses brouillons seront supprimés définitivement.',
       confirmLabel: 'Supprimer',
       danger: true,
-      envoyer: async () => {
-        await supprimerModeleWorkflow(m.id);
+      envoyer: () => executerPourConfirmation(() => supprimerModeleWorkflow(m.id)),
+      echecDefinitif: (e) => {
+        conflit = estConflitWorkflow(e);
+        return conflit;
       },
     });
     if (ok) {
       setMessage('Modèle supprimé.');
       await charger();
+    } else if (conflit) {
+      await charger();
+      setErreur('Ce modèle a changé entre-temps : la liste a été rechargée.');
     }
   }
 
@@ -349,7 +372,7 @@ export default function WorkflowsListePage() {
                           </Link>
                           <div className="small muted">{m.code}</div>
                         </td>
-                        <td>{m.sous_type ?? 'Tous'}</td>
+                        <td>{m.sous_type ? libelleSousTypeModele(m.sous_type) : 'Tous'}</td>
                         <td>
                           <span className={`status status--${m.actif ? 'success' : 'neutral'}`}>
                             {m.actif ? 'Actif' : 'Inactif'}

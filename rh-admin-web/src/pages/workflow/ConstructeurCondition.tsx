@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   CatalogueWorkflow,
   ConditionFeuille,
@@ -8,13 +8,16 @@ import type {
 import { SaisieDate } from '../../components/ChampsFr';
 import {
   compterFeuillesCondition,
+  convertirSaisieNombre,
   estEt,
   estNon,
   estOu,
   libelleOperateur,
+  LIMITE_ENFANTS_GROUPE,
   LIMITE_FEUILLES_CONDITION,
   LIMITE_PROFONDEUR_CONDITION,
   operateurSansValeur,
+  profondeurApresNon,
   profondeurCondition,
   resumeCondition,
 } from '../../workflow/conditions';
@@ -116,16 +119,38 @@ function NoeudCondition({
   onChange: (n: ConditionWorkflow) => void;
   onSupprimer: () => void;
 }) {
-  const peutAjouterFeuille = nbFeuillesTotal < LIMITE_FEUILLES_CONDITION;
-  const peutImbriquer = niveau + 1 < LIMITE_PROFONDEUR_CONDITION && peutAjouterFeuille;
-  const raisonFeuille = !peutAjouterFeuille
-    ? `Limite de ${LIMITE_FEUILLES_CONDITION} conditions atteinte.`
-    : undefined;
-  const raisonGroupe = !peutImbriquer
-    ? niveau + 1 >= LIMITE_PROFONDEUR_CONDITION
-      ? `Profondeur maximale (${LIMITE_PROFONDEUR_CONDITION}) atteinte.`
-      : raisonFeuille
-    : undefined;
+  const nbEnfants = estEt(noeud) ? noeud.et.length : estOu(noeud) ? noeud.ou.length : 0;
+  // Ajout d'une feuille dans ce groupe : la feuille est au niveau + 1.
+  const raisonFeuille =
+    nbFeuillesTotal + 1 > LIMITE_FEUILLES_CONDITION
+      ? `Limite de ${LIMITE_FEUILLES_CONDITION} conditions atteinte.`
+      : nbEnfants >= LIMITE_ENFANTS_GROUPE
+        ? `Un groupe contient au plus ${LIMITE_ENFANTS_GROUPE} éléments.`
+        : niveau + 1 > LIMITE_PROFONDEUR_CONDITION
+          ? `Profondeur maximale (${LIMITE_PROFONDEUR_CONDITION}) atteinte.`
+          : undefined;
+  const peutAjouterFeuille = raisonFeuille === undefined;
+  // Sous-groupe de 2 feuilles : le groupe est au niveau + 1, ses feuilles au niveau + 2.
+  const raisonGroupe =
+    nbFeuillesTotal + 2 > LIMITE_FEUILLES_CONDITION
+      ? `Limite de ${LIMITE_FEUILLES_CONDITION} conditions atteinte (un sous-groupe en ajoute 2).`
+      : nbEnfants >= LIMITE_ENFANTS_GROUPE
+        ? `Un groupe contient au plus ${LIMITE_ENFANTS_GROUPE} éléments.`
+        : niveau + 2 > LIMITE_PROFONDEUR_CONDITION
+          ? `Profondeur maximale (${LIMITE_PROFONDEUR_CONDITION}) atteinte.`
+          : undefined;
+  const peutImbriquer = raisonGroupe === undefined;
+  // Raisons propres à la feuille (« + ET ») et au NON.
+  const raisonEtFeuille =
+    nbFeuillesTotal + 1 > LIMITE_FEUILLES_CONDITION
+      ? `Limite de ${LIMITE_FEUILLES_CONDITION} conditions atteinte.`
+      : niveau + 1 > LIMITE_PROFONDEUR_CONDITION
+        ? `Profondeur maximale (${LIMITE_PROFONDEUR_CONDITION}) atteinte.`
+        : undefined;
+  const raisonNon =
+    profondeurApresNon(niveau, noeud) > LIMITE_PROFONDEUR_CONDITION
+      ? `Profondeur maximale (${LIMITE_PROFONDEUR_CONDITION}) dépassée par cette négation.`
+      : undefined;
 
   if (estEt(noeud) || estOu(noeud)) {
     const estGroupeEt = estEt(noeud);
@@ -171,14 +196,25 @@ function NoeudCondition({
                 className="btn btn--ghost btn--sm"
                 disabled={!peutImbriquer}
                 title={raisonGroupe}
-                onClick={() => majEnfants([...enfants, { et: [feuilleParDefaut(variables, catalogue)] }])}
+                onClick={() =>
+                  majEnfants([
+                    ...enfants,
+                    { et: [feuilleParDefaut(variables, catalogue), feuilleParDefaut(variables, catalogue)] },
+                  ])
+                }
               >
                 + Sous-groupe
               </button>
+              {raisonFeuille || raisonGroupe ? (
+                <span className="small muted" role="note">
+                  {!peutAjouterFeuille ? raisonFeuille : raisonGroupe}
+                </span>
+              ) : null}
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
-                disabled={niveau >= LIMITE_PROFONDEUR_CONDITION}
+                disabled={raisonNon !== undefined}
+                title={raisonNon}
                 onClick={() => onChange({ non: noeud })}
               >
                 Nier (NON)
@@ -202,6 +238,7 @@ function NoeudCondition({
             onSupprimer={() => {
               const reste = enfants.filter((_, i) => i !== idx);
               if (reste.length === 0) onSupprimer();
+              else if (reste.length === 1) onChange(reste[0]); // un groupe exige au moins 2 éléments
               else majEnfants(reste);
             }}
           />
@@ -308,8 +345,8 @@ function NoeudCondition({
           <button
             type="button"
             className="btn btn--ghost btn--sm"
-            disabled={!peutImbriquer}
-            title={raisonGroupe}
+            disabled={raisonEtFeuille !== undefined}
+            title={raisonEtFeuille}
             onClick={() => onChange({ et: [noeud, feuilleParDefaut(variables, catalogue)] })}
           >
             + ET
@@ -317,7 +354,8 @@ function NoeudCondition({
           <button
             type="button"
             className="btn btn--ghost btn--sm"
-            disabled={niveau >= LIMITE_PROFONDEUR_CONDITION}
+            disabled={raisonNon !== undefined}
+            title={raisonNon}
             onClick={() => onChange({ non: noeud })}
           >
             NON
@@ -388,22 +426,7 @@ function ChampValeurCondition({
   }
 
   if (variable.type === 'ENTIER' || variable.type === 'DECIMAL') {
-    const texte = typeof valeur === 'number' ? String(valeur).replace('.', ',') : String(valeur ?? '');
-    return (
-      <input
-        aria-label="Valeur numérique"
-        className="field-input"
-        style={{ width: 120 }}
-        disabled={disabled}
-        value={texte}
-        placeholder={variable.type === 'DECIMAL' ? 'ex. 10,5' : 'ex. 10'}
-        onChange={(e) => {
-          const brut = e.target.value.replace(',', '.');
-          const n = Number(brut);
-          onChange(brut.trim() !== '' && Number.isFinite(n) ? n : e.target.value);
-        }}
-      />
-    );
+    return <ChampNombre type={variable.type} valeur={valeur} disabled={disabled} onChange={onChange} />;
   }
 
   if (variable.type === 'LISTE') {
@@ -546,5 +569,68 @@ function ChampValeurCondition({
       value={String(valeur ?? '')}
       onChange={(e) => onChange(e.target.value)}
     />
+  );
+}
+
+/** Saisie numérique : le texte brut reste dans l'état local (« 2, » ne doit pas devenir « 2 »). */
+function ChampNombre({
+  type,
+  valeur,
+  disabled,
+  onChange,
+}: {
+  type: 'ENTIER' | 'DECIMAL';
+  valeur: unknown;
+  disabled?: boolean;
+  onChange: (val: unknown) => void;
+}) {
+  const texteDepuisValeur = (v: unknown) => (typeof v === 'number' ? String(v).replace('.', ',') : String(v ?? ''));
+  const [texte, setTexte] = useState(() => texteDepuisValeur(valeur));
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  // Resynchronise le texte quand la valeur change de l'extérieur (changement de variable, rechargement).
+  useEffect(() => {
+    const r = convertirSaisieNombre(texte, type);
+    const courant = r.statut === 'ok' ? r.valeur : undefined;
+    const vide = valeur === '' || valeur === undefined || valeur === null;
+    if (courant !== valeur && !(r.statut !== 'ok' && vide)) {
+      setTexte(texteDepuisValeur(valeur));
+      setErreur(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valeur]);
+
+  function valider(brut: string, aLaSortie: boolean) {
+    const r = convertirSaisieNombre(brut, type);
+    if (r.statut === 'ok') {
+      setErreur(null);
+      if (r.valeur !== valeur) onChange(r.valeur);
+    } else if (r.statut === 'vide') {
+      setErreur(null);
+      if (valeur !== '') onChange('');
+    } else if (aLaSortie || type === 'ENTIER') {
+      setErreur(r.message);
+    }
+  }
+
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column' }}>
+      <input
+        aria-label="Valeur numérique"
+        className="field-input"
+        style={{ width: 120 }}
+        inputMode="decimal"
+        disabled={disabled}
+        value={texte}
+        placeholder={type === 'DECIMAL' ? 'ex. 10,5' : 'ex. 10'}
+        aria-invalid={erreur ? true : undefined}
+        onChange={(e) => {
+          setTexte(e.target.value);
+          valider(e.target.value, false);
+        }}
+        onBlur={() => valider(texte, true)}
+      />
+      {erreur ? <span className="small field-error">{erreur}</span> : null}
+    </span>
   );
 }

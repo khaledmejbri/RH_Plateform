@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { controlerRepartition, heuresVersMinutes, minutesVersHeuresTexte } from './societeUtils';
+import {
+  controlerRepartition,
+  erreurDureeHebdo,
+  erreurDureeSortie,
+  heuresVersMinutes,
+  minutesVersHeuresTexte,
+} from './societeUtils';
 
 describe('societeUtils — conversions heures ⇄ minutes', () => {
   it('convertit des heures avec virgule ou point en minutes', () => {
@@ -48,5 +54,32 @@ describe('societeUtils — controlerRepartition', () => {
   it('refuse une liste vide de jours travaillés ou un jour à 0', () => {
     expect(controlerRepartition([], 2400, {}).valide).toBe(false);
     expect(controlerRepartition(['LUN'], 480, { LUN: 0 }).valide).toBe(false);
+  });
+});
+
+describe('societeUtils — bornes alignées sur le serveur', () => {
+  it('durée hebdomadaire : 60 à 3600 minutes par pas de 30', () => {
+    expect(erreurDureeHebdo(2400)).toBeNull();
+    expect(erreurDureeHebdo(60)).toBeNull();
+    expect(erreurDureeHebdo(3600)).toBeNull();
+    expect(erreurDureeHebdo(30)).not.toBeNull();
+    expect(erreurDureeHebdo(3630)).not.toBeNull();
+    expect(erreurDureeHebdo(4320)).not.toBeNull();
+    expect(erreurDureeHebdo(2410)).not.toBeNull();
+    expect(erreurDureeHebdo(null)).not.toBeNull();
+  });
+
+  it('durée de sortie : 30 à 480 minutes par pas de 15', () => {
+    expect(erreurDureeSortie(30)).toBeNull();
+    expect(erreurDureeSortie(120)).toBeNull();
+    expect(erreurDureeSortie(480)).toBeNull();
+    expect(erreurDureeSortie(15)).not.toBeNull();
+    expect(erreurDureeSortie(100)).not.toBeNull();
+    expect(erreurDureeSortie(495)).not.toBeNull();
+  });
+
+  it('jour travaillé : 1 à 720 minutes', () => {
+    expect(controlerRepartition(['LUN'], 720, { LUN: 720 }).valide).toBe(true);
+    expect(controlerRepartition(['LUN'], 780, { LUN: 780 }).valide).toBe(false);
   });
 });

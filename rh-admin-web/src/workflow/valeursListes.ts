@@ -28,3 +28,12 @@ export function optionsVariableListe(nomVariable: string): ValeurLibelle[] {
   if (!ref) return [];
   return valeursActives(ref);
 }
+
+/** Libellé d'un sous-type de modèle (code de type de congé ou de document) ; le code brut en dernier recours. */
+export function libelleSousTypeModele(code: string): string {
+  for (const variable of Object.keys(REFERENTIEL_PAR_VARIABLE)) {
+    const o = optionsVariableListe(variable).find((x) => x.code === code);
+    if (o) return o.libelle;
+  }
+  return code;
+}

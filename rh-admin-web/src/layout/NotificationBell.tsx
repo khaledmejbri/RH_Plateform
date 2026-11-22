@@ -9,7 +9,8 @@ import { parseContenuNotification } from '../api/notificationContenu';
 import { typeDepuisNotification } from '../detail/refs';
 import { useDetail } from '../detail/contexte';
 import { formatDateHeure } from '../utils/format';
-import { EVENEMENT_RAFRAICHIR_TACHES } from '../pages/workflow/MesTachesPage';
+import { EVENEMENT_RAFRAICHIR_TACHES } from '../workflow/evenements';
+import { useGardeNavigation } from '../workflow/gardeNavigation';
 
 /** Même origine que la page (ws/wss), surchargeable par VITE_WS_URL. */
 function resolveBrokerUrl(): string {
@@ -24,6 +25,9 @@ function texteDe(n: NotificationDto): string {
   return parseContenuNotification(c)?.texte ?? c;
 }
 
+/** Seuls ces événements ouvrent « Mes tâches » ; les autres notifications WF_* ouvrent l'objet concerné. */
+const EVENEMENTS_VERS_TACHES: ReadonlySet<string> = new Set(['WF_TACHE_CREEE', 'WF_BLOQUEE']);
+
 function badge(n: number): string {
   return n > 99 ? '99+' : String(n);
 }
@@ -32,6 +36,7 @@ function badge(n: number): string {
 export default function NotificationBell() {
   const { ouvrir } = useDetail();
   const navigate = useNavigate();
+  const garde = useGardeNavigation();
   const [ouvert, setOuvert] = useState(false);
   const [nonLues, setNonLues] = useState(0);
   const [seulementNonLues, setSeulementNonLues] = useState(false);
@@ -120,7 +125,8 @@ export default function NotificationBell() {
       setNonLues((x) => Math.max(0, x - 1));
       try { await marquerNotificationLue(n.id); } catch { rafraichirCompteur(); }
     }
-    if (typeof n.evenement === 'string' && n.evenement.startsWith('WF_')) {
+    if (typeof n.evenement === 'string' && EVENEMENTS_VERS_TACHES.has(n.evenement)) {
+      if (!(await garde.confirmerSortie())) return;
       setOuvert(false);
       const q = new URLSearchParams();
       if (n.objet_type) q.set('objet_type', n.objet_type);
@@ -133,6 +139,8 @@ export default function NotificationBell() {
     if (type && n.objet_id) {
       setOuvert(false);
       ouvrir({ type, id: n.objet_id, libelle: n.objet_numero ?? undefined });
+    } else {
+      setOuvert(false); // type d'objet inconnu : repli, on ferme le panneau
     }
   }
 

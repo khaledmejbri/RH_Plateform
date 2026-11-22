@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   getDetailTache,
   getMesTaches,
+  getSuiviObjetWorkflow,
   messageErreurWorkflow,
   postDecisionTache,
   WorkflowApiError,
@@ -12,8 +13,17 @@ import {
 } from '../../api/workflowApi';
 import { EmptyState, ErrorAlert, LoadingState, PageHeader } from '../../components/ui';
 import { formatDateHeure } from '../../utils/format';
+import { motifValide, regleMotif } from '../../workflow/decision';
+import { EVENEMENT_RAFRAICHIR_TACHES } from '../../workflow/evenements';
+import {
+  libelleActionDecision,
+  libelleRaisonSaut,
+  libelleResultatEtape,
+  libelleStatutEtapeSuivi,
+} from '../../workflow/libelles';
 
-export const EVENEMENT_RAFRAICHIR_TACHES = 'sirh:wf-taches-refresh';
+/** Pages de 100 tâches parcourues au plus pour retrouver la tâche d'une demande ciblée. */
+const PAGES_RECHERCHE_MAX = 20;
 
 function genererCleIdempotence(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -22,20 +32,7 @@ function genererCleIdempotence(): string {
   return `wf-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function libelleAction(action: string): string {
-  switch (action) {
-    case 'APPROUVER':
-      return 'Approuver';
-    case 'REFUSER':
-      return 'Refuser';
-    case 'DEMANDER_COMPLEMENT':
-      return 'Demander un complément';
-    case 'FAIT':
-      return 'Marquer comme fait';
-    default:
-      return action;
-  }
-}
+const libelleAction = libelleActionDecision;
 
 export default function MesTachesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -53,6 +50,12 @@ export default function MesTachesPage() {
   const [detail, setDetail] = useState<TacheDetail | null>(null);
   const [detailChargement, setDetailChargement] = useState(false);
   const [detailErreur, setDetailErreur] = useState<string | null>(null);
+  const [tacheEnEchec, setTacheEnEchec] = useState<string | null>(null);
+  // Demande ciblée par l'adresse (?objet_type=…&objet_id=…) : recherche de la tâche de l'utilisateur.
+  const [cible, setCible] = useState<{ etat: 'recherche' | 'introuvable' | 'erreur'; message?: string } | null>(null);
+  const [tentativeCible, setTentativeCible] = useState(0);
+  const cibleTraitee = useRef('');
+  const minuteur = useRef<number | null>(null);
   const [cleIdempotence, setCleIdempotence] = useState('');
   const [actionChoisie, setActionChoisie] = useState('');
   const [commentaire, setCommentaire] = useState('');
@@ -77,18 +80,10 @@ export default function MesTachesPage() {
     window.dispatchEvent(new Event(EVENEMENT_RAFRAICHIR_TACHES));
   }, [onglet, chargerListe]);
 
-  const elementsFiltres = useMemo(() => {
-    const items = donnees?.elements ?? [];
-    return items.filter((t) => {
-      if (filtreObjetType && t.objet_type !== filtreObjetType) return false;
-      if (filtreObjetId && t.objet_id !== filtreObjetId) return false;
-      return true;
-    });
-  }, [donnees, filtreObjetType, filtreObjetId]);
-
   const ouvrirDetail = useCallback(async (tacheId: string, garderSaisie = false) => {
     setDetailChargement(true);
     setDetailErreur(null);
+    setTacheEnEchec(null);
     try {
       const det = await getDetailTache(tacheId);
       setDetail(det);
@@ -99,31 +94,83 @@ export default function MesTachesPage() {
         setCommentaire('');
       }
     } catch (e) {
-      if (e instanceof WorkflowApiError && (e.status === 403 || e.status === 404)) {
-        setDetail(null);
+      setDetail(null);
+      if (e instanceof WorkflowApiError && e.status === 409 && e.code === 'TACHE_DEJA_TRAITEE') {
+        setDetailErreur('Cette tâche a déjà été traitée.');
+        void chargerListe(onglet, page);
+        window.dispatchEvent(new Event(EVENEMENT_RAFRAICHIR_TACHES));
+      } else if (e instanceof WorkflowApiError && (e.status === 403 || e.status === 404)) {
         setErreur(messageErreurWorkflow(e));
         void chargerListe(onglet, page);
       } else {
+        // Erreur réseau ou serveur : message et « Réessayer ».
         setDetailErreur(messageErreurWorkflow(e));
+        setTacheEnEchec(tacheId);
       }
     } finally {
       setDetailChargement(false);
     }
   }, [chargerListe, onglet, page]);
 
-  // Si un filtre objet_id correspond exactement à une tâche à traiter, on peut l'ouvrir directement
+  // Demande ciblée : on retrouve la tâche courante de l'utilisateur sans filtrer la page chargée.
   useEffect(() => {
-    if (filtreObjetId && !detail && elementsFiltres.length === 1 && onglet === 'A_TRAITER') {
-      void ouvrirDetail(elementsFiltres[0].tache_id);
+    if (!filtreObjetType || !filtreObjetId) {
+      setCible(null);
+      cibleTraitee.current = '';
+      return undefined;
     }
-  }, [filtreObjetId, detail, elementsFiltres, onglet, ouvrirDetail]);
+    const cle = `${filtreObjetType}/${filtreObjetId}`;
+    if (cibleTraitee.current === cle) return undefined; // une seule ouverture automatique par demande
+    let annule = false;
+    setCible({ etat: 'recherche' });
+    (async () => {
+      try {
+        const suivi = await getSuiviObjetWorkflow(filtreObjetType, filtreObjetId);
+        let p = 0;
+        for (;;) {
+          const res = await getMesTaches({ statut: 'A_TRAITER', page: p, taille: 100 });
+          if (annule) return;
+          const trouvee = res.elements.find((t) => t.instance_id === suivi.instance_id);
+          if (trouvee) {
+            cibleTraitee.current = cle;
+            setCible(null);
+            setOnglet('A_TRAITER');
+            await ouvrirDetail(trouvee.tache_id);
+            return;
+          }
+          p += 1;
+          if (p * res.taille >= res.total || p >= PAGES_RECHERCHE_MAX) break;
+        }
+        cibleTraitee.current = cle;
+        setCible({ etat: 'introuvable', message: 'Aucune tâche à traiter pour cette demande.' });
+      } catch (e) {
+        if (annule) return;
+        if (e instanceof WorkflowApiError && (e.status === 403 || e.status === 404)) {
+          cibleTraitee.current = cle;
+          setCible({ etat: 'introuvable', message: 'Aucune tâche à traiter pour cette demande.' });
+        } else {
+          setCible({ etat: 'erreur', message: messageErreurWorkflow(e) });
+        }
+      }
+    })();
+    return () => {
+      annule = true;
+    };
+    // ouvrirDetail change à chaque page chargée : la recherche ne doit dépendre que de la demande ciblée.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtreObjetType, filtreObjetId, tentativeCible]);
 
-  const motifObligatoire =
-    actionChoisie === 'REFUSER' ||
-    actionChoisie === 'DEMANDER_COMPLEMENT' ||
-    Boolean(detail?.commentaire_obligatoire);
+  useEffect(
+    () => () => {
+      if (minuteur.current !== null) window.clearTimeout(minuteur.current);
+    },
+    [],
+  );
+
+  const regle = regleMotif(actionChoisie, Boolean(detail?.commentaire_obligatoire));
+  const motifObligatoire = regle.obligatoire;
   const longueurCommentaire = commentaire.trim().length;
-  const motifInvalide = motifObligatoire && longueurCommentaire < 5;
+  const motifInvalide = !motifValide(commentaire, regle);
 
   async function soumettreDecision(e: React.FormEvent) {
     e.preventDefault();
@@ -139,13 +186,17 @@ export default function MesTachesPage() {
         cle_idempotence: cleIdempotence,
       });
       if (res.statut === 202) {
+        cibleTraitee.current = '';
         setMessageGlobal('Décision en cours d’enregistrement : elle apparaîtra dans quelques instants.');
         setDetail(null);
-        window.setTimeout(() => {
+        if (minuteur.current !== null) window.clearTimeout(minuteur.current);
+        minuteur.current = window.setTimeout(() => {
+          minuteur.current = null;
           void chargerListe(onglet, page);
           window.dispatchEvent(new Event(EVENEMENT_RAFRAICHIR_TACHES));
         }, 10_000);
       } else {
+        cibleTraitee.current = ''; // une nouvelle tâche sur la même demande pourra se rouvrir
         setMessageGlobal(`Décision « ${libelleAction(actionChoisie)} » enregistrée.`);
         setDetail(null);
         await chargerListe(onglet, page);
@@ -153,11 +204,16 @@ export default function MesTachesPage() {
       }
     } catch (err) {
       if (err instanceof WorkflowApiError) {
-        if (err.status === 409) {
+        if (err.status === 409 && err.code === 'TACHE_DEJA_TRAITEE') {
+          setDetail(null);
+          setDetailErreur('Cette tâche a déjà été traitée.');
+          await chargerListe(onglet, page);
+          window.dispatchEvent(new Event(EVENEMENT_RAFRAICHIR_TACHES));
+        } else if (err.status === 409) {
+          await ouvrirDetail(detail.tache_id, true);
           setDetailErreur(
             `${messageErreurWorkflow(err)} La tâche a été rechargée ; vérifiez son état avant de recommencer.`,
           );
-          await ouvrirDetail(detail.tache_id, true);
         } else if (err.status === 422) {
           // Message du serveur affiché tel quel (ex. solde insuffisant), formulaire et clé conservés
           setDetailErreur(err.message);
@@ -176,6 +232,7 @@ export default function MesTachesPage() {
     }
   }
 
+  const elements = donnees?.elements ?? [];
   const totalPages = donnees ? Math.max(1, Math.ceil(donnees.total / donnees.taille)) : 1;
 
   return (
@@ -195,15 +252,41 @@ export default function MesTachesPage() {
         </ErrorAlert>
       ) : null}
 
-      {(filtreObjetType || filtreObjetId) ? (
-        <div className="alert alert--info" role="status" style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>
-            Filtre actif{filtreObjetType ? ` — type : ${filtreObjetType}` : ''}{filtreObjetId ? ' (demande ciblée)' : ''}.
+      {cible ? (
+        <div
+          className={`alert alert--${cible.etat === 'erreur' ? 'error' : 'info'}`}
+          role={cible.etat === 'erreur' ? 'alert' : 'status'}
+          style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
+        >
+          <span>{cible.etat === 'recherche' ? 'Recherche de la tâche de cette demande…' : cible.message}</span>
+          <span style={{ display: 'flex', gap: 8 }}>
+            {cible.etat === 'erreur' ? (
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                onClick={() => {
+                  cibleTraitee.current = '';
+                  setTentativeCible((n) => n + 1);
+                }}
+              >
+                Réessayer
+              </button>
+            ) : null}
+            <button type="button" className="btn btn--secondary btn--sm" onClick={() => setSearchParams({})}>
+              Fermer
+            </button>
           </span>
-          <button type="button" className="btn btn--secondary btn--sm" onClick={() => setSearchParams({})}>
-            Tout afficher
-          </button>
         </div>
+      ) : null}
+      {detailErreur && !detail ? (
+        <ErrorAlert>
+          {detailErreur}{' '}
+          {tacheEnEchec ? (
+            <button type="button" className="btn btn--secondary btn--sm" onClick={() => void ouvrirDetail(tacheEnEchec)}>
+              Réessayer
+            </button>
+          ) : null}
+        </ErrorAlert>
       ) : null}
 
       <div className="tabs" role="tablist" aria-label="Onglets Mes tâches" style={{ marginBottom: 16 }}>
@@ -214,6 +297,7 @@ export default function MesTachesPage() {
           className={`tab${onglet === 'A_TRAITER' ? ' tab--active' : ''}`}
           onClick={() => {
             setDetail(null);
+            setDetailErreur(null);
             setOnglet('A_TRAITER');
           }}
         >
@@ -226,6 +310,7 @@ export default function MesTachesPage() {
           className={`tab${onglet === 'TRAITEES' ? ' tab--active' : ''}`}
           onClick={() => {
             setDetail(null);
+            setDetailErreur(null);
             setOnglet('TRAITEES');
           }}
         >
@@ -235,7 +320,7 @@ export default function MesTachesPage() {
 
       {chargement ? <LoadingState /> : null}
 
-      {!chargement && elementsFiltres.length === 0 ? (
+      {!chargement && elements.length === 0 ? (
         <EmptyState title={onglet === 'A_TRAITER' ? 'Aucune tâche à traiter' : 'Aucune tâche traitée récemment'}>
           {onglet === 'A_TRAITER'
             ? 'Vous n’avez aucune demande en attente de validation.'
@@ -243,7 +328,7 @@ export default function MesTachesPage() {
         </EmptyState>
       ) : null}
 
-      {!chargement && elementsFiltres.length > 0 ? (
+      {!chargement && elements.length > 0 ? (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="table-wrap">
             <table className="table">
@@ -258,7 +343,7 @@ export default function MesTachesPage() {
                 </tr>
               </thead>
               <tbody>
-                {elementsFiltres.map((t) => (
+                {elements.map((t) => (
                   <tr key={t.tache_id}>
                     <td>
                       <strong>{t.objet_libelle}</strong>
@@ -333,6 +418,7 @@ export default function MesTachesPage() {
 
       {detail && !detailChargement ? (
         <section className="card" aria-label="Détail de la tâche">
+          {detailErreur ? <ErrorAlert>{detailErreur}</ErrorAlert> : null}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div>
               <h3 style={{ margin: 0 }}>
@@ -365,7 +451,9 @@ export default function MesTachesPage() {
               <ol style={{ margin: 0, paddingLeft: 18 }} className="small">
                 {detail.suivi.etapes.map((et) => (
                   <li key={et.code} style={{ marginBottom: 4 }}>
-                    <strong>{et.libelle}</strong> — {et.statut}
+                    <strong>{et.libelle}</strong> — {libelleStatutEtapeSuivi(et.statut)}
+                    {et.resultat ? ` (${libelleResultatEtape(et.resultat)})` : ''}
+                    {et.statut === 'SAUTEE' && et.raison ? ` : ${libelleRaisonSaut(et.raison)}` : ''}
                     {et.decideur_nom ? ` par ${et.decideur_nom}` : ''}
                     {et.pour_nom ? ` (pour le compte de ${et.pour_nom})` : ''}
                     {et.date_decision ? ` le ${formatDateHeure(et.date_decision)}` : ''}
@@ -379,8 +467,6 @@ export default function MesTachesPage() {
           {detail.statut === 'A_TRAITER' && detail.actions_permises.length > 0 ? (
             <form onSubmit={(e) => void soumettreDecision(e)} style={{ borderTop: '1px solid var(--border, #e5e7eb)', paddingTop: 14 }}>
               <h4 style={{ marginBottom: 8 }}>Prendre une décision</h4>
-              {detailErreur ? <ErrorAlert>{detailErreur}</ErrorAlert> : null}
-
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '10px 0' }}>
                 {detail.actions_permises.map((act) => (
                   <label key={act} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -398,21 +484,22 @@ export default function MesTachesPage() {
 
               <div>
                 <label className="field-label" htmlFor="wf-decision-commentaire">
-                  Commentaire / motif{motifObligatoire ? ' (obligatoire, 5 caractères min.)' : ' (facultatif)'}
+                  Commentaire / motif{motifObligatoire ? ` (obligatoire, ${regle.min} à ${regle.max} caractères)` : ' (facultatif)'}
                 </label>
                 <textarea
                   id="wf-decision-commentaire"
                   className="field-input field-input--area"
                   rows={3}
-                  maxLength={1000}
+                  maxLength={regle.max}
                   value={commentaire}
                   onChange={(e) => setCommentaire(e.target.value)}
                 />
-                {motifInvalide ? (
-                  <p className="small field-error">
-                    Saisissez au moins 5 caractères ({longueurCommentaire} / 5).
-                  </p>
-                ) : null}
+                <p className={`small ${motifInvalide ? 'field-error' : 'muted'}`}>
+                  {longueurCommentaire} / {regle.max} caractères
+                  {motifInvalide && motifObligatoire && longueurCommentaire < regle.min
+                    ? ` — saisissez au moins ${regle.min} caractères.`
+                    : ''}
+                </p>
               </div>
 
               <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>

@@ -33,7 +33,11 @@ export const TITRE_PAR_DEFAUT: Record<DetailType, string> = {
 export function typeDepuisNotification(objetType?: string | null): DetailType | null {
   switch ((objetType ?? '').toUpperCase()) {
     case 'COLLABORATEUR': return 'collaborateur';
-    case 'DEMANDE': return 'demande';
+    case 'DEMANDE':
+    // Types d'objet du moteur de workflow : ce sont des demandes administratives.
+    case 'CONGE':
+    case 'AUTORISATION_SORTIE':
+    case 'ORDRE_MISSION': return 'demande';
     case 'DOCUMENT': return 'document';
     case 'PLAINTE': return 'plainte';
     case 'FORMATION': return 'formation';

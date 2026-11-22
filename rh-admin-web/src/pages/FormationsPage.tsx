@@ -21,6 +21,7 @@ import { formatDateHeure, formatNombre, indexerPersonnes, personneParId, COLLABO
 import { libelle, libelleTypeFormation } from '../utils/libelles';
 import { libelleReferentiel, optionsFiltre } from '../utils/parametresStore';
 import DetailLink from '../detail/DetailLink';
+import { statutObjetFinal } from '../workflow/libelles';
 
 type StatutFilter = '' | 'EN_VALIDATION_RRH' | 'INTEGREE_PLAN' | 'REFUSEE' | 'ANNULEE';
 
@@ -252,7 +253,7 @@ export default function FormationsPage() {
                           <Icon name="eye" size={14} />
                           Détails
                         </button>
-                        {d.workflow_mode === 'MOTEUR' ? (
+                        {d.workflow_mode === 'MOTEUR' && !statutObjetFinal(d.statut) ? (
                           <Link
                             to={`/app/taches?objet_type=FORMATION&objet_id=${encodeURIComponent(d.identifiant)}`}
                             className="btn btn--sm btn--secondary"

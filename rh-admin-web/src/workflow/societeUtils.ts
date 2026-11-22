@@ -13,6 +13,41 @@ export const JOURS_SEMAINE: ReadonlyArray<{ code: string; libelle: string }> = [
   { code: 'DIM', libelle: 'Dimanche' },
 ];
 
+/** Bornes du serveur (SocieteParametresService.validerBornes / validerDurees). */
+export const DUREE_JOUR_MAX_MINUTES = 720;
+export const HEBDO_MIN_MINUTES = 60;
+export const HEBDO_MAX_MINUTES = 3600;
+export const HEBDO_PAS_MINUTES = 30;
+export const SORTIE_MIN_MINUTES = 30;
+export const SORTIE_MAX_MINUTES = 480;
+export const SORTIE_PAS_MINUTES = 15;
+
+/** Message d'erreur si la durée hebdomadaire (minutes) est hors bornes ; null si valide. */
+export function erreurDureeHebdo(minutes: number | null): string | null {
+  if (
+    minutes === null ||
+    minutes < HEBDO_MIN_MINUTES ||
+    minutes > HEBDO_MAX_MINUTES ||
+    minutes % HEBDO_PAS_MINUTES !== 0
+  ) {
+    return 'La durée hebdomadaire doit être comprise entre 1 h et 60 h, par pas de 30 minutes.';
+  }
+  return null;
+}
+
+/** Message d'erreur si la durée maximale de sortie (minutes) est hors bornes ; null si valide. */
+export function erreurDureeSortie(minutes: number): string | null {
+  if (
+    !Number.isInteger(minutes) ||
+    minutes < SORTIE_MIN_MINUTES ||
+    minutes > SORTIE_MAX_MINUTES ||
+    minutes % SORTIE_PAS_MINUTES !== 0
+  ) {
+    return 'La durée maximale d’une autorisation de sortie doit être comprise entre 30 et 480 minutes, par pas de 15.';
+  }
+  return null;
+}
+
 /** Convertit une saisie en heures (ex. "40", "7,5", "8.25") en minutes entières ; null si invalide ou négatif. */
 export function heuresVersMinutes(texte: string): number | null {
   const propre = texte.trim().replace(/\s+/g, '').replace(',', '.');
@@ -39,7 +74,7 @@ export type ControleRepartition = {
 
 /**
  * Contrôle en direct que la somme des durées des jours travaillés égale la durée hebdomadaire (D-W7-11).
- * Chaque jour travaillé doit avoir une durée strictement positive (<= 24 h = 1440 min).
+ * Chaque jour travaillé doit avoir une durée strictement positive (<= 12 h = 720 min, bornes du serveur).
  */
 export function controlerRepartition(
   joursTravailles: ReadonlyArray<string>,
@@ -57,13 +92,13 @@ export function controlerRepartition(
   let somme = 0;
   for (const jour of joursTravailles) {
     const val = dureeJourMinutes[jour] ?? 0;
-    if (!Number.isFinite(val) || val <= 0 || val > 1440) {
+    if (!Number.isFinite(val) || val <= 0 || val > DUREE_JOUR_MAX_MINUTES) {
       const lib = JOURS_SEMAINE.find((j) => j.code === jour)?.libelle ?? jour;
       return {
         valide: false,
         sommeMinutes: somme,
         ecartMinutes: somme - dureeHebdoMinutes,
-        message: `La durée du ${lib.toLowerCase()} doit être comprise entre 0,5 h et 24 h.`,
+        message: `La durée du ${lib.toLowerCase()} doit être strictement positive et ne pas dépasser 12 h.`,
       };
     }
     somme += Math.round(val);

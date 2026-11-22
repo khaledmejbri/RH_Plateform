@@ -20,6 +20,7 @@ import { formatDateHeure, formatPersonne } from '../utils/format';
 import { libelle } from '../utils/libelles';
 import { libelleReferentiel, optionsFiltre } from '../utils/parametresStore';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
+import { statutObjetFinal } from '../workflow/libelles';
 
 const FILTRES_DEFAUT = { q: '', direction: '', departement: '', service: '', type: '', statut: '' };
 
@@ -293,7 +294,7 @@ export default function DocumentsAdministratifsPage() {
                           : <span className="cell-meta">—</span>}
                       </td>
                       <td data-label="Action" style={{ textAlign: 'right' }}>
-                        {d.workflow_mode === 'MOTEUR' ? (
+                        {d.workflow_mode === 'MOTEUR' && !statutObjetFinal(d.statut) ? (
                           <Link
                             to={`/app/taches?objet_type=DOCUMENT&objet_id=${encodeURIComponent(d.identifiant)}`}
                             className="btn btn--sm btn--secondary"

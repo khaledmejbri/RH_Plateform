@@ -16,6 +16,8 @@ import { ErrorAlert, LoadingState, PageHeader } from '../../components/ui';
 import { formatDateHeure } from '../../utils/format';
 import {
   controlerRepartition,
+  erreurDureeHebdo,
+  erreurDureeSortie,
   heuresVersMinutes,
   JOURS_SEMAINE,
   minutesVersHeuresTexte,
@@ -146,8 +148,9 @@ export default function SocieteParametresPage() {
     setMessageSucces(null);
 
     const hebdo = heuresVersMinutes(saisie.duree_hebdo_texte);
-    if (hebdo === null || hebdo < 60 || hebdo > 4320) {
-      setErreurForm('La durée hebdomadaire doit être comprise entre 1 h et 72 h.');
+    const erreurHebdo = erreurDureeHebdo(hebdo);
+    if (hebdo === null || erreurHebdo) {
+      setErreurForm(erreurHebdo);
       return;
     }
     const dureeJourMinutes: Record<string, number> = {};
@@ -170,8 +173,9 @@ export default function SocieteParametresPage() {
       return;
     }
     const sortieMin = Number(saisie.duree_max_sortie_minutes);
-    if (!Number.isInteger(sortieMin) || sortieMin < 15 || sortieMin > 480) {
-      setErreurForm('La durée maximale d’une autorisation de sortie doit être comprise entre 15 et 480 minutes.');
+    const erreurSortie = erreurDureeSortie(sortieMin);
+    if (erreurSortie) {
+      setErreurForm(erreurSortie);
       return;
     }
     if (!saisie.heure_debut_journee || !saisie.heure_fin_journee || saisie.heure_fin_journee <= saisie.heure_debut_journee) {
@@ -399,8 +403,9 @@ export default function SocieteParametresPage() {
                 <input
                   id="soc-sortie"
                   type="number"
-                  min={15}
+                  min={30}
                   max={480}
+                  step={15}
                   className="field-input"
                   value={saisie.duree_max_sortie_minutes}
                   disabled={lectureSeule}

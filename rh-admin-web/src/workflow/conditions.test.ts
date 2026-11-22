@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { CatalogueWorkflow, ConditionWorkflow } from '../api/workflowApi';
 import {
   compterFeuillesCondition,
+  convertirSaisieNombre,
+  profondeurApresNon,
   profondeurCondition,
   resumeCondition,
 } from './conditions';
@@ -69,5 +71,43 @@ describe('conditions — resumeCondition, profondeur et comptage (D-W7-06)', () 
 
   it('retourne un texte lisible quand la condition est absente', () => {
     expect(resumeCondition(null, CATALOGUE_TEST)).toContain('Toujours appliquée');
+  });
+});
+
+describe('conditions — convertirSaisieNombre', () => {
+  it('accepte la virgule et le point pour un décimal', () => {
+    expect(convertirSaisieNombre('2,5', 'DECIMAL')).toEqual({ statut: 'ok', valeur: 2.5 });
+    expect(convertirSaisieNombre('2.5', 'DECIMAL')).toEqual({ statut: 'ok', valeur: 2.5 });
+    expect(convertirSaisieNombre(' 10 ', 'DECIMAL')).toEqual({ statut: 'ok', valeur: 10 });
+  });
+
+  it('refuse un texte incomplet ou non numérique sans le convertir', () => {
+    expect(convertirSaisieNombre('2,', 'DECIMAL').statut).toBe('erreur');
+    expect(convertirSaisieNombre('2.', 'DECIMAL').statut).toBe('erreur');
+    expect(convertirSaisieNombre('abc', 'DECIMAL').statut).toBe('erreur');
+    expect(convertirSaisieNombre('-3', 'DECIMAL')).toEqual({ statut: 'ok', valeur: -3 });
+    expect(convertirSaisieNombre('-2,5', 'DECIMAL')).toEqual({ statut: 'ok', valeur: -2.5 });
+    expect(convertirSaisieNombre('--3', 'DECIMAL').statut).toBe('erreur');
+  });
+
+  it('traite une saisie vide', () => {
+    expect(convertirSaisieNombre('  ', 'ENTIER')).toEqual({ statut: 'vide' });
+  });
+
+  it('ENTIER refuse les décimales avec un message', () => {
+    const r = convertirSaisieNombre('2,5', 'ENTIER');
+    expect(r.statut).toBe('erreur');
+    if (r.statut === 'erreur') expect(r.message).toContain('entier');
+    expect(convertirSaisieNombre('12', 'ENTIER')).toEqual({ statut: 'ok', valeur: 12 });
+  });
+});
+
+describe('conditions — profondeurApresNon', () => {
+  it('ajoute un niveau à la profondeur du sous-arbre', () => {
+    const feuille: ConditionWorkflow = { champ: 'jours_decomptes', op: 'sup', valeur: 1 };
+    expect(profondeurApresNon(1, feuille)).toBe(2);
+    const groupe: ConditionWorkflow = { et: [feuille, { ou: [feuille, feuille] }] };
+    expect(profondeurApresNon(3, groupe)).toBe(6);
+    expect(profondeurApresNon(2, groupe)).toBe(5);
   });
 });

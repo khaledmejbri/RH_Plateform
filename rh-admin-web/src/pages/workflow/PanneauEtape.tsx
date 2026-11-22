@@ -2,21 +2,26 @@ import { useState } from 'react';
 import type { FonctionRh } from '../../api/societeApi';
 import type {
   CatalogueWorkflow,
+  EcheanceDefinition,
   ErreurDefinition,
   EtapeDefinition,
   IntervenantsDefinition,
-  TacheParalleleDefinition,
+  RelancesDefinition,
 } from '../../api/workflowApi';
+import { rattacherErreurs } from '../../workflow/erreurs';
+import {
+  completerEtape,
+  intervenantsParDefaut,
+  NB_TACHES_MAX,
+  NB_TACHES_MIN,
+  nouvelleTacheParDefaut,
+  normaliserEtapePourType,
+  optionsPublics,
+} from '../../workflow/etapes';
+import { libelleNiveauErreur, libellePublic, libelleRole, TYPES_ETAPE } from '../../workflow/libelles';
 import ConstructeurCondition from './ConstructeurCondition';
 
 type OngletEtape = 'general' | 'intervenants' | 'condition' | 'delais' | 'notifications';
-
-const TYPES_ETAPE: ReadonlyArray<{ code: string; libelle: string }> = [
-  { code: 'VALIDATION', libelle: 'Validation (approbation / refus)' },
-  { code: 'TACHE', libelle: 'Tâche simple (à faire)' },
-  { code: 'TACHES_PARALLELES', libelle: 'Tâches en parallèle' },
-  { code: 'INFORMATION', libelle: 'Information seule' },
-];
 
 const TYPES_NOEUD: ReadonlyArray<{ code: string; libelle: string }> = [
   { code: 'DEPARTEMENT', libelle: 'Département' },
@@ -26,10 +31,37 @@ const TYPES_NOEUD: ReadonlyArray<{ code: string; libelle: string }> = [
 
 const ROLES_DISPONIBLES = ['RH', 'ADMIN'] as const;
 const ACTIONS_VALIDATION = ['APPROUVER', 'REFUSER', 'RENVOYER'] as const;
-const UNITES_DELAI: ReadonlyArray<{ code: string; libelle: string }> = [
-  { code: 'HEURES', libelle: 'Heures ouvrées' },
+const UNITES_DELAI: ReadonlyArray<{ code: 'HEURES' | 'JOURS_OUVRES'; libelle: string }> = [
+  { code: 'HEURES', libelle: 'Heures (calendaires)' },
   { code: 'JOURS_OUVRES', libelle: 'Jours ouvrés' },
 ];
+/** Bornes de DefinitionValidateur.validerDelaiEtEcheance. */
+const DUREE_MAX: Readonly<Record<string, number>> = { HEURES: 720, JOURS_OUVRES: 30 };
+const RELANCES_MAX = 3;
+const INTERVALLE_RELANCE_MAX_HEURES = 168;
+const AVANT_ECHEANCE_MAX_HEURES = 720;
+
+const ONGLET_DU_CHAMP: Readonly<Record<string, OngletEtape>> = {
+  code: 'general',
+  libelle: 'general',
+  type: 'general',
+  actions: 'general',
+  controle_avant_approbation: 'general',
+  commentaire_obligatoire_si: 'general',
+  intervenants: 'intervenants',
+  repli_si_vide: 'intervenants',
+  taches: 'intervenants',
+  public: 'intervenants',
+  condition: 'condition',
+  delai: 'delais',
+  relances: 'delais',
+  a_echeance: 'delais',
+  notifications: 'notifications',
+};
+
+function racineChamp(champ: string | null): string {
+  return champ ? champ.split(/[.[]/)[0] : '';
+}
 
 type Props = {
   etape: EtapeDefinition;
@@ -40,6 +72,21 @@ type Props = {
   disabled?: boolean;
   onChange: (maj: EtapeDefinition) => void;
 };
+
+/** Erreurs de validation affichées près du champ concerné. */
+function ErreursChamp({ erreurs }: { erreurs: ErreurDefinition[] }) {
+  if (erreurs.length === 0) return null;
+  return (
+    <ul className="small field-error" style={{ margin: '4px 0 0 16px', padding: 0 }}>
+      {erreurs.map((e, i) => (
+        <li key={i}>
+          {e.niveau === 'AVERTISSEMENT' ? `${libelleNiveauErreur(e.niveau)} : ` : ''}
+          {e.message}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function PanneauEtape({
   etape,
@@ -54,17 +101,39 @@ export default function PanneauEtape({
   const typeObjet = catalogue.types.find((t) => t.objet_type === objetType);
   const varsDate = (typeObjet?.variables ?? []).filter((v) => v.type === 'DATE' || v.type === 'DATE_HEURE');
 
-  const maj = (partiel: Partial<EtapeDefinition>) => onChange({ ...etape, ...partiel });
+  /** Toute modification écrit aussi les valeurs par défaut affichées (intervenant, mode, repli). */
+  const maj = (partiel: Partial<EtapeDefinition>) => onChange(completerEtape({ ...etape, ...partiel }));
 
-  const intervenants: IntervenantsDefinition = etape.intervenants ?? {
-    regle: 'MANAGER_NOEUD',
-    params: {},
-    mode: 'UN_SEUL',
-  };
-
-  const repli = etape.repli_si_vide ?? { action: 'PASSER', roles: [] };
+  const intervenants: IntervenantsDefinition = etape.intervenants ?? intervenantsParDefaut(etape.type === 'VALIDATION');
+  const repli = etape.repli_si_vide ?? { action: 'BLOQUER' };
   const actionsCourantes = etape.actions ?? ['APPROUVER', 'REFUSER'];
   const notifications = etape.notifications ?? { a_l_activation: [], a_la_fin: [], canal: 'WEBSOCKET' };
+
+  const avecChamp = erreursEtape.map((e) => ({ e, champ: rattacherErreurs(e.chemin).champ }));
+  const erreursDe = (...racines: string[]) =>
+    avecChamp.filter((x) => racines.includes(racineChamp(x.champ)) || (x.champ !== null && racines.includes(x.champ))).map((x) => x.e);
+  const erreursExactes = (champ: string) => avecChamp.filter((x) => x.champ === champ).map((x) => x.e);
+  const erreursPrefixe = (prefixe: string) =>
+    avecChamp.filter((x) => x.champ !== null && x.champ.startsWith(prefixe)).map((x) => x.e);
+  const nbErreursOnglet = (o: OngletEtape) =>
+    avecChamp.filter((x) => ONGLET_DU_CHAMP[racineChamp(x.champ)] === o).length;
+  const erreursSansChamp = avecChamp.filter((x) => !(racineChamp(x.champ) in ONGLET_DU_CHAMP)).map((x) => x.e);
+
+  const publicsInformation = optionsPublics(catalogue.publics ?? [], fonctionsActives, etape.public ?? []);
+  const publicsNotif = optionsPublics(
+    catalogue.publics ?? [],
+    fonctionsActives,
+    [...(notifications.a_l_activation ?? []), ...(notifications.a_la_fin ?? [])],
+  );
+
+  const delaiUnite = etape.delai?.unite ?? 'HEURES';
+  const dureeMax = DUREE_MAX[delaiUnite] ?? 720;
+  const dureeHorsBornes = Boolean(etape.delai?.duree) && (etape.delai?.duree ?? 0) > dureeMax;
+  const echeance = etape.a_echeance ?? { action: 'RIEN' };
+  const relances: RelancesDefinition = etape.relances ?? {};
+  const nbTaches = (etape.taches ?? []).length;
+  const avant = relances.avant_echeance_heures;
+  const avantHorsBornes = avant !== undefined && (avant < 1 || avant > AVANT_ECHEANCE_MAX_HEURES);
 
   return (
     <div className="card">
@@ -77,30 +146,28 @@ export default function PanneauEtape({
             ['delais', 'Délais et escalade'],
             ['notifications', 'Notifications'],
           ] as Array<[OngletEtape, string]>
-        ).map(([id, lab]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={onglet === id}
-            className={`tab${onglet === id ? ' tab--active' : ''}`}
-            onClick={() => setOnglet(id)}
-          >
-            {lab}
-          </button>
-        ))}
+        ).map(([id, lab]) => {
+          const nb = nbErreursOnglet(id);
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={onglet === id}
+              className={`tab${onglet === id ? ' tab--active' : ''}`}
+              onClick={() => setOnglet(id)}
+            >
+              {lab}
+              {nb > 0 ? <span className="status status--danger" style={{ marginLeft: 6 }}>{nb}</span> : null}
+            </button>
+          );
+        })}
       </div>
 
-      {erreursEtape.length > 0 ? (
+      {erreursSansChamp.length > 0 ? (
         <div className="alert alert--warning" role="alert" style={{ marginBottom: 12 }}>
           <strong>Points à vérifier sur cette étape :</strong>
-          <ul style={{ margin: '6px 0 0 18px' }}>
-            {erreursEtape.map((e, i) => (
-              <li key={i} className="small">
-                [{e.niveau}] {e.message}
-              </li>
-            ))}
-          </ul>
+          <ErreursChamp erreurs={erreursSansChamp} />
         </div>
       ) : null}
 
@@ -117,6 +184,7 @@ export default function PanneauEtape({
                 value={etape.code}
                 onChange={(e) => maj({ code: e.target.value.toUpperCase() })}
               />
+              <ErreursChamp erreurs={erreursExactes('code')} />
             </div>
             <div>
               <label className="field-label" htmlFor="etape-libelle">Libellé affiché</label>
@@ -128,6 +196,7 @@ export default function PanneauEtape({
                 value={etape.libelle}
                 onChange={(e) => maj({ libelle: e.target.value })}
               />
+              <ErreursChamp erreurs={erreursExactes('libelle')} />
             </div>
             <div>
               <label className="field-label" htmlFor="etape-type">Type d’étape</label>
@@ -136,12 +205,13 @@ export default function PanneauEtape({
                 className="field-input"
                 disabled={disabled}
                 value={etape.type}
-                onChange={(e) => maj({ type: e.target.value })}
+                onChange={(e) => onChange(normaliserEtapePourType(etape, e.target.value))}
               >
                 {TYPES_ETAPE.map((t) => (
                   <option key={t.code} value={t.code}>{t.libelle}</option>
                 ))}
               </select>
+              <ErreursChamp erreurs={erreursExactes('type')} />
             </div>
           </div>
 
@@ -152,12 +222,13 @@ export default function PanneauEtape({
                 <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 4 }}>
                   {ACTIONS_VALIDATION.map((act) => {
                     const coche = actionsCourantes.includes(act);
+                    const obligatoire = act !== 'RENVOYER';
                     return (
                       <label key={act} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <input
                           type="checkbox"
                           checked={coche}
-                          disabled={disabled}
+                          disabled={disabled || obligatoire}
                           onChange={() => {
                             const next = coche
                               ? actionsCourantes.filter((x) => x !== act)
@@ -167,15 +238,16 @@ export default function PanneauEtape({
                         />
                         <span>
                           {act === 'APPROUVER'
-                            ? 'Approuver'
+                            ? 'Approuver (obligatoire)'
                             : act === 'REFUSER'
-                              ? 'Refuser'
+                              ? 'Refuser (obligatoire)'
                               : 'Demander un complément'}
                         </span>
                       </label>
                     );
                   })}
                 </div>
+                <ErreursChamp erreurs={erreursDe('actions')} />
               </div>
 
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -187,6 +259,7 @@ export default function PanneauEtape({
                 />
                 <span>Contrôle métier avant approbation (ex. vérification du solde de congé)</span>
               </label>
+              <ErreursChamp erreurs={erreursDe('controle_avant_approbation')} />
 
               <div>
                 <span className="field-label">Commentaire obligatoire si (facultatif)</span>
@@ -197,6 +270,7 @@ export default function PanneauEtape({
                   disabled={disabled}
                   onChange={(c) => maj({ commentaire_obligatoire_si: c })}
                 />
+                <ErreursChamp erreurs={erreursDe('commentaire_obligatoire_si')} />
               </div>
             </>
           ) : null}
@@ -209,7 +283,7 @@ export default function PanneauEtape({
             <div>
               <span className="field-label">Destinataires de l’information</span>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6 }}>
-                {(catalogue.publics ?? []).map((pub) => {
+                {publicsInformation.map((pub) => {
                   const liste = etape.public ?? [];
                   const coche = liste.includes(pub);
                   return (
@@ -223,36 +297,36 @@ export default function PanneauEtape({
                           maj({ public: next });
                         }}
                       />
-                      <span>{pub}</span>
+                      <span>{libellePublic(pub, fonctionsActives)}</span>
                     </label>
                   );
                 })}
               </div>
+              <ErreursChamp erreurs={erreursDe('public')} />
             </div>
           ) : etape.type === 'TACHES_PARALLELES' ? (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <strong>Tâches parallèles</strong>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+                <strong>Tâches parallèles ({nbTaches}, de {NB_TACHES_MIN} à {NB_TACHES_MAX})</strong>
                 {!disabled ? (
                   <button
                     type="button"
                     className="btn btn--secondary btn--sm"
+                    disabled={nbTaches >= NB_TACHES_MAX}
+                    title={nbTaches >= NB_TACHES_MAX ? `Maximum ${NB_TACHES_MAX} tâches en parallèle.` : undefined}
                     onClick={() => {
                       const courantes = etape.taches ?? [];
-                      const nouvelle: TacheParalleleDefinition = {
-                        code: `TACHE_${courantes.length + 1}`,
-                        libelle: `Tâche ${courantes.length + 1}`,
-                        intervenants: { regle: 'ROLE', params: { roles: ['RH'] } },
-                        repli_si_vide: { action: 'BLOQUER' },
-                        obligatoire: true,
-                      };
-                      maj({ taches: [...courantes, nouvelle] });
+                      maj({ taches: [...courantes, nouvelleTacheParDefaut(courantes.map((x) => x.code))] });
                     }}
                   >
                     + Ajouter une tâche
                   </button>
                 ) : null}
               </div>
+              {nbTaches < NB_TACHES_MIN ? (
+                <p className="small field-error">Une étape en parallèle doit contenir au moins {NB_TACHES_MIN} tâches.</p>
+              ) : null}
+              <ErreursChamp erreurs={erreursExactes('taches')} />
               {(etape.taches ?? []).map((t, idx) => (
                 <div key={idx} className="card" style={{ marginBottom: 8, padding: 12 }}>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -300,6 +374,8 @@ export default function PanneauEtape({
                       <button
                         type="button"
                         className="btn btn--ghost btn--sm"
+                        disabled={nbTaches <= NB_TACHES_MIN}
+                        title={nbTaches <= NB_TACHES_MIN ? `Minimum ${NB_TACHES_MIN} tâches en parallèle.` : undefined}
                         onClick={() => maj({ taches: (etape.taches ?? []).filter((_, i) => i !== idx) })}
                       >
                         Retirer
@@ -317,6 +393,7 @@ export default function PanneauEtape({
                       maj({ taches: next });
                     }}
                   />
+                  <ErreursChamp erreurs={erreursPrefixe(`taches[${idx}]`)} />
                 </div>
               ))}
             </div>
@@ -327,9 +404,11 @@ export default function PanneauEtape({
                 catalogue={catalogue}
                 fonctionsActives={fonctionsActives}
                 autoriserMode={etape.type === 'VALIDATION'}
+                interdireDemandeur={etape.type === 'VALIDATION'}
                 disabled={disabled}
                 onChange={(iv) => maj({ intervenants: iv })}
               />
+              <ErreursChamp erreurs={erreursPrefixe('intervenants')} />
 
               <div style={{ borderTop: '1px solid var(--border, #e5e7eb)', paddingTop: 12 }}>
                 <span className="field-label">Repli si aucun intervenant trouvé</span>
@@ -340,7 +419,16 @@ export default function PanneauEtape({
                     style={{ width: 'auto' }}
                     disabled={disabled}
                     value={repli.action}
-                    onChange={(e) => maj({ repli_si_vide: { ...repli, action: e.target.value } })}
+                    onChange={(e) => {
+                      const action = e.target.value as 'PASSER' | 'ROLE' | 'BLOQUER';
+                      maj({
+                        repli_si_vide: {
+                          ...repli,
+                          action,
+                          roles: action === 'ROLE' ? (repli.roles?.length ? repli.roles : ['RH']) : repli.roles,
+                        },
+                      });
+                    }}
                   >
                     <option value="PASSER">Passer l’étape automatiquement</option>
                     <option value="ROLE">Rabattre sur un rôle</option>
@@ -362,13 +450,14 @@ export default function PanneauEtape({
                                 maj({ repli_si_vide: { ...repli, roles: next } });
                               }}
                             />
-                            <span>{r}</span>
+                            <span>{libelleRole(r)}</span>
                           </label>
                         );
                       })}
                     </div>
                   ) : null}
                 </div>
+                <ErreursChamp erreurs={erreursPrefixe('repli_si_vide')} />
               </div>
             </>
           )}
@@ -376,13 +465,16 @@ export default function PanneauEtape({
       ) : null}
 
       {onglet === 'condition' ? (
-        <ConstructeurCondition
-          valeur={etape.condition}
-          catalogue={catalogue}
-          objetType={objetType}
-          disabled={disabled}
-          onChange={(c) => maj({ condition: c })}
-        />
+        <div>
+          <ConstructeurCondition
+            valeur={etape.condition}
+            catalogue={catalogue}
+            objetType={objetType}
+            disabled={disabled}
+            onChange={(c) => maj({ condition: c })}
+          />
+          <ErreursChamp erreurs={erreursDe('condition')} />
+        </div>
       ) : null}
 
       {onglet === 'delais' ? (
@@ -394,6 +486,7 @@ export default function PanneauEtape({
                 id="delai-duree"
                 type="number"
                 min={1}
+                max={dureeMax}
                 className="field-input"
                 disabled={disabled}
                 value={etape.delai?.duree ?? ''}
@@ -406,6 +499,11 @@ export default function PanneauEtape({
                   });
                 }}
               />
+              {dureeHorsBornes ? (
+                <p className="small field-error">
+                  Le délai en {delaiUnite === 'JOURS_OUVRES' ? 'jours ouvrés' : 'heures'} doit être compris entre 1 et {dureeMax}.
+                </p>
+              ) : null}
             </div>
             <div>
               <label className="field-label" htmlFor="delai-unite">Unité</label>
@@ -413,8 +511,8 @@ export default function PanneauEtape({
                 id="delai-unite"
                 className="field-input"
                 disabled={disabled || !etape.delai?.duree}
-                value={etape.delai?.unite ?? 'HEURES'}
-                onChange={(e) => maj({ delai: { ...(etape.delai ?? {}), unite: e.target.value } })}
+                value={delaiUnite}
+                onChange={(e) => maj({ delai: { ...(etape.delai ?? {}), unite: e.target.value as 'HEURES' | 'JOURS_OUVRES' } })}
               >
                 {UNITES_DELAI.map((u) => (
                   <option key={u.code} value={u.code}>{u.libelle}</option>
@@ -444,6 +542,7 @@ export default function PanneauEtape({
               </select>
             </div>
           </div>
+          <ErreursChamp erreurs={erreursPrefixe('delai')} />
 
           <div className="alert alert--info" role="note">
             Les réglages de relances, d’escalade et d’action à l’échéance ci-dessous s’enregistrent avec le modèle et
@@ -452,42 +551,114 @@ export default function PanneauEtape({
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
             <div>
-              <label className="field-label" htmlFor="rel-nb">Nombre de relances</label>
+              <label className="field-label" htmlFor="rel-nb">Nombre de relances (0 à {RELANCES_MAX})</label>
               <input
                 id="rel-nb"
                 type="number"
                 min={0}
-                max={3}
+                max={RELANCES_MAX}
                 className="field-input"
                 disabled={disabled}
-                value={etape.relances?.nombre ?? ''}
+                value={relances.nombre ?? ''}
                 onChange={(e) => {
                   const v = e.target.value ? Number(e.target.value) : undefined;
-                  maj({ relances: v !== undefined ? { ...(etape.relances ?? {}), nombre: v } : null });
+                  maj({ relances: v !== undefined ? { ...relances, nombre: v } : null });
                 }}
               />
             </div>
+            {(relances.nombre ?? 0) > 0 ? (
+              <>
+                <div>
+                  <label className="field-label" htmlFor="rel-intervalle">Intervalle entre relances (heures)</label>
+                  <input
+                    id="rel-intervalle"
+                    type="number"
+                    min={1}
+                    max={INTERVALLE_RELANCE_MAX_HEURES}
+                    className="field-input"
+                    disabled={disabled}
+                    value={relances.intervalle_heures ?? ''}
+                    onChange={(e) => {
+                      const { intervalle_heures: _ancien, ...reste } = relances;
+                      maj({ relances: e.target.value ? { ...reste, intervalle_heures: Number(e.target.value) } : reste });
+                    }}
+                  />
+                  <span className="small muted">De 1 à {INTERVALLE_RELANCE_MAX_HEURES} h.</span>
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="rel-avant">Première relance avant l’échéance (heures)</label>
+                  <input
+                    id="rel-avant"
+                    type="number"
+                    min={1}
+                    max={AVANT_ECHEANCE_MAX_HEURES}
+                    className="field-input"
+                    disabled={disabled}
+                    value={relances.avant_echeance_heures ?? ''}
+                    aria-invalid={avantHorsBornes ? true : undefined}
+                    onChange={(e) => {
+                      const { avant_echeance_heures: _ancien, ...reste } = relances;
+                      maj({ relances: e.target.value ? { ...reste, avant_echeance_heures: Number(e.target.value) } : reste });
+                    }}
+                  />
+                  {avantHorsBornes ? (
+                    <p className="small field-error">Le délai avant échéance doit être compris entre 1 et {AVANT_ECHEANCE_MAX_HEURES} heures.</p>
+                  ) : (
+                    <span className="small muted">De 1 à {AVANT_ECHEANCE_MAX_HEURES} h.</span>
+                  )}
+                </div>
+              </>
+            ) : null}
             <div>
               <label className="field-label" htmlFor="ech-action">Action à l’échéance</label>
               <select
                 id="ech-action"
                 className="field-input"
                 disabled={disabled}
-                value={etape.a_echeance?.action ?? 'RIEN'}
-                onChange={(e) =>
-                  maj({
-                    a_echeance: { ...(etape.a_echeance ?? {}), action: e.target.value },
-                  })
-                }
+                value={echeance.action ?? 'RIEN'}
+                onChange={(e) => {
+                  const action = e.target.value as NonNullable<EcheanceDefinition['action']>;
+                  const suite: EcheanceDefinition = { ...echeance, action };
+                  if (action === 'ESCALADER') {
+                    suite.intervenants = echeance.intervenants ?? { regle: 'ROLE', params: { roles: ['RH'] } };
+                  } else {
+                    delete suite.intervenants;
+                  }
+                  maj({ a_echeance: suite });
+                }}
               >
                 <option value="RIEN">Ne rien faire (marquer en retard)</option>
                 <option value="ESCALADER">Escalader</option>
-                <option value="EXPIRER">Expirer la demande</option>
+                <option value="EXPIRER" disabled={typeObjet ? !typeObjet.effets.includes('EXPIRER') : false}>
+                  Expirer la demande
+                </option>
                 <option value="REFUSER_AUTO">Refuser automatiquement</option>
-                <option value="APPROUVER_AUTO">Approuver automatiquement</option>
+                <option value="APPROUVER_AUTO" disabled={Boolean(typeObjet?.validation_humaine_obligatoire)}>
+                  Approuver automatiquement
+                </option>
               </select>
+              {typeObjet?.validation_humaine_obligatoire ? (
+                <span className="small muted">L’approbation automatique est interdite pour ce type de demande.</span>
+              ) : null}
             </div>
           </div>
+          <ErreursChamp erreurs={erreursPrefixe('relances')} />
+
+          {echeance.action === 'ESCALADER' ? (
+            <div style={{ borderTop: '1px solid var(--border, #e5e7eb)', paddingTop: 12 }}>
+              <span className="field-label">Qui reçoit l’escalade à l’échéance</span>
+              <EditeurIntervenant
+                valeur={echeance.intervenants ?? { regle: 'ROLE', params: { roles: ['RH'] } }}
+                catalogue={catalogue}
+                fonctionsActives={fonctionsActives}
+                autoriserMode={false}
+                interdireDemandeur={etape.type === 'VALIDATION'}
+                disabled={disabled}
+                onChange={(iv) => maj({ a_echeance: { ...echeance, intervenants: iv } })}
+              />
+            </div>
+          ) : null}
+          <ErreursChamp erreurs={erreursPrefixe('a_echeance')} />
         </div>
       ) : null}
 
@@ -501,7 +672,7 @@ export default function PanneauEtape({
               style={{ maxWidth: 260 }}
               disabled={disabled}
               value={notifications.canal ?? 'WEBSOCKET'}
-              onChange={(e) => maj({ notifications: { ...notifications, canal: e.target.value } })}
+              onChange={(e) => maj({ notifications: { ...notifications, canal: e.target.value as 'WEBSOCKET' | 'BOTH' } })}
             >
               <option value="WEBSOCKET">Application uniquement</option>
               <option value="BOTH">Application et e-mail</option>
@@ -510,7 +681,7 @@ export default function PanneauEtape({
           <div>
             <span className="field-label">Notifier à l’activation de l’étape</span>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
-              {(catalogue.publics ?? []).map((p) => {
+              {publicsNotif.map((p) => {
                 const liste = notifications.a_l_activation ?? [];
                 const coche = liste.includes(p);
                 return (
@@ -524,7 +695,7 @@ export default function PanneauEtape({
                         maj({ notifications: { ...notifications, a_l_activation: next } });
                       }}
                     />
-                    <span className="small">{p}</span>
+                    <span className="small">{libellePublic(p, fonctionsActives)}</span>
                   </label>
                 );
               })}
@@ -533,7 +704,7 @@ export default function PanneauEtape({
           <div>
             <span className="field-label">Notifier à la fin de l’étape</span>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
-              {(catalogue.publics ?? []).map((p) => {
+              {publicsNotif.map((p) => {
                 const liste = notifications.a_la_fin ?? [];
                 const coche = liste.includes(p);
                 return (
@@ -547,12 +718,13 @@ export default function PanneauEtape({
                         maj({ notifications: { ...notifications, a_la_fin: next } });
                       }}
                     />
-                    <span className="small">{p}</span>
+                    <span className="small">{libellePublic(p, fonctionsActives)}</span>
                   </label>
                 );
               })}
             </div>
           </div>
+          <ErreursChamp erreurs={erreursPrefixe('notifications')} />
         </div>
       ) : null}
     </div>
@@ -564,6 +736,7 @@ function EditeurIntervenant({
   catalogue,
   fonctionsActives,
   autoriserMode = true,
+  interdireDemandeur = false,
   disabled,
   onChange,
 }: {
@@ -571,11 +744,29 @@ function EditeurIntervenant({
   catalogue: CatalogueWorkflow;
   fonctionsActives: FonctionRh[];
   autoriserMode?: boolean;
+  /** Vrai sur une étape VALIDATION : la règle DEMANDEUR est interdite (invariant I1). */
+  interdireDemandeur?: boolean;
   disabled?: boolean;
   onChange: (iv: IntervenantsDefinition) => void;
 }) {
   const params = valeur.params ?? {};
   const roles = Array.isArray(params.roles) ? (params.roles as string[]) : [];
+  // La règle « collaborateur nommé » exige un identifiant : masquée sauf si déjà choisie.
+  const reglesProposees = (catalogue.regles ?? []).filter(
+    (r) =>
+      (r.code !== 'COLLABORATEUR' || valeur.regle === 'COLLABORATEUR') &&
+      (!(interdireDemandeur && r.code === 'DEMANDEUR') || valeur.regle === 'DEMANDEUR'),
+  );
+
+  /** Hors VALIDATION, `mode` est refusé par le serveur : il n'est jamais écrit. */
+  function emettre(iv: IntervenantsDefinition) {
+    if (autoriserMode) {
+      onChange({ ...iv, mode: iv.mode ?? 'UN_SEUL' });
+    } else {
+      const { mode: _mode, ...sansMode } = iv;
+      onChange(sansMode);
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -599,10 +790,10 @@ function EditeurIntervenant({
                       : regle === 'FONCTION'
                         ? { fonction_code: fonctionsActives[0]?.code ?? '' }
                         : {};
-              onChange({ ...valeur, regle, params: defParams });
+              emettre({ ...valeur, regle, params: defParams });
             }}
           >
-            {(catalogue.regles ?? []).map((r) => (
+            {reglesProposees.map((r) => (
               <option key={r.code} value={r.code}>{r.libelle}</option>
             ))}
           </select>
@@ -616,7 +807,7 @@ function EditeurIntervenant({
               className="field-input"
               disabled={disabled}
               value={valeur.mode ?? 'UN_SEUL'}
-              onChange={(e) => onChange({ ...valeur, mode: e.target.value })}
+              onChange={(e) => emettre({ ...valeur, mode: e.target.value as 'UN_SEUL' | 'TOUS' })}
             >
               <option value="UN_SEUL">Un seul intervenant suffit</option>
               <option value="TOUS">Tous les intervenants doivent valider</option>
@@ -635,7 +826,7 @@ function EditeurIntervenant({
             className="field-input"
             disabled={disabled}
             value={Number(params.niveau ?? 2)}
-            onChange={(e) => onChange({ ...valeur, params: { ...params, niveau: Number(e.target.value) } })}
+            onChange={(e) => emettre({ ...valeur, params: { ...params, niveau: Number(e.target.value) } })}
           />
         </div>
       ) : null}
@@ -647,7 +838,7 @@ function EditeurIntervenant({
             className="field-input"
             disabled={disabled}
             value={String(params.type_noeud ?? 'DIRECTION')}
-            onChange={(e) => onChange({ ...valeur, params: { ...params, type_noeud: e.target.value } })}
+            onChange={(e) => emettre({ ...valeur, params: { ...params, type_noeud: e.target.value } })}
           >
             {TYPES_NOEUD.map((tn) => (
               <option key={tn.code} value={tn.code}>{tn.libelle}</option>
@@ -670,10 +861,10 @@ function EditeurIntervenant({
                     disabled={disabled}
                     onChange={() => {
                       const next = coche ? roles.filter((x) => x !== r) : [...roles, r];
-                      onChange({ ...valeur, params: { ...params, roles: next } });
+                      emettre({ ...valeur, params: { ...params, roles: next } });
                     }}
                   />
-                  <span>{r}</span>
+                  <span>{libelleRole(r)}</span>
                 </label>
               );
             })}
@@ -688,11 +879,11 @@ function EditeurIntervenant({
             className="field-input"
             disabled={disabled}
             value={String(params.fonction_code ?? '')}
-            onChange={(e) => onChange({ ...valeur, params: { ...params, fonction_code: e.target.value } })}
+            onChange={(e) => emettre({ ...valeur, params: { ...params, fonction_code: e.target.value } })}
           >
             <option value="">Choisir une fonction…</option>
             {fonctionsActives.map((f) => (
-              <option key={f.code} value={f.code}>{f.libelle} ({f.code})</option>
+              <option key={f.code} value={f.code}>{f.libelle}</option>
             ))}
           </select>
         </div>
@@ -700,4 +891,3 @@ function EditeurIntervenant({
     </div>
   );
 }
-

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { getFonctions, type FonctionRh } from '../../api/societeApi';
 import {
   creerBrouillonModele,
+  estConflitWorkflow,
+  executerPourConfirmation,
   getCatalogueWorkflow,
   getModeleWorkflow,
   getVersionsModele,
@@ -16,33 +18,23 @@ import {
   type CatalogueWorkflow,
   type DefinitionWorkflow,
   type ErreurDefinition,
-  type EtapeDefinition,
   type ModeleDetail,
   type VersionDetail,
   type VersionResume,
 } from '../../api/workflowApi';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { ErrorAlert, LoadingState, PageHeader } from '../../components/ui';
-import { grouperErreursParEtape } from '../../workflow/erreurs';
+import { grouperErreursParEtape, rattacherErreurs } from '../../workflow/erreurs';
+import { nouvelleEtapeParDefaut, NB_ETAPES_MAX } from '../../workflow/etapes';
+import { useActiverGarde } from '../../workflow/gardeNavigation';
+import { libelleNiveauErreur, libelleStatutVersion, libelleTypeEtape } from '../../workflow/libelles';
+import { libelleSousTypeModele } from '../../workflow/valeursListes';
 import PanneauEtape from './PanneauEtape';
 import PanneauSimulation from './PanneauSimulation';
 import { PanneauJournalModele, PanneauVersions } from './PanneauVersionsJournal';
 
 type ContexteRoute = { lectureSeule?: boolean };
 type OngletPrincipal = 'editeur' | 'simulation' | 'versions' | 'journal';
-
-function nouvelleEtapeParDefaut(index: number): EtapeDefinition {
-  return {
-    code: `ETAPE_${index + 1}`,
-    libelle: `Nouvelle étape ${index + 1}`,
-    type: 'VALIDATION',
-    intervenants: { regle: 'ROLE', params: { roles: ['RH'] }, mode: 'UN_SEUL' },
-    repli_si_vide: { action: 'BLOQUER' },
-    actions: ['APPROUVER', 'REFUSER'],
-    delai: { duree: 24, unite: 'HEURES' },
-    a_echeance: { action: 'RIEN' },
-  };
-}
 
 export default function WorkflowEditeurPage() {
   const { id } = useParams<{ id: string }>();
@@ -67,18 +59,28 @@ export default function WorkflowEditeurPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const chargerVersion = useCallback(async (vid: string) => {
+  // Protège les chargements contre un changement rapide d'identifiant de modèle ou de version.
+  const sequence = useRef(0);
+
+  useActiverGarde(modifie || defConflit !== null);
+
+  /** Charge une version ; `garderEtape` conserve l'étape sélectionnée (rechargement après un conflit). */
+  const chargerVersion = useCallback(async (vid: string, garderEtape = false) => {
+    const n = sequence.current;
     const det = await getVersionWorkflow(vid);
+    if (n !== sequence.current) return false;
     setVersionActive(det);
     setDefinition(det.definition);
     setErreursDef(det.erreurs ?? []);
     setModifie(false);
     setDefConflit(null);
-    setEtapeIndex(0);
+    if (!garderEtape) setEtapeIndex(0);
+    return true;
   }, []);
 
   const chargerTout = useCallback(async () => {
     if (!id) return;
+    const n = ++sequence.current;
     setChargement(true);
     setErreur(null);
     try {
@@ -88,6 +90,7 @@ export default function WorkflowEditeurPage() {
         getModeleWorkflow(id),
         getVersionsModele(id),
       ]);
+      if (n !== sequence.current) return;
       setCatalogue(cat);
       setFonctionsActives(fns);
       setModele(mod);
@@ -104,9 +107,9 @@ export default function WorkflowEditeurPage() {
         setDefinition(null);
       }
     } catch (e) {
-      setErreur(messageErreurWorkflow(e));
+      if (n === sequence.current) setErreur(messageErreurWorkflow(e));
     } finally {
-      setChargement(false);
+      if (n === sequence.current) setChargement(false);
     }
   }, [id, chargerVersion]);
 
@@ -134,11 +137,18 @@ export default function WorkflowEditeurPage() {
     setMessage(null);
   }
 
+  /** Les erreurs du serveur sont indexées par position d'étape : une modification de structure les périme. */
+  function majStructure(nouvelle: DefinitionWorkflow) {
+    majDefinition(nouvelle);
+    setErreursDef([]);
+  }
+
   function insererEtape(aIndex: number) {
     if (!definition || !estEditable) return;
+    if (definition.etapes.length >= NB_ETAPES_MAX) return;
     const liste = [...definition.etapes];
-    liste.splice(aIndex, 0, nouvelleEtapeParDefaut(liste.length));
-    majDefinition({ ...definition, etapes: liste });
+    liste.splice(aIndex, 0, nouvelleEtapeParDefaut(liste.map((x) => x.code)));
+    majStructure({ ...definition, etapes: liste });
     setEtapeIndex(aIndex);
   }
 
@@ -149,7 +159,7 @@ export default function WorkflowEditeurPage() {
     const liste = [...definition.etapes];
     const [elem] = liste.splice(idx, 1);
     liste.splice(cible, 0, elem);
-    majDefinition({ ...definition, etapes: liste });
+    majStructure({ ...definition, etapes: liste });
     setEtapeIndex(cible);
   }
 
@@ -164,7 +174,7 @@ export default function WorkflowEditeurPage() {
     });
     if (!ok) return;
     const liste = definition.etapes.filter((_, i) => i !== idx);
-    majDefinition({ ...definition, etapes: liste });
+    majStructure({ ...definition, etapes: liste });
     setEtapeIndex(Math.max(0, Math.min(idx, liste.length - 1)));
   }
 
@@ -187,14 +197,16 @@ export default function WorkflowEditeurPage() {
       );
     } catch (e) {
       if (e instanceof WorkflowApiError && e.status === 409 && e.code === 'MODIFIE_ENTRE_TEMPS') {
-        setDefConflit(definition);
+        // Comme SocieteParametresPage : recharger la version serveur, puis seulement poser la saisie en conflit.
+        const saisie = definition;
         setErreur(
           'Ce brouillon a été modifié par un autre utilisateur. La version serveur a été rechargée ; vous pouvez réappliquer votre saisie.',
         );
         try {
-          await chargerVersion(versionActive.id);
+          const recharge = await chargerVersion(versionActive.id, true);
+          if (recharge) setDefConflit(saisie);
         } catch {
-          // garde l'erreur
+          // garde l'erreur : la version serveur n'a pas pu être rechargée
         }
       } else {
         setErreur(messageErreurWorkflow(e));
@@ -205,7 +217,7 @@ export default function WorkflowEditeurPage() {
   }
 
   async function validerSansEnregistrer() {
-    if (!versionActive) return;
+    if (!versionActive || modifie) return;
     setBusy(true);
     setErreur(null);
     setMessage(null);
@@ -226,50 +238,90 @@ export default function WorkflowEditeurPage() {
       setErreur('Enregistrez d’abord vos modifications avant de publier.');
       return;
     }
+    let conflit = false;
     const ok = await confirm({
       title: `Publier la version v${versionActive.numero} ?`,
       message: 'Cette version deviendra la version active pour les nouvelles demandes de ce modèle.',
       confirmLabel: 'Publier',
-      envoyer: async () => {
-        await publierVersionWorkflow(versionActive.id, versionActive.version);
+      envoyer: () =>
+        executerPourConfirmation(() => publierVersionWorkflow(versionActive.id, versionActive.version)),
+      echecDefinitif: (e) => {
+        conflit = estConflitWorkflow(e);
+        return conflit;
       },
     });
     if (ok) {
       setMessage(`Version v${versionActive.numero} publiée.`);
       await chargerTout();
+    } else if (conflit) {
+      await chargerTout();
+      setErreur('Ce modèle a été modifié entre-temps par un autre utilisateur : la page a été rechargée.');
     }
   }
 
   async function creerNouvelleVersion() {
     if (!modele || lectureSeule) return;
+    if ((modifie || defConflit !== null) && !(await confirmerAbandon())) return;
+    let conflit = false;
     const ok = await confirm({
       title: 'Créer un nouveau brouillon ?',
       message: 'Un brouillon sera créé à partir de la dernière version de ce modèle.',
       confirmLabel: 'Créer le brouillon',
-      envoyer: async () => {
-        await creerBrouillonModele(modele.id);
+      envoyer: () => executerPourConfirmation(() => creerBrouillonModele(modele.id)),
+      echecDefinitif: (e) => {
+        conflit = estConflitWorkflow(e);
+        return conflit;
       },
     });
     if (ok) {
       setMessage('Nouveau brouillon créé.');
       await chargerTout();
+    } else if (conflit) {
+      await chargerTout();
+      setErreur('Un brouillon existe déjà ou le modèle a changé : la page a été rechargée.');
     }
   }
 
   async function supprimerBrouillon() {
     if (!versionActive || !estEditable) return;
+    let conflit = false;
     const ok = await confirm({
       title: `Supprimer le brouillon v${versionActive.numero} ?`,
       message: 'Toutes les modifications de ce brouillon seront perdues.',
       confirmLabel: 'Supprimer',
       danger: true,
-      envoyer: async () => {
-        await supprimerBrouillonWorkflow(versionActive.id);
+      envoyer: () => executerPourConfirmation(() => supprimerBrouillonWorkflow(versionActive.id)),
+      echecDefinitif: (e) => {
+        conflit = estConflitWorkflow(e);
+        return conflit;
       },
     });
     if (ok) {
       setMessage('Brouillon supprimé.');
       await chargerTout();
+    } else if (conflit) {
+      await chargerTout();
+      setErreur('Ce brouillon a changé entre-temps : la page a été rechargée.');
+    }
+  }
+
+  /** Confirmation avant d'abandonner la saisie en cours (ouverture d'une autre version, nouvelle version). */
+  function confirmerAbandon(): Promise<boolean> {
+    return confirm({
+      title: 'Abandonner les modifications ?',
+      message: 'Vous avez des modifications non enregistrées sur ce brouillon. Elles seront perdues.',
+      confirmLabel: 'Abandonner les modifications',
+      danger: true,
+    });
+  }
+
+  async function choisirVersion(vid: string) {
+    if ((modifie || defConflit !== null) && !(await confirmerAbandon())) return;
+    setErreur(null);
+    try {
+      if (await chargerVersion(vid)) setOnglet('editeur');
+    } catch (e) {
+      setErreur(messageErreurWorkflow(e));
     }
   }
 
@@ -307,7 +359,7 @@ export default function WorkflowEditeurPage() {
     <div className="page">
       <PageHeader
         title={`${modele.libelle} (${modele.code})`}
-        lead={`Type : ${catalogue.types.find((t) => t.objet_type === modele.objet_type)?.libelle ?? modele.objet_type}${modele.sous_type ? ` · Sous-type : ${modele.sous_type}` : ''}${versionActive ? ` · Version v${versionActive.numero} (${versionActive.statut})` : ''}`}
+        lead={`Type : ${catalogue.types.find((t) => t.objet_type === modele.objet_type)?.libelle ?? 'Type inconnu'}${modele.sous_type ? ` · Sous-type : ${libelleSousTypeModele(modele.sous_type)}` : ''}${versionActive ? ` · Version v${versionActive.numero} (${libelleStatutVersion(versionActive.statut)})` : ''}`}
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn btn--ghost" onClick={() => void quitterVersListe()}>
@@ -315,7 +367,13 @@ export default function WorkflowEditeurPage() {
             </button>
             {estEditable ? (
               <>
-                <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => void validerSansEnregistrer()}>
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  disabled={busy || modifie}
+                  title={modifie ? 'La validation porte sur la dernière version enregistrée : enregistrez d’abord.' : undefined}
+                  onClick={() => void validerSansEnregistrer()}
+                >
                   Valider
                 </button>
                 <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void enregistrer()}>
@@ -338,10 +396,21 @@ export default function WorkflowEditeurPage() {
       />
 
       {message ? <div className="alert alert--success" role="status" style={{ marginBottom: 12 }}>{message}</div> : null}
+      {modifie && estEditable ? (
+        <div className="alert alert--info" role="status" style={{ marginBottom: 12 }}>
+          Modifications non enregistrées. « Valider » et la simulation portent sur la dernière version enregistrée :
+          enregistrez d’abord.
+        </div>
+      ) : null}
       {erreur ? (
         <div className="alert alert--error" role="alert" style={{ marginBottom: 12 }}>
           {erreur}
-          {defConflit ? (
+        </div>
+      ) : null}
+      {defConflit !== null ? (
+        <div className="alert alert--warning" role="alert" style={{ marginBottom: 12 }}>
+          Votre saisie n’a pas été enregistrée : le brouillon a été modifié entre-temps.
+          {estEditable ? (
             <div style={{ marginTop: 8 }}>
               <button
                 type="button"
@@ -351,12 +420,24 @@ export default function WorkflowEditeurPage() {
                   setDefConflit(null);
                   setModifie(true);
                   setErreur(null);
+                  setErreursDef([]);
+                  setEtapeIndex((i) => Math.max(0, Math.min(i, defConflit.etapes.length - 1)));
                 }}
               >
                 Réappliquer ma saisie
+              </button>{' '}
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => setDefConflit(null)}>
+                Abandonner ma saisie
               </button>
             </div>
-          ) : null}
+          ) : (
+            <div style={{ marginTop: 8 }}>
+              Cette version n’est plus modifiable : votre saisie ne peut pas être réappliquée.{' '}
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => setDefConflit(null)}>
+                Fermer
+              </button>
+            </div>
+          )}
         </div>
       ) : null}
 
@@ -364,11 +445,32 @@ export default function WorkflowEditeurPage() {
         <div className="alert alert--warning" role="alert" style={{ marginBottom: 12 }}>
           <strong>Validation ({erreursDef.length} point{erreursDef.length > 1 ? 's' : ''}) :</strong>
           <ul style={{ margin: '6px 0 0 18px' }}>
-            {erreursDef.map((e, i) => (
-              <li key={i} className="small">
-                <strong>{e.niveau}</strong> {e.chemin ? `(${e.chemin}) ` : ''}— {e.message}
-              </li>
-            ))}
+            {erreursDef.map((e, i) => {
+              const { indexEtape } = rattacherErreurs(e.chemin);
+              const etape = indexEtape !== null ? etapes[indexEtape] : undefined;
+              return (
+                <li key={i} className="small">
+                  <strong>{libelleNiveauErreur(e.niveau)}</strong>
+                  {etape ? (
+                    <>
+                      {' '}— étape{' '}
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        style={{ padding: '0 4px' }}
+                        onClick={() => {
+                          setOnglet('editeur');
+                          setEtapeIndex(indexEtape as number);
+                        }}
+                      >
+                        {(indexEtape as number) + 1}. {etape.libelle || etape.code}
+                      </button>
+                    </>
+                  ) : null}{' '}
+                  : {e.message}
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}
@@ -419,7 +521,13 @@ export default function WorkflowEditeurPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <h3 style={{ margin: 0 }}>Étapes ({etapes.length})</h3>
                 {estEditable ? (
-                  <button type="button" className="btn btn--secondary btn--sm" onClick={() => insererEtape(etapes.length)}>
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--sm"
+                    disabled={etapes.length >= NB_ETAPES_MAX}
+                    title={etapes.length >= NB_ETAPES_MAX ? `Maximum ${NB_ETAPES_MAX} étapes par modèle.` : undefined}
+                    onClick={() => insererEtape(etapes.length)}
+                  >
                     + Étape
                   </button>
                 ) : null}
@@ -475,7 +583,7 @@ export default function WorkflowEditeurPage() {
                             <strong>{idx + 1}. {et.libelle || et.code}</strong>
                             {nbErr > 0 ? <span className="status status--danger">{nbErr}</span> : null}
                           </div>
-                          <div className="small muted">{et.type} · {et.code}</div>
+                          <div className="small muted">{libelleTypeEtape(et.type)}</div>
                           {estEditable ? (
                             <div style={{ display: 'flex', gap: 4, marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
                               <button
@@ -537,6 +645,8 @@ export default function WorkflowEditeurPage() {
 
       {onglet === 'simulation' && versionActive ? (
         <PanneauSimulation
+          key={versionActive.id}
+          modifie={modifie}
           versionId={versionActive.id}
           objetType={modele.objet_type}
           catalogue={catalogue}
@@ -547,9 +657,7 @@ export default function WorkflowEditeurPage() {
         <PanneauVersions
           versions={versions}
           versionActiveId={versionActive?.id ?? null}
-          onChoisirVersion={(vid) => {
-            void chargerVersion(vid).then(() => setOnglet('editeur'));
-          }}
+          onChoisirVersion={(vid) => void choisirVersion(vid)}
         />
       ) : null}
 

@@ -10,6 +10,12 @@ import {
 } from '../../api/workflowApi';
 import { ErrorAlert, LoadingState } from '../../components/ui';
 import { formatDateHeure } from '../../utils/format';
+import {
+  libelleActionJournal,
+  libelleChampModifie,
+  libelleStatutVersion,
+  libelleTypeChangement,
+} from '../../workflow/libelles';
 
 export function PanneauVersions({
   versions,
@@ -66,7 +72,7 @@ export function PanneauVersions({
                       v.statut === 'PUBLIEE' ? 'success' : v.statut === 'BROUILLON' ? 'warning' : 'neutral'
                     }`}
                   >
-                    {v.statut === 'PUBLIEE' ? 'Publiée' : v.statut === 'BROUILLON' ? 'Brouillon' : 'Retirée'}
+                    {libelleStatutVersion(v.statut)}
                   </span>
                 </td>
                 <td>{formatDateHeure(v.modifie_le)}</td>
@@ -103,7 +109,7 @@ export function PanneauVersions({
               >
                 <option value="">Choisir…</option>
                 {versions.map((v) => (
-                  <option key={v.id} value={v.id}>v{v.numero} ({v.statut})</option>
+                  <option key={v.id} value={v.id}>v{v.numero} ({libelleStatutVersion(v.statut)})</option>
                 ))}
               </select>
             </div>
@@ -117,7 +123,7 @@ export function PanneauVersions({
               >
                 <option value="">Choisir…</option>
                 {versions.map((v) => (
-                  <option key={v.id} value={v.id}>v{v.numero} ({v.statut})</option>
+                  <option key={v.id} value={v.id}>v{v.numero} ({libelleStatutVersion(v.statut)})</option>
                 ))}
               </select>
             </div>
@@ -148,8 +154,8 @@ export function PanneauVersions({
                     {diff.etapes.map((d) => (
                       <tr key={d.code}>
                         <td><strong>{d.code}</strong></td>
-                        <td>{d.type_changement}</td>
-                        <td>{d.champs_modifies.length > 0 ? d.champs_modifies.join(', ') : '—'}</td>
+                        <td>{libelleTypeChangement(d.type_changement)}</td>
+                        <td>{d.champs_modifies.length > 0 ? d.champs_modifies.map(libelleChampModifie).join(', ') : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -222,7 +228,7 @@ export function PanneauJournalModele({ modeleId }: { modeleId: string }) {
             {donnees.elements.map((j) => (
               <tr key={j.id}>
                 <td>{formatDateHeure(j.horodatage)}</td>
-                <td>{j.action}</td>
+                <td>{libelleActionJournal(j.action)}</td>
                 <td>{j.auteur_nom ?? 'Système'}</td>
               </tr>
             ))}

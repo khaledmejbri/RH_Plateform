@@ -28,6 +28,7 @@ import { libelle, libelleConnu } from '../utils/libelles';
 import { optionsFiltre } from '../utils/parametresStore';
 import { commentaireLisible, contenuLignes, intituleDemande, periodeDemande } from '../utils/demandes';
 import DetailLink, { LienPersonne } from '../detail/DetailLink';
+import { statutObjetFinal } from '../workflow/libelles';
 
 /** Par défaut la RH arrive sur sa file : demandes en attente de décision RH (§ 6.1). */
 type StatutFilter = string;
@@ -326,7 +327,7 @@ export default function DemandesAdministrativesPage() {
                         </span>
                       </td>
                       <td data-label="Actions" style={{ textAlign: 'right' }}>
-                        {d.workflow_mode === 'MOTEUR' ? (
+                        {d.workflow_mode === 'MOTEUR' && !statutObjetFinal(d.statut) ? (
                           <Link
                             to={`/app/taches?objet_type=${encodeURIComponent(d.type_demande)}&objet_id=${encodeURIComponent(d.identifiant)}`}
                             className="btn btn--sm btn--secondary"

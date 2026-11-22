@@ -22,12 +22,12 @@ export type ConditionWorkflow = ConditionFeuille | ConditionEt | ConditionOu | C
 export type IntervenantsDefinition = {
   regle: string;
   params?: Record<string, unknown>;
-  mode?: 'UN_SEUL' | 'TOUS' | string;
+  mode?: 'UN_SEUL' | 'TOUS';
   [extra: string]: unknown;
 };
 
 export type RepliSiVideDefinition = {
-  action: 'PASSER' | 'ROLE' | 'BLOQUER' | string;
+  action: 'PASSER' | 'ROLE' | 'BLOQUER';
   roles?: string[];
   [extra: string]: unknown;
 };
@@ -43,7 +43,7 @@ export type TacheParalleleDefinition = {
 
 export type DelaiDefinition = {
   duree?: number;
-  unite?: 'HEURES_OUVREES' | 'JOURS_OUVRES' | 'HEURES_CALENDAIRES' | 'JOURS_CALENDAIRES' | string;
+  unite?: 'HEURES' | 'JOURS_OUVRES';
   plafond_avant_variable?: string | null;
   [extra: string]: unknown;
 };
@@ -56,7 +56,7 @@ export type RelancesDefinition = {
 };
 
 export type EcheanceDefinition = {
-  action?: 'RIEN' | 'ESCALADER' | 'PASSER' | 'EXPIRER' | string;
+  action?: 'RIEN' | 'ESCALADER' | 'EXPIRER' | 'REFUSER_AUTO' | 'APPROUVER_AUTO';
   apres?: { duree?: number; unite?: string; [extra: string]: unknown };
   intervenants?: IntervenantsDefinition;
   [extra: string]: unknown;
@@ -70,7 +70,7 @@ export type TransitionDefinition = {
 export type NotificationsEtapeDefinition = {
   a_l_activation?: string[];
   a_la_fin?: string[];
-  canal?: 'WEBSOCKET' | 'BOTH' | string;
+  canal?: 'WEBSOCKET' | 'BOTH';
   [extra: string]: unknown;
 };
 
@@ -417,6 +417,36 @@ const USER = '/api/rh/v1/workflow';
 
 function jsonBody(corps: unknown): RequestInit {
   return { headers: JSON_HEADERS, body: JSON.stringify(corps) };
+}
+
+/** Codes 409 pour lesquels « la ressource a changé entre-temps » est un message exact (rechargement utile). */
+const CODES_CONFLIT_RECHARGEABLE: ReadonlySet<string> = new Set([
+  'MODIFIE_ENTRE_TEMPS',
+  'BROUILLON_EXISTANT',
+  'VERSION_NON_BROUILLON',
+]);
+
+/**
+ * Vrai pour un conflit de version à résoudre en rechargeant. Les autres 409 (ex. `MODELE_ACTIF_EXISTANT`,
+ * `MODELE_DEJA_PUBLIE`) ont un message propre, affiché tel quel dans la fenêtre laissée ouverte.
+ */
+export function estConflitWorkflow(e: unknown): boolean {
+  return e instanceof WorkflowApiError && e.status === 409 && e.code !== null && CODES_CONFLIT_RECHARGEABLE.has(e.code);
+}
+
+/**
+ * Enveloppe une action exécutée dans `ConfirmDialog.envoyer` : le message d'erreur affiché dans la fenêtre
+ * est le message français de `messageErreurWorkflow`, le statut et le code sont conservés.
+ */
+export async function executerPourConfirmation(action: () => Promise<unknown>): Promise<void> {
+  try {
+    await action();
+  } catch (e) {
+    if (e instanceof WorkflowApiError) {
+      throw new WorkflowApiError(messageErreurWorkflow(e), e.status, e.code, e.erreurs);
+    }
+    throw new Error(messageErreurWorkflow(e));
+  }
 }
 
 export function messageErreurWorkflow(e: unknown): string {

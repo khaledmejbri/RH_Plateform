@@ -10,6 +10,7 @@ import type {
 
 export const LIMITE_PROFONDEUR_CONDITION = 5;
 export const LIMITE_FEUILLES_CONDITION = 20;
+export const LIMITE_ENFANTS_GROUPE = 10;
 
 export function estEt(c: ConditionWorkflow): c is ConditionEt {
   return 'et' in c && Array.isArray(c.et);
@@ -150,4 +151,35 @@ export function resumeCondition(
   if (!condition) return 'Toujours appliquée (aucune condition)';
   const vars = indexerVariables(catalogue, objetType);
   return `si ${rendreNoeud(condition, vars, libelles)}`;
+}
+
+export type ResultatSaisieNombre =
+  | { statut: 'vide' }
+  | { statut: 'ok'; valeur: number }
+  | { statut: 'erreur'; message: string };
+
+const FORMAT_NOMBRE = /^-?\d+([.,]\d+)?$/;
+
+/**
+ * Convertit la saisie d'un nombre (virgule ou point) en valeur numérique.
+ * Fonction pure : le composant garde le texte brut et ne convertit qu'au besoin (D-W7-06).
+ * ENTIER refuse les décimales.
+ */
+export function convertirSaisieNombre(texte: string, type: 'ENTIER' | 'DECIMAL'): ResultatSaisieNombre {
+  const propre = texte.trim();
+  if (propre === '') return { statut: 'vide' };
+  if (!FORMAT_NOMBRE.test(propre)) {
+    return { statut: 'erreur', message: 'Saisissez un nombre (ex. 10, -2 ou 2,5).' };
+  }
+  if (type === 'ENTIER' && /[.,]/.test(propre)) {
+    return { statut: 'erreur', message: 'Un nombre entier est attendu (sans décimales).' };
+  }
+  const n = Number(propre.replace(',', '.'));
+  if (!Number.isFinite(n)) return { statut: 'erreur', message: 'Nombre trop grand.' };
+  return { statut: 'ok', valeur: n };
+}
+
+/** Profondeur de l'arbre si on enveloppe `noeud` (placé au niveau `niveau`, racine = 1) dans un NON. */
+export function profondeurApresNon(niveau: number, noeud: ConditionWorkflow): number {
+  return niveau + profondeurCondition(noeud);
 }

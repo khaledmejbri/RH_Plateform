@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getTousCollaborateurs, type CollaborateurRow } from '../../api/rhClient';
 import {
   messageErreurWorkflow,
@@ -10,15 +10,18 @@ import { SaisieDate } from '../../components/ChampsFr';
 import FiltreCollaborateur from '../../components/FiltreCollaborateur';
 import { ErrorAlert, LoadingState } from '../../components/ui';
 import { formatDateHeure } from '../../utils/format';
+import { libelleStatutEtapeSimulee } from '../../workflow/libelles';
 import { optionsVariableListe, referentielPourVariable } from '../../workflow/valeursListes';
 
 type Props = {
+  /** Vrai si l'éditeur contient des modifications non enregistrées : la simulation porte sur la dernière version enregistrée. */
+  modifie?: boolean;
   versionId: string;
   objetType: string;
   catalogue: CatalogueWorkflow;
 };
 
-export default function PanneauSimulation({ versionId, objetType, catalogue }: Props) {
+export default function PanneauSimulation({ modifie, versionId, objetType, catalogue }: Props) {
   const [collaborateurs, setCollaborateurs] = useState<CollaborateurRow[]>([]);
   const [collabChargement, setCollabChargement] = useState(true);
   const [demandeurId, setDemandeurId] = useState('');
@@ -32,12 +35,31 @@ export default function PanneauSimulation({ versionId, objetType, catalogue }: P
     return t?.variables ?? [];
   }, [catalogue, objetType]);
 
+  // Le panneau est recréé à chaque changement de version (clé) : un résultat tardif d'une autre version est ignoré.
+  const actif = useRef(true);
   useEffect(() => {
+    actif.current = true;
+    return () => {
+      actif.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let annule = false;
     setCollabChargement(true);
     getTousCollaborateurs()
-      .then((list) => setCollaborateurs(list.filter((c) => c.statut === 'ACTIF')))
-      .catch(() => setCollaborateurs([]))
-      .finally(() => setCollabChargement(false));
+      .then((list) => {
+        if (!annule) setCollaborateurs(list.filter((c) => c.statut === 'ACTIF'));
+      })
+      .catch(() => {
+        if (!annule) setCollaborateurs([]);
+      })
+      .finally(() => {
+        if (!annule) setCollabChargement(false);
+      });
+    return () => {
+      annule = true;
+    };
   }, []);
 
   async function lancerSimulation(e: React.FormEvent) {
@@ -67,12 +89,14 @@ export default function PanneauSimulation({ versionId, objetType, catalogue }: P
         beneficiaires: [],
         variables: varsPropres,
       });
-      setSimulation(res);
+      if (actif.current) setSimulation(res);
     } catch (err) {
-      setErreur(messageErreurWorkflow(err));
-      setSimulation(null);
+      if (actif.current) {
+        setErreur(messageErreurWorkflow(err));
+        setSimulation(null);
+      }
     } finally {
-      setEnCours(false);
+      if (actif.current) setEnCours(false);
     }
   }
 
@@ -82,6 +106,12 @@ export default function PanneauSimulation({ versionId, objetType, catalogue }: P
       <p className="small muted" style={{ marginBottom: 12 }}>
         Testez le déroulement des étapes, les intervenants résolus et les échéances sans créer de vraie demande.
       </p>
+
+      {modifie ? (
+        <div className="alert alert--warning" role="status" style={{ marginBottom: 12 }}>
+          La simulation porte sur la dernière version enregistrée : enregistrez d’abord vos modifications.
+        </div>
+      ) : null}
 
       <form onSubmit={(e) => void lancerSimulation(e)}>
         {erreur ? <ErrorAlert>{erreur}</ErrorAlert> : null}
@@ -150,7 +180,7 @@ export default function PanneauSimulation({ versionId, objetType, catalogue }: P
         </div>
 
         <div style={{ marginTop: 14 }}>
-          <button type="submit" className="btn btn--primary" disabled={enCours}>
+          <button type="submit" className="btn btn--primary" disabled={enCours || Boolean(modifie)}>
             {enCours ? 'Simulation…' : 'Lancer la simulation'}
           </button>
         </div>
@@ -177,7 +207,6 @@ export default function PanneauSimulation({ versionId, objetType, catalogue }: P
                   <tr key={et.code}>
                     <td>
                       <strong>{et.libelle}</strong>
-                      <div className="small muted">{et.code}</div>
                     </td>
                     <td>
                       <span
@@ -189,13 +218,7 @@ export default function PanneauSimulation({ versionId, objetType, catalogue }: P
                               : 'neutral'
                         }`}
                       >
-                        {et.statut === 'ACTIVEE'
-                          ? 'Activée'
-                          : et.statut === 'SAUTEE'
-                            ? 'Sautée'
-                            : et.statut === 'BLOQUEE'
-                              ? 'Bloquée'
-                              : et.statut}
+                        {libelleStatutEtapeSimulee(et.statut)}
                       </span>
                     </td>
                     <td>{et.raison ?? '—'}</td>

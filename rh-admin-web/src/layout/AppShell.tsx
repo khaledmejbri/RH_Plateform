@@ -7,7 +7,8 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import { DetailProvider } from '../detail/DetailProvider';
 import { demarrerParametres, rafraichirParametres, useParametres } from '../utils/parametresStore';
 import { getCompteurMesTaches, type CompteurTaches } from '../api/workflowApi';
-import { EVENEMENT_RAFRAICHIR_TACHES } from '../pages/workflow/MesTachesPage';
+import { EVENEMENT_RAFRAICHIR_TACHES } from '../workflow/evenements';
+import { GardeNavigationProvider, useGardeNavigation } from '../workflow/gardeNavigation';
 
 type Icone = ComponentType<{ className?: string }>;
 
@@ -108,6 +109,15 @@ function libelleEntree(id: string): string | undefined {
 }
 
 export default function AppShell() {
+  return (
+    <GardeNavigationProvider>
+      <AppShellContenu />
+    </GardeNavigationProvider>
+  );
+}
+
+function AppShellContenu() {
+  const garde = useGardeNavigation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -179,7 +189,8 @@ export default function AppShell() {
     return () => document.removeEventListener('keydown', onKey);
   }, [sidebarOpen]);
 
-  function logout() {
+  async function logout() {
+    if (!(await garde.confirmerSortie())) return;
     clearToken();
     navigate('/login', { replace: true });
   }
@@ -190,7 +201,21 @@ export default function AppShell() {
       to={e.to}
       aria-current={actif === e.id ? 'page' : undefined}
       className={`shell__nav-item${actif === e.id ? ' shell__nav-item--active' : ''}`}
-      onClick={() => setSidebarOpen(false)}
+      onClick={(ev) => {
+        // Garde de sortie : modifications non enregistrées (éditeur de workflow).
+        const modifie = ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button !== 0;
+        if (garde.estActive() && !modifie) {
+          ev.preventDefault();
+          void garde.confirmerSortie().then((ok) => {
+            if (ok) {
+              setSidebarOpen(false);
+              navigate(e.to);
+            }
+          });
+          return;
+        }
+        setSidebarOpen(false);
+      }}
     >
       {Ic ? <Ic className="shell__nav-icon" /> : null}
       <span className="shell__nav-label">{e.label}</span>
@@ -266,7 +291,7 @@ export default function AppShell() {
             </h1>
             <div className="shell__header-actions">
               <NotificationBell />
-              <button type="button" className="btn btn--ghost" onClick={logout}>
+              <button type="button" className="btn btn--ghost" onClick={() => void logout()}>
                 Déconnexion
               </button>
             </div>
