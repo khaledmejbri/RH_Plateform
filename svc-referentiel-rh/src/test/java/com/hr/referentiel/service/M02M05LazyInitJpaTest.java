@@ -203,6 +203,26 @@ class M02M05LazyInitJpaTest {
 		assertThat(rep.getWorkflowMode()).isEqualTo(WorkflowActivationService.MODE_HERITE);
 		assertThat(rep.getDemandeurUnite()).isEqualTo("Équipe Logistique");
 		assertThat(rep.getRangDansFile()).isEqualTo(1);
+		assertThat(rep.isEstProchaineFifo()).isTrue();
+	}
+
+	@Test
+	void soumettreDocumentEnModeHerite_dixSoumissionsSuccessives_neSeCompteJamaisElleMeme() {
+		when(activationService.mode("DOCUMENT")).thenReturn(WorkflowActivationService.MODE_HERITE);
+		TransactionTemplate tx = new TransactionTemplate(txManager);
+
+		for (int i = 0; i < 10; i++) {
+			tx.executeWithoutResult(status -> documentRepository.deleteAll());
+			DemandeDocumentAdministratifCreationRequest req = new DemandeDocumentAdministratifCreationRequest();
+			req.setTypeDocument("ATTESTATION_TRAVAIL");
+			req.setCommentaireDemandeur("Soumission #" + i);
+
+			DemandeDocumentAdministratifRhResponse rep = documentService.soumettre(req, jwtCollab);
+
+			assertThat(rep.getCreeLe().getNano() % 1_000).isZero();
+			assertThat(rep.getRangDansFile()).isEqualTo(1);
+			assertThat(rep.isEstProchaineFifo()).isTrue();
+		}
 	}
 
 	@Test

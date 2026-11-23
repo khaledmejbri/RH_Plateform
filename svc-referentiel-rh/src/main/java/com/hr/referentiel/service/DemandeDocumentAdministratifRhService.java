@@ -135,7 +135,7 @@ public class DemandeDocumentAdministratifRhService {
 								messageDoublon(ouverte));
 					});
 			int sla = type.slaHeures() != null ? type.slaHeures() : SLA_PAR_DEFAUT_HEURES;
-			Instant creation = Instant.now();
+			Instant creation = Instant.now().truncatedTo(ChronoUnit.MICROS);
 			Instant echeance = creation.plus(sla, ChronoUnit.HOURS);
 
 			DemandeDocumentAdministratifRh d = new DemandeDocumentAdministratifRh();

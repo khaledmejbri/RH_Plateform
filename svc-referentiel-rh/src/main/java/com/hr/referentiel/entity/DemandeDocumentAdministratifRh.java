@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 /**
@@ -105,7 +106,7 @@ public class DemandeDocumentAdministratifRh {
 	@PrePersist
 	public void prePersist() {
 		if (creeLe == null) {
-			creeLe = Instant.now();
+			creeLe = Instant.now().truncatedTo(ChronoUnit.MICROS);
 		}
 	}
 
