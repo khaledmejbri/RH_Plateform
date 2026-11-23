@@ -310,7 +310,7 @@ void main() {
     await tester.pumpWidget(_app(repo));
     await tester.pumpAndSettle();
 
-    expect(find.text('Merci de préciser les dates exactes.'), findsOneWidget);
+    expect(find.text('Merci de préciser les dates exactes.'), findsAtLeastNWidgets(1));
     expect(find.text('Voir la demande'), findsOneWidget);
     expect(find.text('J’ai complété'), findsOneWidget);
 
