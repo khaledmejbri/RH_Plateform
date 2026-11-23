@@ -34,6 +34,15 @@ int? statutHttpWorkflow(Object erreur) {
   return null;
 }
 
+String _messageOuRepli(Object erreur, String fallback) {
+  if (erreur is DioException) {
+    return rhErrorMessage(erreur);
+  }
+  final texte = '$erreur'.replaceFirst('Exception: ', '').trim();
+  if (texte.isEmpty || texte == 'Exception') return fallback;
+  return texte;
+}
+
 /// Message utilisateur pour une erreur lors de la soumission d'une décision (`POST /workflow/taches/{id}/decision`).
 ///
 /// Règles D-W8-04 :
@@ -60,7 +69,7 @@ String messageErreurDecision(Object erreur) {
   if (http == 404 || code == 'TACHE_INTROUVABLE') {
     return 'Cette tâche est introuvable ou n’existe plus.';
   }
-  return rhErrorMessage(erreur, fallback: 'Impossible d’enregistrer votre décision.');
+  return _messageOuRepli(erreur, 'Impossible d’enregistrer votre décision.');
 }
 
 /// Message utilisateur pour une erreur sur l'envoi d'un complément (`POST .../complement`).
@@ -79,7 +88,7 @@ String messageErreurComplement(Object erreur) {
   if (http == 404) {
     return 'La demande associée est introuvable.';
   }
-  return rhErrorMessage(erreur, fallback: 'Impossible d’envoyer le complément.');
+  return _messageOuRepli(erreur, 'Impossible d’envoyer le complément.');
 }
 
 /// Message utilisateur pour une erreur de délégation (`POST/DELETE /workflow/delegations/moi`).
@@ -100,7 +109,7 @@ String messageErreurDelegation(Object erreur) {
   if (http == 404) {
     return 'Délégation introuvable.';
   }
-  return rhErrorMessage(erreur, fallback: 'Impossible d’enregistrer la délégation.');
+  return _messageOuRepli(erreur, 'Impossible d’enregistrer la délégation.');
 }
 
 /// Message générique de consultation workflow.
@@ -108,5 +117,5 @@ String messageErreurWorkflowGenerique(Object erreur, {String fallback = 'Service
   final http = statutHttpWorkflow(erreur);
   if (http == 403) return 'Accès non autorisé à ce dossier workflow.';
   if (http == 404) return 'Élément introuvable.';
-  return rhErrorMessage(erreur, fallback: fallback);
+  return _messageOuRepli(erreur, fallback);
 }

@@ -92,9 +92,11 @@ class _TacheDetailScreenState extends ConsumerState<TacheDetailScreen> {
 
     final detailBrut = asyncDetail.valueOrNull;
     final detail = detailBrut?.avecMetaListe(widget.itemListe);
-    final afficherBarreActions = detail != null &&
-        detail.statut == 'A_TRAITER' &&
-        (detail.estComplementATraiter || detail.actionsPermises.isNotEmpty);
+    final detailActionnable = detail != null &&
+            detail.statut == 'A_TRAITER' &&
+            (detail.estComplementATraiter || detail.actionsPermises.isNotEmpty)
+        ? detail
+        : null;
 
     return Scaffold(
       appBar: AppBar(title: Text(titreAppBar)),
@@ -110,8 +112,8 @@ class _TacheDetailScreenState extends ConsumerState<TacheDetailScreen> {
               ? null
               : () => ref.invalidate(tacheDetailProvider(widget.tacheId)),
         ),
-        data: (_) {
-          final d = detail!;
+        data: (detailCharge) {
+          final d = detailCharge.avecMetaListe(widget.itemListe);
           final entreesResume = entreesResumeAffichables(d.resume);
           final motifComplement = d.suivi?.motifRenvoiOuMotif;
           final routeObjet = routePourObjetWorkflow(d.objetType, d.objetId);
@@ -164,11 +166,11 @@ class _TacheDetailScreenState extends ConsumerState<TacheDetailScreen> {
           );
         },
       ),
-      bottomNavigationBar: afficherBarreActions
+      bottomNavigationBar: detailActionnable != null
           ? _BarreActionsTache(
-              detail: detail,
-              onComplement: () => _ouvrirComplement(detail),
-              onAction: (action) => _ouvrirDecision(detail, action),
+              detail: detailActionnable,
+              onComplement: () => _ouvrirComplement(detailActionnable),
+              onAction: (action) => _ouvrirDecision(detailActionnable, action),
             )
           : null,
     );

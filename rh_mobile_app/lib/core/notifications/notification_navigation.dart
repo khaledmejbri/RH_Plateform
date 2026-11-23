@@ -27,10 +27,18 @@ String? routePourNotification(AppNotification n) {
       case 'WF_DECISION':
       case 'WF_FIN':
       case 'WF_INFORMATION':
-        return _routeParObjetType(n) ?? _routeHeritee(n);
+        return _routeParObjetOuHeritee(n);
     }
   }
-  return _routeParObjetType(n) ?? _routeHeritee(n);
+  return _routeParObjetOuHeritee(n);
+}
+
+String? _routeParObjetOuHeritee(AppNotification n) {
+  final type = n.objetType;
+  if (type != null && type.isNotEmpty) {
+    return _routeParObjetType(n);
+  }
+  return _routeHeritee(n);
 }
 
 String? _routeParObjetType(AppNotification n) {

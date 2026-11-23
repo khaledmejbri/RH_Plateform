@@ -9,11 +9,13 @@ AppNotification _notif({
   String? evenement,
   String? objetType,
   String? objetId,
+  String sujet = 'Workflow',
+  String contenu = 'Notification workflow',
 }) {
   return AppNotification.fromMap({
     'id': 'notif-1',
-    'sujet': 'Workflow',
-    'contenu': 'Notification workflow',
+    'sujet': sujet,
+    'contenu': contenu,
     if (evenement != null) 'evenement': evenement,
     if (objetType != null) 'objet_type': objetType,
     if (objetId != null) 'objet_id': objetId,
@@ -75,6 +77,33 @@ void main() {
     expect(
       routePourNotification(_notif(evenement: 'WF_FIN', objetType: 'HEURES_SUP', objetId: _uuid)),
       '/heures-sup/moi',
+    );
+  });
+
+  test('objet_type renseigné non mappé (ALERTE_ECART ou inconnu) renvoie null sans repli mots-clés',
+      () {
+    expect(
+      routePourNotification(
+        _notif(
+          objetType: 'ALERTE_ECART',
+          objetId: _uuid,
+          sujet: 'Demande validée',
+          contenu: 'Votre demande DEM-202611-0003 est concernée.',
+        ),
+      ),
+      isNull,
+    );
+    expect(
+      routePourNotification(
+        _notif(
+          evenement: 'WF_FIN',
+          objetType: 'OBJET_INCONNU',
+          objetId: _uuid,
+          sujet: 'Fin de demande',
+          contenu: 'Votre demande est clôturée.',
+        ),
+      ),
+      isNull,
     );
   });
 }

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:rh_mobile_app/core/theme/app_theme.dart';
 import 'package:rh_mobile_app/features/workflow/data/workflow_models.dart';
 import 'package:rh_mobile_app/features/workflow/data/workflow_repository.dart';
 import 'package:rh_mobile_app/features/workflow/presentation/tache_detail_screen.dart';
@@ -137,7 +136,7 @@ Widget _app(_FauxWorkflowRepo repo) {
       workflowRepositoryProvider.overrideWithValue(repo),
     ],
     child: MaterialApp(
-      theme: AppTheme.light(),
+      theme: ThemeData(useMaterial3: true),
       home: const TacheDetailScreen(tacheId: 't1'),
     ),
   );
@@ -240,6 +239,8 @@ void main() {
     expect(confirmerBtn().onPressed, isNotNull);
 
     // 1er essai -> 422 : reste ouvert avec message serveur exact
+    await tester.ensureVisible(boutonFeuille);
+    await tester.pumpAndSettle();
     await tester.tap(boutonFeuille);
     await tester.pumpAndSettle();
 
@@ -247,6 +248,8 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
 
     // 2e essai -> 200 : réutilise la même cle_idempotence
+    await tester.ensureVisible(boutonFeuille);
+    await tester.pumpAndSettle();
     await tester.tap(boutonFeuille);
     await tester.pumpAndSettle();
 
@@ -314,12 +317,18 @@ void main() {
     await tester.tap(find.text('J’ai complété'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'Dates confirmées avec mon manager.');
+    final champComplement = find.byType(TextField);
+    await tester.ensureVisible(champComplement);
+    await tester.pumpAndSettle();
+    await tester.enterText(champComplement, 'Dates confirmées avec mon manager.');
     await tester.pump();
-    await tester.tap(find.descendant(
+    final boutonEnvoyer = find.descendant(
       of: find.byType(BottomSheet),
       matching: find.byType(FilledButton),
-    ));
+    );
+    await tester.ensureVisible(boutonEnvoyer);
+    await tester.pumpAndSettle();
+    await tester.tap(boutonEnvoyer);
     await tester.pumpAndSettle();
 
     expect(repo.appelsComplement, 1);

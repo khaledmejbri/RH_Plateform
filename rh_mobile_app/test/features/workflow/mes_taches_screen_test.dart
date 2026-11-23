@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:rh_mobile_app/core/theme/app_theme.dart';
 import 'package:rh_mobile_app/features/workflow/data/workflow_models.dart';
 import 'package:rh_mobile_app/features/workflow/data/workflow_repository.dart';
 import 'package:rh_mobile_app/features/workflow/presentation/mes_taches_screen.dart';
@@ -60,7 +59,7 @@ Widget _app(_FauxWorkflowRepo repo) {
       workflowRepositoryProvider.overrideWithValue(repo),
     ],
     child: MaterialApp(
-      theme: AppTheme.light(),
+      theme: ThemeData(useMaterial3: true),
       home: const MesTachesScreen(),
     ),
   );
@@ -157,11 +156,16 @@ void main() {
     expect(find.text('Pour le compte de Ali Mansouri'), findsOneWidget);
     expect(find.text('Complément demandé'), findsOneWidget);
 
+    final scrollableVertical = find.byWidgetPredicate(
+      (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+    );
     await tester.scrollUntilVisible(
       find.text('Charger plus (2 / 25)'),
       200,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: scrollableVertical.first,
     );
+    await tester.ensureVisible(find.text('Charger plus (2 / 25)'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Charger plus (2 / 25)'));
     await tester.pumpAndSettle();
 

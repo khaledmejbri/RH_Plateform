@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:rh_mobile_app/core/format/formats.dart';
 import 'package:rh_mobile_app/core/storage/secure_token_storage.dart';
-import 'package:rh_mobile_app/core/theme/app_theme.dart';
 import 'package:rh_mobile_app/features/auth/providers/collaborateur_notifier.dart';
 import 'package:rh_mobile_app/features/organigramme/data/organigramme_models.dart';
 import 'package:rh_mobile_app/features/organigramme/data/organigramme_repository.dart';
@@ -53,6 +52,7 @@ class _FauxOrgRepo extends OrganigrammeRepository {
                 posteLibelle: 'Responsable RH',
               ),
             ],
+            enfants: [],
           ),
         ],
       );
@@ -124,7 +124,7 @@ Widget _app({
       collaborateurNotifierProvider.overrideWith((_) => _FauxCollabNotifier()),
     ],
     child: MaterialApp(
-      theme: AppTheme.light(),
+      theme: ThemeData(useMaterial3: true),
       locale: const Locale('fr', 'FR'),
       supportedLocales: const [Locale('fr', 'FR'), Locale('fr')],
       localizationsDelegates: const [
@@ -264,17 +264,22 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byKey(const Key('delegation-motif')));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('delegation-motif')), 'Congés');
     await tester.pump();
 
     // 1er essai -> 409 chevauchement affiché sans fermer la feuille
     await tester.ensureVisible(find.byKey(const Key('delegation-soumettre')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('delegation-soumettre')));
     await tester.pumpAndSettle();
 
     expect(find.text('Une délégation chevauche déjà cette période.'), findsOneWidget);
 
     // 2e essai -> 201 OK
+    await tester.ensureVisible(find.byKey(const Key('delegation-soumettre')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('delegation-soumettre')));
     await tester.pumpAndSettle();
 

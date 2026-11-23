@@ -52,4 +52,35 @@ void main() {
     expect(messageErreurDelegation(err409), 'Chevauchement avec une délégation existante.');
     expect(messageErreurDelegation(err422), 'La durée d’une délégation ne peut pas dépasser 90 jours.');
   });
+
+  test('messageErreurWorkflowGenerique gère 403, 404, Dio réseau et repli hors Dio', () {
+    expect(
+      messageErreurWorkflowGenerique(_dioErr(403, {})),
+      'Accès non autorisé à ce dossier workflow.',
+    );
+    expect(
+      messageErreurWorkflowGenerique(_dioErr(404, {})),
+      'Élément introuvable.',
+    );
+    expect(
+      messageErreurWorkflowGenerique(
+        DioException(
+          requestOptions: RequestOptions(path: '/taches/moi'),
+          type: DioExceptionType.connectionError,
+        ),
+      ),
+      'Impossible de joindre le serveur. Vérifiez votre connexion.',
+    );
+    expect(
+      messageErreurWorkflowGenerique(
+        Exception(''),
+        fallback: 'Suivi du circuit indisponible.',
+      ),
+      'Suivi du circuit indisponible.',
+    );
+    expect(
+      messageErreurComplement(Exception('')),
+      'Impossible d’envoyer le complément.',
+    );
+  });
 }

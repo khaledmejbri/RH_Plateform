@@ -243,6 +243,7 @@ void main() {
                 actif: true,
                 manager: m2,
                 membres: [m3],
+                enfants: [],
               ),
             ],
           ),

@@ -160,14 +160,13 @@ class _OngletTachesState extends ConsumerState<_OngletTaches>
   bool get _aPlus => (_pageCourante + 1) * _taillePage < _total;
 
   Future<void> _ouvrirDetail(TacheListeItem tache) async {
-    final modifie = await context.push<bool>(
+    await context.push<bool>(
       '/taches/${tache.tacheId}',
       extra: tache,
     );
-    if (modifie == true && mounted) {
-      widget.onTacheModifiee();
-      await _charger(reinitialiser: true);
-    }
+    if (!mounted) return;
+    widget.onTacheModifiee();
+    await _charger(reinitialiser: true);
   }
 
   @override
