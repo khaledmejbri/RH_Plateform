@@ -2,6 +2,8 @@ package com.hr.referentiel.domain;
 
 public enum StatutDemandeFormationRh {
 	EN_VALIDATION_RRH("En attente de validation RH"),
+	EN_COURS("En cours de validation"),
+	A_COMPLETER("À compléter"),
 	INTEGREE_PLAN("Intégrée au plan"),
 	REFUSEE("Refusée"),
 	ANNULEE("Annulée");

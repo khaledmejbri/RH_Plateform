@@ -1,7 +1,10 @@
 package com.hr.referentiel.service;
 
 import com.hr.referentiel.domain.TypeDemandeAdministrativeRh;
+import com.hr.referentiel.domain.ValeursInitialesReferentiel;
 import com.hr.referentiel.entity.DemandeAdministrativeRh;
+import com.hr.referentiel.entity.DemandeDocumentAdministratifRh;
+import com.hr.referentiel.entity.DemandeFormationRh;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -10,6 +13,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
@@ -140,6 +144,63 @@ public class WorkflowVariablesBuilder {
 				vars.put("affichage_type", "Ordre de mission");
 			}
 		}
+		return vars;
+	}
+
+	/** Construit les variables envoyées à {@code svc-workflow} pour {@code DOCUMENT} (D-W6-07, Q3). */
+	public Map<String, Object> construireDocument(DemandeDocumentAdministratifRh d) {
+		Map<String, Object> vars = new LinkedHashMap<>();
+		String codeType = d.getTypeDocument();
+		if (codeType != null) {
+			vars.put("type_document", codeType);
+		}
+		String libelleType = codeType != null ? parametreService.libelleOuDefaut("TYPE_DOCUMENT", codeType) : null;
+		if (libelleType == null && codeType != null) {
+			libelleType = ValeursInitialesReferentiel.libelleParDefaut(codeType);
+		}
+		vars.put("affichage_type", libelleType != null ? libelleType : "Document administratif");
+		if (d.getDateEcheanceTraitement() != null) {
+			ZonedDateTime echeanceTunis = d.getDateEcheanceTraitement().atZone(FormatJours.TUNIS);
+			vars.put("affichage_sla",
+					"Échéance le " + echeanceTunis.format(FORMAT_FR) + " à " + echeanceTunis.format(FORMAT_HEURE));
+		}
+		return vars;
+	}
+
+	/** Construit les variables envoyées à {@code svc-workflow} pour {@code FORMATION} (D-W6-07, Q5). */
+	public Map<String, Object> construireFormation(DemandeFormationRh d) {
+		Map<String, Object> vars = new LinkedHashMap<>();
+		if (d.getOrigine() != null) {
+			vars.put("origine", d.getOrigine().name());
+		}
+		if (d.getCoutEstime() != null) {
+			vars.put("cout_estime", d.getCoutEstime());
+			vars.put("affichage_cout", d.getCoutEstime().stripTrailingZeros().toPlainString() + " DT");
+		}
+		int dureeJours;
+		if (d.getDateSouhaiteeDebut() != null && d.getDateSouhaiteeFin() != null) {
+			dureeJours = (int) Math.max(1L,
+					ChronoUnit.DAYS.between(d.getDateSouhaiteeDebut(), d.getDateSouhaiteeFin()) + 1);
+		} else {
+			int heures = d.getDureeHeures() != null ? d.getDureeHeures() : 0;
+			dureeJours = Math.max(1, (int) Math.ceil(heures / 8.0));
+		}
+		vars.put("duree_jours", dureeJours);
+		vars.put("affichage_type", d.getTypeFormation() != null ? d.getTypeFormation() : "Formation");
+		if (d.getOrganisme() != null && !d.getOrganisme().isBlank()) {
+			vars.put("affichage_organisme", d.getOrganisme());
+		}
+		String periode = formaterPeriode(d.getDateSouhaiteeDebut(), d.getDateSouhaiteeFin());
+		if (!periode.isEmpty()) {
+			vars.put("affichage_periode", periode);
+		} else if (d.getDureeHeures() != null) {
+			vars.put("affichage_periode", d.getDureeHeures() + " h");
+		}
+		String dureeTexte = dureeJours == 1 ? "1 jour" : dureeJours + " jours";
+		if (d.getDureeHeures() != null) {
+			dureeTexte = dureeTexte + " (" + d.getDureeHeures() + " h)";
+		}
+		vars.put("affichage_duree", dureeTexte);
 		return vars;
 	}
 

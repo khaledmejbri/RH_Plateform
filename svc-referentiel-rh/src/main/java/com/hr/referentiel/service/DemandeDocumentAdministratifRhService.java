@@ -1,6 +1,7 @@
 package com.hr.referentiel.service;
 
 import lombok.extern.slf4j.Slf4j;
+import com.hr.referentiel.client.WorkflowMoteurClient;
 import com.hr.referentiel.dto.*;
 import com.hr.referentiel.kafka.RhNotificationPublisher;
 import com.hr.referentiel.entity.Collaborateur;
@@ -9,9 +10,14 @@ import com.hr.referentiel.domain.StatutDocumentAdministratifDemandeRh;
 import com.hr.referentiel.domain.ValeursInitialesReferentiel;
 import com.hr.referentiel.service.ParametresCache.ParametreVue;
 import com.hr.referentiel.repository.DemandeDocumentAdministratifRhRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.hr.referentiel.web.ReferentielMetierException;
 
@@ -21,8 +27,10 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Service
@@ -42,8 +50,15 @@ public class DemandeDocumentAdministratifRhService {
 					+ "Pour traiter cette demande hors ordre d'arrivée, veuillez fournir une justification obligatoire "
 					+ "(champ justification_derogation_fifo).";
 
-	/** D-F06.a : demandes « ouvertes » qui bloquent une nouvelle demande du même type. */
+	/** D-F06.a : demandes « ouvertes » qui bloquent une nouvelle demande du même type (inclut MOTEUR). */
 	static final List<StatutDocumentAdministratifDemandeRh> STATUTS_OUVERTS = List.of(
+			StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE,
+			StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH,
+			StatutDocumentAdministratifDemandeRh.EN_COURS,
+			StatutDocumentAdministratifDemandeRh.A_COMPLETER);
+
+	/** File FIFO historique (exclut les demandes pilotées par le moteur). */
+	static final List<StatutDocumentAdministratifDemandeRh> STATUTS_FILE_FIFO = List.of(
 			StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE,
 			StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH);
 
@@ -55,61 +70,115 @@ public class DemandeDocumentAdministratifRhService {
 	private final ParametreService parametreService;
 	private final RhNotificationPublisher notificationPublisher;
 	private final NumeroLisibleService numeroLisibleService;
+	private final WorkflowActivationService workflowActivationService;
+	private final WorkflowDemarrageService workflowDemarrageService;
+	private final WorkflowMoteurClient moteurClient;
+	private final WorkflowVariablesBuilder variablesBuilder;
+	private final TransactionTemplate txLecture;
+	private final TransactionTemplate txEcriture;
 
+	/** Constructeur historique conservé pour les tests existants. */
 	public DemandeDocumentAdministratifRhService(DemandeDocumentAdministratifRhRepository repository,
 			CollaborateurConnecteService collaborateurConnecteService,
 			ParametreService parametreService,
 			RhNotificationPublisher notificationPublisher,
 			NumeroLisibleService numeroLisibleService) {
+		this(repository, collaborateurConnecteService, parametreService, notificationPublisher, numeroLisibleService,
+				null, null, null, null, null);
+	}
+
+	@Autowired
+	public DemandeDocumentAdministratifRhService(
+			DemandeDocumentAdministratifRhRepository repository,
+			CollaborateurConnecteService collaborateurConnecteService,
+			ParametreService parametreService,
+			RhNotificationPublisher notificationPublisher,
+			NumeroLisibleService numeroLisibleService,
+			WorkflowActivationService workflowActivationService,
+			WorkflowDemarrageService workflowDemarrageService,
+			WorkflowMoteurClient moteurClient,
+			WorkflowVariablesBuilder variablesBuilder,
+			PlatformTransactionManager txManager) {
 		this.repository = repository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
 		this.parametreService = parametreService;
 		this.notificationPublisher = notificationPublisher;
 		this.numeroLisibleService = numeroLisibleService;
+		this.workflowActivationService = workflowActivationService;
+		this.workflowDemarrageService = workflowDemarrageService;
+		this.moteurClient = moteurClient;
+		this.variablesBuilder = variablesBuilder;
+		if (txManager != null) {
+			this.txLecture = new TransactionTemplate(txManager);
+			this.txLecture.setReadOnly(true);
+			this.txEcriture = new TransactionTemplate(txManager);
+			this.txEcriture.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+		} else {
+			this.txLecture = null;
+			this.txEcriture = null;
+		}
 	}
 
-	@Transactional
 	public DemandeDocumentAdministratifRhResponse soumettre(DemandeDocumentAdministratifCreationRequest req, Jwt jwt) {
-		Collaborateur demandeur = collaborateurConnecteService.exigerCollaborateur(jwt);
-		// Lot 3 : le type est une valeur paramétrable, il doit exister et être actif (lu en base, décision d'écriture)
-		ParametreVue type = exigerTypeActif(req.getTypeDocument());
-		// D-F06.b : le serveur est le garde ; la fiche est verrouillée pour que deux POST simultanés
-		// du même type ne passent pas tous les deux.
-		collaborateurConnecteService.verrouiller(demandeur);
-		repository.findFirstByDemandeurIdAndTypeDocumentAndStatutInOrderByCreeLeAsc(
-				demandeur.getId(), type.code(), STATUTS_OUVERTS).ifPresent(ouverte -> {
-					throw ReferentielMetierException.conflict("DEMANDE_DOCUMENT_DEJA_EN_COURS",
-							messageDoublon(ouverte));
-				});
-		// D-R05 : le SLA est lu dans le paramètre et COPIÉ dans la demande (C-M02-02) : modifier le SLA du type
-		// plus tard ne change pas l'échéance des demandes déjà déposées.
-		int sla = type.slaHeures() != null ? type.slaHeures() : SLA_PAR_DEFAUT_HEURES;
-		// D-L02 : numéro attribué dans la transaction de création, rang du mois de l'instant de création
-		Instant creation = Instant.now();
-		Instant echeance = creation.plus(sla, ChronoUnit.HOURS);
+		boolean modeMoteur = workflowActivationService != null
+				&& WorkflowActivationService.MODE_MOTEUR.equals(workflowActivationService.mode("DOCUMENT"));
 
-		DemandeDocumentAdministratifRh d = new DemandeDocumentAdministratifRh();
-		d.setCreeLe(creation);
-		d.setNumero(numeroLisibleService.attribuer(PrefixeNumero.DOC, creation));
-		d.setDemandeur(demandeur);
-		d.setTypeDocument(type.code());
-		d.setStatut(StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE);
-		d.setDelaiSlaHeures(sla);
-		d.setDateEcheanceTraitement(echeance);
-		if (req.getCommentaireDemandeur() != null) {
-			d.setCommentaireDemandeur(req.getCommentaireDemandeur().trim());
+		record ResultatCreation(UUID id, DemandeDocumentAdministratifRhResponse reponse) {
 		}
-		d = repository.save(d);
-		parametreService.marquerUtilisee(REFERENTIEL_TYPE, type.code());
+		ResultatCreation creee = executerEcriture(() -> {
+			Collaborateur demandeur = collaborateurConnecteService.exigerCollaborateur(jwt);
+			ParametreVue type = exigerTypeActif(req.getTypeDocument());
+			collaborateurConnecteService.verrouiller(demandeur);
+			repository.findFirstByDemandeurIdAndTypeDocumentAndStatutInOrderByCreeLeAsc(
+					demandeur.getId(), type.code(), STATUTS_OUVERTS).ifPresent(ouverte -> {
+						throw ReferentielMetierException.conflict("DEMANDE_DOCUMENT_DEJA_EN_COURS",
+								messageDoublon(ouverte));
+					});
+			int sla = type.slaHeures() != null ? type.slaHeures() : SLA_PAR_DEFAUT_HEURES;
+			Instant creation = Instant.now().truncatedTo(ChronoUnit.MICROS);
+			Instant echeance = creation.plus(sla, ChronoUnit.HOURS);
 
-		try {
-			notificationPublisher.notifierDemandeDocumentRecue(demandeur, libelleNotification(type.code()), d.getId(),
-					d.getNumero());
-		} catch (Exception e) {
-			log.error("Erreur lors de l'envoi de la notification Kafka (Nouvelle demande)", e);
+			DemandeDocumentAdministratifRh d = new DemandeDocumentAdministratifRh();
+			d.setCreeLe(creation);
+			d.setNumero(numeroLisibleService.attribuer(PrefixeNumero.DOC, creation));
+			d.setDemandeur(demandeur);
+			d.setTypeDocument(type.code());
+			d.setDelaiSlaHeures(sla);
+			d.setDateEcheanceTraitement(echeance);
+			if (req.getCommentaireDemandeur() != null) {
+				d.setCommentaireDemandeur(req.getCommentaireDemandeur().trim());
+			}
+			if (modeMoteur) {
+				d.setStatut(StatutDocumentAdministratifDemandeRh.EN_COURS);
+				d.setWorkflowMode(WorkflowActivationService.MODE_MOTEUR);
+				d.setWorkflowEtat(WorkflowDemarrageService.ETAT_A_DEMARRER);
+			} else {
+				d.setStatut(StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE);
+				d.setWorkflowMode(WorkflowActivationService.MODE_HERITE);
+				d.setWorkflowEtat(null);
+			}
+			d = repository.save(d);
+			parametreService.marquerUtilisee(REFERENTIEL_TYPE, type.code());
+
+			if (!modeMoteur) {
+				try {
+					notificationPublisher.notifierDemandeDocumentRecue(demandeur, libelleNotification(type.code()),
+							d.getId(), d.getNumero());
+				} catch (Exception e) {
+					log.error("Erreur lors de l'envoi de la notification Kafka (Nouvelle demande)", e);
+				}
+			}
+			return new ResultatCreation(d.getId(), toResponse(d));
+		});
+
+		if (modeMoteur && workflowDemarrageService != null) {
+			workflowDemarrageService.demarrerDocument(creee.id());
+			return executerLecture(() -> repository.findByIdAvecDemandeur(creee.id())
+					.or(() -> repository.findById(creee.id()))
+					.map(this::toResponse)
+					.orElse(creee.reponse()));
 		}
-
-		return toResponse(d);
+		return creee.reponse();
 	}
 
 	/**
@@ -174,7 +243,10 @@ public class DemandeDocumentAdministratifRhService {
 	@Transactional(readOnly = true)
 	public List<DemandeDocumentAdministratifRhResponse> fileAttentePourRh(String q) {
 		String numero = NumeroLisibleService.normaliserRecherche(q);
-		List<DemandeDocumentAdministratifRh> lignes = repository.findByStatutInOrderByCreeLeAsc(STATUTS_OUVERTS);
+		List<DemandeDocumentAdministratifRh> lignes = repository.findByStatutInOrderByCreeLeAsc(STATUTS_FILE_FIFO)
+				.stream()
+				.filter(d -> !WorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode()))
+				.collect(Collectors.toList());
 		if (numero != null) {
 			// D-L02 : recherche par numéro exact dans la file (les demandes clôturées n'y figurent pas)
 			lignes = lignes.stream().filter(d -> numero.equals(d.getNumero())).collect(Collectors.toList());
@@ -226,11 +298,15 @@ public class DemandeDocumentAdministratifRhService {
 				throw new org.springframework.security.access.AccessDeniedException("Accès refusé.");
 			}
 		}
-		Integer rang = rangDansFile(d);
-		int devant = rang != null ? rang - 1 : 0;
 		boolean enRetard = d.getStatut() != StatutDocumentAdministratifDemandeRh.DISPONIBLE
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.REJETEE
+				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.ANNULEE
 				&& Instant.now().isAfter(d.getDateEcheanceTraitement());
+		if (WorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode())) {
+			return suiviMoteur(d, enRetard);
+		}
+		Integer rang = rangDansFile(d);
+		int devant = rang != null ? rang - 1 : 0;
 		DemandeDocumentSuiviResponse suivi = new DemandeDocumentSuiviResponse(
 				d.getId(),
 				d.getTypeDocument(),
@@ -245,6 +321,45 @@ public class DemandeDocumentAdministratifRhService {
 		suivi.setNumero(d.getNumero());
 		suivi.setTypeDocumentLibelle(libelleType(d.getTypeDocument()));
 		suivi.setStatutLibelle(parametreService.libelleOuInconnu("STATUT_DOCUMENT", d.getStatut().name()));
+		suivi.setWorkflowMode(d.getWorkflowMode());
+		return suivi;
+	}
+
+	private DemandeDocumentSuiviResponse suiviMoteur(DemandeDocumentAdministratifRh d, boolean enRetard) {
+		StatutDocumentAdministratifDemandeRh s = d.getStatut();
+		boolean enCours = s == StatutDocumentAdministratifDemandeRh.EN_COURS
+				|| s == StatutDocumentAdministratifDemandeRh.A_COMPLETER;
+		List<WorkflowEtapeResponse> etapes = new ArrayList<>();
+		etapes.add(new WorkflowEtapeResponse("DEPOT", "Demande enregistrée", true, false));
+		if (enCours) {
+			String lib = d.getWorkflowEtapeLibelle() != null && !d.getWorkflowEtapeLibelle().isBlank()
+					? d.getWorkflowEtapeLibelle()
+					: "En cours de traitement";
+			etapes.add(new WorkflowEtapeResponse("ETAPE_COURANTE", lib, false, true));
+		}
+		String clLibelle = switch (s) {
+			case DISPONIBLE -> "Document disponible";
+			case REJETEE -> "Demande refusée";
+			case ANNULEE -> "Demande annulée";
+			default -> "Décision finale";
+		};
+		etapes.add(new WorkflowEtapeResponse("CLOTURE", clLibelle, !enCours, false));
+
+		DemandeDocumentSuiviResponse suivi = new DemandeDocumentSuiviResponse(
+				d.getId(), d.getTypeDocument(), d.getStatut(), null, null, null,
+				d.getDelaiSlaHeures(), d.getDateEcheanceTraitement(), enRetard, etapes);
+		suivi.setNumero(d.getNumero());
+		suivi.setTypeDocumentLibelle(libelleType(d.getTypeDocument()));
+		suivi.setStatutLibelle(parametreService.libelleOuInconnu("STATUT_DOCUMENT", d.getStatut().name()));
+		suivi.setWorkflowMode(d.getWorkflowMode());
+		suivi.setWorkflowInstanceId(d.getWorkflowInstanceId());
+		suivi.setEtapeCouranteLibelle(d.getWorkflowEtapeLibelle());
+		suivi.setEcheanceLe(d.getWorkflowEcheanceLe());
+		if (s == StatutDocumentAdministratifDemandeRh.A_COMPLETER && d.getCommentaireRh() != null) {
+			suivi.setMessageExplication("Complément demandé : " + d.getCommentaireRh());
+		} else if (s == StatutDocumentAdministratifDemandeRh.REJETEE && d.getCommentaireRh() != null) {
+			suivi.setMessageExplication(d.getCommentaireRh());
+		}
 		return suivi;
 	}
 
@@ -255,7 +370,10 @@ public class DemandeDocumentAdministratifRhService {
 		}
 
 		List<DemandeDocumentAdministratifRh> file = repository
-				.findQueueForUpdate(StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE);
+				.findQueueForUpdate(StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE)
+				.stream()
+				.filter(d -> !WorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode()))
+				.toList();
 		if (file.isEmpty()) {
 			throw new IllegalArgumentException("Aucune demande en file d'attente.");
 		}
@@ -269,6 +387,7 @@ public class DemandeDocumentAdministratifRhService {
 
 		DemandeDocumentAdministratifRh d = repository.findById(id)
 				.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable."));
+		verifierPasSousWorkflow(d);
 		if (d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
 			throw ReferentielMetierException.conflict("DEMANDE_DEJA_DECIDEE",
@@ -299,6 +418,7 @@ public class DemandeDocumentAdministratifRhService {
 	public DemandeDocumentAdministratifRhResponse rejeter(UUID id, DocumentRejetRhRequest req, Jwt jwt) {
 		DemandeDocumentAdministratifRh d = repository.findById(id)
 				.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable."));
+		verifierPasSousWorkflow(d);
 		if (d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
 			throw ReferentielMetierException.conflict("DEMANDE_DEJA_DECIDEE",
@@ -311,6 +431,84 @@ public class DemandeDocumentAdministratifRhService {
 		d.setStatut(StatutDocumentAdministratifDemandeRh.REJETEE);
 		d.setCommentaireRh(req.getMotif().trim());
 		return toResponse(repository.save(d));
+	}
+
+	/** Complément fourni par le demandeur (protocole hors-transaction D-W5-12 / D-W6-07). */
+	public DemandeDocumentAdministratifRhResponse fournirComplement(UUID id, DemandeComplementRequest req, Jwt jwt) {
+		if (txLecture == null || moteurClient == null) {
+			throw ReferentielMetierException.serviceUnavailable("SERVICE_INDISPONIBLE",
+					"Service de workflow non configuré.");
+		}
+		String commentaire = req.commentaire().trim();
+		record ContexteComplement(UUID instanceId, WorkflowMoteurClient.ActeurInterne acteur) {
+		}
+		ContexteComplement ctx = txLecture.execute(status -> {
+			DemandeDocumentAdministratifRh d = repository.findByIdAvecDemandeur(id)
+					.or(() -> repository.findById(id))
+					.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable."));
+			Collaborateur c = collaborateurConnecteService.exigerCollaborateur(jwt);
+			if (!d.getDemandeur().getId().equals(c.getId())) {
+				throw new AccessDeniedException("Seul le demandeur peut fournir un complément sur sa demande.");
+			}
+			if (!WorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode())
+					|| d.getStatut() != StatutDocumentAdministratifDemandeRh.A_COMPLETER
+					|| d.getWorkflowInstanceId() == null) {
+				throw ReferentielMetierException.conflict("ETAT_INCORRECT",
+						"Un complément ne peut être fourni que sur une demande en attente de complément.");
+			}
+			String nom = ((c.getPrenom() != null ? c.getPrenom() : "") + " "
+					+ (c.getNom() != null ? c.getNom() : "")).trim();
+			return new ContexteComplement(
+					d.getWorkflowInstanceId(),
+					new WorkflowMoteurClient.ActeurInterne(c.getCompteUtilisateurId(), c.getId(), nom));
+		});
+
+		WorkflowMoteurClient.IssueComplement issue = moteurClient.complementFourni(
+				ctx.instanceId(), ctx.acteur(), commentaire);
+		if (issue == WorkflowMoteurClient.IssueComplement.ETAT_INCORRECT) {
+			throw ReferentielMetierException.conflict("ETAT_INCORRECT",
+					"La demande n'est plus en attente de complément.");
+		}
+		if (issue == WorkflowMoteurClient.IssueComplement.INDISPONIBLE) {
+			throw ReferentielMetierException.serviceUnavailable("SERVICE_INDISPONIBLE",
+					"Envoi du complément momentanément impossible, réessayez dans quelques instants.");
+		}
+
+		record ResultatComplementTx(DemandeDocumentAdministratifRhResponse reponse, Map<String, Object> variables) {
+		}
+		ResultatComplementTx res = txEcriture.execute(status -> {
+			DemandeDocumentAdministratifRh d = repository.findByIdForUpdate(id)
+					.orElseThrow(() -> ReferentielMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable."));
+			if (d.getStatut() == StatutDocumentAdministratifDemandeRh.A_COMPLETER) {
+				d.setStatut(StatutDocumentAdministratifDemandeRh.EN_COURS);
+			}
+			if (d.getCommentaireDemandeur() == null || d.getCommentaireDemandeur().isBlank()) {
+				d.setCommentaireDemandeur(commentaire);
+			}
+			repository.save(d);
+			Map<String, Object> vars = variablesBuilder != null ? variablesBuilder.construireDocument(d) : null;
+			return new ResultatComplementTx(toResponse(d), vars);
+		});
+
+		if (res != null && res.variables() != null) {
+			moteurClient.majVariables(ctx.instanceId(), res.variables());
+		}
+		return res != null ? res.reponse() : null;
+	}
+
+	private static void verifierPasSousWorkflow(DemandeDocumentAdministratifRh d) {
+		if (WorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode())) {
+			throw ReferentielMetierException.conflict("DEMANDE_SOUS_WORKFLOW",
+					"Cette demande se traite depuis Mes tâches.");
+		}
+	}
+
+	private <T> T executerLecture(Supplier<T> action) {
+		return txLecture != null ? txLecture.execute(status -> action.get()) : action.get();
+	}
+
+	private <T> T executerEcriture(Supplier<T> action) {
+		return txEcriture != null ? txEcriture.execute(status -> action.get()) : action.get();
 	}
 
 	// ─── FIFO Validation ─────────────────────────────────────────────────────
@@ -396,20 +594,28 @@ public class DemandeDocumentAdministratifRhService {
 
 		boolean fileTerminee = s == StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
 				|| s == StatutDocumentAdministratifDemandeRh.DISPONIBLE
-				|| s == StatutDocumentAdministratifDemandeRh.REJETEE;
+				|| s == StatutDocumentAdministratifDemandeRh.REJETEE
+				|| s == StatutDocumentAdministratifDemandeRh.EN_COURS
+				|| s == StatutDocumentAdministratifDemandeRh.A_COMPLETER
+				|| s == StatutDocumentAdministratifDemandeRh.ANNULEE;
 		boolean fileEnCours = s == StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE;
 		list.add(new WorkflowEtapeResponse("FILE_ATTENTE",
 				"En file d'attente — ordre chronologique (premier arrivé, premier servi)", fileTerminee, fileEnCours));
 
 		boolean traitTerminee = s == StatutDocumentAdministratifDemandeRh.DISPONIBLE
-				|| s == StatutDocumentAdministratifDemandeRh.REJETEE;
-		boolean traitEnCours = s == StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH;
+				|| s == StatutDocumentAdministratifDemandeRh.REJETEE
+				|| s == StatutDocumentAdministratifDemandeRh.ANNULEE;
+		boolean traitEnCours = s == StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH
+				|| s == StatutDocumentAdministratifDemandeRh.EN_COURS
+				|| s == StatutDocumentAdministratifDemandeRh.A_COMPLETER;
 		list.add(new WorkflowEtapeResponse("TRAITEMENT_RH", "Traitement par la RH", traitTerminee, traitEnCours));
 
 		boolean cloture = s == StatutDocumentAdministratifDemandeRh.DISPONIBLE
-				|| s == StatutDocumentAdministratifDemandeRh.REJETEE;
+				|| s == StatutDocumentAdministratifDemandeRh.REJETEE
+				|| s == StatutDocumentAdministratifDemandeRh.ANNULEE;
 		String libelle = s == StatutDocumentAdministratifDemandeRh.DISPONIBLE ? "Document disponible"
-				: s == StatutDocumentAdministratifDemandeRh.REJETEE ? "Demande refusée par la RH" : "Clôture";
+				: s == StatutDocumentAdministratifDemandeRh.REJETEE ? "Demande refusée par la RH"
+				: s == StatutDocumentAdministratifDemandeRh.ANNULEE ? "Demande annulée" : "Clôture";
 		list.add(new WorkflowEtapeResponse("CLOTURE", libelle, cloture, false));
 
 		return list;
@@ -444,6 +650,7 @@ public class DemandeDocumentAdministratifRhService {
 
 		boolean enRetard = d.getStatut() != StatutDocumentAdministratifDemandeRh.DISPONIBLE
 				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.REJETEE
+				&& d.getStatut() != StatutDocumentAdministratifDemandeRh.ANNULEE
 				&& Instant.now().isAfter(d.getDateEcheanceTraitement());
 
 		DemandeDocumentAdministratifRhResponse r = new DemandeDocumentAdministratifRhResponse(
@@ -471,6 +678,10 @@ public class DemandeDocumentAdministratifRhService {
 		r.setDemandeurNom((demandeur.getPrenom() + " " + demandeur.getNom()).trim());
 		r.setDemandeurMatricule(demandeur.getMatricule());
 		r.setDemandeurUnite(demandeur.getUnite() != null ? demandeur.getUnite().getLibelle() : null);
+		r.setWorkflowMode(d.getWorkflowMode());
+		r.setWorkflowInstanceId(d.getWorkflowInstanceId());
+		r.setEtapeCouranteLibelle(d.getWorkflowEtapeLibelle());
+		r.setEcheanceLe(d.getWorkflowEcheanceLe());
 		return r;
 	}
 }

@@ -53,6 +53,21 @@ public class DemandeDocumentSuiviResponse {
 	@JsonProperty("etapes")
 	private List<WorkflowEtapeResponse> etapes;
 
+	@JsonProperty("workflow_mode")
+	private String workflowMode;
+
+	@JsonProperty("workflow_instance_id")
+	private UUID workflowInstanceId;
+
+	@JsonProperty("etape_courante_libelle")
+	private String etapeCouranteLibelle;
+
+	@JsonProperty("echeance_le")
+	private Instant echeanceLe;
+
+	@JsonProperty("message_explication")
+	private String messageExplication;
+
 	public DemandeDocumentSuiviResponse() {
 	}
 
@@ -134,5 +149,45 @@ public class DemandeDocumentSuiviResponse {
 
 	public List<WorkflowEtapeResponse> getEtapes() {
 		return etapes;
+	}
+
+	public String getWorkflowMode() {
+		return workflowMode;
+	}
+
+	public void setWorkflowMode(String workflowMode) {
+		this.workflowMode = workflowMode;
+	}
+
+	public UUID getWorkflowInstanceId() {
+		return workflowInstanceId;
+	}
+
+	public void setWorkflowInstanceId(UUID workflowInstanceId) {
+		this.workflowInstanceId = workflowInstanceId;
+	}
+
+	public String getEtapeCouranteLibelle() {
+		return etapeCouranteLibelle;
+	}
+
+	public void setEtapeCouranteLibelle(String etapeCouranteLibelle) {
+		this.etapeCouranteLibelle = etapeCouranteLibelle;
+	}
+
+	public Instant getEcheanceLe() {
+		return echeanceLe;
+	}
+
+	public void setEcheanceLe(Instant echeanceLe) {
+		this.echeanceLe = echeanceLe;
+	}
+
+	public String getMessageExplication() {
+		return messageExplication;
+	}
+
+	public void setMessageExplication(String messageExplication) {
+		this.messageExplication = messageExplication;
 	}
 }

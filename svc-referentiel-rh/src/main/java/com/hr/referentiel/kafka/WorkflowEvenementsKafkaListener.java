@@ -6,12 +6,17 @@ import com.hr.commun.societe.SocieteContexte;
 import com.hr.commun.societe.SocieteKafka;
 import com.hr.referentiel.domain.TypeDemandeAdministrativeRh;
 import com.hr.referentiel.entity.DemandeAdministrativeRh;
+import com.hr.referentiel.entity.DemandeDocumentAdministratifRh;
+import com.hr.referentiel.entity.DemandeFormationRh;
 import com.hr.referentiel.repository.DemandeAdministrativeRhRepository;
+import com.hr.referentiel.repository.DemandeDocumentAdministratifRhRepository;
+import com.hr.referentiel.repository.DemandeFormationRhRepository;
 import com.hr.referentiel.service.SocieteDefautResolver;
 import com.hr.referentiel.service.WorkflowDemarrageService;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -36,20 +41,37 @@ public class WorkflowEvenementsKafkaListener {
 			TypeDemandeAdministrativeRh.CONGE.name(),
 			TypeDemandeAdministrativeRh.AUTORISATION_SORTIE.name(),
 			TypeDemandeAdministrativeRh.ORDRE_MISSION.name());
+	private static final String TYPE_DOCUMENT = "DOCUMENT";
+	private static final String TYPE_FORMATION = "FORMATION";
 	private static final Set<String> STATUTS_TERMINES = Set.of(
 			"APPROUVEE", "REFUSEE", "ANNULEE", "EXPIREE", "ERREUR");
 
 	private final DemandeAdministrativeRhRepository demandeRepo;
 	private final SocieteDefautResolver societeDefautResolver;
 	private final TransactionTemplate transactionTemplate;
+	private final DemandeDocumentAdministratifRhRepository documentRepo;
+	private final DemandeFormationRhRepository formationRepo;
 
+	/** Constructeur historique conservé pour les tests M01 existants. */
 	public WorkflowEvenementsKafkaListener(
 			DemandeAdministrativeRhRepository demandeRepo,
 			SocieteDefautResolver societeDefautResolver,
 			TransactionTemplate transactionTemplate) {
+		this(demandeRepo, societeDefautResolver, transactionTemplate, null, null);
+	}
+
+	@Autowired
+	public WorkflowEvenementsKafkaListener(
+			DemandeAdministrativeRhRepository demandeRepo,
+			SocieteDefautResolver societeDefautResolver,
+			TransactionTemplate transactionTemplate,
+			DemandeDocumentAdministratifRhRepository documentRepo,
+			DemandeFormationRhRepository formationRepo) {
 		this.demandeRepo = demandeRepo;
 		this.societeDefautResolver = societeDefautResolver;
 		this.transactionTemplate = transactionTemplate;
+		this.documentRepo = documentRepo;
+		this.formationRepo = formationRepo;
 	}
 
 	@KafkaListener(
@@ -68,7 +90,10 @@ public class WorkflowEvenementsKafkaListener {
 		}
 
 		String objetType = texte(root, "objet_type");
-		if (objetType == null || !TYPES_M01.contains(objetType)) {
+		boolean estM01 = objetType != null && TYPES_M01.contains(objetType);
+		boolean estDocument = TYPE_DOCUMENT.equals(objetType);
+		boolean estFormation = TYPE_FORMATION.equals(objetType);
+		if (!estM01 && !estDocument && !estFormation) {
 			return;
 		}
 		UUID objetId = uuid(root, "objet_id");
@@ -92,25 +117,64 @@ public class WorkflowEvenementsKafkaListener {
 		}
 
 		SocieteContexte.executer(societeId.get(), () -> transactionTemplate.executeWithoutResult(status -> {
-			Optional<DemandeAdministrativeRh> opt = demandeRepo.findByIdForUpdate(objetId);
-			if (opt.isEmpty()) {
-				return;
-			}
-			DemandeAdministrativeRh d = opt.get();
-			// Idempotence et ordre : un événement plus ancien ou déjà vu est ignoré
-			if (d.getWorkflowProjectionLe() != null && !emisLe.isAfter(d.getWorkflowProjectionLe())) {
-				return;
-			}
-			if (d.getWorkflowInstanceId() == null && instanceId != null) {
-				d.setWorkflowInstanceId(instanceId);
-				if (WorkflowDemarrageService.ETAT_A_DEMARRER.equals(d.getWorkflowEtat())) {
-					d.setWorkflowEtat(WorkflowDemarrageService.ETAT_DEMARRE);
+			if (estM01) {
+				Optional<DemandeAdministrativeRh> opt = demandeRepo.findByIdForUpdate(objetId);
+				if (opt.isEmpty()) {
+					return;
 				}
+				DemandeAdministrativeRh d = opt.get();
+				if (d.getWorkflowProjectionLe() != null && !emisLe.isAfter(d.getWorkflowProjectionLe())) {
+					return;
+				}
+				if (d.getWorkflowInstanceId() == null && instanceId != null) {
+					d.setWorkflowInstanceId(instanceId);
+					if (WorkflowDemarrageService.ETAT_A_DEMARRER.equals(d.getWorkflowEtat())) {
+						d.setWorkflowEtat(WorkflowDemarrageService.ETAT_DEMARRE);
+					}
+				}
+				d.setWorkflowEtapeLibelle(terminee ? null : etapeLibelle);
+				d.setWorkflowEcheanceLe(terminee ? null : echeanceLe);
+				d.setWorkflowProjectionLe(emisLe);
+				demandeRepo.save(d);
+			} else if (estDocument && documentRepo != null) {
+				Optional<DemandeDocumentAdministratifRh> opt = documentRepo.findByIdForUpdate(objetId);
+				if (opt.isEmpty()) {
+					return;
+				}
+				DemandeDocumentAdministratifRh d = opt.get();
+				if (d.getWorkflowProjectionLe() != null && !emisLe.isAfter(d.getWorkflowProjectionLe())) {
+					return;
+				}
+				if (d.getWorkflowInstanceId() == null && instanceId != null) {
+					d.setWorkflowInstanceId(instanceId);
+					if (WorkflowDemarrageService.ETAT_A_DEMARRER.equals(d.getWorkflowEtat())) {
+						d.setWorkflowEtat(WorkflowDemarrageService.ETAT_DEMARRE);
+					}
+				}
+				d.setWorkflowEtapeLibelle(terminee ? null : etapeLibelle);
+				d.setWorkflowEcheanceLe(terminee ? null : echeanceLe);
+				d.setWorkflowProjectionLe(emisLe);
+				documentRepo.save(d);
+			} else if (estFormation && formationRepo != null) {
+				Optional<DemandeFormationRh> opt = formationRepo.findByIdForUpdate(objetId);
+				if (opt.isEmpty()) {
+					return;
+				}
+				DemandeFormationRh d = opt.get();
+				if (d.getWorkflowProjectionLe() != null && !emisLe.isAfter(d.getWorkflowProjectionLe())) {
+					return;
+				}
+				if (d.getWorkflowInstanceId() == null && instanceId != null) {
+					d.setWorkflowInstanceId(instanceId);
+					if (WorkflowDemarrageService.ETAT_A_DEMARRER.equals(d.getWorkflowEtat())) {
+						d.setWorkflowEtat(WorkflowDemarrageService.ETAT_DEMARRE);
+					}
+				}
+				d.setWorkflowEtapeLibelle(terminee ? null : etapeLibelle);
+				d.setWorkflowEcheanceLe(terminee ? null : echeanceLe);
+				d.setWorkflowProjectionLe(emisLe);
+				formationRepo.save(d);
 			}
-			d.setWorkflowEtapeLibelle(terminee ? null : etapeLibelle);
-			d.setWorkflowEcheanceLe(terminee ? null : echeanceLe);
-			d.setWorkflowProjectionLe(emisLe);
-			demandeRepo.save(d);
 		}));
 	}
 

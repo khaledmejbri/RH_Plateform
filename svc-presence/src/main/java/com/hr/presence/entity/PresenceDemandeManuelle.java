@@ -34,7 +34,8 @@ import java.util.UUID;
 				@Index(name = "idx_demande_manuelle_collab", columnList = "collaborateur_id,cree_le"),
 				@Index(name = "idx_demande_manuelle_valideur", columnList = "valideur_id,statut"),
 				@Index(name = "idx_demande_manuelle_statut", columnList = "statut,cree_le"),
-				@Index(name = "idx_demande_manuelle_echeance", columnList = "statut,echeance")
+				@Index(name = "idx_demande_manuelle_echeance", columnList = "statut,echeance"),
+				@Index(name = "idx_demande_manuelle_wf_mode_etat", columnList = "workflow_mode,workflow_etat")
 		}
 )
 public class PresenceDemandeManuelle {
@@ -147,6 +148,29 @@ public class PresenceDemandeManuelle {
 	@Column(name = "reprise")
 	private Boolean reprise;
 
+	// ---- Intégration moteur de workflow (lot W6) ----
+
+	@Column(name = "workflow_mode", nullable = false, length = 16, columnDefinition = "varchar(16) default 'HERITE'")
+	private String workflowMode = "HERITE";
+
+	@Column(name = "workflow_instance_id")
+	private UUID workflowInstanceId;
+
+	@Column(name = "workflow_etat", length = 24)
+	private String workflowEtat;
+
+	@Column(name = "workflow_tentatives", nullable = false, columnDefinition = "integer default 0")
+	private int workflowTentatives = 0;
+
+	@Column(name = "workflow_etape_libelle", length = 160)
+	private String workflowEtapeLibelle;
+
+	@Column(name = "workflow_echeance_le")
+	private Instant workflowEcheanceLe;
+
+	@Column(name = "workflow_projection_le")
+	private Instant workflowProjectionLe;
+
 	@PrePersist
 	void onCreate() {
 		if (id == null) {
@@ -154,6 +178,9 @@ public class PresenceDemandeManuelle {
 		}
 		if (creeLe == null) {
 			creeLe = Instant.now();
+		}
+		if (workflowMode == null) {
+			workflowMode = "HERITE";
 		}
 	}
 
@@ -258,4 +285,27 @@ public class PresenceDemandeManuelle {
 
 	public boolean isReprise() { return Boolean.TRUE.equals(reprise); }
 	public void setReprise(Boolean reprise) { this.reprise = reprise; }
+
+	public String getWorkflowMode() { return workflowMode; }
+	public void setWorkflowMode(String workflowMode) { this.workflowMode = workflowMode; }
+
+	public UUID getWorkflowInstanceId() { return workflowInstanceId; }
+	public void setWorkflowInstanceId(UUID workflowInstanceId) { this.workflowInstanceId = workflowInstanceId; }
+
+	public String getWorkflowEtat() { return workflowEtat; }
+	public void setWorkflowEtat(String workflowEtat) { this.workflowEtat = workflowEtat; }
+
+	public int getWorkflowTentatives() { return workflowTentatives; }
+	public void setWorkflowTentatives(int workflowTentatives) { this.workflowTentatives = workflowTentatives; }
+
+	public String getEtapeCouranteLibelle() { return workflowEtapeLibelle; }
+	public void setEtapeCouranteLibelle(String workflowEtapeLibelle) { this.workflowEtapeLibelle = workflowEtapeLibelle; }
+
+	public Instant getEcheanceLe() { return workflowEcheanceLe; }
+	public void setEcheanceLe(Instant workflowEcheanceLe) { this.workflowEcheanceLe = workflowEcheanceLe; }
+
+	public Instant getWorkflowProjectionLe() { return workflowProjectionLe; }
+	public void setWorkflowProjectionLe(Instant workflowProjectionLe) {
+		this.workflowProjectionLe = workflowProjectionLe;
+	}
 }

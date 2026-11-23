@@ -93,6 +93,16 @@ public class DemandeFormationRhController {
 		return ResponseEntity.ok(demandeFormationRhService.annuler(identifiant, principal.getToken()));
 	}
 
+	@PostMapping("/{identifiant}/complement")
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<DemandeFormationRhResponse> fournirComplement(
+			@PathVariable UUID identifiant,
+			@Valid @RequestBody DemandeComplementRequest requete,
+			JwtAuthenticationToken principal) {
+		return ResponseEntity.ok(
+				demandeFormationRhService.fournirComplement(identifiant, requete, principal.getToken()));
+	}
+
 	@GetMapping("/{identifiant}")
 	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<DemandeFormationRhResponse> obtenir(

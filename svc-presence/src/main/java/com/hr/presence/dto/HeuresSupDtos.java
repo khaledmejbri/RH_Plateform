@@ -69,8 +69,24 @@ public final class HeuresSupDtos {
 			@JsonProperty("annule_par") String annulePar,
 			@JsonProperty("annule_le") Instant annuleLe,
 			@JsonProperty("motif_annulation") String motifAnnulation,
-			@JsonProperty("cree_le") Instant creeLe
+			@JsonProperty("cree_le") Instant creeLe,
+			// ---- Intégration moteur de workflow (lot W6) ----
+			@JsonProperty("workflow_mode") String workflowMode,
+			@JsonProperty("workflow_instance_id") UUID workflowInstanceId,
+			@JsonProperty("etape_courante_libelle") String etapeCouranteLibelle,
+			@JsonProperty("echeance_le") Instant echeanceLe
 	) {
+		/** Forme historique (avant W6) : les champs workflow restent nuls. */
+		public DemandeHeuresSupResponse(UUID id, String reference, String numero, StatutHeuresSup statut, UUID siteId,
+				String siteLibelle, LocalDate dateDebut, LocalDate dateFin, List<LocalDate> jours,
+				int ouvertureAvantMinutes, int ouvertureApresMinutes, Instant debutPlageTs, String motif,
+				String demandeurNom, List<BeneficiaireResponse> beneficiaires, boolean creeeValidee, String decidePar,
+				Instant decideLe, String motifRefus, String annulePar, Instant annuleLe, String motifAnnulation,
+				Instant creeLe) {
+			this(id, reference, numero, statut, siteId, siteLibelle, dateDebut, dateFin, jours, ouvertureAvantMinutes,
+					ouvertureApresMinutes, debutPlageTs, motif, demandeurNom, beneficiaires, creeeValidee, decidePar,
+					decideLe, motifRefus, annulePar, annuleLe, motifAnnulation, creeLe, null, null, null, null);
+		}
 	}
 
 	/** Une ligne de comptage : bénéficiaire x site x journée (D-P14, D-P16.a). */
