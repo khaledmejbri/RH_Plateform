@@ -45,7 +45,7 @@ public interface DemandeDocumentAdministratifRhRepository extends JpaRepository<
 	@Query("select d from DemandeDocumentAdministratifRh d where d.id = :id")
 	Optional<DemandeDocumentAdministratifRh> findByIdForUpdate(@Param("id") UUID id);
 
-	@Query("select d from DemandeDocumentAdministratifRh d join fetch d.demandeur where d.id = :id")
+	@Query("select d from DemandeDocumentAdministratifRh d join fetch d.demandeur dem left join fetch dem.unite where d.id = :id")
 	Optional<DemandeDocumentAdministratifRh> findByIdAvecDemandeur(@Param("id") UUID id);
 
 	@Query(value = "SELECT identifiant FROM rh_demande_document_administratif "

@@ -117,7 +117,9 @@ public class DemandeFormationRhService {
 		boolean modeMoteur = workflowActivationService != null
 				&& WorkflowActivationService.MODE_MOTEUR.equals(workflowActivationService.mode("FORMATION"));
 
-		DemandeFormationRh saved = executerEcriture(() -> {
+		record ResultatCreation(UUID id, DemandeFormationRhResponse reponse) {
+		}
+		ResultatCreation creee = executerEcriture(() -> {
 			Collaborateur demandeur = exigerCollaborateurDetail(jwt);
 			validerDates(req);
 
@@ -163,21 +165,17 @@ public class DemandeFormationRhService {
 					notifierCollaborateursCibles(enregistree);
 				}
 			}
-			return enregistree;
+			return new ResultatCreation(enregistree.getId(), toResponse(enregistree));
 		});
 
 		if (modeMoteur && workflowDemarrageService != null) {
-			final UUID demandeId = saved.getId();
-			final DemandeFormationRh fallback = saved;
-			workflowDemarrageService.demarrerFormation(demandeId);
-			return executerLecture(() -> {
-				DemandeFormationRh rechargee = demandeFormationRepository.findDetailById(demandeId)
-						.or(() -> demandeFormationRepository.findById(demandeId))
-						.orElse(fallback);
-				return toResponse(rechargee);
-			});
+			workflowDemarrageService.demarrerFormation(creee.id());
+			return executerLecture(() -> demandeFormationRepository.findDetailById(creee.id())
+					.or(() -> demandeFormationRepository.findById(creee.id()))
+					.map(this::toResponse)
+					.orElse(creee.reponse()));
 		}
-		return executerLecture(() -> toResponse(saved));
+		return creee.reponse();
 	}
 
 	@Transactional(readOnly = true)

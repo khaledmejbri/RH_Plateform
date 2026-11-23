@@ -123,7 +123,9 @@ public class DemandeDocumentAdministratifRhService {
 		boolean modeMoteur = workflowActivationService != null
 				&& WorkflowActivationService.MODE_MOTEUR.equals(workflowActivationService.mode("DOCUMENT"));
 
-		DemandeDocumentAdministratifRh saved = executerEcriture(() -> {
+		record ResultatCreation(UUID id, DemandeDocumentAdministratifRhResponse reponse) {
+		}
+		ResultatCreation creee = executerEcriture(() -> {
 			Collaborateur demandeur = collaborateurConnecteService.exigerCollaborateur(jwt);
 			ParametreVue type = exigerTypeActif(req.getTypeDocument());
 			collaborateurConnecteService.verrouiller(demandeur);
@@ -166,21 +168,17 @@ public class DemandeDocumentAdministratifRhService {
 					log.error("Erreur lors de l'envoi de la notification Kafka (Nouvelle demande)", e);
 				}
 			}
-			return d;
+			return new ResultatCreation(d.getId(), toResponse(d));
 		});
 
 		if (modeMoteur && workflowDemarrageService != null) {
-			final UUID demandeId = saved.getId();
-			final DemandeDocumentAdministratifRh fallback = saved;
-			workflowDemarrageService.demarrerDocument(demandeId);
-			return executerLecture(() -> {
-				DemandeDocumentAdministratifRh r = repository.findByIdAvecDemandeur(demandeId)
-						.or(() -> repository.findById(demandeId))
-						.orElse(fallback);
-				return toResponse(r);
-			});
+			workflowDemarrageService.demarrerDocument(creee.id());
+			return executerLecture(() -> repository.findByIdAvecDemandeur(creee.id())
+					.or(() -> repository.findById(creee.id()))
+					.map(this::toResponse)
+					.orElse(creee.reponse()));
 		}
-		return executerLecture(() -> toResponse(saved));
+		return creee.reponse();
 	}
 
 	/**

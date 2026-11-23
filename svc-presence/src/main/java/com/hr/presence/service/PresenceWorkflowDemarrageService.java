@@ -213,28 +213,28 @@ public class PresenceWorkflowDemarrageService {
 	}
 
 	private void enregistrerEchecPointageManuelEtReplierSiSeuil(UUID demandeId) {
-		ValideurPointage valideur = resoudreValideurSiJwtPresent();
-		txEcriture.executeWithoutResult(status -> {
+		boolean seuilAtteint = Boolean.TRUE.equals(txEcriture.execute(status -> {
 			Optional<PresenceDemandeManuelle> opt = demandeManuelleRepo.findByIdPourDecision(demandeId);
 			if (opt.isEmpty()) {
-				return;
+				return false;
 			}
 			PresenceDemandeManuelle d = opt.get();
 			if (!PresenceWorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode())
 					|| !ETAT_A_DEMARRER.equals(d.getWorkflowEtat())
 					|| d.getStatut() != StatutDemandeManuelle.EN_COURS) {
-				return;
+				return false;
 			}
 			int tentatives = d.getWorkflowTentatives() + 1;
 			d.setWorkflowTentatives(tentatives);
-			if (tentatives >= MAX_TENTATIVES) {
-				log.warn("Seuil de {} tentatives atteint pour POINTAGE_MANUEL demandeId={} : repli hérité",
-						MAX_TENTATIVES, demandeId);
-				appliquerRepliPointageManuelSousVerrou(d, true, valideur);
-			} else {
-				demandeManuelleRepo.save(d);
-			}
-		});
+			demandeManuelleRepo.save(d);
+			return tentatives >= MAX_TENTATIVES;
+		}));
+		if (seuilAtteint) {
+			log.warn("Seuil de {} tentatives atteint pour POINTAGE_MANUEL demandeId={} : repli hérité",
+					MAX_TENTATIVES, demandeId);
+			ValideurPointage valideur = resoudreValideurSiJwtPresent();
+			txEcriture.executeWithoutResult(status -> replierPointageManuel(demandeId, true, valideur));
+		}
 	}
 
 	private void replierPointageManuel(UUID demandeId, boolean garderEtatEchec, ValideurPointage valideur) {

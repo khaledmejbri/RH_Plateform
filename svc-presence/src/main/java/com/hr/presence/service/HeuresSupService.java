@@ -187,9 +187,13 @@ public class HeuresSupService {
 		PresenceHeuresSupDemande d = charger(id);
 		List<PresenceHeuresSupBeneficiaire> beneficiaires = beneficiaireRepository.findByDemandeId(d.getId());
 		Acteur auteur = acteurResolver.avecFiche();
-		// Ordre : 404, puis 403 (concerné par la demande), puis 409 (sous workflow, expirée, statut, plage commencée)
+		// Ordre : 404, puis 403 (concerné par la demande), puis 409 (sous workflow EN_COURS, expirée, statut, plage commencée)
 		interdireAutoValidation(d, beneficiaires, auteur);
-		verifierPasSousWorkflow(d);
+		if (PresenceWorkflowActivationService.MODE_MOTEUR.equals(d.getWorkflowMode())
+				&& d.getStatut() == StatutHeuresSup.EN_COURS) {
+			throw PresenceMetierException.conflict(
+					"DEMANDE_SOUS_WORKFLOW", "Cette demande se traite depuis Mes tâches.");
+		}
 		expirerSiEchue(d);
 		exigerStatut(d, StatutHeuresSup.VALIDEE);
 		if (d.getDebutPlageTs() != null && !d.getDebutPlageTs().isAfter(clock.instant())) {
@@ -240,7 +244,9 @@ public class HeuresSupService {
 				}
 			}
 			return executerEcriture(() -> {
-				PresenceHeuresSupDemande d = charger(id);
+				PresenceHeuresSupDemande d = demandeRepository.findByIdPourDecision(id)
+						.or(() -> demandeRepository.findById(id))
+						.orElseThrow(() -> PresenceMetierException.notFound("DEMANDE_INTROUVABLE", "Demande introuvable"));
 				if (d.getStatut() == StatutHeuresSup.EN_COURS) {
 					marquerAnnulee(d, auteur, null);
 					d.setEtapeCouranteLibelle(null);

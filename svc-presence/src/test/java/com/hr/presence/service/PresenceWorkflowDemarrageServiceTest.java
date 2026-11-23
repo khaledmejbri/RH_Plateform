@@ -273,4 +273,59 @@ class PresenceWorkflowDemarrageServiceTest {
 		assertThat(heuresSup.getStatut()).isEqualTo(StatutHeuresSup.EN_ATTENTE);
 		verify(heuresSupNotifier).creeeEnAttente(eq(heuresSup), anyString());
 	}
+
+	@Test
+	void demarrerPointageManuel_echecSousSeuil_nAppellePasReferentielValideur() {
+		manuel.setWorkflowTentatives(0);
+		when(demandeManuelleRepo.findById(manuel.getId())).thenReturn(Optional.of(manuel));
+		when(demandeManuelleRepo.findByIdPourDecision(manuel.getId())).thenReturn(Optional.of(manuel));
+		when(moteurClient.demarrer(any(), any())).thenReturn(new IssueDemarrage.Indisponible("timeout"));
+
+		org.springframework.security.oauth2.jwt.Jwt jwt = org.springframework.security.oauth2.jwt.Jwt
+				.withTokenValue("tok").header("alg", "none").claim("sub", "emp").build();
+		org.springframework.security.core.context.SecurityContextHolder.getContext()
+				.setAuthentication(new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(jwt));
+		try {
+			service.demarrerPointageManuel(manuel.getId());
+		} finally {
+			org.springframework.security.core.context.SecurityContextHolder.clearContext();
+		}
+
+		assertThat(manuel.getWorkflowTentatives()).isEqualTo(1);
+		assertThat(manuel.getWorkflowMode()).isEqualTo("MOTEUR");
+		verify(referentielClient, never()).monValideurPointage();
+	}
+
+	@Test
+	void demarrerPointageManuel_dixiemeEchecAvecJwt_resoutValideurHorsTransaction() {
+		manuel.setWorkflowTentatives(PresenceWorkflowDemarrageService.MAX_TENTATIVES - 1);
+		UUID valideurFiche = UUID.randomUUID();
+		UUID valideurCompte = UUID.randomUUID();
+		when(demandeManuelleRepo.findById(manuel.getId())).thenReturn(Optional.of(manuel));
+		when(demandeManuelleRepo.findByIdPourDecision(manuel.getId())).thenReturn(Optional.of(manuel));
+		when(moteurClient.demarrer(any(), any())).thenReturn(new IssueDemarrage.Indisponible("timeout"));
+		when(referentielClient.monValideurPointage()).thenAnswer(inv -> {
+			assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+			return new ReferentielClient.ValideurPointage(
+					UUID.fromString(manuel.getCollaborateurId()),
+					UUID.fromString(manuel.getCollaborateurCompteId()),
+					manuel.getCollaborateurNom(),
+					valideurFiche, valideurCompte, "Omar RO");
+		});
+
+		org.springframework.security.oauth2.jwt.Jwt jwt = org.springframework.security.oauth2.jwt.Jwt
+				.withTokenValue("tok").header("alg", "none").claim("sub", "emp").build();
+		org.springframework.security.core.context.SecurityContextHolder.getContext()
+				.setAuthentication(new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(jwt));
+		try {
+			service.demarrerPointageManuel(manuel.getId());
+		} finally {
+			org.springframework.security.core.context.SecurityContextHolder.clearContext();
+		}
+
+		assertThat(manuel.getWorkflowMode()).isEqualTo("HERITE");
+		assertThat(manuel.getWorkflowEtat()).isEqualTo(PresenceWorkflowDemarrageService.ETAT_ECHEC);
+		assertThat(manuel.getValideurCompteId()).isEqualTo(valideurCompte.toString());
+		verify(referentielClient).monValideurPointage();
+	}
 }

@@ -285,4 +285,89 @@ class HeuresSupMoteurTest {
 		assertThat(moteur.getStatut()).isEqualTo(StatutHeuresSup.EN_ATTENTE);
 		verify(jourRepository, never()).deleteByDemandeId(any());
 	}
+
+	@Test
+	void annulerParBackoffice_demandeMoteurEnCours_renvoie409DemandeSousWorkflow() {
+		PresenceHeuresSupDemande d = new PresenceHeuresSupDemande();
+		d.setId(UUID.randomUUID());
+		d.setSiteId(siteId);
+		d.setDateDebut(DEMAIN);
+		d.setDateFin(DEMAIN);
+		d.setStatut(StatutHeuresSup.EN_COURS);
+		d.setWorkflowMode("MOTEUR");
+		d.setDemandeurCompteId(compteRo.toString());
+		d.setDemandeurFicheId(ficheRo.toString());
+		d.setDebutPlageTs(MAINTENANT.plusSeconds(86_400));
+		PresenceHeuresSupBeneficiaire b = new PresenceHeuresSupBeneficiaire();
+		b.setCollaborateurId(ficheBenef);
+		b.setCompteId(compteBenef);
+		when(demandeRepository.findById(d.getId())).thenReturn(Optional.of(d));
+		when(beneficiaireRepository.findByDemandeId(d.getId())).thenReturn(List.of(b));
+		when(acteurResolver.avecFiche()).thenReturn(
+				new Acteur(compteRh.toString(), ficheRh.toString(), "RH", "Amel Trabelsi"));
+
+		assertThatThrownBy(() -> service.annulerParBackoffice(d.getId(), "Annulation back-office"))
+				.isInstanceOf(PresenceMetierException.class)
+				.satisfies(ex -> {
+					PresenceMetierException p = (PresenceMetierException) ex;
+					assertThat(p.getHttpStatus()).isEqualTo(409);
+					assertThat(p.getCode()).isEqualTo("DEMANDE_SOUS_WORKFLOW");
+				});
+		verify(jourRepository, never()).deleteByDemandeId(any());
+	}
+
+	@Test
+	void annulerParBackoffice_demandeMoteurValideeAvantPlage_annuleEtSupprimeJours() {
+		PresenceHeuresSupDemande d = new PresenceHeuresSupDemande();
+		d.setId(UUID.randomUUID());
+		d.setSiteId(siteId);
+		d.setDateDebut(DEMAIN);
+		d.setDateFin(DEMAIN);
+		d.setOuvertureAvantMinutes(60);
+		d.setOuvertureApresMinutes(0);
+		d.setStatut(StatutHeuresSup.VALIDEE);
+		d.setWorkflowMode("MOTEUR");
+		d.setDemandeurCompteId(compteRo.toString());
+		d.setDemandeurFicheId(ficheRo.toString());
+		d.setDebutPlageTs(MAINTENANT.plusSeconds(86_400));
+		PresenceHeuresSupBeneficiaire b = new PresenceHeuresSupBeneficiaire();
+		b.setCollaborateurId(ficheBenef);
+		b.setCompteId(compteBenef);
+		when(demandeRepository.findById(d.getId())).thenReturn(Optional.of(d));
+		when(beneficiaireRepository.findByDemandeId(d.getId())).thenReturn(List.of(b));
+		when(acteurResolver.avecFiche()).thenReturn(
+				new Acteur(compteRh.toString(), ficheRh.toString(), "RH", "Amel Trabelsi"));
+
+		DemandeHeuresSupResponse rep = service.annulerParBackoffice(d.getId(), "Évènement reporté");
+
+		assertThat(rep.statut()).isEqualTo(StatutHeuresSup.ANNULEE);
+		assertThat(rep.motifAnnulation()).isEqualTo("Évènement reporté");
+		verify(jourRepository).deleteByDemandeId(d.getId());
+		verify(notifier).annulee(any(), any(), any());
+	}
+
+	@Test
+	void annulerParDemandeurEnModeMoteur_acquiertVerrouPessimisteEnEcriture() {
+		UUID instanceId = UUID.randomUUID();
+		PresenceHeuresSupDemande d = new PresenceHeuresSupDemande();
+		d.setId(UUID.randomUUID());
+		d.setSiteId(siteId);
+		d.setStatut(StatutHeuresSup.EN_COURS);
+		d.setWorkflowMode("MOTEUR");
+		d.setWorkflowInstanceId(instanceId);
+		d.setDemandeurCompteId(compteRo.toString());
+		d.setDebutPlageTs(MAINTENANT.plusSeconds(86_400));
+
+		when(demandeRepository.findById(d.getId())).thenReturn(Optional.of(d));
+		when(demandeRepository.findByIdPourDecision(d.getId())).thenReturn(Optional.of(d));
+		when(acteurResolver.depuisJwt()).thenReturn(
+				new Acteur(compteRo.toString(), ficheRo.toString(), "RO", "Omar"));
+		when(moteurClient.annuler(any(), any(), any())).thenReturn(IssueAnnulation.ANNULEE);
+
+		DemandeHeuresSupResponse rep = service.annulerParDemandeur(d.getId());
+
+		assertThat(rep.statut()).isEqualTo(StatutHeuresSup.ANNULEE);
+		verify(demandeRepository).findByIdPourDecision(d.getId());
+		verify(jourRepository).deleteByDemandeId(d.getId());
+	}
 }
