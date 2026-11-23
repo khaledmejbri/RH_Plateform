@@ -544,11 +544,6 @@ export default function PanneauEtape({
           </div>
           <ErreursChamp erreurs={erreursPrefixe('delai')} />
 
-          <div className="alert alert--info" role="note">
-            Les réglages de relances, d’escalade et d’action à l’échéance ci-dessous s’enregistrent avec le modèle et
-            seront appliqués à partir d’une prochaine version du moteur.
-          </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
             <div>
               <label className="field-label" htmlFor="rel-nb">Nombre de relances (0 à {RELANCES_MAX})</label>

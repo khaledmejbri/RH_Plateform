@@ -32,7 +32,7 @@ export const TYPES_ETAPE: ReadonlyArray<{ code: string; libelle: string }> = [
 export const libelleTypeEtape = (c: string | null | undefined) =>
   lire(Object.fromEntries(TYPES_ETAPE.map((t) => [t.code, t.libelle])), c);
 
-const STATUT_INSTANCE: Readonly<Record<string, string>> = {
+export const STATUT_INSTANCE: Readonly<Record<string, string>> = {
   EN_COURS: 'En cours',
   BLOQUEE: 'Bloquée',
   APPROUVEE: 'Approuvée',
@@ -160,4 +160,96 @@ const ACTION_DECISION: Readonly<Record<string, string>> = {
 };
 export function libelleActionDecision(c: string | null | undefined): string {
   return lire(ACTION_DECISION, c);
+}
+
+const STATUT_TACHE: Readonly<Record<string, string>> = {
+  A_TRAITER: 'À traiter',
+  RESERVEE: 'En cours d’enregistrement',
+  TRAITEE: 'Traitée',
+  ANNULEE: 'Annulée',
+  EXPIREE: 'Expirée',
+};
+export const libelleStatutTache = (c: string | null | undefined) => lire(STATUT_TACHE, c);
+
+const TYPE_TACHE: Readonly<Record<string, string>> = {
+  VALIDATION: 'Validation',
+  TACHE: 'Tâche',
+  COMPLEMENT: 'Complément',
+};
+export const libelleTypeTache = (c: string | null | undefined) => lire(TYPE_TACHE, c);
+
+const DECISION_TACHE: Readonly<Record<string, string>> = {
+  APPROUVEE: 'Approuvée',
+  REFUSEE: 'Refusée',
+  RENVOYEE: 'Renvoyée pour complément',
+  FAITE: 'Faite',
+};
+export const libelleDecisionTache = (c: string | null | undefined) => lire(DECISION_TACHE, c);
+
+const ORIGINE_CANDIDAT: Readonly<Record<string, string>> = {
+  TITULAIRE: 'Titulaire',
+  DELEGUE: 'Délégué',
+  DELEGUE_AUTO: 'Délégué automatique (congé)',
+  ESCALADE: 'Escalade',
+  REAFFECTATION: 'Réaffectation RH',
+};
+export const libelleOrigineCandidat = (c: string | null | undefined) => lire(ORIGINE_CANDIDAT, c);
+
+const ORIGINE_DELEGATION: Readonly<Record<string, string>> = {
+  MANUELLE: 'Manuelle',
+  AUTO_CONGE: 'Automatique (congé)',
+};
+export const libelleOrigineDelegation = (c: string | null | undefined) => lire(ORIGINE_DELEGATION, c);
+
+const TYPE_EVENEMENT_HISTORIQUE: Readonly<Record<string, string>> = {
+  INSTANCE_DEMARREE: 'Workflow démarré',
+  ETAPE_SAUTEE: 'Étape non applicable',
+  DECISION: 'Décision enregistrée',
+  COMPLEMENT_EXPIRE: 'Délai de complément expiré',
+  TACHE_EXPIREE: 'Tâche expirée',
+  INSTANCE_TERMINEE: 'Workflow terminé',
+  EFFET_REJETE: 'Enregistrement métier refusé',
+  DELEGATION_APPLIQUEE: 'Délégation appliquée',
+  RELANCE: 'Relance envoyée',
+  ECHEANCE_ATTEINTE: 'Échéance atteinte',
+  ESCALADEE: 'Tâche escaladée',
+  INSTANCE_ERREUR: 'Instance en erreur',
+  INSTANCE_ANNULEE: 'Workflow annulé',
+  REAFFECTEE: 'Tâche réaffectée',
+};
+export const libelleEvenementHistorique = (c: string | null | undefined) => lire(TYPE_EVENEMENT_HISTORIQUE, c);
+
+const ACTION_ECHEANCE: Readonly<Record<string, string>> = {
+  RIEN: 'Aucune action automatique',
+  ESCALADER: 'Escalade',
+  EXPIRER: 'Expiration',
+  REFUSER_AUTO: 'Refus automatique',
+  APPROUVER_AUTO: 'Approbation automatique',
+};
+export const libelleActionEcheance = (c: string | null | undefined) => lire(ACTION_ECHEANCE, c);
+
+export type ToneStatutWorkflow = 'success' | 'danger' | 'warning' | 'info' | 'neutral' | 'progress';
+
+const TONE_STATUT_INSTANCE: Readonly<Record<string, ToneStatutWorkflow>> = {
+  EN_COURS: 'progress',
+  BLOQUEE: 'danger',
+  APPROUVEE: 'success',
+  REFUSEE: 'danger',
+  ANNULEE: 'neutral',
+  EXPIREE: 'warning',
+  ERREUR: 'danger',
+};
+export function toneStatutInstance(c: string | null | undefined): ToneStatutWorkflow {
+  return (c ? TONE_STATUT_INSTANCE[c] : undefined) ?? 'neutral';
+}
+
+const TONE_STATUT_TACHE: Readonly<Record<string, ToneStatutWorkflow>> = {
+  A_TRAITER: 'warning',
+  RESERVEE: 'progress',
+  TRAITEE: 'success',
+  ANNULEE: 'neutral',
+  EXPIREE: 'danger',
+};
+export function toneStatutTache(c: string | null | undefined): ToneStatutWorkflow {
+  return (c ? TONE_STATUT_TACHE[c] : undefined) ?? 'neutral';
 }

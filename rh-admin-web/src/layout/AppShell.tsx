@@ -32,6 +32,12 @@ export const MENU: Menu[] = [
   { kind: 'lien', id: 'accueil', to: '/app/accueil', label: 'Accueil', icon: IconHome },
   { kind: 'lien', id: 'taches', to: '/app/taches', label: 'Mes tâches', icon: IconCheckSquare },
   {
+    kind: 'groupe', id: 'workflows', label: 'Workflows', icon: IconWorkflow, enfants: [
+      { id: 'workflows-instances', to: '/app/workflows/instances', label: 'Workflows en cours' },
+      { id: 'workflows-delegations', to: '/app/workflows/delegations', label: 'Délégations' },
+    ],
+  },
+  {
     kind: 'groupe', id: 'pointage', label: 'Pointage', icon: IconQr, enfants: [
       { id: 'pointages', to: '/app/pointage?onglet=pointages', label: 'Pointages' },
       { id: 'temps', to: '/app/pointage?onglet=temps', label: 'Temps de travail' },
@@ -89,6 +95,8 @@ export function entreeActive(pathname: string, search: string): string {
   if (p.startsWith('/app/parametres/fonctions')) return 'fonctions';
   if (p.startsWith('/app/parametres/workflows')) return 'workflows';
   if (p.startsWith('/app/parametres')) return 'parametres';
+  if (p.startsWith('/app/workflows/instances')) return 'workflows-instances';
+  if (p.startsWith('/app/workflows/delegations')) return 'workflows-delegations';
   if (p.startsWith('/app/taches')) return 'taches';
   if (p.startsWith('/app/accueil')) return 'accueil';
   return '';
@@ -354,4 +362,7 @@ function IconQr({ className }: { className?: string }) {
 }
 function IconCheckSquare({ className }: { className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+function IconWorkflow({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M6 3v12M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM18 9a9 9 0 01-9 9" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
