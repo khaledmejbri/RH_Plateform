@@ -1,6 +1,7 @@
 package com.hr.referentiel.web;
 
 import com.hr.referentiel.dto.AffectationCollaborateurResponse;
+import com.hr.referentiel.dto.CalendrierPresenceResponse;
 import com.hr.referentiel.dto.CollaborateurEvaluationSnapshotResponse;
 import com.hr.referentiel.dto.CollaborateurPointageResponse;
 import com.hr.referentiel.dto.FicheEvaluationResponse;
@@ -157,6 +158,35 @@ public class InterneReferentielController {
 		return ResponseEntity.ok(affectationService.affectations(ids));
 	}
 
+	/**
+	 * Calendrier de présence pour l'export Temps de travail de svc-presence : jours travaillés de la société,
+	 * jours fériés actifs dans [du, au] et congés approuvés (CONGE / APPROUVEE) de 1 à 100 collaborateurs.
+	 * Fenêtre maximale : 62 jours.
+	 */
+	@PostMapping("/collaborateurs/calendrier-presence")
+	public ResponseEntity<CalendrierPresenceResponse> calendrierPresence(
+			@RequestHeader(value = "X-Internal-Token", required = false) String jeton,
+			@RequestBody CalendrierPresenceRequest requete) {
+		if (!jetonValide(jeton)) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+		}
+		if (requete == null || requete.collaborateurIds() == null || requete.du() == null || requete.au() == null) {
+			return ResponseEntity.badRequest().build();
+		}
+		List<UUID> ids = requete.collaborateurIds().stream().filter(java.util.Objects::nonNull).distinct().toList();
+		if (ids.isEmpty() || ids.size() > AffectationService.RESOLUTION_MAX) {
+			return ResponseEntity.badRequest().build();
+		}
+		if (requete.au().isBefore(requete.du())) {
+			return ResponseEntity.badRequest().build();
+		}
+		long nbJours = java.time.temporal.ChronoUnit.DAYS.between(requete.du(), requete.au()) + 1L;
+		if (nbJours > AffectationService.FENETRE_CALENDRIER_MAX_JOURS) {
+			return ResponseEntity.badRequest().build();
+		}
+		return ResponseEntity.ok(affectationService.calendrierPresence(ids, requete.du(), requete.au()));
+	}
+
 	/** Libellés des familles métier et des niveaux de séniorité, pour les textes de svc-evaluation (lot 2). */
 	@GetMapping("/libelles-profil")
 	public ResponseEntity<LibellesProfilResponse> libellesProfil(
@@ -223,5 +253,11 @@ public class InterneReferentielController {
 	}
 
 	public record ResolutionPointageRequest(@JsonProperty("collaborateur_ids") List<UUID> collaborateurIds) {
+	}
+
+	public record CalendrierPresenceRequest(
+			@JsonProperty("collaborateur_ids") List<UUID> collaborateurIds,
+			@JsonProperty("du") java.time.LocalDate du,
+			@JsonProperty("au") java.time.LocalDate au) {
 	}
 }

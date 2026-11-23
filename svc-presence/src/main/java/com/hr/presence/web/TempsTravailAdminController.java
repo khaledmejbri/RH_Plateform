@@ -2,7 +2,7 @@ package com.hr.presence.web;
 
 import com.hr.presence.domain.EtatJourHeuresSup;
 import com.hr.presence.dto.TempsTravailDtos.TempsTravailResponse;
-import com.hr.presence.service.TempsTravailCsvService;
+import com.hr.presence.service.TempsTravailExcelService;
 import com.hr.presence.service.TempsTravailService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -25,12 +27,15 @@ import java.util.UUID;
 @RequestMapping("/api/rh/v1/admin/presence/temps-travail")
 public class TempsTravailAdminController {
 
-	private final TempsTravailService service;
-	private final TempsTravailCsvService csvService;
+	private static final MediaType MEDIA_TYPE_XLSX = MediaType.parseMediaType(
+			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
-	public TempsTravailAdminController(TempsTravailService service, TempsTravailCsvService csvService) {
+	private final TempsTravailService service;
+	private final TempsTravailExcelService excelService;
+
+	public TempsTravailAdminController(TempsTravailService service, TempsTravailExcelService excelService) {
 		this.service = service;
-		this.csvService = csvService;
+		this.excelService = excelService;
 	}
 
 	@GetMapping
@@ -50,16 +55,18 @@ public class TempsTravailAdminController {
 	@GetMapping("/export")
 	@PreAuthorize(PresenceSecurityExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<byte[]> exporter(
-			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
-			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au,
-			@RequestParam(name = "collaborateurId", required = false) UUID collaborateurId,
+			@RequestParam(name = "mois", required = false) String mois,
+			@RequestParam(name = "collaborateurIds", required = false) List<UUID> collaborateurIds,
 			@RequestParam(name = "siteId", required = false) UUID siteId,
 			@RequestParam(name = "uniteId", required = false) UUID uniteId,
 			@RequestParam(name = "etat", required = false) EtatJourHeuresSup etat) {
-		byte[] csv = csvService.exporter(du, au, collaborateurId, siteId, uniteId, etat);
+		YearMonth ym = TempsTravailExcelService.validerMois(mois);
+		List<UUID> idsValides = TempsTravailExcelService.validerCollaborateurs(collaborateurIds);
+		byte[] xlsx = excelService.exporter(ym.toString(), idsValides, siteId, uniteId, etat);
+		String filename = TempsTravailExcelService.nomFichier(ym);
 		return ResponseEntity.ok()
-				.contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
-				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"temps-de-travail.csv\"")
-				.body(csv);
+				.contentType(MEDIA_TYPE_XLSX)
+				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+				.body(xlsx);
 	}
 }

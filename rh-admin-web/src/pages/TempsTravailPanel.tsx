@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  exporterTempsTravailCsv,
+  estMoisIsoValide,
+  exporterTempsTravailExcel,
   getPresenceSites,
   getTempsTravail,
   messagePresenceErreur,
@@ -12,7 +13,9 @@ import {
 } from '../api/presenceApi';
 import { getTousCollaborateurs, getUnites, type CollaborateurRow, type Unite } from '../api/rhClient';
 import BarreFiltres, { AucunResultat, ChampDate, ChampSelect, FiltresUnite } from '../components/BarreFiltres';
+import ChampMois, { cycleMensuelDepuisMois } from '../components/ChampMois';
 import FiltreCollaborateur from '../components/FiltreCollaborateur';
+import SelecteurCollaborateursMulti from '../components/SelecteurCollaborateursMulti';
 import { EmptyState, LoadingState } from '../components/ui';
 import { useFiltresUrl, type SelectionUnite } from '../utils/filtres';
 import { formatDate, formatDateHeure, formatHeuresMinutes, formatPeriode, SITE_INTROUVABLE } from '../utils/format';
@@ -21,6 +24,9 @@ import DetailLink, { LienPersonne } from '../detail/DetailLink';
 
 const TAILLE_PAGE = 50;
 const JOURS_MAX = 31;
+
+export const ERREUR_MOIS_EXPORT = 'Sélectionnez un mois et une année valides (AAAA-MM).';
+export const ERREUR_COLLABORATEURS_EXPORT = 'Sélectionnez au moins un collaborateur pour exporter.';
 
 const ETATS: { valeur: EtatTempsTravail; libelle: string; classe: string }[] = [
   { valeur: 'COMPLET', libelle: 'Complet', classe: 'badge badge--success' },
@@ -42,6 +48,12 @@ function aujourdhuiTunis(): Date {
   return new Date(a, m - 1, j);
 }
 
+function moisCourantTunis(): string {
+  const d = aujourdhuiTunis();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}`;
+}
+
 function periodeDefaut(): { du: string; au: string } {
   const fin = aujourdhuiTunis();
   const debut = new Date(fin);
@@ -59,6 +71,20 @@ function erreurPeriode(du: string, au: string): string | null {
   if (au < du) return 'La date de fin doit être postérieure ou égale à la date de début.';
   if (joursEntre(du, au) > JOURS_MAX) return `La période ne peut pas dépasser ${JOURS_MAX} jours.`;
   return null;
+}
+
+export function validerFiltresExportTempsTravail(
+  mois: string,
+  collaborateurIds: ReadonlyArray<string>,
+): { erreurMois: string | null; erreurCollaborateurs: string | null; valide: boolean } {
+  const erreurMois = estMoisIsoValide(mois ?? '') ? null : ERREUR_MOIS_EXPORT;
+  const idsValides = (collaborateurIds ?? []).map((id) => id.trim()).filter(Boolean);
+  const erreurCollaborateurs = idsValides.length > 0 ? null : ERREUR_COLLABORATEURS_EXPORT;
+  return {
+    erreurMois,
+    erreurCollaborateurs,
+    valide: !erreurMois && !erreurCollaborateurs,
+  };
 }
 
 export function hhmm(minutes: number): string {
@@ -185,6 +211,11 @@ export default function TempsTravailPanel() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [erreurDates, setErreurDates] = useState<string | null>(null);
+
+  // État de l'export Excel mensuel (cycle 27 -> 26)
+  const [moisExport, setMoisExport] = useState<string>(moisCourantTunis);
+  const [collabsExport, setCollabsExport] = useState<string[]>([]);
+  const [exportTente, setExportTente] = useState(false);
   const [exportEnCours, setExportEnCours] = useState(false);
   const [exportErr, setExportErr] = useState<string | null>(null);
 
@@ -192,6 +223,12 @@ export default function TempsTravailPanel() {
   const uniteId = f.service || f.departement || f.direction;
   const erreurLocale = erreurPeriode(f.du, f.au);
   const erreurAffichee = erreurLocale ?? erreurDates;
+
+  const cycleExport = useMemo(() => cycleMensuelDepuisMois(moisExport), [moisExport]);
+  const validationExport = useMemo(
+    () => validerFiltresExportTempsTravail(moisExport, collabsExport),
+    [moisExport, collabsExport],
+  );
 
   useEffect(() => {
     setCollabsLoading(true);
@@ -204,6 +241,14 @@ export default function TempsTravailPanel() {
       .then((p) => setSites(p.contenu))
       .catch(() => {});
   }, []);
+
+  // Si l'utilisateur choisit un collaborateur dans le filtre du tableau et qu'aucun collaborateur
+  // d'export n'a encore été choisi, pré-sélectionner ce collaborateur pour faciliter l'export.
+  useEffect(() => {
+    if (f.collab && collabsExport.length === 0 && !exportTente) {
+      setCollabsExport([f.collab]);
+    }
+  }, [f.collab, collabsExport.length, exportTente]);
 
   const charger = useCallback(async () => {
     if (erreurPeriode(f.du, f.au)) {
@@ -245,17 +290,20 @@ export default function TempsTravailPanel() {
   }
 
   async function exporter() {
-    if (erreurLocale) return;
-    setExportEnCours(true);
+    setExportTente(true);
     setExportErr(null);
+    const v = validerFiltresExportTempsTravail(moisExport, collabsExport);
+    if (!v.valide) {
+      return;
+    }
+    setExportEnCours(true);
     try {
-      await exporterTempsTravailCsv({ du: f.du, au: f.au, collaborateurId: f.collab, siteId: f.site, uniteId, etat: f.etat });
+      await exporterTempsTravailExcel({
+        mois: moisExport,
+        collaborateurIds: collabsExport,
+      });
     } catch (e) {
-      if (e instanceof PresenceApiError && (e.code === 'PERIODE_TROP_LONGUE' || e.code === 'PERIODE_INVALIDE')) {
-        setErreurDates(e.message);
-      } else {
-        setExportErr(messagePresenceErreur(e, 'Export impossible'));
-      }
+      setExportErr(messagePresenceErreur(e, 'Export impossible'));
     } finally {
       setExportEnCours(false);
     }
@@ -270,6 +318,86 @@ export default function TempsTravailPanel() {
 
   return (
     <div className="panel">
+      <section
+        aria-label="Export Excel Pointage (cycle du 27 au 26)"
+        style={{
+          border: '1px solid var(--color-border, #d8dee9)',
+          borderRadius: 8,
+          padding: 16,
+          marginBottom: 16,
+          background: 'var(--color-surface-subtle, #f8fafc)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: '1rem' }}>Export Excel Pointage (cycle du 27 au 26)</h3>
+          {cycleExport ? (
+            <span className="muted small">
+              Cycle : {formatPeriode(cycleExport.du, cycleExport.au)}
+            </span>
+          ) : null}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) 1fr auto', gap: 16, alignItems: 'start' }}>
+          <div>
+            <ChampMois
+              id="tt-export-mois"
+              libelle="Mois de pointage *"
+              valeur={moisExport}
+              required
+              disabled={exportEnCours}
+              invalide={exportTente && !!validationExport.erreurMois}
+              onChange={(m) => {
+                setMoisExport(m);
+                setExportErr(null);
+              }}
+            />
+            {exportTente && validationExport.erreurMois ? (
+              <p className="field-error text-danger small" role="alert" style={{ margin: '4px 0 0' }}>
+                {validationExport.erreurMois}
+              </p>
+            ) : null}
+          </div>
+
+          <div>
+            <SelecteurCollaborateursMulti
+              id="tt-export-collabs"
+              libelle="Collaborateurs à exporter (min. 1) *"
+              collaborateurs={collabs}
+              valeurs={collabsExport}
+              chargement={collabsLoading}
+              disabled={exportEnCours}
+              invalide={exportTente && !!validationExport.erreurCollaborateurs}
+              onChange={(ids) => {
+                setCollabsExport(ids);
+                setExportErr(null);
+              }}
+            />
+            {exportTente && validationExport.erreurCollaborateurs ? (
+              <p className="field-error text-danger small" role="alert" style={{ margin: '4px 0 0' }}>
+                {validationExport.erreurCollaborateurs}
+              </p>
+            ) : null}
+          </div>
+
+          <div style={{ paddingTop: 22 }}>
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={exportEnCours}
+              onClick={() => void exporter()}
+            >
+              {exportEnCours ? 'Export…' : 'Exporter Excel (.xlsx)'}
+            </button>
+          </div>
+        </div>
+
+        {exportErr ? (
+          <div className="alert alert--error" role="alert" style={{ marginTop: 12 }}>
+            {exportErr}
+          </div>
+        ) : null}
+      </section>
+
       <BarreFiltres
         id="temps-travail"
         nbResultats={data?.nb_lignes ?? 0}
@@ -303,15 +431,6 @@ export default function TempsTravailPanel() {
           toutesLibelle="Tous les états"
           onChange={(v) => changer({ etat: v })}
         />
-        <button
-          type="button"
-          className="btn btn--secondary"
-          style={{ alignSelf: 'end' }}
-          disabled={exportEnCours || !!erreurLocale}
-          onClick={() => void exporter()}
-        >
-          {exportEnCours ? 'Export…' : 'Exporter CSV'}
-        </button>
       </BarreFiltres>
 
       {!erreurLocale ? (
@@ -322,7 +441,6 @@ export default function TempsTravailPanel() {
           {erreurAffichee}
         </div>
       ) : null}
-      {exportErr ? <div className="alert alert--error">{exportErr}</div> : null}
       {err ? (
         <div className="alert alert--error">
           {err}{' '}

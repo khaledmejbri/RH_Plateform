@@ -197,4 +197,62 @@ class InterneReferentielControllerTest {
 		assertThat(controller.affectations("secret-partage", null).getStatusCode().value()).isEqualTo(400);
 		assertThat(controller.affectations("secret-partage", corps(cent_un)).getStatusCode().value()).isEqualTo(400);
 	}
+
+	@Test
+	void calendrierPresence_sansJetonOuMauvaisJeton_401_serviceNonAppele() {
+		var req = new InterneReferentielController.CalendrierPresenceRequest(
+				List.of(UUID.randomUUID()),
+				java.time.LocalDate.of(2026, 9, 27),
+				java.time.LocalDate.of(2026, 10, 26));
+
+		assertThat(controller.calendrierPresence(null, req).getStatusCode().value()).isEqualTo(401);
+		assertThat(controller.calendrierPresence("autre", req).getStatusCode().value()).isEqualTo(401);
+		verifyNoInteractions(affectationService);
+	}
+
+	@Test
+	void calendrierPresence_validationEntrees_400() {
+		UUID id = UUID.randomUUID();
+		java.time.LocalDate du = java.time.LocalDate.of(2026, 9, 27);
+		java.time.LocalDate au = java.time.LocalDate.of(2026, 10, 26);
+		List<UUID> centUn = new ArrayList<>();
+		for (int i = 0; i < 101; i++) {
+			centUn.add(UUID.randomUUID());
+		}
+
+		assertThat(controller.calendrierPresence("secret-partage", null).getStatusCode().value()).isEqualTo(400);
+		assertThat(controller.calendrierPresence("secret-partage",
+				new InterneReferentielController.CalendrierPresenceRequest(List.of(), du, au)).getStatusCode().value()).isEqualTo(400);
+		assertThat(controller.calendrierPresence("secret-partage",
+				new InterneReferentielController.CalendrierPresenceRequest(centUn, du, au)).getStatusCode().value()).isEqualTo(400);
+		assertThat(controller.calendrierPresence("secret-partage",
+				new InterneReferentielController.CalendrierPresenceRequest(List.of(id), null, au)).getStatusCode().value()).isEqualTo(400);
+		assertThat(controller.calendrierPresence("secret-partage",
+				new InterneReferentielController.CalendrierPresenceRequest(List.of(id), du, null)).getStatusCode().value()).isEqualTo(400);
+		assertThat(controller.calendrierPresence("secret-partage",
+				new InterneReferentielController.CalendrierPresenceRequest(List.of(id), au, du)).getStatusCode().value()).isEqualTo(400);
+		assertThat(controller.calendrierPresence("secret-partage",
+				new InterneReferentielController.CalendrierPresenceRequest(List.of(id), du, du.plusDays(62))).getStatusCode().value()).isEqualTo(400);
+		verifyNoInteractions(affectationService);
+	}
+
+	@Test
+	void calendrierPresence_bonJeton_200_dedoublonneEtRenvoieReponse() {
+		UUID id = UUID.randomUUID();
+		java.time.LocalDate du = java.time.LocalDate.of(2026, 9, 27);
+		java.time.LocalDate au = java.time.LocalDate.of(2026, 10, 26);
+		var attendu = new com.hr.referentiel.dto.CalendrierPresenceResponse(
+				List.of("LUN", "MAR", "MER", "JEU", "VEN"),
+				List.of(java.time.LocalDate.of(2026, 10, 15)),
+				List.of(new com.hr.referentiel.dto.CalendrierPresenceResponse.CongeApprouveItem(
+						id, java.time.LocalDate.of(2026, 10, 5), java.time.LocalDate.of(2026, 10, 7),
+						"ANNUEL", "JOURNEE_ENTIERE", "JOURNEE_ENTIERE")));
+		when(affectationService.calendrierPresence(List.of(id), du, au)).thenReturn(attendu);
+
+		var rep = controller.calendrierPresence("secret-partage",
+				new InterneReferentielController.CalendrierPresenceRequest(List.of(id, id), du, au));
+
+		assertThat(rep.getStatusCode().value()).isEqualTo(200);
+		assertThat(rep.getBody()).isEqualTo(attendu);
+	}
 }

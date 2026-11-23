@@ -19,6 +19,27 @@ public record AffectationCollaborateurResponse(
 		@JsonProperty("actif") boolean actif,
 		@JsonProperty("poste_libelle") String posteLibelle,
 		@JsonProperty("unite_id") UUID uniteId,
-		@JsonProperty("unite_libelle") String uniteLibelle
+		@JsonProperty("unite_libelle") String uniteLibelle,
+		@JsonProperty("prenom") String prenom,
+		@JsonProperty("nom_famille") String nomFamille,
+		@JsonProperty("fonction") String fonction,
+		@JsonProperty("qualite") String qualite,
+		@JsonProperty("qualification_affectation") String qualificationAffectation,
+		@JsonProperty("affectation") String affectation
 ) {
+	public AffectationCollaborateurResponse(
+			UUID collaborateurId,
+			UUID compteId,
+			String matricule,
+			String nom,
+			String directionLibelle,
+			String departementLibelle,
+			String serviceLibelle,
+			boolean actif,
+			String posteLibelle,
+			UUID uniteId,
+			String uniteLibelle) {
+		this(collaborateurId, compteId, matricule, nom, directionLibelle, departementLibelle, serviceLibelle,
+				actif, posteLibelle, uniteId, uniteLibelle, null, null, null, null, null, null);
+	}
 }

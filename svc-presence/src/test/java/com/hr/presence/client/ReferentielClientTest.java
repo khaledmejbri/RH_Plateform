@@ -162,4 +162,43 @@ class ReferentielClientTest {
 		assertThatThrownBy(() -> client().estValideurDe(UUID.randomUUID(), "c"))
 				.isInstanceOfSatisfying(PresenceMetierException.class, e -> assertThat(e.getHttpStatus()).isEqualTo(503));
 	}
+
+	@Test
+	void calendrierPresence_200_litJoursTravaillesFeriesEtConges() {
+		statut = 200;
+		UUID collabId = UUID.randomUUID();
+		corps = "{\"jours_travailles\":[\"LUN\",\"MAR\",\"MER\",\"JEU\",\"VEN\",\"SAM\"],"
+				+ "\"jours_feries\":[\"2026-10-15\"],"
+				+ "\"conges\":[{\"collaborateur_id\":\"" + collabId + "\","
+				+ "\"date_debut\":\"2026-10-05\",\"date_fin\":\"2026-10-07\","
+				+ "\"type_conge\":\"ANNUEL\",\"periode_premier_jour\":\"JOURNEE_ENTIERE\","
+				+ "\"periode_dernier_jour\":\"JOURNEE_ENTIERE\"}]}";
+
+		var res = client().calendrierPresence(
+				java.util.List.of(collabId),
+				java.time.LocalDate.of(2026, 9, 27),
+				java.time.LocalDate.of(2026, 10, 26));
+
+		assertThat(derniereRequete).isEqualTo("/internal/referentiel/collaborateurs/calendrier-presence");
+		assertThat(dernierJeton).isEqualTo("jeton-interne-de-test");
+		assertThat(res.joursTravailles()).containsExactly("LUN", "MAR", "MER", "JEU", "VEN", "SAM");
+		assertThat(res.joursFeries()).containsExactly(java.time.LocalDate.of(2026, 10, 15));
+		assertThat(res.conges()).singleElement().satisfies(c -> {
+			assertThat(c.collaborateurId()).isEqualTo(collabId);
+			assertThat(c.dateDebut()).isEqualTo(java.time.LocalDate.of(2026, 10, 5));
+			assertThat(c.dateFin()).isEqualTo(java.time.LocalDate.of(2026, 10, 7));
+			assertThat(c.typeConge()).isEqualTo("ANNUEL");
+		});
+	}
+
+	@Test
+	void calendrierPresence_referentielEnErreur_503() {
+		statut = 500;
+
+		assertThatThrownBy(() -> client().calendrierPresence(
+				java.util.List.of(UUID.randomUUID()),
+				java.time.LocalDate.of(2026, 9, 27),
+				java.time.LocalDate.of(2026, 10, 26)))
+				.isInstanceOfSatisfying(PresenceMetierException.class, e -> assertThat(e.getHttpStatus()).isEqualTo(503));
+	}
 }

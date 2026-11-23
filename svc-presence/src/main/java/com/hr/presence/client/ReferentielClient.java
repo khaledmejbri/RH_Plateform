@@ -30,6 +30,7 @@ public class ReferentielClient {
 
 	private static final Logger log = LoggerFactory.getLogger(ReferentielClient.class);
 	private static final String EN_TETE_JETON_INTERNE = "X-Internal-Token";
+	private static final String EN_TETE_SOCIETE_ID = "X-Societe-Id";
 
 	private final RestClient restClient;
 	private final String jetonInterne;
@@ -92,9 +93,14 @@ public class ReferentielClient {
 		try {
 			for (int i = 0; i < identifiants.size(); i += AFFECTATIONS_LOT) {
 				List<UUID> lot = identifiants.subList(i, Math.min(i + AFFECTATIONS_LOT, identifiants.size()));
-				Affectation[] body = restClient.post()
+				var req = restClient.post()
 						.uri("/internal/referentiel/collaborateurs/affectations")
-						.header(EN_TETE_JETON_INTERNE, jetonInterne)
+						.header(EN_TETE_JETON_INTERNE, jetonInterne);
+				String societeId = societeCouranteDepuisJwt();
+				if (societeId != null) {
+					req = req.header(EN_TETE_SOCIETE_ID, societeId);
+				}
+				Affectation[] body = req
 						.body(Map.of("collaborateur_ids", lot))
 						.retrieve()
 						.body(Affectation[].class);
@@ -106,6 +112,63 @@ public class ReferentielClient {
 		} catch (RestClientException ex) {
 			throw referentielIndisponible(ex);
 		}
+	}
+
+	/**
+	 * Calendrier de présence (jours travaillés de la société, jours fériés actifs et congés approuvés) pour l'export
+	 * Excel « Temps de travail », découpé par lots de 100 collaborateurs. Référentiel injoignable : 503.
+	 */
+	public CalendrierPresence calendrierPresence(List<UUID> collaborateurIds, java.time.LocalDate du, java.time.LocalDate au) {
+		if (collaborateurIds == null || collaborateurIds.isEmpty()) {
+			return new CalendrierPresence(List.of("LUN", "MAR", "MER", "JEU", "VEN"), List.of(), List.of());
+		}
+		List<String> joursTravailles = List.of("LUN", "MAR", "MER", "JEU", "VEN");
+		java.util.Set<java.time.LocalDate> feries = new java.util.LinkedHashSet<>();
+		List<CongeApprouve> conges = new java.util.ArrayList<>();
+		try {
+			for (int i = 0; i < collaborateurIds.size(); i += AFFECTATIONS_LOT) {
+				List<UUID> lot = collaborateurIds.subList(i, Math.min(i + AFFECTATIONS_LOT, collaborateurIds.size()));
+				var req = restClient.post()
+						.uri("/internal/referentiel/collaborateurs/calendrier-presence")
+						.header(EN_TETE_JETON_INTERNE, jetonInterne);
+				String societeId = societeCouranteDepuisJwt();
+				if (societeId != null) {
+					req = req.header(EN_TETE_SOCIETE_ID, societeId);
+				}
+				CalendrierPresence body = req
+						.body(Map.of("collaborateur_ids", lot, "du", du.toString(), "au", au.toString()))
+						.retrieve()
+						.body(CalendrierPresence.class);
+				if (body != null) {
+					if (body.joursTravailles() != null && !body.joursTravailles().isEmpty()) {
+						joursTravailles = body.joursTravailles();
+					}
+					if (body.joursFeries() != null) {
+						feries.addAll(body.joursFeries());
+					}
+					if (body.conges() != null) {
+						conges.addAll(body.conges());
+					}
+				}
+			}
+			return new CalendrierPresence(joursTravailles, List.copyOf(feries), List.copyOf(conges));
+		} catch (RestClientException ex) {
+			throw referentielIndisponible(ex);
+		}
+	}
+
+	private static String societeCouranteDepuisJwt() {
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		if (auth instanceof JwtAuthenticationToken jwt) {
+			Object claim = jwt.getToken().getClaims().get("societe_id");
+			if (claim != null) {
+				String s = String.valueOf(claim).trim();
+				if (!s.isEmpty()) {
+					return s;
+				}
+			}
+		}
+		return null;
 	}
 
 	/** Collaborateurs (fiche et compte) d'une unité et de ses sous-unités, tous statuts ; unité inconnue : liste vide. */
@@ -215,13 +278,27 @@ public class ReferentielClient {
 			@JsonProperty("departement_libelle") String departementLibelle,
 			@JsonProperty("service_libelle") String serviceLibelle,
 			@JsonProperty("poste_libelle") String posteLibelle,
-			@JsonProperty("unite_libelle") String uniteLibelle
+			@JsonProperty("unite_libelle") String uniteLibelle,
+			@JsonProperty("prenom") String prenom,
+			@JsonProperty("nom_famille") String nomFamille,
+			@JsonProperty("fonction") String fonction,
+			@JsonProperty("qualite") String qualite,
+			@JsonProperty("qualification_affectation") String qualificationAffectation,
+			@JsonProperty("affectation") String affectation
 	) {
+
+		/** Sans les champs étendus d'export Excel (rétro-compatibilité). */
+		public Affectation(UUID collaborateurId, UUID compteId, String matricule, String nom, String directionLibelle,
+						   String departementLibelle, String serviceLibelle, String posteLibelle, String uniteLibelle) {
+			this(collaborateurId, compteId, matricule, nom, directionLibelle, departementLibelle, serviceLibelle,
+					posteLibelle, uniteLibelle, null, null, null, null, null, null);
+		}
 
 		/** Sans poste ni unité (référentiel d'avant le lot 2). */
 		public Affectation(UUID collaborateurId, UUID compteId, String matricule, String nom, String directionLibelle,
 						   String departementLibelle, String serviceLibelle) {
-			this(collaborateurId, compteId, matricule, nom, directionLibelle, departementLibelle, serviceLibelle, null, null);
+			this(collaborateurId, compteId, matricule, nom, directionLibelle, departementLibelle, serviceLibelle,
+					null, null, null, null, null, null, null, null);
 		}
 
 		/** Unité la plus précise : celle fournie par le référentiel, sinon service, département, direction. */
@@ -237,6 +314,46 @@ public class ReferentielClient {
 			}
 			return directionLibelle;
 		}
+
+		/** Qualification affichée sur la feuille de pointage : qualité -> qualificationAffectation -> poste -> fonction. */
+		public String qualificationAffichee() {
+			return premierNonVide(qualite, qualificationAffectation, posteLibelle, fonction);
+		}
+
+		/** Affectation affichée sur la feuille de pointage : affectation -> unité -> service -> département -> direction. */
+		public String affectationAffichee() {
+			return premierNonVide(affectation, uniteLibelle, serviceLibelle, departementLibelle, directionLibelle);
+		}
+
+		private static String premierNonVide(String... valeurs) {
+			if (valeurs != null) {
+				for (String v : valeurs) {
+					if (v != null && !v.isBlank()) {
+						return v.trim();
+					}
+				}
+			}
+			return "";
+		}
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record CalendrierPresence(
+			@JsonProperty("jours_travailles") List<String> joursTravailles,
+			@JsonProperty("jours_feries") List<java.time.LocalDate> joursFeries,
+			@JsonProperty("conges") List<CongeApprouve> conges
+	) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record CongeApprouve(
+			@JsonProperty("collaborateur_id") UUID collaborateurId,
+			@JsonProperty("date_debut") java.time.LocalDate dateDebut,
+			@JsonProperty("date_fin") java.time.LocalDate dateFin,
+			@JsonProperty("type_conge") String typeConge,
+			@JsonProperty("periode_premier_jour") String periodePremierJour,
+			@JsonProperty("periode_dernier_jour") String periodeDernierJour
+	) {
 	}
 
 	/** Réponse de {@code /internal/.../{id}/valideur?compte_id=} (ADR lot 2, § 2). */

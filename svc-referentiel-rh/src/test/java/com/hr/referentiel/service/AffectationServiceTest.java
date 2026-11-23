@@ -127,4 +127,68 @@ class AffectationServiceTest {
 		assertThat(r.departementLibelle()).isNull();
 		assertThat(r.serviceLibelle()).isNull();
 	}
+
+	@Test
+	void affectations_exposePrenomNomFamilleQualificationEtAffectation() {
+		sarra.setPosteLibelle("Ingénieure Fullstack");
+		sarra.setFonction("Développeuse Senior");
+		sarra.setQualite("OP");
+		sarra.setQualificationAffectation("Cadre technique");
+		sarra.setAffectation("CHANTIER");
+		when(repository.findAllById(List.of(sarra.getId()))).thenReturn(List.of(sarra));
+
+		AffectationCollaborateurResponse r = service.affectations(List.of(sarra.getId())).get(0);
+
+		assertThat(r.prenom()).isEqualTo("Sarra");
+		assertThat(r.nomFamille()).isEqualTo("Khemiri");
+		assertThat(r.nom()).isEqualTo("Sarra Khemiri");
+		assertThat(r.posteLibelle()).isEqualTo("Ingénieure Fullstack");
+		assertThat(r.fonction()).isEqualTo("Développeuse Senior");
+		assertThat(r.qualite()).isEqualTo("OP");
+		assertThat(r.qualificationAffectation()).isEqualTo("Cadre technique");
+		assertThat(r.affectation()).isEqualTo("CHANTIER");
+	}
+
+	@Test
+	void calendrierPresence_retourneJoursTravaillesFeriesEtCongesApprouves() {
+		var demandeRepo = mock(com.hr.referentiel.repository.DemandeAdministrativeRhRepository.class);
+		var paramsRepo = mock(com.hr.referentiel.repository.SocieteParametresRepository.class);
+		var feriesService = mock(JourFerieService.class);
+		var svc = new AffectationService(repository, demandeRepo, paramsRepo, feriesService);
+
+		var params = new com.hr.referentiel.entity.SocieteParametres();
+		params.setJoursTravailles(List.of("LUN", "MAR", "MER", "JEU", "VEN", "SAM"));
+		when(paramsRepo.findFirstByOrderByIdAsc()).thenReturn(java.util.Optional.of(params));
+		when(feriesService.datesActives()).thenReturn(java.util.Set.of(
+				java.time.LocalDate.of(2026, 9, 15),
+				java.time.LocalDate.of(2026, 10, 15),
+				java.time.LocalDate.of(2026, 11, 15)));
+
+		var conge = new com.hr.referentiel.entity.DemandeAdministrativeRh();
+		conge.setDemandeur(sarra);
+		conge.setTypeDemande(com.hr.referentiel.domain.TypeDemandeAdministrativeRh.CONGE);
+		conge.setStatut(com.hr.referentiel.domain.StatutDemandeAdministrativeRh.APPROUVEE);
+		conge.setPeriodeDebut(java.time.LocalDate.of(2026, 10, 5));
+		conge.setPeriodeFin(java.time.LocalDate.of(2026, 10, 7));
+		conge.setContenu(java.util.Map.of("type_conge", "ANNUEL", "periode_premier_jour", "JOURNEE_ENTIERE", "periode_dernier_jour", "JOURNEE_ENTIERE"));
+
+		java.time.LocalDate du = java.time.LocalDate.of(2026, 9, 27);
+		java.time.LocalDate au = java.time.LocalDate.of(2026, 10, 26);
+		when(demandeRepo.findCongesApprouvesSurPeriode(
+				List.of(sarra.getId()),
+				com.hr.referentiel.domain.TypeDemandeAdministrativeRh.CONGE,
+				com.hr.referentiel.domain.StatutDemandeAdministrativeRh.APPROUVEE,
+				du, au)).thenReturn(List.of(conge));
+
+		var res = svc.calendrierPresence(List.of(sarra.getId()), du, au);
+
+		assertThat(res.joursTravailles()).containsExactly("LUN", "MAR", "MER", "JEU", "VEN", "SAM");
+		assertThat(res.joursFeries()).containsExactly(java.time.LocalDate.of(2026, 10, 15));
+		assertThat(res.conges()).singleElement().satisfies(c -> {
+			assertThat(c.collaborateurId()).isEqualTo(sarra.getId());
+			assertThat(c.dateDebut()).isEqualTo(java.time.LocalDate.of(2026, 10, 5));
+			assertThat(c.dateFin()).isEqualTo(java.time.LocalDate.of(2026, 10, 7));
+			assertThat(c.typeConge()).isEqualTo("ANNUEL");
+		});
+	}
 }

@@ -846,9 +846,44 @@ export function getTempsTravail(f: TempsTravailFiltres, page = 0, size = 50) {
   return apiFetch(`${BASE}/temps-travail?${q}`).then((r) => handlePresenceResponse<TempsTravailReponse>(r));
 }
 
-export async function exporterTempsTravailCsv(f: TempsTravailFiltres): Promise<void> {
-  const res = await apiFetch(`${BASE}/temps-travail/export?${paramsTempsTravail(f)}`, {
-    headers: { Accept: 'text/csv' },
+export type TempsTravailExportFiltres = {
+  mois: string;
+  collaborateurIds: string[];
+};
+
+const MOIS_ISO_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+export function estMoisIsoValide(mois: string): boolean {
+  return MOIS_ISO_RE.test(mois.trim());
+}
+
+function nomFichierDepuisEntete(res: Response, defaut: string): string {
+  const cd = res.headers?.get?.('Content-Disposition') ?? '';
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+  if (!m) return defaut;
+  try {
+    return decodeURIComponent(m[1].trim());
+  } catch {
+    return m[1].trim();
+  }
+}
+
+export async function exporterTempsTravailExcel(f: TempsTravailExportFiltres): Promise<void> {
+  const mois = (f.mois ?? '').trim();
+  if (!estMoisIsoValide(mois)) {
+    throw new PresenceApiError('Sélectionnez un mois et une année valides (AAAA-MM).', 400, 'MOIS_INVALIDE');
+  }
+  const ids = Array.from(new Set((f.collaborateurIds ?? []).map((id) => id.trim()).filter(Boolean)));
+  if (ids.length === 0) {
+    throw new PresenceApiError('Sélectionnez au moins un collaborateur pour exporter.', 400, 'COLLABORATEURS_REQUIS');
+  }
+
+  const q = new URLSearchParams();
+  q.set('mois', mois);
+  for (const id of ids) q.append('collaborateurIds', id);
+
+  const res = await apiFetch(`${BASE}/temps-travail/export?${q}`, {
+    headers: { Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, */*' },
   });
   if (res.status === 401) {
     clearToken();
@@ -865,11 +900,14 @@ export async function exporterTempsTravailCsv(f: TempsTravailFiltres): Promise<v
       body.code,
     );
   }
+
+  const [yyyy, mm] = mois.split('-');
+  const nomParDefaut = `pointage-${mm}-${yyyy}.xlsx`;
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `temps-de-travail-${f.du}-${f.au}.csv`;
+  a.download = nomFichierDepuisEntete(res, nomParDefaut);
   document.body.appendChild(a);
   a.click();
   a.remove();

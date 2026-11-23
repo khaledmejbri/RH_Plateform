@@ -94,4 +94,17 @@ public interface DemandeAdministrativeRhRepository extends JpaRepository<Demande
 	List<DemandeAdministrativeRh> findPourChevauchement(@Param("id") UUID collaborateurId,
 			@Param("type") TypeDemandeAdministrativeRh type,
 			@Param("statuts") java.util.Collection<StatutDemandeAdministrativeRh> statuts);
+
+	/** Congés approuvés d'un lot de collaborateurs chevauchant la période [du, au] (export pointage Temps de travail). */
+	@Query("select d from DemandeAdministrativeRh d join fetch d.demandeur "
+			+ "where d.demandeur.id in :ids and d.typeDemande = :type and d.statut = :statut "
+			+ "and d.periodeDebut is not null and d.periodeFin is not null "
+			+ "and d.periodeDebut <= :au and d.periodeFin >= :du "
+			+ "order by d.periodeDebut asc, d.creeLe asc")
+	List<DemandeAdministrativeRh> findCongesApprouvesSurPeriode(
+			@Param("ids") java.util.Collection<UUID> collaborateurIds,
+			@Param("type") TypeDemandeAdministrativeRh type,
+			@Param("statut") StatutDemandeAdministrativeRh statut,
+			@Param("du") LocalDate du,
+			@Param("au") LocalDate au);
 }
