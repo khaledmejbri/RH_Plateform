@@ -48,6 +48,10 @@ import '../../features/dossier/presentation/mon_equipe_screen.dart';
 import '../../features/formations/presentation/formation_detail_screen.dart';
 import '../../features/pointage/presentation/mes_pointages_screen.dart';
 import '../../features/pointage/presentation/pointage_manuel_detail_screen.dart';
+import '../../features/workflow/data/workflow_models.dart';
+import '../../features/workflow/presentation/mes_delegations_screen.dart';
+import '../../features/workflow/presentation/mes_taches_screen.dart';
+import '../../features/workflow/presentation/tache_detail_screen.dart';
 
 bool _peutConfigurerPresence(CollaborateurInfo info) => info.peutConfigurerPresence;
 bool _peutDemanderHeuresSup(CollaborateurInfo info) => info.peutDemanderHeuresSup;
@@ -201,6 +205,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
       GoRoute(path: '/organigramme', builder: (_, __) => const OrganigrammeScreen()),
+      GoRoute(path: '/taches', builder: (_, __) => const MesTachesScreen()),
+      GoRoute(
+        path: '/taches/:id',
+        builder: (_, s) => TacheDetailScreen(
+          tacheId: s.pathParameters['id']!,
+          itemListe: s.extra is TacheListeItem ? s.extra as TacheListeItem : null,
+        ),
+      ),
+      GoRoute(path: '/delegations', builder: (_, __) => const MesDelegationsScreen()),
     ],
   );
 });

@@ -163,6 +163,15 @@ class _DocumentCard extends StatelessWidget {
         statusColor = AppTheme.error;
         statusIcon = Icons.cancel_rounded;
         break;
+      case 'ANNULEE':
+        statusColor = AppTheme.textSecondary;
+        statusIcon = Icons.block_rounded;
+        break;
+      case 'A_COMPLETER':
+        statusColor = AppTheme.warning;
+        statusIcon = Icons.edit_note_rounded;
+        break;
+      case 'EN_COURS':
       case 'EN_TRAITEMENT_RH':
       case 'EN_ATTENTE_FILE':
         statusColor = AppTheme.warning;

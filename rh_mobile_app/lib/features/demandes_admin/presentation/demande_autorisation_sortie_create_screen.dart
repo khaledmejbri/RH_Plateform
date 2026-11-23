@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/format/formats.dart';
 
+import '../../workflow/data/workflow_models.dart';
+import '../../workflow/providers/workflow_providers.dart';
 import '../data/demande_admin_repository.dart';
 import 'demandes_admin_list_screen.dart';
 import 'package:rh_mobile_app/core/theme/app_theme.dart';
@@ -122,6 +124,8 @@ class _DemandeAutorisationSortieCreateScreenState
 
   @override
   Widget build(BuildContext context) {
+    final ouverts = ref.watch(typesOuvertsProvider).valueOrNull;
+    final typeOuvert = estTypeOuvert(ouverts, 'AUTORISATION_SORTIE');
     final duree = _dureeMinutes();
     final dureeValide = duree > 0 && duree <= _dureeMaxMinutes;
     final dureeDepasse = duree > _dureeMaxMinutes;
@@ -138,6 +142,20 @@ class _DemandeAutorisationSortieCreateScreenState
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          if (!typeOuvert) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: AppTheme.warningSurface,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'Ce type de demande est temporairement fermé.',
+                style: TextStyle(color: AppTheme.warning, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
           // Info banner
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -259,7 +277,7 @@ class _DemandeAutorisationSortieCreateScreenState
           SizedBox(
             height: 56,
             child: FilledButton(
-              onPressed: _loading ? null : _submit,
+              onPressed: (_loading || !typeOuvert) ? null : _submit,
               style: FilledButton.styleFrom(
                 backgroundColor: _blue,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

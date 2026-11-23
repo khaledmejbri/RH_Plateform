@@ -30,6 +30,10 @@ class DemandeAdminItem {
     this.soldeReserveAutresDemandes,
     this.soldeApresDemande,
     this.peutAnnuler = false,
+    this.workflowMode,
+    this.workflowInstanceId,
+    this.etapeCouranteLibelle,
+    this.echeanceLe,
   });
 
   final String id;
@@ -79,6 +83,14 @@ class DemandeAdminItem {
 
   /// Vrai seulement pour le demandeur d'une demande en cours (absent = faux : bouton masqué).
   final bool peutAnnuler;
+
+  /// Mode d'exécution du workflow (`HERITE` ou `MOTEUR`) et étape courante éventuelle.
+  final String? workflowMode;
+  final String? workflowInstanceId;
+  final String? etapeCouranteLibelle;
+  final String? echeanceLe;
+
+  bool get estModeMoteur => workflowMode == 'MOTEUR';
 
   /// Vrai si le serveur a envoyé le solde du demandeur (le connecté est le décideur).
   bool get aSoldeDecideur => soldeDisponibleDemandeur != null;
@@ -150,6 +162,10 @@ class DemandeAdminItem {
       soldeReserveAutresDemandes: lireDecimal(j['solde_reserve_autres_demandes']),
       soldeApresDemande: lireDecimal(j['solde_apres_demande']),
       peutAnnuler: j['peut_annuler'] == true,
+      workflowMode: j['workflow_mode'] as String?,
+      workflowInstanceId: j['workflow_instance_id']?.toString(),
+      etapeCouranteLibelle: j['etape_courante_libelle'] as String?,
+      echeanceLe: j['echeance_le'] as String?,
     );
   }
 }

@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/format/formats.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../workflow/presentation/suivi_workflow_frise.dart';
 import '../data/formation_models.dart';
 import '../data/formation_repository.dart';
 import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
 
 final formationDetailProvider = FutureProvider.family<FormationItem, String>((ref, id) async {
   final repo = ref.watch(formationRepositoryProvider);
-  final formations = await repo.mesDemandes();
-  for (final f in formations) {
-    if (f.id == id) return f;
+  try {
+    return await repo.obtenir(id);
+  } catch (_) {
+    final formations = await repo.mesDemandes();
+    for (final f in formations) {
+      if (f.id == id) return f;
+    }
+    rethrow;
   }
-  throw Exception('Élément introuvable.');
 });
 
 final workflowHistoryProvider = FutureProvider.family<List<WorkflowHistoryItem>, String>((ref, id) async {
@@ -48,6 +54,22 @@ class FormationDetailScreen extends ConsumerWidget {
                 _buildHeaderCard(formation),
                 const SizedBox(height: 16),
                 _buildInfoCard(formation),
+                if (formation.estModeMoteur) ...[
+                  const SizedBox(height: 16),
+                  SuiviWorkflowObjetSection(
+                    objetType: 'FORMATION',
+                    objetId: formation.id,
+                  ),
+                ],
+                if (formation.statut == 'A_COMPLETER') ...[
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: () => context.push('/taches'),
+                    icon: const Icon(Icons.edit_note_rounded),
+                    label: const Text('Compléter depuis Mes tâches'),
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 _buildWorkflowTimeline(historyAsync),
               ],
@@ -333,6 +355,8 @@ class FormationDetailScreen extends ConsumerWidget {
       'INTEGREE_PLAN' => (libelle, AppTheme.successSurface, AppTheme.success),
       'REFUSEE' => (libelle, AppTheme.errorSurface, AppTheme.errorDark),
       'ANNULEE' => (libelle, AppTheme.surfaceMuted, AppTheme.textSecondary),
+      'A_COMPLETER' => (libelle, AppTheme.warningSurface, AppTheme.warning),
+      'EN_COURS' => (libelle, AppTheme.primarySurface, AppTheme.primaryDark),
       _ => (libelle, AppTheme.primarySurface, AppTheme.primaryDark),
     };
   }

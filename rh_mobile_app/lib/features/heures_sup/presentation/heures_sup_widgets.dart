@@ -98,7 +98,7 @@ class StatutPastille extends StatelessWidget {
   Widget build(BuildContext context) {
     final (fond, texte) = switch (statut) {
       StatutHeuresSup.validee => (AppTheme.successSurface, AppTheme.success),
-      StatutHeuresSup.enAttente => (AppTheme.warningSurface, AppTheme.warning),
+      StatutHeuresSup.enAttente || StatutHeuresSup.enCours => (AppTheme.warningSurface, AppTheme.warning),
       StatutHeuresSup.refusee => (AppTheme.errorSurface, AppTheme.errorDark),
       _ => (AppTheme.surfaceMuted, AppTheme.textSecondary),
     };

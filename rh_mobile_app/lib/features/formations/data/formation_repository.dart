@@ -14,6 +14,11 @@ class FormationRepository {
 
   final Dio _dio;
 
+  Future<FormationItem> obtenir(String id) async {
+    final res = await _dio.get<Map<String, dynamic>>('${ApiConstants.demandesFormations}/$id');
+    return FormationItem.fromJson(Map<String, dynamic>.from(res.data ?? const {}));
+  }
+
   Future<List<FormationItem>> mesDemandes() async {
     final res = await _dio.get<List<dynamic>>(ApiConstants.demandesFormations);
     final list = res.data ?? [];

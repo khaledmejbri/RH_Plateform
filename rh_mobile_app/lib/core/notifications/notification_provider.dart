@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 
+import '../../features/a_valider/providers/a_valider_providers.dart';
+import '../../features/workflow/providers/workflow_providers.dart';
 import '../constants/api_constants.dart';
 import '../network/api_client.dart';
 import '../storage/secure_token_storage.dart';
@@ -42,10 +44,15 @@ class NotificationState {
 }
 
 class NotificationNotifier extends StateNotifier<NotificationState> {
-  NotificationNotifier(this._storage, this._repository) : super(const NotificationState());
+  NotificationNotifier(
+    this._storage,
+    this._repository, {
+    this.onWorkflowEvent,
+  }) : super(const NotificationState());
 
   final NotificationRepository _repository;
   final SecureTokenStorage _storage;
+  final VoidCallback? onWorkflowEvent;
   StompClient? _client;
   String? _currentUserId;
   bool _connecting = false;
@@ -290,10 +297,15 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
 
       // Use microtask to avoid updating state during build phase
       Future.microtask(() {
+        if (!mounted) return;
         state = state.copyWith(
           notifications: [notif, ...state.notifications],
           nonLues: state.nonLues + 1,
         );
+        final ev = notif.evenement?.trim().toUpperCase();
+        if (ev != null && ev.startsWith('WF_')) {
+          onWorkflowEvent?.call();
+        }
         debugPrint('[STOMP] ✅ Notification added to state. Total: ${state.notifications.length}');
       });
     } catch (e, stackTrace) {
@@ -348,8 +360,15 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
 
 final notificationProvider =
     StateNotifierProvider<NotificationNotifier, NotificationState>((ref) {
+  var actif = true;
+  ref.onDispose(() => actif = false);
   return NotificationNotifier(
     ref.watch(secureTokenStorageProvider),
     ref.watch(notificationRepositoryProvider),
+    onWorkflowEvent: () {
+      if (!actif) return;
+      ref.invalidate(compteurTachesProvider);
+      ref.invalidate(aValiderProvider);
+    },
   );
 });

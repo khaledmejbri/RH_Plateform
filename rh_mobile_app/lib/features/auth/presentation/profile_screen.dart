@@ -168,6 +168,10 @@ class ProfileScreen extends ConsumerWidget {
                           icon: Icons.schedule_rounded,
                           label: 'Mes pointages',
                           onTap: () => context.push('/pointage/mes-pointages')),
+                      _MenuItem(
+                          icon: Icons.swap_horiz_rounded,
+                          label: 'Mes délégations',
+                          onTap: () => context.push('/delegations')),
                     ]),
                     const SizedBox(height: 12),
                     if (ref.watch(facialControllerProvider).afficherEntreeProfil)

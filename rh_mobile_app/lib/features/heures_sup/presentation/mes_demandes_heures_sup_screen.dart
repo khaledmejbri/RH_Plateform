@@ -105,7 +105,7 @@ class _MesDemandesHeuresSupScreenState extends ConsumerState<MesDemandesHeuresSu
               demande: d,
               comptees: lignes,
               annulationEnCours: _annulationEnCours == d.id,
-              onAnnuler: d.enAttente ? () => _annuler(d) : null,
+              onAnnuler: (d.enAttente || d.enCours) ? () => _annuler(d) : null,
             );
           },
         ),

@@ -16,6 +16,10 @@ class FormationItem {
     this.creeLe,
     this.numero,
     this.statutLibelleApi,
+    this.workflowMode,
+    this.workflowInstanceId,
+    this.etapeCouranteLibelle,
+    this.echeanceLe,
   });
 
   final String id;
@@ -36,6 +40,12 @@ class FormationItem {
 
   /// Libellé du statut servi avec la formation (`statut_libelle`) ; à défaut, le référentiel chargé.
   final String? statutLibelleApi;
+  final String? workflowMode;
+  final String? workflowInstanceId;
+  final String? etapeCouranteLibelle;
+  final String? echeanceLe;
+
+  bool get estModeMoteur => workflowMode == 'MOTEUR';
 
   String get statutLibelle => Libelles.avecRepli(statutLibelleApi, statut, Libelles.statutFormation);
 
@@ -55,6 +65,10 @@ class FormationItem {
       creeLe: json['cree_le'] as String?,
       numero: json['numero'] as String?,
       statutLibelleApi: json['statut_libelle'] as String?,
+      workflowMode: json['workflow_mode'] as String?,
+      workflowInstanceId: json['workflow_instance_id']?.toString(),
+      etapeCouranteLibelle: json['etape_courante_libelle'] as String?,
+      echeanceLe: json['echeance_le'] as String?,
     );
   }
 }

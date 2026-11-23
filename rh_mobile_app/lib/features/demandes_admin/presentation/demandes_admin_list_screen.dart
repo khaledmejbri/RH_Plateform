@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/format/formats.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../workflow/data/workflow_models.dart';
+import '../../workflow/providers/workflow_providers.dart';
 import '../data/demande_admin_repository.dart';
 import '../data/demande_admin_models.dart';
 import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
@@ -39,7 +41,11 @@ class _DemandesAdminListScreenState
   }
 
   static bool _enCours(DemandeAdminItem i) =>
-      i.statut == 'EN_VALIDATION_SUPERIEUR' || i.statut == 'EN_VALIDATION_RRH' || i.statut == 'SOUMISE';
+      i.statut == 'EN_VALIDATION_SUPERIEUR' ||
+      i.statut == 'EN_VALIDATION_RRH' ||
+      i.statut == 'SOUMISE' ||
+      i.statut == 'EN_COURS' ||
+      i.statut == 'A_COMPLETER';
   static bool _approuvees(DemandeAdminItem i) => i.statut == 'APPROUVEE';
   static bool _refusees(DemandeAdminItem i) => i.statut == 'REFUSEE';
   static bool _annulees(DemandeAdminItem i) => i.statut == 'ANNULEE';
@@ -147,113 +153,135 @@ void afficherChoixDemande(BuildContext context, {bool avecListe = false}) {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                avecListe ? 'Mes demandes' : 'Nouvelle demande',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              if (avecListe) ...[
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceMuted,
-                      borderRadius: BorderRadius.circular(12),
+      builder: (ctx) => Consumer(
+        builder: (ctx, ref, _) {
+          final ouverts = ref.watch(typesOuvertsProvider).valueOrNull;
+          final congeOuvert = estTypeOuvert(ouverts, 'CONGE');
+          final sortieOuverte = estTypeOuvert(ouverts, 'AUTORISATION_SORTIE');
+          final missionOuverte = estTypeOuvert(ouverts, 'ORDRE_MISSION');
+          final documentOuvert = estTypeOuvert(ouverts, 'DOCUMENT');
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    avecListe ? 'Mes demandes' : 'Nouvelle demande',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  if (avecListe) ...[
+                    ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceMuted,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.list_alt_rounded, color: AppTheme.textSecondary),
+                      ),
+                      title: const Text('Voir mes demandes', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Suivre l’état de mes demandes'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        context.push('/demandes-admin');
+                      },
                     ),
-                    child: const Icon(Icons.list_alt_rounded, color: AppTheme.textSecondary),
+                    const Divider(height: 8),
+                  ],
+                  ListTile(
+                    enabled: congeOuvert,
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentSurface,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.calendar_month_rounded, color: AppTheme.accent),
+                    ),
+                    title: const Text('Congé', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(congeOuvert ? 'Absence sur plusieurs jours' : 'Actuellement fermé'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: congeOuvert
+                        ? () {
+                            Navigator.pop(ctx);
+                            context.push('/demandes-admin/conge/nouveau');
+                          }
+                        : null,
                   ),
-                  title: const Text('Voir mes demandes', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Suivre l’état de mes demandes'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    context.push('/demandes-admin');
-                  },
-                ),
-                const Divider(height: 8),
-              ],
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accentSurface,
-                    borderRadius: BorderRadius.circular(12),
+                  const Divider(height: 8),
+                  ListTile(
+                    enabled: sortieOuverte,
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primarySurface,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.access_time_rounded, color: AppTheme.primaryLight),
+                    ),
+                    title: const Text('Autorisation de sortie', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(sortieOuverte ? 'Sortie courte (2 h au maximum)' : 'Actuellement fermé'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: sortieOuverte
+                        ? () {
+                            Navigator.pop(ctx);
+                            context.push('/demandes-admin/autorisation/nouveau');
+                          }
+                        : null,
                   ),
-                  child: const Icon(Icons.calendar_month_rounded, color: AppTheme.accent),
-                ),
-                title: const Text('Congé', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Absence sur plusieurs jours'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push('/demandes-admin/conge/nouveau');
-                },
+                  const Divider(height: 8),
+                  ListTile(
+                    enabled: missionOuverte,
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.business_center_rounded, color: Color(0xFF7C3AED)),
+                    ),
+                    title: const Text('Ordre de mission', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(missionOuverte ? 'Déplacement professionnel' : 'Actuellement fermé'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: missionOuverte
+                        ? () {
+                            Navigator.pop(ctx);
+                            context.push('/demandes-admin/mission/nouveau');
+                          }
+                        : null,
+                  ),
+                  const Divider(height: 8),
+                  ListTile(
+                    enabled: documentOuvert,
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.successSurface,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.description_rounded, color: AppTheme.success),
+                    ),
+                    title: const Text('Document administratif', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(documentOuvert ? 'Attestation ou autre document' : 'Actuellement fermé'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: documentOuvert
+                        ? () {
+                            Navigator.pop(ctx);
+                            context.push('/documents/nouveau');
+                          }
+                        : null,
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ),
-              const Divider(height: 8),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primarySurface,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.access_time_rounded, color: AppTheme.primaryLight),
-                ),
-                title: const Text('Autorisation de sortie', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Sortie courte (2 h au maximum)'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push('/demandes-admin/autorisation/nouveau');
-                },
-              ),
-              const Divider(height: 8),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.business_center_rounded, color: Color(0xFF7C3AED)),
-                ),
-                title: const Text('Ordre de mission', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Déplacement professionnel'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push('/demandes-admin/mission/nouveau');
-                },
-              ),
-              const Divider(height: 8),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppTheme.successSurface,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.description_rounded, color: AppTheme.success),
-                ),
-                title: const Text('Document administratif', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Attestation ou autre document'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push('/documents/nouveau');
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
 }
@@ -413,15 +441,30 @@ class _DemandeCard extends StatelessWidget {
     ];
     final enValidation = d.statut == 'EN_VALIDATION_SUPERIEUR' ||
         d.statut == 'EN_VALIDATION_RRH' ||
-        d.statut == 'SOUMISE';
-    if (enValidation && (d.valideurNom ?? '').trim().isNotEmpty) {
+        d.statut == 'SOUMISE' ||
+        d.statut == 'EN_COURS' ||
+        d.statut == 'A_COMPLETER';
+    if (d.estModeMoteur &&
+        enValidation &&
+        (d.etapeCouranteLibelle ?? '').trim().isNotEmpty) {
+      parts.add('Étape : ${d.etapeCouranteLibelle!.trim()}');
+    } else if (enValidation && (d.valideurNom ?? '').trim().isNotEmpty) {
       parts.add('Validation par ${d.valideurNom!.trim()}');
     }
     return parts.isEmpty ? null : parts.join(' · ');
   }
 
   (String, Color, Color, Color, Color, IconData) _statusMeta(String statut) {
-    if (statut == 'EN_VALIDATION_SUPERIEUR') {
+    if (statut == 'A_COMPLETER') {
+      return (
+        d.statutLibelle,
+        AppTheme.warningSurface,
+        AppTheme.warning,
+        AppTheme.accentSurface,
+        AppTheme.accent,
+        Icons.edit_note_rounded,
+      );
+    } else if (statut == 'EN_VALIDATION_SUPERIEUR') {
       return (
         d.statutLibelle,
         AppTheme.warningSurface,
@@ -430,7 +473,9 @@ class _DemandeCard extends StatelessWidget {
         AppTheme.accent,
         Icons.supervisor_account_rounded,
       );
-    } else if (statut == 'EN_VALIDATION_RRH' || statut == 'SOUMISE') {
+    } else if (statut == 'EN_VALIDATION_RRH' ||
+        statut == 'SOUMISE' ||
+        statut == 'EN_COURS') {
       return (
         d.statutLibelle,
         AppTheme.primarySurface,

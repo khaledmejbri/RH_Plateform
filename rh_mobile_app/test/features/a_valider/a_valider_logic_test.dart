@@ -33,4 +33,8 @@ void main() {
   test('liste normale renvoyée telle quelle', () async {
     expect(await listeOuVideSiRefuse<int>(() async => [1, 2]), [1, 2]);
   });
+
+  test('compteur inclut les tâches workflow MOTEUR quand fournies', () {
+    expect(compterAValider(demandes: 1, pointagesManuels: 2, taches: 4), 7);
+  });
 }

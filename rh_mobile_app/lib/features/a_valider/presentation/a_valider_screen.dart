@@ -8,6 +8,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/rh_ui.dart';
 import '../../demandes_admin/data/demande_admin_models.dart';
 import '../../pointage/data/presence_models.dart';
+import '../../workflow/data/workflow_models.dart';
+import '../../workflow/providers/workflow_providers.dart';
 import '../providers/a_valider_providers.dart';
 
 /// Hub « À valider » : demandes M01 et pointages manuels en attente de mon accord. Chaque élément
@@ -51,11 +53,32 @@ class AValiderScreen extends ConsumerWidget {
             );
           }
           return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(aValiderProvider),
+            onRefresh: () async {
+              ref.invalidate(aValiderProvider);
+              ref.invalidate(compteurTachesProvider);
+            },
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               children: [
+                if (a.taches.isNotEmpty) ...[
+                  _Titre(
+                    'Mes tâches (circuit paramétré) (${a.tachesTotal > a.taches.length ? a.tachesTotal : a.taches.length})',
+                  ),
+                  for (final t in a.taches) _CarteTache(tache: t),
+                  const SizedBox(height: 4),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await context.push('/taches');
+                      ref.invalidate(aValiderProvider);
+                      ref.invalidate(compteurTachesProvider);
+                    },
+                    icon: const Icon(Icons.assignment_turned_in_outlined),
+                    label: const Text('Voir toutes mes tâches'),
+                    style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 if (a.demandes.isNotEmpty) ...[
                   _Titre('Demandes (${a.demandes.length})'),
                   for (final d in a.demandes) _CarteDemande(demande: d),
@@ -147,6 +170,76 @@ class _CartePointage extends StatelessWidget {
         ),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: d.id.isEmpty ? null : () => context.push('/pointage/manuels/${d.id}'),
+      ),
+    );
+  }
+}
+
+class _CarteTache extends ConsumerWidget {
+  const _CarteTache({required this.tache});
+
+  final TacheListeItem tache;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = tache;
+    final parts = <String>[
+      if (t.objetNumero != null && t.objetNumero!.isNotEmpty) t.objetNumero!,
+      if (t.demandeurNom != null && t.demandeurNom!.isNotEmpty) t.demandeurNom!,
+      if (t.echeanceLe != null && t.echeanceLe!.isNotEmpty)
+        'Échéance : ${formatDateHeureTunisIso(t.echeanceLe)}',
+    ];
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        title: Text(
+          '${t.objetLibelle} — ${t.libelleEtape}',
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (parts.isNotEmpty) Text(parts.join(' · ')),
+            if (t.pourNom != null && t.pourNom!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Pour le compte de ${t.pourNom}',
+                style: const TextStyle(
+                  color: AppTheme.accent,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+            if (t.enRetard || t.estComplement) ...[
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 6,
+                children: [
+                  if (t.enRetard)
+                    const RhStatusChip(label: 'En retard', tone: RhTone.danger),
+                  if (t.estComplement)
+                    const RhStatusChip(
+                      label: 'Complément demandé',
+                      tone: RhTone.warning,
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () async {
+          final modifie = await context.push<bool>(
+            '/taches/${t.tacheId}',
+            extra: t,
+          );
+          if (modifie == true) {
+            ref.invalidate(aValiderProvider);
+            ref.invalidate(compteurTachesProvider);
+          }
+        },
       ),
     );
   }

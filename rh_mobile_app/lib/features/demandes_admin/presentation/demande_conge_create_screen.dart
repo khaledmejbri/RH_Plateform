@@ -8,6 +8,8 @@ import 'dart:io';
 
 import '../../conges/data/solde_models.dart';
 import '../../conges/data/solde_repository.dart';
+import '../../workflow/data/workflow_models.dart';
+import '../../workflow/providers/workflow_providers.dart';
 import '../data/demande_admin_errors.dart';
 import '../data/demande_admin_repository.dart';
 import 'demandes_admin_list_screen.dart';
@@ -250,6 +252,7 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
   @override
   Widget build(BuildContext context) {
     final typesAsync = ref.watch(typesCongeActifsProvider);
+    final ouverts = ref.watch(typesOuvertsProvider).valueOrNull;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -265,13 +268,21 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
           e,
           onRetry: () => ref.invalidate(typesCongeActifsProvider),
         ),
-        data: (types) => types.isEmpty
-            ? const RhEmptyState(
-                icon: Icons.event_busy_outlined,
-                title: 'Aucun type de congé disponible',
-                message: 'Contactez la RH : aucun type de congé n’est ouvert à la demande.',
-              )
-            : _formulaire(types),
+        data: (types) {
+          final typesFiltres = ouverts == null
+              ? types
+              : types
+                  .where((t) => estTypeOuvert(ouverts, 'CONGE', sousType: t.code))
+                  .toList();
+          if (typesFiltres.isEmpty) {
+            return const RhEmptyState(
+              icon: Icons.event_busy_outlined,
+              title: 'Aucun type de congé disponible',
+              message: 'Contactez la RH : aucun type de congé n’est ouvert à la demande.',
+            );
+          }
+          return _formulaire(typesFiltres);
+        },
       ),
     );
   }

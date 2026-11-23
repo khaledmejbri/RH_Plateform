@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/format/formats.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/rh_ui.dart';
 import '../../a_valider/providers/a_valider_providers.dart';
+import '../../workflow/presentation/suivi_workflow_frise.dart';
 import '../data/demande_manuelle_textes.dart';
 import '../data/journee_models.dart';
 import '../data/presence_errors.dart';
@@ -145,7 +147,23 @@ class _PointageManuelDetailScreenState extends ConsumerState<PointageManuelDetai
                   ],
                 ),
               ),
-              if (estValideur && d.enAttente) ...[
+              if (d.estModeMoteur) ...[
+                const SizedBox(height: 16),
+                SuiviWorkflowObjetSection(
+                  objetType: 'POINTAGE_MANUEL',
+                  objetId: d.id,
+                ),
+                if (d.enCours || d.enAttente) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => context.push('/taches'),
+                    icon: const Icon(Icons.assignment_turned_in_outlined),
+                    label: const Text('Voir dans Mes tâches'),
+                    style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  ),
+                ],
+              ],
+              if (!d.estModeMoteur && estValideur && d.enAttente) ...[
                 const SizedBox(height: 16),
                 Row(
                   children: [

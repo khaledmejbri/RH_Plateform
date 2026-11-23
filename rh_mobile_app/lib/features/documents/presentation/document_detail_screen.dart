@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/format/formats.dart';
 import '../../../core/libelles/libelles.dart';
 import '../../../core/network/api_client.dart';
+import '../../workflow/presentation/suivi_workflow_frise.dart';
 import '../data/document_models.dart';
 import 'package:rh_mobile_app/core/theme/app_theme.dart';
 import 'package:rh_mobile_app/core/widgets/rh_ui.dart';
@@ -80,34 +82,51 @@ class DocumentDetailScreen extends ConsumerWidget {
                 final enRetard = j['en_retard'] == true;
                 final delai = _libelleDelai(echeance, slaHeures, enRetard);
 
+                final statut = j['statut']?.toString();
+                final estModeMoteur = j['workflow_mode'] == 'MOTEUR';
+                final etapeCouranteLibelle = j['etape_courante_libelle']?.toString();
                 String statusLabel = Libelles.avecRepli(
-                    j['statut_libelle']?.toString(), j['statut']?.toString(), Libelles.statutDocument);
+                    j['statut_libelle']?.toString(), statut, Libelles.statutDocument);
                 String statusDescription = 'Votre demande a été envoyée et sera traitée prochainement.';
-                if (j['statut'] == 'EN_ATTENTE_FILE') {
+                if (statut == 'EN_ATTENTE_FILE') {
                   final rang = j['rang_dans_file'];
                   statusLabel = 'En attente dans la file';
                   statusDescription = rang != null
                       ? 'Votre demande est en position $rang dans la file d\'attente (premier arrivé, premier servi). $delai'
                       : 'Votre demande est dans la file d\'attente. $delai';
-                } else if (j['statut'] == 'EN_TRAITEMENT_RH') {
+                } else if (statut == 'EN_TRAITEMENT_RH') {
                   statusLabel = 'En cours de traitement';
                   statusDescription = 'Les RH traitent actuellement votre demande. $delai';
-                } else if (j['statut'] == 'DISPONIBLE') {
+                } else if (statut == 'EN_COURS') {
+                  statusDescription = (etapeCouranteLibelle != null && etapeCouranteLibelle.trim().isNotEmpty)
+                      ? 'Étape en cours : ${etapeCouranteLibelle.trim()}. $delai'
+                      : 'Votre demande est en cours de validation. $delai';
+                } else if (statut == 'A_COMPLETER') {
+                  statusDescription = 'Un complément vous a été demandé. Répondez depuis Mes tâches.';
+                } else if (statut == 'ANNULEE') {
+                  statusDescription = 'Cette demande a été annulée.';
+                } else if (statut == 'DISPONIBLE') {
                   statusLabel = 'Validée';
                   statusDescription = 'Votre document est prêt ! Vous pouvez le télécharger.';
-                } else if (j['statut'] == 'REJETEE') {
+                } else if (statut == 'REJETEE') {
                   statusLabel = 'Refusée';
                   statusDescription = 'Votre demande a été refusée. Veuillez consulter le motif ci-dessous.';
                 }
 
                 Color statusColor = AppTheme.textTertiary;
-                if (enRetard && (j['statut'] == 'EN_ATTENTE_FILE' || j['statut'] == 'EN_TRAITEMENT_RH')) {
+                if (enRetard &&
+                    (statut == 'EN_ATTENTE_FILE' ||
+                        statut == 'EN_TRAITEMENT_RH' ||
+                        statut == 'EN_COURS')) {
                   statusColor = AppTheme.error;
-                } else if (statusLabel.contains('attente') || statusLabel.contains('traitement')) {
+                } else if (statut == 'A_COMPLETER' ||
+                    statut == 'EN_COURS' ||
+                    statusLabel.contains('attente') ||
+                    statusLabel.contains('traitement')) {
                   statusColor = AppTheme.warning;
-                } else if (statusLabel == 'Validée') {
+                } else if (statut == 'DISPONIBLE' || statusLabel == 'Validée') {
                   statusColor = AppTheme.success;
-                } else if (statusLabel == 'Refusée') {
+                } else if (statut == 'REJETEE' || statusLabel == 'Refusée') {
                   statusColor = AppTheme.error;
                 }
 
@@ -234,6 +253,19 @@ class DocumentDetailScreen extends ConsumerWidget {
                         ],
                       ),
                     ),
+                    if (estModeMoteur) ...[
+                      const SizedBox(height: 16),
+                      SuiviWorkflowObjetSection(objetType: 'DOCUMENT', objetId: id),
+                    ],
+                    if (statut == 'A_COMPLETER') ...[
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () => context.push('/taches'),
+                        icon: const Icon(Icons.edit_note_rounded),
+                        label: const Text('Compléter depuis Mes tâches'),
+                        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                      ),
+                    ],
                     if (j['statut'] == 'REJETEE' && j['motif_rejet'] != null) ...[
                       const SizedBox(height: 16),
                       Container(
@@ -273,10 +305,22 @@ class DocumentDetailScreen extends ConsumerWidget {
                 );
               },
             ),
-            suivi.when(
+            detail.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text(rhErrorMessage(e))),
-              data: (s) => ListView(
+              data: (j) {
+                if (j['workflow_mode'] == 'MOTEUR') {
+                  return ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      SuiviWorkflowObjetSection(objetType: 'DOCUMENT', objetId: id),
+                    ],
+                  );
+                }
+                return suivi.when(
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Center(child: Text(rhErrorMessage(e))),
+                  data: (s) => ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
                   Container(
@@ -417,6 +461,8 @@ class DocumentDetailScreen extends ConsumerWidget {
                   }),
                 ],
               ),
+            );
+              },
             ),
           ],
         ),
