@@ -1,5 +1,7 @@
 package com.hr.workflow.config;
 
+import com.hr.commun.societe.SocieteContexte;
+import com.hr.commun.societe.SocieteFiltreInterne;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,15 +13,16 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Filtre de sécurité sur {@code /internal/**} (D-W3-02) :
- * vérifie {@code X-Internal-Token} en temps constant ; ignore {@code X-Societe-Id}.
- * Absent ou invalide → 403 {@code JETON_INTERNE_INVALIDE} au même format que {@code SocieteFiltreInterne}.
+ * vérifie {@code X-Internal-Token} en temps constant ; lie {@code X-Societe-Id} optionnel dans {@link SocieteContexte}.
+ * Absent ou invalide → 403 {@code JETON_INTERNE_INVALIDE} ; {@code X-Societe-Id} mal formé → 400 {@code SOCIETE_ABSENTE}.
  */
 public class JetonInterneFiltre extends OncePerRequestFilter {
 
-	public static final String ENTETE_INTERNAL_TOKEN = "X-Internal-Token";
+	public static final String ENTETE_INTERNAL_TOKEN = SocieteFiltreInterne.ENTETE_INTERNAL_TOKEN;
 	private static final String PREFIXE_INTERNAL = "/internal/";
 	private static final String RACINE_INTERNAL = "/internal";
 
@@ -45,7 +48,32 @@ public class JetonInterneFiltre extends OncePerRequestFilter {
 					"Jeton interne absent ou invalide.", chemin);
 			return;
 		}
-		filterChain.doFilter(request, response);
+		String societeHeader = request.getHeader(SocieteFiltreInterne.ENTETE_SOCIETE_ID);
+		if (societeHeader == null || societeHeader.isBlank()) {
+			filterChain.doFilter(request, response);
+			return;
+		}
+		UUID societeId = parserUuidValide(societeHeader);
+		if (societeId == null) {
+			ecrireErreur(response, HttpServletResponse.SC_BAD_REQUEST, "SOCIETE_ABSENTE",
+					"L'en-tête X-Societe-Id est mal formé.", chemin);
+			return;
+		}
+		try {
+			SocieteContexte.definir(societeId);
+			filterChain.doFilter(request, response);
+		} finally {
+			SocieteContexte.effacer();
+		}
+	}
+
+	private static UUID parserUuidValide(String raw) {
+		try {
+			UUID id = UUID.fromString(raw.trim());
+			return SocieteContexte.AUCUNE.equals(id) ? null : id;
+		} catch (IllegalArgumentException e) {
+			return null;
+		}
 	}
 
 	private boolean jetonValide(String token) {

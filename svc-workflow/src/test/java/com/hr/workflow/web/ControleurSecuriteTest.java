@@ -6,12 +6,14 @@ import com.hr.workflow.config.SecurityConfig;
 import com.hr.workflow.domain.ModeActivation;
 import com.hr.workflow.dto.AdminWorkflowDtos.PageResponse;
 import com.hr.workflow.dto.WorkflowMoteurDtos.CompteurTachesResponse;
+import com.hr.workflow.dto.WorkflowMoteurDtos.RegleActivePointageResponse;
 import com.hr.workflow.moteur.DecisionService;
 import com.hr.workflow.moteur.DemarrageService;
 import com.hr.workflow.service.ActivationService;
 import com.hr.workflow.service.DelegationService;
 import com.hr.workflow.service.InstanceInterneService;
 import com.hr.workflow.service.ModeleVersionService;
+import com.hr.workflow.service.PointageRegleInterneService;
 import com.hr.workflow.service.ReaffectationService;
 import com.hr.workflow.service.SimulationService;
 import com.hr.workflow.service.SupervisionService;
@@ -77,6 +79,7 @@ class ControleurSecuriteTest {
 	@MockitoBean private DecisionService decisionService;
 	@MockitoBean private DemarrageService demarrageService;
 	@MockitoBean private InstanceInterneService instanceInterneService;
+	@MockitoBean private PointageRegleInterneService pointageRegleInterneService;
 	@MockitoBean private WorkflowReferentielClient referentielClient;
 	@MockitoBean private JwtDecoder jwtDecoder;
 	@MockitoBean private CacheManager cacheManager;
@@ -219,7 +222,8 @@ class ControleurSecuriteTest {
 				Arguments.of(HttpMethod.POST, "/internal/workflow/v1/instances/" + ID_TEST + "/annuler", null),
 				Arguments.of(HttpMethod.POST, "/internal/workflow/v1/instances/" + ID_TEST + "/complement-fourni", null),
 				Arguments.of(HttpMethod.GET, "/internal/workflow/v1/activations/CONGE", null),
-				Arguments.of(HttpMethod.GET, "/internal/workflow/v1/objets/CONGE/" + ID_TEST, null)
+				Arguments.of(HttpMethod.GET, "/internal/workflow/v1/objets/CONGE/" + ID_TEST, null),
+				Arguments.of(HttpMethod.GET, "/internal/workflow/v1/pointage/regle-active", null)
 		);
 	}
 
@@ -229,6 +233,8 @@ class ControleurSecuriteTest {
 		lenient().when(activationService.modePour("CONGE")).thenReturn(ModeActivation.HERITE);
 		lenient().when(demarrageService.demarrer(any(), any()))
 				.thenReturn(new DemarrageService.ResultatDemarrage(false, null));
+		lenient().when(pointageRegleInterneService.lireRegleActive())
+				.thenReturn(RegleActivePointageResponse.inactive(ModeActivation.HERITE));
 
 		MockHttpServletRequestBuilder sansJeton = request(method, path);
 		if (body != null) {
@@ -260,5 +266,24 @@ class ControleurSecuriteTest {
 		when(catalogue.construireReponseCatalogue()).thenReturn(Map.of("types", List.of()));
 		mockMvc.perform(get("/api/rh/v1/admin/workflow/catalogue").with(avecRoles(dirId, "DIRECTION", "USER")))
 				.andExpect(status().isOk());
+	}
+
+	@Test
+	void routeInterneRegleActive_valideXSocieteId() throws Exception {
+		when(pointageRegleInterneService.lireRegleActive())
+				.thenReturn(RegleActivePointageResponse.inactive(ModeActivation.HERITE));
+
+		mockMvc.perform(get("/internal/workflow/v1/pointage/regle-active")
+						.header("X-Internal-Token", "test-internal-secret")
+						.header("X-Societe-Id", "pas-un-uuid"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("SOCIETE_ABSENTE"));
+
+		mockMvc.perform(get("/internal/workflow/v1/pointage/regle-active")
+						.header("X-Internal-Token", "test-internal-secret")
+						.header("X-Societe-Id", ID_TEST.toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.actif_effectif").value(false))
+				.andExpect(jsonPath("$.mode").value("HERITE"));
 	}
 }

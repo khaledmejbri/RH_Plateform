@@ -335,4 +335,14 @@ class DemarrageServiceTest {
 		assertThat(res.cree()).isTrue();
 		assertThat(res.reponse().statut()).isEqualTo(StatutInstance.APPROUVEE);
 	}
+
+	@Test
+	void pointageEvenementiel_422_TYPE_OBJET_SANS_INSTANCE() {
+		DemarrerInstanceRequest r = req("POINTAGE", Map.of());
+
+		assertThatThrownBy(() -> service.demarrer("cle-pointage", r))
+				.isInstanceOf(WorkflowMetierException.class)
+				.hasFieldOrPropertyWithValue("httpStatus", 422)
+				.hasFieldOrPropertyWithValue("code", "TYPE_OBJET_SANS_INSTANCE");
+	}
 }

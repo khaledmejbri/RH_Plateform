@@ -11,9 +11,12 @@ import com.hr.workflow.definition.EcheanceDefinition;
 import com.hr.workflow.definition.EtapeDefinition;
 import com.hr.workflow.definition.EtapeDefinition.RepliSiVideDefinition;
 import com.hr.workflow.definition.IntervenantsDefinition;
+import com.hr.workflow.definition.NotificationsDynamiquesDefinition;
 import com.hr.workflow.domain.StatutVersion;
 import com.hr.workflow.dto.AdminWorkflowDtos.ActionVersionRequest;
+import com.hr.workflow.dto.AdminWorkflowDtos.ComparaisonVersionsResponse;
 import com.hr.workflow.dto.AdminWorkflowDtos.CreerModeleRequest;
+import com.hr.workflow.dto.AdminWorkflowDtos.ModeleDetailResponse;
 import com.hr.workflow.dto.AdminWorkflowDtos.ModifierVersionRequest;
 import com.hr.workflow.dto.AdminWorkflowDtos.VersionDetailResponse;
 import com.hr.workflow.entity.WfModele;
@@ -197,5 +200,81 @@ class ModeleVersionServiceTest {
 		VersionDetailResponse pub = service.publier(v.getId(), new ActionVersionRequest(1L), auteur2, "RH02");
 		assertThat(pub.statut()).isEqualTo(StatutVersion.PUBLIEE);
 		assertThat(ancienne.getStatut()).isEqualTo(StatutVersion.RETIREE);
+	}
+
+	@Test
+	void pointage_creationBrouillonDefaut_publicationV1CocheePuisV2Decochee_etComparaison() {
+		UUID auteur = UUID.randomUUID();
+		UUID modeleId = UUID.randomUUID();
+		UUID v1Id = UUID.randomUUID();
+		UUID v2Id = UUID.randomUUID();
+
+		when(modeleRepository.existsByCode("WF_POINTAGE_RO")).thenReturn(false);
+		when(modeleRepository.findActifParObjetTypeEtSousType("POINTAGE", null)).thenReturn(Optional.empty());
+		when(modeleRepository.saveAndFlush(any(WfModele.class))).thenAnswer(inv -> {
+			WfModele m = inv.getArgument(0);
+			m.setId(modeleId);
+			m.setVersion(0L);
+			return m;
+		});
+		final WfModeleVersion[] stock = new WfModeleVersion[2];
+		when(versionRepository.saveAndFlush(any(WfModeleVersion.class))).thenAnswer(inv -> {
+			WfModeleVersion ver = inv.getArgument(0);
+			if (ver.getId() == null) {
+				ver.setId(ver.getNumero() == 1 ? v1Id : v2Id);
+				ver.setVersion(0L);
+			}
+			stock[ver.getNumero() - 1] = ver;
+			return ver;
+		});
+		when(versionRepository.findByModeleIdAndStatut(modeleId, StatutVersion.BROUILLON)).thenAnswer(inv ->
+				java.util.Arrays.stream(stock).filter(v -> v != null && v.getStatut() == StatutVersion.BROUILLON).findFirst());
+		when(versionRepository.findByModeleIdAndStatut(modeleId, StatutVersion.PUBLIEE)).thenAnswer(inv ->
+				java.util.Arrays.stream(stock).filter(v -> v != null && v.getStatut() == StatutVersion.PUBLIEE).findFirst());
+
+		ModeleDetailResponse cree = service.creerModele(
+				new CreerModeleRequest("WF_POINTAGE_RO", "Notification pointage RO", null, "POINTAGE", null),
+				auteur, "DRH01");
+		assertThat(cree.objetType()).isEqualTo("POINTAGE");
+		assertThat(cree.brouillonId()).isEqualTo(v1Id);
+		DefinitionWorkflow defV1Init = codec.deserialiser(stock[0].getDefinition());
+		assertThat(defV1Init.etapes()).isEmpty();
+		assertThat(defV1Init.notificationsDynamiques()).isEqualTo(NotificationsDynamiquesDefinition.parDefautPointage());
+
+		// Publication v1 avec notifier_ro = true
+		DefinitionWorkflow defV1Cochee = new DefinitionWorkflow(1, "POINTAGE",
+				new DefinitionWorkflow.OptionsWorkflow(false), List.of(),
+				new NotificationsDynamiquesDefinition(true, "TOUTE_LA_SOCIETE", List.of(), List.of("ENTREE", "SORTIE"), "WEBSOCKET"));
+		stock[0].setDefinition(codec.serialiser(defV1Cochee));
+		when(versionRepository.findByIdAvecModele(v1Id)).thenReturn(Optional.of(stock[0]));
+		when(referentielClient.calendrierSociete(any(), any())).thenReturn(
+				new CalendrierSocieteResponse("Africa/Tunis", List.of("LUNDI"), "08:00", "17:00", false, false, List.of()));
+
+		VersionDetailResponse pubV1 = service.publier(v1Id, new ActionVersionRequest(0L), auteur, "DRH01");
+		assertThat(pubV1.statut()).isEqualTo(StatutVersion.PUBLIEE);
+
+		// Création brouillon v2, décochage notifier_ro = false, publication v2
+		when(modeleRepository.findById(modeleId)).thenReturn(Optional.of(stock[0].getModele()));
+		when(versionRepository.existsByModeleIdAndStatut(modeleId, StatutVersion.BROUILLON)).thenReturn(false);
+		when(versionRepository.findTopByModeleIdOrderByNumeroDesc(modeleId)).thenReturn(Optional.of(stock[0]));
+		VersionDetailResponse v2Brouillon = service.creerBrouillon(modeleId, auteur, "DRH01");
+		assertThat(v2Brouillon.numero()).isEqualTo(2);
+
+		DefinitionWorkflow defV2Decochee = new DefinitionWorkflow(1, "POINTAGE",
+				new DefinitionWorkflow.OptionsWorkflow(false), List.of(),
+				new NotificationsDynamiquesDefinition(false, "TOUTE_LA_SOCIETE", List.of(), List.of("ENTREE", "SORTIE"), "WEBSOCKET"));
+		stock[1].setDefinition(codec.serialiser(defV2Decochee));
+		when(versionRepository.findByIdAvecModele(v2Id)).thenReturn(Optional.of(stock[1]));
+
+		VersionDetailResponse pubV2 = service.publier(v2Id, new ActionVersionRequest(0L), auteur, "DRH01");
+		assertThat(pubV2.statut()).isEqualTo(StatutVersion.PUBLIEE);
+		assertThat(stock[0].getStatut()).isEqualTo(StatutVersion.RETIREE);
+
+		when(versionRepository.findById(v1Id)).thenReturn(Optional.of(stock[0]));
+		when(versionRepository.findById(v2Id)).thenReturn(Optional.of(stock[1]));
+		ComparaisonVersionsResponse cmp = service.comparerVersions(v1Id, v2Id);
+		assertThat(cmp.etapes()).hasSize(1);
+		assertThat(cmp.etapes().get(0).code()).isEqualTo("NOTIFICATIONS_DYNAMIQUES");
+		assertThat(cmp.etapes().get(0).champsModifies()).containsExactly("notifier_ro");
 	}
 }

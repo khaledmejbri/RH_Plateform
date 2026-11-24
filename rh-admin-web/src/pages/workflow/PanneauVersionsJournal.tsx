@@ -13,8 +13,9 @@ import { formatDateHeure } from '../../utils/format';
 import {
   libelleActionJournal,
   libelleChampModifie,
+  libelleElementComparaison,
   libelleStatutVersion,
-  libelleTypeChangement,
+  libelleTypeChangementElement,
 } from '../../workflow/libelles';
 
 export function PanneauVersions({
@@ -153,8 +154,8 @@ export function PanneauVersions({
                   <tbody>
                     {diff.etapes.map((d) => (
                       <tr key={d.code}>
-                        <td><strong>{d.code}</strong></td>
-                        <td>{libelleTypeChangement(d.type_changement)}</td>
+                        <td><strong>{libelleElementComparaison(d.code)}</strong></td>
+                        <td>{libelleTypeChangementElement(d.code, d.type_changement)}</td>
                         <td>{d.champs_modifies.length > 0 ? d.champs_modifies.map(libelleChampModifie).join(', ') : '—'}</td>
                       </tr>
                     ))}

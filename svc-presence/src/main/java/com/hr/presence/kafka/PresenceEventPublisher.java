@@ -70,36 +70,47 @@ public class PresenceEventPublisher {
 	}
 
 	/**
-	 * Notification in-app portant sur un objet (ticket 2F : pointage manuel, heures sup). L'objet porte
-	 * l'identifiant d'événement : à réutiliser pour tous les destinataires du même événement.
+	 * Notification portant sur un objet (ticket 2F : pointage manuel, heures sup) sur le canal {@code WEBSOCKET}.
 	 */
 	public void notifier(String destinataire, String sujet, String corps, ObjetNotification objet) {
+		notifierAvecCanal("WEBSOCKET", destinataire, sujet, corps, objet);
+	}
+
+	/**
+	 * Notification portant sur un objet avec choix du canal ({@code WEBSOCKET} ou {@code BOTH}).
+	 */
+	public void notifierAvecCanal(String canal, String destinataire, String sujet, String corps, ObjetNotification objet) {
 		if (destinataire == null || destinataire.isBlank()) {
 			return;
 		}
+		String canalEffectif = "BOTH".equalsIgnoreCase(canal) ? "BOTH" : "WEBSOCKET";
 		// Dans une transaction, l'envoi attend le commit : pas de notification pour une décision annulée.
 		if (TransactionSynchronizationManager.isSynchronizationActive()) {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override
 				public void afterCommit() {
-					envoyer(destinataire, sujet, corps, objet);
+					envoyer(canalEffectif, destinataire, sujet, corps, objet);
 				}
 			});
 			return;
 		}
-		envoyer(destinataire, sujet, corps, objet);
+		envoyer(canalEffectif, destinataire, sujet, corps, objet);
 	}
 
-	private void envoyer(String destinataire, String sujet, String corps, ObjetNotification objet) {
+	private void envoyer(String canal, String destinataire, String sujet, String corps, ObjetNotification objet) {
 		try {
-			publier(RhPresenceTopics.RH_NOTIFICATIONS, destinataire, message(destinataire, sujet, corps, objet));
+			publier(RhPresenceTopics.RH_NOTIFICATIONS, destinataire, message(canal, destinataire, sujet, corps, objet));
 		} catch (Exception ex) {
 			log.warn("Échec notification présence → {} : {}", destinataire, ex.getMessage());
 		}
 	}
 
 	private NotificationMessage message(String destinataire, String sujet, String corps, ObjetNotification objet) {
-		return new NotificationMessage("WEBSOCKET", destinataire, sujet, corps,
+		return message("WEBSOCKET", destinataire, sujet, corps, objet);
+	}
+
+	private NotificationMessage message(String canal, String destinataire, String sujet, String corps, ObjetNotification objet) {
+		return new NotificationMessage(canal, destinataire, sujet, corps,
 				objet.notificationId().toString(), objet.evenement(), objet.type(),
 				objet.id() != null ? objet.id().toString() : null, objet.numero(), clock.instant().toString());
 	}

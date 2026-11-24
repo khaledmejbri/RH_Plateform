@@ -270,4 +270,42 @@ class DefinitionValidateurTest {
 		assertThat(validateur.valider(def, "CONGE")).extracting(ErreurDefinition::code)
 				.contains("DEFINITION_TROP_GRANDE");
 	}
+
+	@Test
+	void pointage_notifierRoFalse_etTouteLaSociete_valides() {
+		DefinitionWorkflow defFalse = new DefinitionWorkflow(
+				1, "POINTAGE", new OptionsWorkflow(false), List.of(),
+				NotificationsDynamiquesDefinition.parDefautPointage());
+		assertThat(validateur.estValide(validateur.valider(defFalse, "POINTAGE"))).isTrue();
+
+		DefinitionWorkflow defSociete = new DefinitionWorkflow(
+				1, "POINTAGE", new OptionsWorkflow(false), List.of(),
+				new NotificationsDynamiquesDefinition(true, "TOUTE_LA_SOCIETE", List.of(), List.of("ENTREE", "SORTIE"), "WEBSOCKET"));
+		assertThat(validateur.estValide(validateur.valider(defSociete, "POINTAGE"))).isTrue();
+
+		// Vérification round-trip Jackson 3
+		DefinitionWorkflow relue = codec.deserialiser(codec.serialiser(defSociete));
+		assertThat(relue.notificationsDynamiques()).isEqualTo(defSociete.notificationsDynamiques());
+	}
+
+	@Test
+	void pointage_sitesSelectionnesSansSite_etTypesPointageVides_etCongeAvecNotif_refuses() {
+		DefinitionWorkflow sansSite = new DefinitionWorkflow(
+				1, "POINTAGE", new OptionsWorkflow(false), List.of(),
+				new NotificationsDynamiquesDefinition(true, "SITES_SELECTIONNES", List.of(), List.of("ENTREE"), "BOTH"));
+		assertThat(validateur.valider(sansSite, "POINTAGE"))
+				.anyMatch(e -> "notifications_dynamiques.site_ids".equals(e.chemin()) && "SITES_REQUIS".equals(e.code()));
+
+		DefinitionWorkflow sansType = new DefinitionWorkflow(
+				1, "POINTAGE", new OptionsWorkflow(false), List.of(),
+				new NotificationsDynamiquesDefinition(true, "TOUTE_LA_SOCIETE", List.of(), List.of(), "WEBSOCKET"));
+		assertThat(validateur.valider(sansType, "POINTAGE"))
+				.anyMatch(e -> "notifications_dynamiques.types_pointage".equals(e.chemin()) && "TYPES_POINTAGE_REQUIS".equals(e.code()));
+
+		DefinitionWorkflow surConge = new DefinitionWorkflow(
+				1, "CONGE", new OptionsWorkflow(false), List.of(validationRhValide("E1")),
+				NotificationsDynamiquesDefinition.parDefautPointage());
+		assertThat(validateur.valider(surConge, "CONGE"))
+				.anyMatch(e -> "notifications_dynamiques".equals(e.chemin()) && "CHAMP_NON_APPLICABLE".equals(e.code()));
+	}
 }

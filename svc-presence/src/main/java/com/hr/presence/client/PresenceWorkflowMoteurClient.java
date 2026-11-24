@@ -2,13 +2,14 @@ package com.hr.presence.client;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.hr.commun.societe.SocieteContexte;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
@@ -16,6 +17,8 @@ import org.springframework.web.client.RestClientException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +27,7 @@ import java.util.UUID;
 
 /**
  * Client HTTP synchrone de {@code svc-presence} vers {@code svc-workflow} (D-W6-02).
- * Aucun bean {@code @LoadBalanced} : {@link RestClient} dédié construit localement.
+ * Aucun bean {@code @LoadBalanced} : {@link RestClient} dédié construit localement sur {@link JdkClientHttpRequestFactory}.
  * Aucun appel ne doit avoir lieu à l'intérieur d'une transaction {@code @Transactional}.
  */
 @Component
@@ -32,32 +35,69 @@ public class PresenceWorkflowMoteurClient {
 
 	private static final Logger log = LoggerFactory.getLogger(PresenceWorkflowMoteurClient.class);
 	private static final String EN_TETE_JETON = "X-Internal-Token";
+	private static final String EN_TETE_SOCIETE = "X-Societe-Id";
 	private static final String EN_TETE_IDEMPOTENCE = "Idempotency-Key";
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	private final RestClient restClient;
+	private final RestClient reglePointageRestClient;
 	private final String jetonInterne;
+
+	public PresenceWorkflowMoteurClient(
+			String baseUrl,
+			String jetonInterne,
+			int timeoutConnexionMs,
+			int timeoutLectureMs) {
+		this(baseUrl, jetonInterne, timeoutConnexionMs, timeoutLectureMs, 2000);
+	}
 
 	@Autowired
 	public PresenceWorkflowMoteurClient(
 			@Value("${presence.workflow.base-url:http://localhost:8087}") String baseUrl,
 			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne,
 			@Value("${presence.workflow.timeout-connexion-ms:1000}") int timeoutConnexionMs,
-			@Value("${presence.workflow.timeout-lecture-ms:3000}") int timeoutLectureMs) {
-		SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-		factory.setConnectTimeout(timeoutConnexionMs);
-		factory.setReadTimeout(timeoutLectureMs);
-		this.restClient = RestClient.builder()
-				.baseUrl(baseUrl)
-				.requestFactory(factory)
-				.build();
+			@Value("${presence.workflow.timeout-lecture-ms:3000}") int timeoutLectureMs,
+			@Value("${presence.workflow.notif-timeout-lecture-ms:2000}") int notifTimeoutLectureMs) {
+		this.restClient = construireClient(baseUrl, timeoutConnexionMs, timeoutLectureMs);
+		this.reglePointageRestClient = construireClient(baseUrl, timeoutConnexionMs, notifTimeoutLectureMs);
 		this.jetonInterne = jetonInterne;
 	}
 
 	/** Constructeur de test permettant d'injecter un {@link RestClient} personnalisé. */
 	public PresenceWorkflowMoteurClient(RestClient restClient, String jetonInterne) {
 		this.restClient = restClient;
+		this.reglePointageRestClient = restClient;
 		this.jetonInterne = jetonInterne;
+	}
+
+	private static RestClient construireClient(String baseUrl, int timeoutConnexionMs, int timeoutLectureMs) {
+		HttpClient http = HttpClient.newBuilder()
+				.connectTimeout(Duration.ofMillis(timeoutConnexionMs))
+				.build();
+		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
+		factory.setReadTimeout(Duration.ofMillis(timeoutLectureMs));
+		return RestClient.builder()
+				.baseUrl(baseUrl)
+				.requestFactory(factory)
+				.build();
+	}
+
+	/** Lecture directe (sans cache TTL) de la règle active {@code POINTAGE} (connect 1s, read 2s). */
+	public Optional<RegleActivePointage> regleActivePointage() {
+		try {
+			var req = reglePointageRestClient.get()
+					.uri("/internal/workflow/v1/pointage/regle-active")
+					.header(EN_TETE_JETON, jetonInterne);
+			Optional<UUID> societeId = SocieteContexte.couranteOuVide();
+			if (societeId.isPresent() && !SocieteContexte.AUCUNE.equals(societeId.get())) {
+				req = req.header(EN_TETE_SOCIETE, societeId.get().toString());
+			}
+			RegleActivePointage rep = req.retrieve().body(RegleActivePointage.class);
+			return Optional.ofNullable(rep);
+		} catch (RestClientException ex) {
+			log.warn("Lecture règle active POINTAGE impossible : {}", ex.getClass().getSimpleName());
+			return Optional.empty();
+		}
 	}
 
 	/** Lecture du mode d'activation d'un type d'objet ({@code HERITE} ou {@code MOTEUR}). */
@@ -252,6 +292,20 @@ public class PresenceWorkflowMoteurClient {
 	public record AnnulerInstanceRequest(
 			@JsonProperty("motif") String motif,
 			@JsonProperty("acteur") ActeurInterne acteur
+	) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record RegleActivePointage(
+			@JsonProperty("actif_effectif") boolean actifEffectif,
+			@JsonProperty("mode") String mode,
+			@JsonProperty("modele_code") String modeleCode,
+			@JsonProperty("version_numero") Integer versionNumero,
+			@JsonProperty("notifier_ro") boolean notifierRo,
+			@JsonProperty("portee_sites") String porteeSites,
+			@JsonProperty("site_ids") List<UUID> siteIds,
+			@JsonProperty("types_pointage") List<String> typesPointage,
+			@JsonProperty("canal") String canal
 	) {
 	}
 }

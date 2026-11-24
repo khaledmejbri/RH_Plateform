@@ -115,4 +115,31 @@ class SimulationServiceTest {
 		assertThat(sim3.etapes().get(1).statut()).isEqualTo("SAUTEE");
 		assertThat(sim3.etapes().get(1).raison()).containsIgnoringCase("Condition");
 	}
+
+	@Test
+	void simulationPointageSansEtape_retourneListeVideSansAppelerReferentiel() {
+		CatalogueTypesObjet catalogue = new CatalogueTypesObjet();
+		DefinitionCodec codec = new DefinitionCodec();
+		DefinitionValidateur validateur = new DefinitionValidateur(catalogue, codec);
+		when(txManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
+
+		WfModele m = new WfModele();
+		m.setObjetType("POINTAGE");
+		WfModeleVersion v = new WfModeleVersion();
+		v.setId(UUID.randomUUID());
+		v.setModele(m);
+		v.setDefinition(codec.serialiser(new DefinitionWorkflow(1, "POINTAGE",
+				new DefinitionWorkflow.OptionsWorkflow(false), List.of(),
+				com.hr.workflow.definition.NotificationsDynamiquesDefinition.parDefautPointage())));
+		when(versionRepository.findByIdAvecModele(v.getId())).thenReturn(Optional.of(v));
+
+		SimulationService simService = new SimulationService(
+				versionRepository, catalogue, codec, validateur, resolutionService, referentielClient,
+				new PlanificationEcheanceService(), txManager,
+				Clock.fixed(Instant.parse("2026-11-20T09:00:00Z"), ZoneOffset.UTC));
+
+		SimulationResponse rep = simService.simuler(v.getId(),
+				new SimulerVersionRequest(UUID.randomUUID(), List.of(), Map.of()));
+		assertThat(rep.etapes()).isEmpty();
+	}
 }

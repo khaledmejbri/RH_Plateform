@@ -127,6 +127,9 @@ public class WorkflowUtilisateurService {
 
 		List<TypeOuvertResponse> out = new ArrayList<>();
 		for (TypeObjetCatalogue type : catalogue.listerTypes()) {
+			if (type.estEvenementiel()) {
+				continue;
+			}
 			ModeActivation mode = modes.getOrDefault(type.objetType(), ModeActivation.HERITE);
 			if (mode == ModeActivation.HERITE) {
 				out.add(new TypeOuvertResponse(type.objetType(), type.libelle(), "TOUS"));
@@ -229,7 +232,8 @@ public class WorkflowUtilisateurService {
 			WfInstance inst = t.getInstance();
 
 			DefinitionWorkflow def = chargerDefinition(inst.getModeleVersion());
-			EtapeDefinition etapeDef = def.etapes().stream()
+			List<EtapeDefinition> etapesDef = def != null && def.etapes() != null ? def.etapes() : List.of();
+			EtapeDefinition etapeDef = etapesDef.stream()
 					.filter(e -> e.code().equals(t.getEtapeExecution().getEtapeCode()))
 					.findFirst().orElse(null);
 
@@ -357,7 +361,8 @@ public class WorkflowUtilisateurService {
 		List<WfTache> taches = tacheRepository.findByInstanceId(inst.getId());
 		Map<UUID, List<WfTache>> tachesParEtape = taches.stream()
 				.collect(Collectors.groupingBy(t -> t.getEtapeExecution().getId()));
-		Map<String, EtapeDefinition> defsParCode = def.etapes().stream()
+		List<EtapeDefinition> etapesDef = def != null && def.etapes() != null ? def.etapes() : List.of();
+		Map<String, EtapeDefinition> defsParCode = etapesDef.stream()
 				.collect(Collectors.toMap(EtapeDefinition::code, e -> e, (a, b) -> a));
 
 		List<EtapeSuiviDto> etapesDto = new ArrayList<>();
@@ -419,7 +424,7 @@ public class WorkflowUtilisateurService {
 
 		// Étapes à venir connues (libellés seulement) si l'instance n'est pas terminée (CA-08.1)
 		if (!inst.getStatut().estTerminale()) {
-			for (EtapeDefinition ed : def.etapes()) {
+			for (EtapeDefinition ed : etapesDef) {
 				if (!codesExecutes.containsKey(ed.code())) {
 					String intitule = ed.intervenants() != null
 							? CatalogueTypesObjet.libelleRegle(ed.intervenants().regle(), ed.intervenants().params())

@@ -774,4 +774,57 @@ class PresencePointageServiceTest {
 		assertThat(page.content().get(0).manuelImpossibleMotif()).startsWith("délai de demande dépassé");
 		assertThat(page.content().get(1).manuelPossible()).isNull();
 	}
+
+	// ---- Événement PointageValideCreeEvent (notifications dynamiques RO) ----
+
+	@Test
+	void pointageValideCreeEvent_emisUniquementSurNouveauValide_jamaisSurRejeuNiRejet() {
+		org.springframework.context.ApplicationEventPublisher publisher =
+				org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class);
+		PresenceProperties props = new PresenceProperties();
+		props.getQr().setHmacSecret("test-secret-hmac-presence");
+		PresencePointageService serviceAvecEvents = new PresencePointageService(
+				pointageRepository, siteRepository, qrRepository, qrTokenService, new HaversineService(),
+				props, qrService, qrDynamique, verificationFaciale, fenetreHoraire, referentielClient,
+				alerteEchecs, ParametresTestSupport.depuis(props), eligibiliteManuel,
+				java.time.Clock.systemUTC(), publisher);
+
+		qrEtSiteValides();
+		// 1. Nouveau VALIDE -> publie PointageValideCreeEvent
+		PointageResponse ok = serviceAvecEvents.pointer("collab-1", requete(36.8065, 5.0, false));
+		assertThat(ok.statut()).isEqualTo(PointageStatut.VALIDE);
+		ArgumentCaptor<PointageValideCreeEvent> evCaptor = ArgumentCaptor.forClass(PointageValideCreeEvent.class);
+		verify(publisher).publishEvent(evCaptor.capture());
+		assertThat(evCaptor.getValue().siteId()).isEqualTo(site.getId());
+		assertThat(evCaptor.getValue().siteLibelle()).isEqualTo("HQ");
+		assertThat(evCaptor.getValue().collaborateurId()).isEqualTo("collab-1");
+
+		// 2. Rejeu idempotent -> jamais publié
+		org.mockito.Mockito.reset(publisher);
+		PresencePointage existing = new PresencePointage();
+		existing.setId(UUID.randomUUID());
+		existing.setCollaborateurId("collab-1");
+		existing.setStatut(PointageStatut.VALIDE);
+		existing.setType(com.hr.presence.domain.PointageType.ENTREE);
+		existing.setServerTs(now);
+		when(pointageRepository.findByCollaborateurIdAndIdempotencyKey("collab-1", "idem-evt"))
+				.thenReturn(Optional.of(existing));
+		serviceAvecEvents.pointer("collab-1", new CreatePointageRequest(
+				validToken, "ENTREE", 36.8065, 10.1815, 5.0, now, "device-1", "idem-evt", false));
+		org.mockito.Mockito.verifyNoInteractions(publisher);
+
+		// 3. Rejet GPS / QR -> jamais publié
+		double latFar = 36.8065 + (120.0 / 111_320.0);
+		PointageResponse horsZone = serviceAvecEvents.pointer("collab-1", requete(latFar, 5.0, false));
+		assertThat(horsZone.statut()).isEqualTo(PointageStatut.REJETE_HORS_ZONE);
+		org.mockito.Mockito.verifyNoInteractions(publisher);
+
+		// 4. Rejet facial -> jamais publié
+		when(verificationFaciale.decider(any(), any(), any())).thenReturn(new VerificationFacialePointageService.Decision(
+				PointageStatut.REJETE_VISAGE_NON_RECONNU, "Visage non reconnu", null, (short) 50, Boolean.TRUE,
+				"mfn-1", com.hr.presence.domain.PlateformeMobile.ANDROID, 1, null));
+		PointageResponse rejetFacial = serviceAvecEvents.pointer("collab-1", requete(36.8065, 5.0, false));
+		assertThat(rejetFacial.statut()).isEqualTo(PointageStatut.REJETE_VISAGE_NON_RECONNU);
+		org.mockito.Mockito.verifyNoInteractions(publisher);
+	}
 }

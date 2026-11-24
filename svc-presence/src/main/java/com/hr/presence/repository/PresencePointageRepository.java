@@ -95,4 +95,19 @@ public interface PresencePointageRepository extends JpaRepository<PresencePointa
 			return cb.and(predicats.toArray(Predicate[]::new));
 		};
 	}
+
+	/** Filtre paginé des pointages de l'équipe d'un responsable (identités fiche + compte, borne Tunis). */
+	static Specification<PresencePointage> filtreEquipePointages(
+			java.util.Collection<String> identites, Instant debut, Instant finExclue, UUID siteId) {
+		return (root, query, cb) -> {
+			List<Predicate> predicats = new ArrayList<>();
+			predicats.add(root.get("collaborateurId").in(identites));
+			predicats.add(cb.greaterThanOrEqualTo(root.get("serverTs"), debut));
+			predicats.add(cb.lessThan(root.get("serverTs"), finExclue));
+			if (siteId != null) {
+				predicats.add(cb.equal(root.get("siteId"), siteId));
+			}
+			return cb.and(predicats.toArray(Predicate[]::new));
+		};
+	}
 }

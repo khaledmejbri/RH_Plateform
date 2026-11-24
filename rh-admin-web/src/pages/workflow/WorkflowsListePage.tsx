@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useOutletContext } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   activerModeleWorkflow,
   creerModeleWorkflow,
@@ -17,31 +17,56 @@ import {
   type ModeActivation,
   type ModeleResume,
 } from '../../api/workflowApi';
+import { useLectureSeule } from '../../auth/useLectureSeule';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorAlert, LoadingState, PageHeader } from '../../components/ui';
 import { formatDateHeure } from '../../utils/format';
 import { libelleSousTypeModele } from '../../workflow/valeursListes';
 
-type ContexteRoute = { lectureSeule?: boolean };
+type Props = {
+  initialCatalogue?: CatalogueWorkflow | null;
+  initialActivations?: ActivationWorkflow[];
+  initialModeles?: ModeleResume[];
+  initialFormOuvert?: boolean;
+  initialObjetType?: string;
+};
 
-export default function WorkflowsListePage() {
-  const { lectureSeule } = useOutletContext<ContexteRoute>() ?? {};
+/** Message de confirmation adapté selon qu'il s'agisse du workflow événementiel POINTAGE ou d'un circuit de demandes. */
+export function messageConfirmationBasculeMode(objetType: string, cible: ModeActivation): string {
+  if (objetType === 'POINTAGE') {
+    return cible === 'MOTEUR'
+      ? 'Les notifications dynamiques de pointage suivront la version publiée du modèle Pointage actif.'
+      : 'Les notifications dynamiques de pointage configurées dans le moteur seront désactivées (retour au circuit standard).';
+  }
+  return cible === 'MOTEUR'
+    ? 'Les nouvelles demandes de ce type suivront le modèle publié actif. Les demandes déjà en cours gardent leur circuit.'
+    : 'Les nouvelles demandes de ce type reviendront au circuit standard. Les instances déjà démarrées dans le moteur continuent jusqu’à leur terme.';
+}
+
+export default function WorkflowsListePage({
+  initialCatalogue = null,
+  initialActivations = [],
+  initialModeles = [],
+  initialFormOuvert = false,
+  initialObjetType = 'CONGE',
+}: Props = {}) {
+  const lectureSeule = useLectureSeule();
   const confirm = useConfirm();
   const navigate = useNavigate();
 
-  const [catalogue, setCatalogue] = useState<CatalogueWorkflow | null>(null);
-  const [activations, setActivations] = useState<ActivationWorkflow[]>([]);
-  const [modeles, setModeles] = useState<ModeleResume[]>([]);
-  const [chargement, setChargement] = useState(true);
+  const [catalogue, setCatalogue] = useState<CatalogueWorkflow | null>(initialCatalogue);
+  const [activations, setActivations] = useState<ActivationWorkflow[]>(initialActivations);
+  const [modeles, setModeles] = useState<ModeleResume[]>(initialModeles);
+  const [chargement, setChargement] = useState(!(initialCatalogue && initialActivations.length > 0));
   const [erreur, setErreur] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const [filtreType, setFiltreType] = useState('');
-  const [formOuvert, setFormOuvert] = useState(false);
+  const [formOuvert, setFormOuvert] = useState(initialFormOuvert);
   const [code, setCode] = useState('');
   const [libelle, setLibelle] = useState('');
   const [description, setDescription] = useState('');
-  const [objetType, setObjetType] = useState('CONGE');
+  const [objetType, setObjetType] = useState(initialObjetType);
   const [sousType, setSousType] = useState('');
   const [envoiCreation, setEnvoiCreation] = useState(false);
   const [erreurCreation, setErreurCreation] = useState<string | null>(null);
@@ -91,10 +116,7 @@ export default function WorkflowsListePage() {
     let conflit = false;
     const ok = await confirm({
       title: `Basculer « ${a.libelle} » vers ${libCible} ?`,
-      message:
-        cible === 'MOTEUR'
-          ? 'Les nouvelles demandes de ce type suivront le modèle publié actif. Les demandes déjà en cours gardent leur circuit.'
-          : 'Les nouvelles demandes de ce type reviendront au circuit standard. Les instances déjà démarrées dans le moteur continuent jusqu’à leur terme.',
+      message: messageConfirmationBasculeMode(a.objet_type, cible),
       confirmLabel: `Passer en ${libCible}`,
       envoyer: () => executerPourConfirmation(() => putActivationWorkflow(a.objet_type, cible, a.version)),
       echecDefinitif: (e) => {
@@ -132,7 +154,7 @@ export default function WorkflowsListePage() {
         libelle: l,
         description: description.trim() || null,
         objet_type: objetType,
-        sous_type: sousType.trim() ? sousType.trim().toUpperCase() : null,
+        sous_type: objetType === 'POINTAGE' ? null : sousType.trim() ? sousType.trim().toUpperCase() : null,
       });
       setFormOuvert(false);
       setCode('');
@@ -257,24 +279,30 @@ export default function WorkflowsListePage() {
                 id="wf-new-type"
                 className="field-input"
                 value={objetType}
-                onChange={(e) => setObjetType(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setObjetType(next);
+                  if (next === 'POINTAGE') setSousType('');
+                }}
               >
                 {(catalogue?.types ?? []).map((t) => (
                   <option key={t.objet_type} value={t.objet_type}>{t.libelle}</option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className="field-label" htmlFor="wf-new-sous">Sous-type (facultatif)</label>
-              <input
-                id="wf-new-sous"
-                className="field-input"
-                placeholder="ex. ANNUEL (vide = tous)"
-                maxLength={40}
-                value={sousType}
-                onChange={(e) => setSousType(e.target.value.toUpperCase())}
-              />
-            </div>
+            {objetType !== 'POINTAGE' ? (
+              <div>
+                <label className="field-label" htmlFor="wf-new-sous">Sous-type (facultatif)</label>
+                <input
+                  id="wf-new-sous"
+                  className="field-input"
+                  placeholder="ex. ANNUEL (vide = tous)"
+                  maxLength={40}
+                  value={sousType}
+                  onChange={(e) => setSousType(e.target.value.toUpperCase())}
+                />
+              </div>
+            ) : null}
           </div>
           <div style={{ marginTop: 10 }}>
             <label className="field-label" htmlFor="wf-new-desc">Description (facultatif)</label>

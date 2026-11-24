@@ -106,4 +106,42 @@ void main() {
       isNull,
     );
   });
+
+  test('POINTAGE_EQUIPE_EFFECTUE route vers /equipe/pointages et POINTAGE_ECHECS_REPETES préserve /equipe/:id',
+      () {
+    expect(
+      routePourNotification(
+        _notif(
+          evenement: 'POINTAGE_EQUIPE_EFFECTUE',
+          objetType: 'COLLABORATEUR',
+          objetId: _uuid,
+          sujet: 'Pointage — Sarra Khemiri',
+          contenu: 'Sarra Khemiri a pointé son entrée à 09:15 sur le site « Siège Social ».',
+        ),
+      ),
+      '/equipe/pointages',
+    );
+    expect(
+      routePourNotification(
+        _notif(
+          evenement: 'POINTAGE_EQUIPE_EFFECTUE',
+          sujet: 'Pointage — Sarra Khemiri',
+          contenu: 'Sarra Khemiri a pointé son entrée.',
+        ),
+      ),
+      '/equipe/pointages',
+    );
+    expect(
+      routePourNotification(
+        _notif(
+          evenement: 'POINTAGE_ECHECS_REPETES',
+          objetType: 'COLLABORATEUR',
+          objetId: _uuid,
+          sujet: 'Échecs de pointage',
+          contenu: '5 refus aujourd’hui.',
+        ),
+      ),
+      '/equipe/$_uuid',
+    );
+  });
 }

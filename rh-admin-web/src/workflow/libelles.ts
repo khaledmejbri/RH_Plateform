@@ -95,6 +95,23 @@ const TYPE_CHANGEMENT: Readonly<Record<string, string>> = {
 };
 export const libelleTypeChangement = (c: string | null | undefined) => lire(TYPE_CHANGEMENT, c);
 
+const ELEMENT_COMPARAISON: Readonly<Record<string, string>> = {
+  NOTIFICATIONS_DYNAMIQUES: 'Notifications dynamiques',
+};
+
+/** Libellé d'un élément dans le tableau de comparaison de versions (étape ou bloc dynamique). */
+export function libelleElementComparaison(code: string): string {
+  return ELEMENT_COMPARAISON[code] ?? code;
+}
+
+/** Libellé du type de changement adapté aux blocs non-étapes comme `NOTIFICATIONS_DYNAMIQUES`. */
+export function libelleTypeChangementElement(code: string, typeChangement: string | null | undefined): string {
+  if (code === 'NOTIFICATIONS_DYNAMIQUES' && typeChangement === 'MODIFIEE') {
+    return 'Configuration modifiée';
+  }
+  return libelleTypeChangement(typeChangement);
+}
+
 const CHAMP_MODIFIE: Readonly<Record<string, string>> = {
   libelle: 'Libellé',
   type: 'Type d’étape',
@@ -113,6 +130,12 @@ const CHAMP_MODIFIE: Readonly<Record<string, string>> = {
   si_approuve: 'Transition si approuvé',
   si_refuse: 'Transition si refusé',
   notifications: 'Notifications',
+  notifier_ro: 'Notification au responsable (RO)',
+  portee_sites: 'Portée des sites',
+  site_ids: 'Sites sélectionnés',
+  types_pointage: 'Types de pointage',
+  canal: 'Canal de notification',
+  NOTIFICATIONS_DYNAMIQUES: 'Notifications dynamiques',
 };
 export const libelleChampModifie = (c: string | null | undefined) => lire(CHAMP_MODIFIE, c);
 

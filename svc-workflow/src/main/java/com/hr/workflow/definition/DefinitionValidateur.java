@@ -47,6 +47,9 @@ public class DefinitionValidateur {
 	private static final Set<String> ACTIONS_REPLI = Set.of("PASSER", "ROLE", "BLOQUER");
 	private static final Set<String> ACTIONS_ECHEANCE = Set.of("RIEN", "ESCALADER", "EXPIRER", "REFUSER_AUTO", "APPROUVER_AUTO");
 	private static final Set<String> PUBLICS_FIXES = Set.of("DEMANDEUR", "CANDIDATS", "ROLE:RH", "ROLE:ADMIN", "MANAGER_NOEUD");
+	private static final Set<String> PORTEES_SITES = Set.of("TOUTE_LA_SOCIETE", "SITES_SELECTIONNES");
+	private static final Set<String> TYPES_POINTAGE_AUTORISES = Set.of("ENTREE", "SORTIE");
+	private static final Set<String> CANAUX_POINTAGE = Set.of("WEBSOCKET", "BOTH");
 
 	private static final Map<TypeVariable, Set<String>> OPERATEURS_PAR_TYPE = Map.of(
 			TypeVariable.ENTIER, Set.of("egal", "different", "inf", "inf_egal", "sup", "sup_egal", "vide", "non_vide"),
@@ -93,12 +96,20 @@ public class DefinitionValidateur {
 		}
 
 		TypeObjetCatalogue typeCatalogue = typeOpt.orElse(null);
+		boolean estEvenementiel = typeCatalogue != null && typeCatalogue.estEvenementiel();
 		Map<String, VariableCatalogue> variables = typeCatalogue != null
 				? catalogue.variablesPour(typeCatalogue.objetType())
 				: Map.of();
 
-		List<EtapeDefinition> etapes = def.etapes();
-		if (etapes == null || etapes.isEmpty()) {
+		if (estEvenementiel) {
+			validerNotificationsDynamiques(def.notificationsDynamiques(), erreurs);
+		} else if (def.notificationsDynamiques() != null) {
+			erreurs.add(ErreurDefinition.erreur("notifications_dynamiques", "CHAMP_NON_APPLICABLE",
+					"Les notifications dynamiques ne sont supportées que pour le type Pointage."));
+		}
+
+		List<EtapeDefinition> etapes = def.etapes() != null ? def.etapes() : List.of();
+		if (!estEvenementiel && etapes.isEmpty()) {
 			erreurs.add(ErreurDefinition.erreur("etapes", "CODE_ETAPE_INVALIDE",
 					"La définition doit contenir au moins une étape."));
 			return erreurs;
@@ -222,6 +233,52 @@ public class DefinitionValidateur {
 
 	public boolean estValide(List<ErreurDefinition> erreurs) {
 		return erreurs == null || erreurs.stream().noneMatch(ErreurDefinition::estBloquante);
+	}
+
+	private void validerNotificationsDynamiques(NotificationsDynamiquesDefinition nd, List<ErreurDefinition> erreurs) {
+		if (nd == null) {
+			erreurs.add(ErreurDefinition.erreur("notifications_dynamiques", "NOTIFICATIONS_DYNAMIQUES_REQUISES",
+					"La configuration des notifications dynamiques est obligatoire pour le type Pointage."));
+			return;
+		}
+		if (nd.notifierRo() == null) {
+			erreurs.add(ErreurDefinition.erreur("notifications_dynamiques.notifier_ro", "PARAMETRE_INVALIDE",
+					"L'indicateur de notification au responsable est obligatoire."));
+		}
+		if (nd.porteeSites() == null || !PORTEES_SITES.contains(nd.porteeSites())) {
+			erreurs.add(ErreurDefinition.erreur("notifications_dynamiques.portee_sites", "PORTEE_SITES_INVALIDE",
+					"La portée des sites doit être TOUTE_LA_SOCIETE ou SITES_SELECTIONNES."));
+		}
+		if (nd.canal() == null || !CANAUX_POINTAGE.contains(nd.canal())) {
+			erreurs.add(ErreurDefinition.erreur("notifications_dynamiques.canal", "CANAL_INVALIDE",
+					"Le canal de notification doit être WEBSOCKET ou BOTH."));
+		}
+		if (nd.siteIds() != null) {
+			for (String siteId : nd.siteIds()) {
+				if (siteId == null || siteId.isBlank() || !estUuidValide(siteId)) {
+					erreurs.add(ErreurDefinition.erreur("notifications_dynamiques.site_ids", "SITE_ID_INVALIDE",
+							"Identifiant de site invalide."));
+				}
+			}
+		}
+		if (nd.typesPointage() != null) {
+			for (String typePointage : nd.typesPointage()) {
+				if (typePointage == null || !TYPES_POINTAGE_AUTORISES.contains(typePointage)) {
+					erreurs.add(ErreurDefinition.erreur("notifications_dynamiques.types_pointage", "TYPES_POINTAGE_REQUIS",
+							"Type de pointage invalide (attendu ENTREE ou SORTIE)."));
+				}
+			}
+		}
+		if (Boolean.TRUE.equals(nd.notifierRo())) {
+			if ("SITES_SELECTIONNES".equals(nd.porteeSites()) && (nd.siteIds() == null || nd.siteIds().isEmpty())) {
+				erreurs.add(ErreurDefinition.erreur("notifications_dynamiques.site_ids", "SITES_REQUIS",
+						"Sélectionnez au moins un site de pointage ou choisissez Toute la société."));
+			}
+			if (nd.typesPointage() == null || nd.typesPointage().isEmpty()) {
+				erreurs.add(ErreurDefinition.erreur("notifications_dynamiques.types_pointage", "TYPES_POINTAGE_REQUIS",
+						"Sélectionnez au moins un type de pointage (Entrée ou Sortie)."));
+			}
+		}
 	}
 
 	private void validerActionsValidation(List<String> actions, String chemin, List<ErreurDefinition> erreurs) {
