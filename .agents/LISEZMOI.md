@@ -41,8 +41,9 @@ Règle d'or : **le modèle qui a écrit le code ne fait pas sa revue**. Revue = 
 | Vous voulez… | Tapez |
 |---|---|
 | Reprendre le projet / savoir où on en est | `/sirh-reprise` |
+| **Lancer l'essaim multi-modèles** (Neon PO + Flash Web → Carbon Archi → 3 devs Hydrogen // → Flash QA → Carbon Review → Neon GO) | `/start-multi-agent` + votre besoin |
 | **Tout faire d'un coup**, du besoin à la livraison (2 arrêts seulement) | `/sirh-autopilote` + votre besoin |
-| Reprendre un pilote automatique interrompu | `/sirh-autopilote reprends <nom>` |
+| Reprendre un pilote automatique ou multi-agent interrompu | `/sirh-autopilote reprends <nom>` ou `/start-multi-agent reprends <nom>` |
 | Relancer la démo et obtenir l'adresse pour le client | `/sirh-relancer-demo` |
 | Faire un besoin complet (règles → Jira → code → recette → revue) | `/sirh-boucle-qualite` + votre besoin |
 | Lancer un lot du moteur de workflow | `/sirh-boucle-qualite lot W1` (prompts dans `docs/specs/workflow/lots/`) |
