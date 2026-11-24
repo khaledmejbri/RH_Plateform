@@ -1,5 +1,6 @@
 // Modèles M09 — présence QR + GPS (vague Must).
 
+import '../../../core/format/formats.dart';
 import '../../../core/libelles/libelles.dart';
 
 enum TypePointage {
@@ -468,6 +469,143 @@ int? _parseInt(dynamic raw) {
   if (raw is int) return raw;
   if (raw is num) return raw.toInt();
   return int.tryParse(raw.toString());
+}
+
+/// Élément d'un pointage d'équipe (E7 — `GET /api/rh/v1/mobile/presence/equipe/pointages`).
+class PointageEquipeItem {
+  final String id;
+  final String collaborateurId;
+  final String collaborateurNom;
+  final String? collaborateurMatricule;
+  final String type;
+  final String? typeLibelle;
+  final String statut;
+  final String? statutLibelle;
+  final DateTime? serverTs;
+  final String? journee;
+  final String? siteId;
+  final String? siteCode;
+  final String? siteLibelle;
+  final bool manuel;
+  final String? motifRejet;
+
+  const PointageEquipeItem({
+    required this.id,
+    required this.collaborateurId,
+    required this.collaborateurNom,
+    this.collaborateurMatricule,
+    required this.type,
+    this.typeLibelle,
+    required this.statut,
+    this.statutLibelle,
+    this.serverTs,
+    this.journee,
+    this.siteId,
+    this.siteCode,
+    this.siteLibelle,
+    this.manuel = false,
+    this.motifRejet,
+  });
+
+  bool get estValide =>
+      statut == PointageStatut.valide || statut == PointageStatut.valideManuel;
+
+  bool get estRejet => PointageStatut.estRejet(statut);
+
+  bool get estSortie => type.toUpperCase() == 'SORTIE';
+
+  String get typeAffiche {
+    final l = typeLibelle?.trim();
+    if (l != null && l.isNotEmpty && !Libelles.ressembleAUnCode(l)) return l;
+    return estSortie ? 'Sortie' : 'Entrée';
+  }
+
+  String get statutAffiche {
+    final l = statutLibelle?.trim();
+    if (l != null && l.isNotEmpty && !Libelles.ressembleAUnCode(l)) return l;
+    if (statut == PointageStatut.valide) return 'Validé';
+    if (statut == PointageStatut.valideManuel) return 'Validé manuellement';
+    if (estRejet) return 'Refusé';
+    return Libelles.valeurNonReconnue;
+  }
+
+  /// Horodatage formaté en heure fixe `Africa/Tunis` (`jj/mm/aaaa hh:mm`).
+  String get horodatageTunis => formatDateHeureTunisIso(serverTs);
+
+  factory PointageEquipeItem.fromJson(Map<String, dynamic> json) {
+    return PointageEquipeItem(
+      id: _texteNonVide(json['id'] ?? json['identifiant']) ?? '',
+      collaborateurId:
+          _texteNonVide(json['collaborateur_id'] ?? json['collaborateurId']) ?? '',
+      collaborateurNom:
+          _texteNonVide(json['collaborateur_nom'] ?? json['collaborateurNom']) ??
+              'Collaborateur',
+      collaborateurMatricule: _texteNonVide(
+        json['collaborateur_matricule'] ?? json['collaborateurMatricule'],
+      ),
+      type: (_texteNonVide(json['type']) ?? 'ENTREE').toUpperCase(),
+      typeLibelle: _texteNonVide(json['type_libelle'] ?? json['typeLibelle']),
+      statut: (_texteNonVide(json['statut']) ?? '').toUpperCase(),
+      statutLibelle:
+          _texteNonVide(json['statut_libelle'] ?? json['statutLibelle']),
+      serverTs: _parseDate(json['server_ts'] ?? json['serverTs']),
+      journee: _texteNonVide(json['journee']),
+      siteId: _texteNonVide(json['site_id'] ?? json['siteId']),
+      siteCode: _texteNonVide(json['site_code'] ?? json['siteCode']),
+      siteLibelle: _texteNonVide(json['site_libelle'] ?? json['siteLibelle']),
+      manuel: json['manuel'] == true,
+      motifRejet: _texteNonVide(json['motif_rejet'] ?? json['motifRejet']),
+    );
+  }
+}
+
+/// Réponse paginée de `GET /api/rh/v1/mobile/presence/equipe/pointages` (E7).
+class PointagesEquipePage {
+  final List<PointageEquipeItem> elements;
+  final int page;
+  final int size;
+  final int totalElements;
+  final int totalPages;
+  final String? du;
+  final String? au;
+  final int effectifEquipe;
+
+  const PointagesEquipePage({
+    this.elements = const [],
+    this.page = 0,
+    this.size = 20,
+    this.totalElements = 0,
+    this.totalPages = 0,
+    this.du,
+    this.au,
+    this.effectifEquipe = 0,
+  });
+
+  bool get aSuite => totalPages > 0
+      ? (page + 1) < totalPages
+      : ((page + 1) * size < totalElements);
+
+  factory PointagesEquipePage.fromJson(Map<String, dynamic> json) {
+    final brut = json['elements'] ?? json['content'] ?? json['items'];
+    return PointagesEquipePage(
+      elements: brut is List
+          ? brut
+              .whereType<Map>()
+              .map((e) => PointageEquipeItem.fromJson(Map<String, dynamic>.from(e)))
+              .toList()
+          : const [],
+      page: _parseInt(json['page']) ?? 0,
+      size: _parseInt(json['size'] ?? json['taille']) ?? 20,
+      totalElements:
+          _parseInt(json['total_elements'] ?? json['totalElements'] ?? json['total']) ??
+              0,
+      totalPages: _parseInt(json['total_pages'] ?? json['totalPages']) ?? 0,
+      du: _texteNonVide(json['du']),
+      au: _texteNonVide(json['au']),
+      effectifEquipe:
+          _parseInt(json['effectif_equipe'] ?? json['effectifEquipe']) ?? 0,
+    );
+  }
 }
 
 /// Durée du blocage après 3 échecs faciaux (D-P10).

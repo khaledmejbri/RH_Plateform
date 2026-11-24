@@ -55,6 +55,10 @@ public class CatalogueTypesObjet {
 		public boolean supporteEffet(String effet) {
 			return effets.contains(effet);
 		}
+
+		public boolean estEvenementiel() {
+			return "POINTAGE".equals(objetType);
+		}
 	}
 
 	private static final String EFFET_REFERENTIEL = "/internal/referentiel/v1/workflow/effets";
@@ -156,6 +160,13 @@ public class CatalogueTypesObjet {
 						VariableCatalogue.simple("debut_fenetre", TypeVariable.DATE_HEURE, "Début de la fenêtre")
 				),
 				Set.of("APPROUVER", "REFUSER", "EXPIRER", "ANNULER"),
+				false, false
+		));
+
+		enregistrer(map, new TypeObjetCatalogue(
+				"POINTAGE", "Pointage", "svc-presence", "",
+				List.of(),
+				Set.of(),
 				false, false
 		));
 

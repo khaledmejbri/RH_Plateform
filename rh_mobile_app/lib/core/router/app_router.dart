@@ -45,6 +45,7 @@ import '../../features/dossier/presentation/fiche_annuaire_screen.dart';
 import '../../features/dossier/presentation/fiche_equipe_screen.dart';
 import '../../features/dossier/presentation/mon_dossier_screen.dart';
 import '../../features/dossier/presentation/mon_equipe_screen.dart';
+import '../../features/dossier/presentation/pointages_equipe_screen.dart';
 import '../../features/formations/presentation/formation_detail_screen.dart';
 import '../../features/pointage/presentation/mes_pointages_screen.dart';
 import '../../features/pointage/presentation/pointage_manuel_detail_screen.dart';
@@ -112,6 +113,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/dossier', builder: (_, __) => const MonDossierScreen()),
       GoRoute(path: '/equipe', builder: (_, __) => const MonEquipeScreen()),
+      GoRoute(
+        path: '/equipe/pointages',
+        builder: (_, __) => const PointagesEquipeScreen(),
+      ),
       GoRoute(
         path: '/equipe/:id',
         builder: (c, s) => FicheEquipeScreen(collaborateurId: s.pathParameters['id']!),

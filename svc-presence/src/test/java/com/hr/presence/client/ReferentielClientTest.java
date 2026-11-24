@@ -201,4 +201,20 @@ class ReferentielClientTest {
 				java.time.LocalDate.of(2026, 10, 26)))
 				.isInstanceOfSatisfying(PresenceMetierException.class, e -> assertThat(e.getHttpStatus()).isEqualTo(503));
 	}
+
+	@Test
+	void resoudreCollaborateurCourt_sansSecurityContext_etErreurRenvoieVide() {
+		SecurityContextHolder.clearContext();
+		UUID fiche = UUID.randomUUID();
+		UUID roCompte = UUID.randomUUID();
+		statut = 200;
+		corps = "[{\"collaborateur_id\":\"" + fiche + "\",\"nom\":\"Sarra Khemiri\",\"matricule\":\"COL-WEB\",\"actif\":true,\"valideur_compte_id\":\"" + roCompte + "\"}]";
+
+		var ok = client().resoudreCollaborateurCourt(fiche);
+		assertThat(ok).isPresent();
+		assertThat(ok.get().valideurCompteId()).isEqualTo(roCompte);
+
+		statut = 500;
+		assertThat(client().resoudreCollaborateurCourt(fiche)).isEmpty();
+	}
 }

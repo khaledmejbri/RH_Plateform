@@ -65,7 +65,7 @@ class ModelesAmorceRunnerTest {
 	}
 
 	@Test
-	void amorcer_estIdempotent_cree7ModelesEt7ActivationsUneSeuleFois() {
+	void amorcer_estIdempotent_cree7ModelesEt8ActivationsUneSeuleFois() {
 		when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
 		Set<String> activationsExistantes = new HashSet<>();
 		Set<String> modelesExistants = new HashSet<>();
@@ -79,13 +79,15 @@ class ModelesAmorceRunnerTest {
 			activationsExistantes.add(a.getObjetType());
 			return a;
 		});
-		when(modeleRepository.existsByCode(anyString())).thenAnswer(inv -> modelesExistants.contains(inv.getArgument(0)));
+		when(modeleRepository.existsByCode(anyString()))
+				.thenAnswer(inv -> modelesExistants.contains(inv.getArgument(0)));
 		when(modeleRepository.saveAndFlush(any(WfModele.class))).thenAnswer(inv -> {
 			WfModele m = inv.getArgument(0);
 			modelesExistants.add(m.getCode());
 			return m;
 		});
-		lenient().when(versionRepository.saveAndFlush(any(WfModeleVersion.class))).thenAnswer(inv -> inv.getArgument(0));
+		lenient().when(versionRepository.saveAndFlush(any(WfModeleVersion.class)))
+				.thenAnswer(inv -> inv.getArgument(0));
 
 		ModelesAmorceRunner runner = new ModelesAmorceRunner(
 				activationRepository, modeleRepository, versionRepository,
@@ -95,9 +97,12 @@ class ModelesAmorceRunnerTest {
 		runner.amorcer();
 		runner.amorcer();
 
-		assertThat(activationsExistantes).hasSize(7);
+		assertThat(activationsExistantes).hasSize(8).contains("POINTAGE");
 		assertThat(modelesExistants).hasSize(7);
-		verify(activationRepository, times(7)).save(any());
+		assertThat(ModelesAmorceRunner.definitionsAmorcees())
+				.extracting(ModelesAmorceRunner.ModeleAmorce::objetType)
+				.doesNotContain("POINTAGE");
+		verify(activationRepository, times(8)).save(any());
 		verify(modeleRepository, times(7)).saveAndFlush(any());
 		verify(versionRepository, times(7)).saveAndFlush(any());
 	}

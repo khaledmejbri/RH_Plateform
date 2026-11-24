@@ -91,6 +91,9 @@ public class SimulationService {
 		if (!validateur.estValide(erreurs)) {
 			throw WorkflowMetierException.definitionInvalide(erreurs);
 		}
+		if (chargee.def().etapes() == null || chargee.def().etapes().isEmpty()) {
+			return new SimulationResponse(List.of());
+		}
 
 		// Préparation des règles à résoudre en un seul lot (hors transaction)
 		List<RegleAResoudre> regles = new ArrayList<>();

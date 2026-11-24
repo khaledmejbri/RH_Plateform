@@ -14,6 +14,8 @@ String? routePourNotification(AppNotification n) {
   final ev = n.evenement?.trim().toUpperCase();
   if (ev != null && ev.isNotEmpty) {
     switch (ev) {
+      case 'POINTAGE_EQUIPE_EFFECTUE':
+        return '/equipe/pointages';
       case 'WF_TACHE_CREEE':
       case 'WF_RELANCE':
       case 'WF_ESCALADE':

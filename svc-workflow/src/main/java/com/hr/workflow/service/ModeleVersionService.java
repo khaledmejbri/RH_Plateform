@@ -12,6 +12,7 @@ import com.hr.workflow.definition.EcheanceDefinition;
 import com.hr.workflow.definition.ErreurDefinition;
 import com.hr.workflow.definition.EtapeDefinition;
 import com.hr.workflow.definition.IntervenantsDefinition;
+import com.hr.workflow.definition.NotificationsDynamiquesDefinition;
 import com.hr.workflow.domain.ActionJournalModele;
 import com.hr.workflow.domain.StatutVersion;
 import com.hr.workflow.dto.AdminWorkflowDtos.ActionVersionRequest;
@@ -501,6 +502,11 @@ public class ModeleVersionService {
 				diffs.add(new DiffEtape(code, "RETIREE", List.of()));
 			}
 		}
+		NotificationsDynamiquesDefinition nd1 = d1.notificationsDynamiques();
+		NotificationsDynamiquesDefinition nd2 = d2.notificationsDynamiques();
+		if (!Objects.equals(nd1, nd2)) {
+			diffs.add(new DiffEtape("NOTIFICATIONS_DYNAMIQUES", "MODIFIEE", champsModifiesNotifications(nd1, nd2)));
+		}
 		return new ComparaisonVersionsResponse(vid, autreVid, diffs);
 	}
 
@@ -540,7 +546,38 @@ public class ModeleVersionService {
 		return champs;
 	}
 
+	private static List<String> champsModifiesNotifications(
+			NotificationsDynamiquesDefinition nd1,
+			NotificationsDynamiquesDefinition nd2) {
+		List<String> champs = new ArrayList<>();
+		if (!Objects.equals(nd1 != null ? nd1.notifierRo() : null, nd2 != null ? nd2.notifierRo() : null)) {
+			champs.add("notifier_ro");
+		}
+		if (!Objects.equals(nd1 != null ? nd1.porteeSites() : null, nd2 != null ? nd2.porteeSites() : null)) {
+			champs.add("portee_sites");
+		}
+		if (!Objects.equals(nd1 != null ? nd1.siteIds() : null, nd2 != null ? nd2.siteIds() : null)) {
+			champs.add("site_ids");
+		}
+		if (!Objects.equals(nd1 != null ? nd1.typesPointage() : null, nd2 != null ? nd2.typesPointage() : null)) {
+			champs.add("types_pointage");
+		}
+		if (!Objects.equals(nd1 != null ? nd1.canal() : null, nd2 != null ? nd2.canal() : null)) {
+			champs.add("canal");
+		}
+		return champs;
+	}
+
 	private DefinitionWorkflow definitionParDefaut(String objetType) {
+		if ("POINTAGE".equals(objetType)) {
+			return new DefinitionWorkflow(
+					1,
+					objetType,
+					new DefinitionWorkflow.OptionsWorkflow(false),
+					List.of(),
+					NotificationsDynamiquesDefinition.parDefautPointage()
+			);
+		}
 		EtapeDefinition etapeDefaut = new EtapeDefinition(
 				"VALIDATION_RH",
 				"Validation RH",

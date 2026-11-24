@@ -87,6 +87,36 @@ class PresenceRepository {
     return data is Map ? PresenceEquipe.fromJson(Map<String, dynamic>.from(data)) : const PresenceEquipe();
   }
 
+  /// Liste paginée des pointages de l'équipe D-H03 du valideur (E7).
+  Future<PointagesEquipePage> pointagesEquipe({
+    String? du,
+    String? au,
+    String? q,
+    String? collaborateurId,
+    String? siteId,
+    int page = 0,
+    int size = 20,
+  }) async {
+    final qTrim = q?.trim();
+    final res = await _dio.get<dynamic>(
+      '$_mobileBase/equipe/pointages',
+      queryParameters: {
+        if (du != null && du.isNotEmpty) 'du': du,
+        if (au != null && au.isNotEmpty) 'au': au,
+        if (qTrim != null && qTrim.isNotEmpty) 'q': qTrim,
+        if (collaborateurId != null && collaborateurId.isNotEmpty)
+          'collaborateur_id': collaborateurId,
+        if (siteId != null && siteId.isNotEmpty) 'site_id': siteId,
+        'page': page,
+        'size': size,
+      },
+    );
+    final data = res.data;
+    return data is Map
+        ? PointagesEquipePage.fromJson(Map<String, dynamic>.from(data))
+        : const PointagesEquipePage();
+  }
+
   /// Détail d'un pointage manuel (C5) : demandeur ou valideur seulement (403 `HORS_PERIMETRE`).
   Future<DemandeManuelleDetail> detailDemandeManuelle(String id) async {
     final res = await _dio.get<Map<String, dynamic>>('$_mobileBase/demandes-manuelles/$id');

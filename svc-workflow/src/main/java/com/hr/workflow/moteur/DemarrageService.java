@@ -176,6 +176,10 @@ public class DemarrageService {
 		TypeObjetCatalogue typeCatalogue = catalogue.findByObjetType(req.objetType())
 				.orElseThrow(() -> WorkflowMetierException.badRequest("TYPE_OBJET_INCONNU",
 						"Type d'objet inconnu : " + req.objetType()));
+		if (typeCatalogue.estEvenementiel()) {
+			throw WorkflowMetierException.unprocessable("TYPE_OBJET_SANS_INSTANCE",
+					"Le type " + req.objetType() + " est événementiel et ne supporte pas la création d'instance.");
+		}
 
 		// Étapes 1 & 2 (lecture seule) : idempotence, conflit, activation MOTEUR, sélection modèle (D-W01)
 		record Preparation(

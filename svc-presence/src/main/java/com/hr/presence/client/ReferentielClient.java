@@ -2,10 +2,12 @@ package com.hr.presence.client;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.hr.commun.societe.SocieteContexte;
 import com.hr.presence.config.PresenceProperties;
 import com.hr.presence.web.PresenceMetierException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -19,6 +21,7 @@ import org.springframework.web.client.RestClientException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -33,20 +36,35 @@ public class ReferentielClient {
 	private static final String EN_TETE_SOCIETE_ID = "X-Societe-Id";
 
 	private final RestClient restClient;
+	private final RestClient restClientNotif;
 	private final String jetonInterne;
 
 	public ReferentielClient(
 			PresenceProperties properties,
-			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne) {
+			String jetonInterne) {
+		this(properties, jetonInterne, 1000, 2000);
+	}
+
+	@Autowired
+	public ReferentielClient(
+			PresenceProperties properties,
+			@Value("${app.internal-api.token:change-me-internal-token}") String jetonInterne,
+			@Value("${presence.referentiel.notif-timeout-connexion-ms:1000}") int notifTimeoutConnexionMs,
+			@Value("${presence.referentiel.notif-timeout-lecture-ms:2000}") int notifTimeoutLectureMs) {
 		// Délais d'attente configurables : un référentiel lent ne doit pas bloquer indéfiniment une requête de présence.
 		PresenceProperties.Referentiel ref = properties.getReferentiel();
+		this.restClient = construireClient(ref.getBaseUrl(), ref.getTimeoutConnexionMs(), ref.getTimeoutLectureMs());
+		this.restClientNotif = construireClient(ref.getBaseUrl(), notifTimeoutConnexionMs, notifTimeoutLectureMs);
+		this.jetonInterne = jetonInterne;
+	}
+
+	private static RestClient construireClient(String baseUrl, int timeoutConnexionMs, int timeoutLectureMs) {
 		java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
-				.connectTimeout(java.time.Duration.ofMillis(ref.getTimeoutConnexionMs()))
+				.connectTimeout(java.time.Duration.ofMillis(timeoutConnexionMs))
 				.build();
 		JdkClientHttpRequestFactory fabrique = new JdkClientHttpRequestFactory(http);
-		fabrique.setReadTimeout(java.time.Duration.ofMillis(ref.getTimeoutLectureMs()));
-		this.restClient = RestClient.builder().baseUrl(ref.getBaseUrl()).requestFactory(fabrique).build();
-		this.jetonInterne = jetonInterne;
+		fabrique.setReadTimeout(java.time.Duration.ofMillis(timeoutLectureMs));
+		return RestClient.builder().baseUrl(baseUrl).requestFactory(fabrique).build();
 	}
 
 	/**
@@ -55,9 +73,14 @@ public class ReferentielClient {
 	 */
 	public List<CollaborateurResolu> resoudreCollaborateurs(List<UUID> collaborateurIds) {
 		try {
-			CollaborateurResolu[] body = restClient.post()
+			var req = restClient.post()
 					.uri("/internal/referentiel/collaborateurs/resolution-pointage")
-					.header(EN_TETE_JETON_INTERNE, jetonInterne)
+					.header(EN_TETE_JETON_INTERNE, jetonInterne);
+			String societeId = societeCouranteOuJwt();
+			if (societeId != null) {
+				req = req.header(EN_TETE_SOCIETE_ID, societeId);
+			}
+			CollaborateurResolu[] body = req
 					.body(Map.of("collaborateur_ids", collaborateurIds))
 					.retrieve()
 					.body(CollaborateurResolu[].class);
@@ -67,12 +90,44 @@ public class ReferentielClient {
 		}
 	}
 
+	/**
+	 * Résolution rapide d'un collaborateur pour notification post-commit sur Virtual Thread (connect 1s, read 2s).
+	 * Ne dépend pas de {@code SecurityContextHolder} et ne lève jamais d'exception.
+	 */
+	public Optional<CollaborateurResolu> resoudreCollaborateurCourt(UUID ficheId) {
+		if (ficheId == null) {
+			return Optional.empty();
+		}
+		try {
+			var req = restClientNotif.post()
+					.uri("/internal/referentiel/collaborateurs/resolution-pointage")
+					.header(EN_TETE_JETON_INTERNE, jetonInterne);
+			Optional<UUID> societeId = SocieteContexte.couranteOuVide();
+			if (societeId.isPresent() && !SocieteContexte.AUCUNE.equals(societeId.get())) {
+				req = req.header(EN_TETE_SOCIETE_ID, societeId.get().toString());
+			}
+			CollaborateurResolu[] body = req
+					.body(Map.of("collaborateur_ids", List.of(ficheId)))
+					.retrieve()
+					.body(CollaborateurResolu[].class);
+			return body != null && body.length > 0 ? Optional.of(body[0]) : Optional.empty();
+		} catch (RestClientException ex) {
+			log.warn("Résolution courte collaborateur {} impossible : {}", ficheId, ex.getClass().getSimpleName());
+			return Optional.empty();
+		}
+	}
+
 	/** Collaborateurs actifs dont le valideur D-H03 est {@code ficheId} : aide de saisie du RO. */
 	public List<CollaborateurResolu> perimetreValidation(UUID ficheId) {
 		try {
-			CollaborateurResolu[] body = restClient.get()
+			var req = restClient.get()
 					.uri("/internal/referentiel/collaborateurs/{ficheId}/perimetre-validation", ficheId)
-					.header(EN_TETE_JETON_INTERNE, jetonInterne)
+					.header(EN_TETE_JETON_INTERNE, jetonInterne);
+			String societeId = societeCouranteOuJwt();
+			if (societeId != null) {
+				req = req.header(EN_TETE_SOCIETE_ID, societeId);
+			}
+			CollaborateurResolu[] body = req
 					.retrieve()
 					.body(CollaborateurResolu[].class);
 			return body == null ? List.of() : List.of(body);
@@ -155,6 +210,14 @@ public class ReferentielClient {
 		} catch (RestClientException ex) {
 			throw referentielIndisponible(ex);
 		}
+	}
+
+	private static String societeCouranteOuJwt() {
+		Optional<UUID> societeId = SocieteContexte.couranteOuVide();
+		if (societeId.isPresent() && !SocieteContexte.AUCUNE.equals(societeId.get())) {
+			return societeId.get().toString();
+		}
+		return societeCouranteDepuisJwt();
 	}
 
 	private static String societeCouranteDepuisJwt() {

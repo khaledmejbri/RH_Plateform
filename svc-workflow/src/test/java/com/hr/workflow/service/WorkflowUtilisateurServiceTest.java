@@ -162,4 +162,14 @@ class WorkflowUtilisateurServiceTest {
 				.isInstanceOf(WorkflowMetierException.class)
 				.hasFieldOrPropertyWithValue("httpStatus", 404);
 	}
+
+	@Test
+	void typesOuverts_exclutTypeEvenementielPointage() {
+		when(activationRepository.findAll()).thenReturn(List.of());
+		when(versionRepository.findAllPublieesActives()).thenReturn(List.of());
+
+		var ouverts = service.typesOuverts();
+		assertThat(ouverts).hasSize(7);
+		assertThat(ouverts).extracting(t -> t.objetType()).doesNotContain("POINTAGE");
+	}
 }

@@ -14,6 +14,7 @@ import com.hr.presence.service.HeuresSupCsvService;
 import com.hr.presence.service.HeuresSupService;
 import com.hr.presence.service.PresenceCollaborateurService;
 import com.hr.presence.service.PresenceDemandeManuelleService;
+import com.hr.presence.service.PresenceEquipePointagesService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -58,6 +59,8 @@ class PresenceLot2ControllersSecurityTest {
 
 	@MockitoBean
 	private PresenceCollaborateurService presenceService;
+	@MockitoBean
+	private PresenceEquipePointagesService equipePointagesService;
 	@MockitoBean
 	private PresenceDemandeManuelleService demandeService;
 	@MockitoBean

@@ -8,11 +8,13 @@ import com.hr.workflow.dto.WorkflowMoteurDtos.DecisionResponse;
 import com.hr.workflow.dto.WorkflowMoteurDtos.DemarrerInstanceRequest;
 import com.hr.workflow.dto.WorkflowMoteurDtos.DemarrerInstanceResponse;
 import com.hr.workflow.dto.WorkflowMoteurDtos.MajVariablesRequest;
+import com.hr.workflow.dto.WorkflowMoteurDtos.RegleActivePointageResponse;
 import com.hr.workflow.dto.WorkflowMoteurDtos.SuiviInstanceResponse;
 import com.hr.workflow.moteur.DemarrageService;
 import com.hr.workflow.moteur.DemarrageService.ResultatDemarrage;
 import com.hr.workflow.service.ActivationService;
 import com.hr.workflow.service.InstanceInterneService;
+import com.hr.workflow.service.PointageRegleInterneService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -42,14 +44,17 @@ public class WorkflowInterneController {
 	private final DemarrageService demarrageService;
 	private final InstanceInterneService instanceInterneService;
 	private final ActivationService activationService;
+	private final PointageRegleInterneService pointageRegleInterneService;
 
 	public WorkflowInterneController(
 			DemarrageService demarrageService,
 			InstanceInterneService instanceInterneService,
-			ActivationService activationService) {
+			ActivationService activationService,
+			PointageRegleInterneService pointageRegleInterneService) {
 		this.demarrageService = demarrageService;
 		this.instanceInterneService = instanceInterneService;
 		this.activationService = activationService;
+		this.pointageRegleInterneService = pointageRegleInterneService;
 	}
 
 	@PostMapping("/instances")
@@ -93,5 +98,10 @@ public class WorkflowInterneController {
 			@PathVariable("objetType") String objetType,
 			@PathVariable("objetId") UUID objetId) {
 		return instanceInterneService.suiviInterneParObjet(objetType, objetId);
+	}
+
+	@GetMapping("/pointage/regle-active")
+	public RegleActivePointageResponse regleActivePointage() {
+		return pointageRegleInterneService.lireRegleActive();
 	}
 }

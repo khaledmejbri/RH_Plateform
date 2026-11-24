@@ -102,7 +102,10 @@ String? messageParCodeErreur(String? code) {
     case 'PLAGE_DEJA_COMMENCEE':
       return 'La période a déjà commencé : la demande n’est plus possible.';
     case 'PLAGE_TROP_LONGUE':
+    case 'PERIODE_TROP_LONGUE':
       return 'La période ne peut pas dépasser 31 jours.';
+    case 'RECHERCHE_TROP_LONGUE':
+      return 'La recherche ne peut pas dépasser 100 caractères.';
     case 'PERIODE_INVALIDE':
       return 'La date de fin précède la date de début.';
     case 'MOTIF_OBLIGATOIRE':

@@ -86,6 +86,24 @@ public final class WorkflowMoteurDtos {
 	) {
 	}
 
+	public record RegleActivePointageResponse(
+			@JsonProperty("actif_effectif") boolean actifEffectif,
+			@JsonProperty("mode") ModeActivation mode,
+			@JsonProperty("modele_code") String modeleCode,
+			@JsonProperty("version_numero") Integer versionNumero,
+			@JsonProperty("notifier_ro") boolean notifierRo,
+			@JsonProperty("portee_sites") String porteeSites,
+			@JsonProperty("site_ids") List<UUID> siteIds,
+			@JsonProperty("types_pointage") List<String> typesPointage,
+			@JsonProperty("canal") String canal
+	) {
+		public static RegleActivePointageResponse inactive(ModeActivation mode) {
+			return new RegleActivePointageResponse(
+					false, mode, null, null, false,
+					"TOUTE_LA_SOCIETE", List.of(), List.of(), "WEBSOCKET");
+		}
+	}
+
 	// ─── Routes utilisateur (§ 9.7.3) ────────────────────────────────────────
 
 	public record TypeOuvertResponse(

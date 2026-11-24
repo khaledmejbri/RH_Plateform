@@ -96,6 +96,20 @@ export type EtapeDefinition = {
   [extra: string]: unknown;
 };
 
+export type PorteeSitesPointage = 'TOUTE_LA_SOCIETE' | 'SITES_SELECTIONNES';
+
+export type TypePointageNotif = 'ENTREE' | 'SORTIE';
+
+export type CanalNotificationPointage = 'WEBSOCKET' | 'BOTH';
+
+export type NotificationsDynamiquesDefinition = {
+  notifier_ro: boolean;
+  portee_sites: PorteeSitesPointage;
+  site_ids: string[];
+  types_pointage: TypePointageNotif[];
+  canal: CanalNotificationPointage;
+};
+
 export type DefinitionWorkflow = {
   format: number;
   objet_type: string;
@@ -104,6 +118,7 @@ export type DefinitionWorkflow = {
     [extra: string]: unknown;
   } | null;
   etapes: EtapeDefinition[];
+  notifications_dynamiques?: NotificationsDynamiquesDefinition | null;
   [extra: string]: unknown;
 };
 

@@ -98,4 +98,21 @@ class PresenceEventPublisherTest {
 		assertThat(n.get("notification_id").asText()).isNotBlank();
 		assertThat(n.get("emis_le").asText()).isEqualTo("2026-11-08T10:15:30Z");
 	}
+
+	@Test
+	void notifierAvecCanalBoth_emetTypeBoth() throws Exception {
+		UUID collab = UUID.randomUUID();
+		ObjetNotification objet = new ObjetNotification(
+				ObjetNotification.COLLABORATEUR, "POINTAGE_EQUIPE_EFFECTUE", collab, "COL-WEB", UUID.randomUUID());
+
+		publisher().notifierAvecCanal("BOTH", "ro-compte-1", "Pointage — Sarra", "Contenu", objet);
+
+		org.mockito.ArgumentCaptor<String> json = org.mockito.ArgumentCaptor.forClass(String.class);
+		verify(kafka).send(org.mockito.ArgumentMatchers.eq(RhPresenceTopics.RH_NOTIFICATIONS),
+				org.mockito.ArgumentMatchers.eq("ro-compte-1"), json.capture());
+		com.fasterxml.jackson.databind.JsonNode n = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json.getValue());
+		assertThat(n.get("type").asText()).isEqualTo("BOTH");
+		assertThat(n.get("evenement").asText()).isEqualTo("POINTAGE_EQUIPE_EFFECTUE");
+		assertThat(n.get("objet_type").asText()).isEqualTo("COLLABORATEUR");
+	}
 }

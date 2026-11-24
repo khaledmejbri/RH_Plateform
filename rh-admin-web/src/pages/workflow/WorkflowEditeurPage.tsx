@@ -1,20 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { getPresenceSites, type PresenceSite } from '../../api/presenceApi';
 import { getFonctions, type FonctionRh } from '../../api/societeApi';
 import {
   creerBrouillonModele,
   estConflitWorkflow,
   executerPourConfirmation,
+  getActivationsWorkflow,
   getCatalogueWorkflow,
   getModeleWorkflow,
   getVersionsModele,
   getVersionWorkflow,
   messageErreurWorkflow,
   publierVersionWorkflow,
+  putActivationWorkflow,
   putVersionWorkflow,
   supprimerBrouillonWorkflow,
   validerVersionWorkflow,
   WorkflowApiError,
+  type ActivationWorkflow,
   type CatalogueWorkflow,
   type DefinitionWorkflow,
   type ErreurDefinition,
@@ -22,6 +26,7 @@ import {
   type VersionDetail,
   type VersionResume,
 } from '../../api/workflowApi';
+import { useLectureSeule } from '../../auth/useLectureSeule';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { ErrorAlert, LoadingState, PageHeader } from '../../components/ui';
 import { grouperErreursParEtape, rattacherErreurs } from '../../workflow/erreurs';
@@ -30,31 +35,51 @@ import { useActiverGarde } from '../../workflow/gardeNavigation';
 import { libelleNiveauErreur, libelleStatutVersion, libelleTypeEtape } from '../../workflow/libelles';
 import { libelleSousTypeModele } from '../../workflow/valeursListes';
 import PanneauEtape from './PanneauEtape';
+import PanneauNotificationsPointage from './PanneauNotificationsPointage';
 import PanneauSimulation from './PanneauSimulation';
 import { PanneauJournalModele, PanneauVersions } from './PanneauVersionsJournal';
 
-type ContexteRoute = { lectureSeule?: boolean };
 type OngletPrincipal = 'editeur' | 'simulation' | 'versions' | 'journal';
 
-export default function WorkflowEditeurPage() {
+type Props = {
+  initialCatalogue?: CatalogueWorkflow | null;
+  initialModele?: ModeleDetail | null;
+  initialVersions?: VersionResume[];
+  initialVersionActive?: VersionDetail | null;
+  initialActivationPointage?: ActivationWorkflow | null;
+  initialSitesPointage?: PresenceSite[];
+};
+
+export default function WorkflowEditeurPage({
+  initialCatalogue = null,
+  initialModele = null,
+  initialVersions = [],
+  initialVersionActive = null,
+  initialActivationPointage = null,
+  initialSitesPointage = [],
+}: Props = {}) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const confirm = useConfirm();
-  const { lectureSeule } = useOutletContext<ContexteRoute>() ?? {};
+  const lectureSeule = useLectureSeule();
 
-  const [catalogue, setCatalogue] = useState<CatalogueWorkflow | null>(null);
+  const [catalogue, setCatalogue] = useState<CatalogueWorkflow | null>(initialCatalogue);
   const [fonctionsActives, setFonctionsActives] = useState<FonctionRh[]>([]);
-  const [modele, setModele] = useState<ModeleDetail | null>(null);
-  const [versions, setVersions] = useState<VersionResume[]>([]);
-  const [versionActive, setVersionActive] = useState<VersionDetail | null>(null);
-  const [definition, setDefinition] = useState<DefinitionWorkflow | null>(null);
-  const [erreursDef, setErreursDef] = useState<ErreurDefinition[]>([]);
+  const [modele, setModele] = useState<ModeleDetail | null>(initialModele);
+  const [versions, setVersions] = useState<VersionResume[]>(initialVersions);
+  const [versionActive, setVersionActive] = useState<VersionDetail | null>(initialVersionActive);
+  const [definition, setDefinition] = useState<DefinitionWorkflow | null>(initialVersionActive?.definition ?? null);
+  const [erreursDef, setErreursDef] = useState<ErreurDefinition[]>(initialVersionActive?.erreurs ?? []);
+  const [activationPointage, setActivationPointage] = useState<ActivationWorkflow | null>(initialActivationPointage);
+  const [sitesPointage, setSitesPointage] = useState<PresenceSite[]>(initialSitesPointage);
+  const [sitesChargement, setSitesChargement] = useState(false);
+  const [sitesErreur, setSitesErreur] = useState<string | null>(null);
   const [modifie, setModifie] = useState(false);
   const [defConflit, setDefConflit] = useState<DefinitionWorkflow | null>(null);
 
   const [etapeIndex, setEtapeIndex] = useState(0);
   const [onglet, setOnglet] = useState<OngletPrincipal>('editeur');
-  const [chargement, setChargement] = useState(true);
+  const [chargement, setChargement] = useState(!(initialModele && initialCatalogue));
   const [erreur, setErreur] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -105,6 +130,30 @@ export default function WorkflowEditeurPage() {
       } else {
         setVersionActive(null);
         setDefinition(null);
+      }
+
+      if (mod.objet_type === 'POINTAGE') {
+        setSitesChargement(true);
+        setSitesErreur(null);
+        setOnglet((o) => (o === 'simulation' ? 'editeur' : o));
+        const [acts, pageSites] = await Promise.all([
+          getActivationsWorkflow().catch(() => []),
+          getPresenceSites({ page: 0, size: 50 }).catch(() => {
+            if (n === sequence.current) {
+              setSitesErreur('Impossible de charger la liste des sites de pointage.');
+            }
+            return { contenu: [] as PresenceSite[] };
+          }),
+        ]);
+        if (n !== sequence.current) return;
+        setActivationPointage(acts.find((a) => a.objet_type === 'POINTAGE') ?? null);
+        setSitesPointage(pageSites.contenu ?? []);
+        setSitesChargement(false);
+      } else {
+        setActivationPointage(null);
+        setSitesPointage([]);
+        setSitesErreur(null);
+        setSitesChargement(false);
       }
     } catch (e) {
       if (n === sequence.current) setErreur(messageErreurWorkflow(e));
@@ -241,7 +290,10 @@ export default function WorkflowEditeurPage() {
     let conflit = false;
     const ok = await confirm({
       title: `Publier la version v${versionActive.numero} ?`,
-      message: 'Cette version deviendra la version active pour les nouvelles demandes de ce modèle.',
+      message:
+        modele?.objet_type === 'POINTAGE'
+          ? 'Cette version deviendra la version active pour les règles de notification de pointage.'
+          : 'Cette version deviendra la version active pour les nouvelles demandes de ce modèle.',
       confirmLabel: 'Publier',
       envoyer: () =>
         executerPourConfirmation(() => publierVersionWorkflow(versionActive.id, versionActive.version)),
@@ -256,6 +308,31 @@ export default function WorkflowEditeurPage() {
     } else if (conflit) {
       await chargerTout();
       setErreur('Ce modèle a été modifié entre-temps par un autre utilisateur : la page a été rechargée.');
+    }
+  }
+
+  async function activerCircuitPointage() {
+    if (!activationPointage || lectureSeule || activationPointage.mode === 'MOTEUR') return;
+    let conflit = false;
+    const ok = await confirm({
+      title: 'Basculer « Pointage » vers Circuit paramétré ?',
+      message: 'Les notifications dynamiques de pointage suivront la version publiée de ce modèle.',
+      confirmLabel: 'Passer en Circuit paramétré',
+      envoyer: () =>
+        executerPourConfirmation(() =>
+          putActivationWorkflow('POINTAGE', 'MOTEUR', activationPointage.version),
+        ),
+      echecDefinitif: (e) => {
+        conflit = estConflitWorkflow(e);
+        return conflit;
+      },
+    });
+    if (ok) {
+      setMessage('Circuit Pointage passé en Circuit paramétré.');
+      await chargerTout();
+    } else if (conflit) {
+      await chargerTout();
+      setErreur('L’activation Pointage a été modifiée entre-temps : la page a été rechargée.');
     }
   }
 
@@ -352,8 +429,21 @@ export default function WorkflowEditeurPage() {
     );
   }
 
+  const estPointage = modele.objet_type === 'POINTAGE';
   const etapes = definition?.etapes ?? [];
   const etapeCourante = etapes[etapeIndex] ?? null;
+  const ongletsDisponibles: Array<[OngletPrincipal, string]> = estPointage
+    ? [
+        ['editeur', 'Éditeur'],
+        ['versions', `Versions (${versions.length})`],
+        ['journal', 'Journal'],
+      ]
+    : [
+        ['editeur', 'Éditeur'],
+        ['simulation', 'Simulation'],
+        ['versions', `Versions (${versions.length})`],
+        ['journal', 'Journal'],
+      ];
 
   return (
     <div className="page">
@@ -398,8 +488,9 @@ export default function WorkflowEditeurPage() {
       {message ? <div className="alert alert--success" role="status" style={{ marginBottom: 12 }}>{message}</div> : null}
       {modifie && estEditable ? (
         <div className="alert alert--info" role="status" style={{ marginBottom: 12 }}>
-          Modifications non enregistrées. « Valider » et la simulation portent sur la dernière version enregistrée :
-          enregistrez d’abord.
+          {estPointage
+            ? 'Modifications non enregistrées. Enregistrez d’abord vos modifications avant de valider ou publier.'
+            : 'Modifications non enregistrées. « Valider » et la simulation portent sur la dernière version enregistrée : enregistrez d’abord.'}
         </div>
       ) : null}
       {erreur ? (
@@ -421,7 +512,7 @@ export default function WorkflowEditeurPage() {
                   setModifie(true);
                   setErreur(null);
                   setErreursDef([]);
-                  setEtapeIndex((i) => Math.max(0, Math.min(i, defConflit.etapes.length - 1)));
+                  setEtapeIndex((i) => Math.max(0, Math.min(i, (defConflit.etapes ?? []).length - 1)));
                 }}
               >
                 Réappliquer ma saisie
@@ -475,15 +566,55 @@ export default function WorkflowEditeurPage() {
         </div>
       ) : null}
 
+      {estPointage && activationPointage ? (
+        <div
+          className="card"
+          role="region"
+          aria-label="État du circuit Pointage"
+          style={{
+            marginBottom: 14,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <strong>État du circuit Pointage :</strong>
+              <span
+                className={
+                  activationPointage.mode === 'MOTEUR' ? 'status status--success' : 'status status--neutral'
+                }
+              >
+                {activationPointage.mode === 'MOTEUR' ? 'Circuit paramétré' : 'Circuit standard'}
+              </span>
+              {!modele.actif ? <span className="status status--warning">Modèle inactif</span> : null}
+            </div>
+            <p className="small muted" style={{ margin: '4px 0 0 0' }}>
+              {activationPointage.mode === 'MOTEUR'
+                ? 'Les notifications dynamiques suivent la version publiée active de ce modèle.'
+                : modele.version_publiee_numero != null
+                  ? 'Le circuit Pointage est en mode standard : aucune notification dynamique n’est envoyée tant qu’il n’est pas activé.'
+                  : 'Le circuit Pointage est en mode standard. Publiez d’abord une version avant de pouvoir passer en Circuit paramétré.'}
+            </p>
+          </div>
+          {!lectureSeule && activationPointage.mode === 'HERITE' && modele.version_publiee_numero != null ? (
+            <button
+              type="button"
+              className="btn btn--primary btn--sm"
+              disabled={busy}
+              onClick={() => void activerCircuitPointage()}
+            >
+              Passer en Circuit paramétré
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="tabs" role="tablist" aria-label="Vues du modèle" style={{ marginBottom: 16 }}>
-        {(
-          [
-            ['editeur', 'Éditeur'],
-            ['simulation', 'Simulation'],
-            ['versions', `Versions (${versions.length})`],
-            ['journal', 'Journal'],
-          ] as Array<[OngletPrincipal, string]>
-        ).map(([k, l]) => (
+        {ongletsDisponibles.map(([k, l]) => (
           <button
             key={k}
             type="button"
@@ -498,6 +629,17 @@ export default function WorkflowEditeurPage() {
       </div>
 
       {onglet === 'editeur' && definition ? (
+        estPointage ? (
+          <PanneauNotificationsPointage
+            valeur={definition.notifications_dynamiques}
+            sites={sitesPointage}
+            sitesChargement={sitesChargement}
+            sitesErreur={sitesErreur}
+            erreurs={erreursDef}
+            disabled={!estEditable}
+            onChange={(nd) => majDefinition({ ...definition, notifications_dynamiques: nd })}
+          />
+        ) : (
         <div>
           <div className="card" style={{ marginBottom: 14 }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -641,9 +783,10 @@ export default function WorkflowEditeurPage() {
             </div>
           </div>
         </div>
+        )
       ) : null}
 
-      {onglet === 'simulation' && versionActive ? (
+      {!estPointage && onglet === 'simulation' && versionActive ? (
         <PanneauSimulation
           key={versionActive.id}
           modifie={modifie}

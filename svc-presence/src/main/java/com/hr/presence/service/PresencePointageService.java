@@ -1,5 +1,6 @@
 package com.hr.presence.service;
 
+import com.hr.commun.societe.SocieteContexte;
 import com.hr.presence.client.ReferentielClient;
 import com.hr.presence.config.PresenceProperties;
 import com.hr.presence.domain.ModeQr;
@@ -19,9 +20,14 @@ import com.hr.presence.repository.PresenceSiteRepository;
 import com.hr.presence.web.PresenceMetierException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +61,7 @@ public class PresencePointageService {
 	private final PresenceParametresService parametres;
 	private final EligibiliteManuelLecture eligibiliteManuel;
 	private final Clock clock;
+	private final ApplicationEventPublisher applicationEventPublisher;
 
 	/** QR résolu : site et credential statique (null pour une borne écran), ou rejet déjà enregistré. */
 	private record QrResolu(PresenceSite site, UUID credentialId, PointageResponse rejet) {
@@ -79,6 +86,29 @@ public class PresencePointageService {
 			PresenceParametresService parametres,
 			EligibiliteManuelLecture eligibiliteManuel,
 			Clock clock) {
+		this(pointageRepository, siteRepository, qrRepository, qrTokenService, haversineService, properties,
+				qrService, qrDynamiqueService, verificationFaciale, fenetreHoraire, referentielClient,
+				alerteEchecs, parametres, eligibiliteManuel, clock, null);
+	}
+
+	@Autowired
+	public PresencePointageService(
+			PresencePointageRepository pointageRepository,
+			PresenceSiteRepository siteRepository,
+			PresenceQrCredentialRepository qrRepository,
+			QrTokenService qrTokenService,
+			HaversineService haversineService,
+			PresenceProperties properties,
+			PresenceQrService qrService,
+			QrDynamiqueService qrDynamiqueService,
+			VerificationFacialePointageService verificationFaciale,
+			FenetreHoraireService fenetreHoraire,
+			ReferentielClient referentielClient,
+			AlerteEchecsPointageService alerteEchecs,
+			PresenceParametresService parametres,
+			EligibiliteManuelLecture eligibiliteManuel,
+			Clock clock,
+			ApplicationEventPublisher applicationEventPublisher) {
 		this.pointageRepository = pointageRepository;
 		this.siteRepository = siteRepository;
 		this.qrRepository = qrRepository;
@@ -94,6 +124,7 @@ public class PresencePointageService {
 		this.parametres = parametres;
 		this.eligibiliteManuel = eligibiliteManuel;
 		this.clock = clock;
+		this.applicationEventPublisher = applicationEventPublisher;
 	}
 
 	@Transactional
@@ -287,8 +318,38 @@ public class PresencePointageService {
 			pointage.setHoraireFinTs(dansFenetre.horaireFin());
 		}
 		PresencePointage saved = pointageRepository.save(pointage);
+		if (saved.getStatut() == PointageStatut.VALIDE && applicationEventPublisher != null) {
+			applicationEventPublisher.publishEvent(new PointageValideCreeEvent(
+					saved.getId(),
+					saved.getCollaborateurId(),
+					saved.getType(),
+					saved.getServerTs(),
+					site.getId(),
+					site.getLibelle(),
+					extraireSocieteCourante()
+			));
+		}
 		log.info("Pointage {} collab={} siteId={} distance={}", saved.getStatut(), collaborateurId, site.getId(), distance);
 		return toResponse(saved, decision.echecs(), decision.bloqueJusqua());
+	}
+
+	private static UUID extraireSocieteCourante() {
+		Optional<UUID> ctx = SocieteContexte.couranteOuVide();
+		if (ctx.isPresent() && !SocieteContexte.AUCUNE.equals(ctx.get())) {
+			return ctx.get();
+		}
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		if (auth instanceof JwtAuthenticationToken jwt) {
+			Object claim = jwt.getToken().getClaims().get("societe_id");
+			if (claim != null) {
+				try {
+					UUID id = UUID.fromString(String.valueOf(claim).trim());
+					return SocieteContexte.AUCUNE.equals(id) ? null : id;
+				} catch (IllegalArgumentException ignored) {
+				}
+			}
+		}
+		return null;
 	}
 
 	@Transactional(readOnly = true)
